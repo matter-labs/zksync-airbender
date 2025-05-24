@@ -18,13 +18,9 @@ use std::vec;
 
 #[cfg(feature = "debug_evaluate_witness")]
 pub const RESOLVE_WITNESS: bool = true;
-#[cfg(feature = "debug_evaluate_constraints")]
-const TRY_VALIDATE_CONSTRAINTS: bool = true;
 
 #[cfg(not(feature = "debug_evaluate_witness"))]
 pub const RESOLVE_WITNESS: bool = false;
-#[cfg(not(feature = "debug_evaluate_constraints"))]
-const TRY_VALIDATE_CONSTRAINTS: bool = false;
 
 pub struct BasicAssembly<F: PrimeField, W: WitnessPlacer<F> = CSDebugWitnessEvaluator<F>> {
     no_index_assigned: u64,

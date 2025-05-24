@@ -16,7 +16,6 @@ field = { workspace = true }
 risc_v_simulator = { workspace = true }
 cs = { workspace = true, default-features = true, features = [
     "debug_evaluate_witness",
-    "debug_evaluate_constraints",
 ] }
 setups = { workspace = true }
 regex = "1.11.1"

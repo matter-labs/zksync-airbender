@@ -485,10 +485,10 @@ mod tests {
 
     fn get_random_slice(len: usize) -> Vec<Mersenne31Field> {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         (0..len)
-            .map(|_| Mersenne31Field::from_u64(rng.gen_range(0..(1 << 31) - 1)).unwrap())
+            .map(|_| Mersenne31Field::from_u64(rng.random_range(0..(1 << 31) - 1)).unwrap())
             .collect()
     }
 }
