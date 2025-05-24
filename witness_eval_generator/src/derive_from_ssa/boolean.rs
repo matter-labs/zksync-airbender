@@ -33,7 +33,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             let #new_ident = #witness_proxy_ident.get_memory_place_boolean(#idx);
                         }
                     }
-                    ColumnAddress::SetupSubtree(idx) => {
+                    ColumnAddress::SetupSubtree(_idx) => {
                         todo!();
                     }
                     ColumnAddress::OptimizedOut(idx) => {
@@ -50,7 +50,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                     let #new_ident = #witness_proxy_ident.get_oracle_value_boolean(#placeholder);
                 }
             }
-            BoolNodeExpression::SubExpression(usize) => {
+            BoolNodeExpression::SubExpression(_usize) => {
                 unreachable!("not supported at the upper level");
             }
             BoolNodeExpression::Constant(constant) => {
@@ -64,7 +64,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             BoolNodeExpression::FromGenericInteger(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
                 let new_ident = self.create_var();
-                let witness_placer_ident = &self.witness_placer_ident;
+                //let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = WitnessComputationCore::into_mask(#var_ident);
                 }

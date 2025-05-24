@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use ::field::PrimeField;
-use cs::cs::witness_placer::graph_description::*;
 use cs::cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
@@ -11,8 +10,7 @@ use cs::definitions::Variable;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use cs::one_row_compiler::slice_to_token_array;
 use proc_macro2::*;
-use quote::{ToTokens, TokenStreamExt, quote};
-use syn::*;
+use quote::{ToTokens, quote};
 
 mod boolean;
 mod field;
@@ -262,7 +260,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             }
                         }
                     },
-                    ColumnAddress::MemorySubtree(idx) => {
+                    ColumnAddress::MemorySubtree(_idx) => {
                         if self.write_into_memory {
                             todo!()
                         } else {
@@ -270,7 +268,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             quote! {}
                         }
                     }
-                    ColumnAddress::SetupSubtree(idx) => {
+                    ColumnAddress::SetupSubtree(_idx) => {
                         unreachable!("can not write to setup");
                     }
                     ColumnAddress::OptimizedOut(idx) => match source_subexpr {

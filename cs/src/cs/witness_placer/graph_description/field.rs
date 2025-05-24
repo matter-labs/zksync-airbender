@@ -134,7 +134,7 @@ impl<F: PrimeField> FieldNodeExpression<F> {
         lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
     ) {
         match self {
-            Self::Place(place) => {
+            Self::Place(_place) => {
                 // nothing
             }
             // the rest is recursive
@@ -155,8 +155,8 @@ impl<F: PrimeField> FieldNodeExpression<F> {
                 // set.add_field_subexprs(inner);
             }
             Self::OracleValue {
-                placeholder,
-                subindex,
+                placeholder: _,
+                subindex: _,
             } => {
                 // nothing
             }
@@ -192,14 +192,14 @@ impl<F: PrimeField> FieldNodeExpression<F> {
                 // set.add_field_subexprs(if_true);
             }
             Self::LookupOutput {
-                lookup_idx,
-                output_idx,
+                lookup_idx: _,
+                output_idx: _,
             } => {
                 // nothing - we do not peek further
             }
             Self::MaybeLookupOutput {
-                lookup_idx,
-                output_idx,
+                lookup_idx: _,
+                output_idx: _,
             } => {
                 // nothing - we do not peek further
             }

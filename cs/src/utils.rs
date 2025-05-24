@@ -168,11 +168,13 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
+#[allow(dead_code)]
 pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     bincode::serialize_into(&mut dst, el).unwrap();
