@@ -99,7 +99,7 @@ impl LocalProver {
             .iter()
             .map(|x| x.1.len())
             .collect::<Vec<_>>();
-        let (recursion_proof_list, recursion_proof_metadata, _) = create_recursion_proofs(
+        let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
             proof_list,
             proof_metadata,
             &None,
