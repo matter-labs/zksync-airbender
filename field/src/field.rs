@@ -315,8 +315,8 @@ impl<F: Field> FieldExtension<F> for F {
     }
 
     #[inline(always)]
-    fn into_coeffs_in_base(self) -> [Self; 1] {
-        [self]
+    fn into_coeffs_in_base(self) -> [Self; Self::DEGREE] {
+        [self; Self::DEGREE]
     }
 
     #[inline(always)]
