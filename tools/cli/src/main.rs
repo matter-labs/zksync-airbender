@@ -150,11 +150,14 @@ enum Commands {
         #[arg(long)]
         output_file: String,
     },
+    /// Combines two proofs into a single one.
+    /// This is used to combine the proof from the previous block with the current one.
+    /// Both proofs must have the same recursion chain hash.
     FlattenTwo {
         #[arg(long)]
-        input_metadata: String,
+        first_metadata: String,
         #[arg(long)]
-        input2_metadata: String,
+        second_metadata: String,
         #[arg(long)]
         output_file: String,
     },
@@ -321,10 +324,10 @@ fn main() {
             output_file,
         } => flatten_all(input_metadata, output_file),
         Commands::FlattenTwo {
-            input_metadata,
-            input2_metadata,
+            first_metadata,
+            second_metadata,
             output_file,
-        } => flatten_two(input_metadata, input2_metadata, output_file),
+        } => flatten_two(first_metadata, second_metadata, output_file),
         Commands::GenerateConstants {
             bin,
             universal_verifier,
@@ -490,9 +493,9 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     u32_to_file(output_file, &oracle);
 }
 
-fn flatten_two(input_metadata: &String, input2_metadata: &String, output_file: &String) {
-    let (metadata, mut oracle) = generate_oracle_data_from_metadata(input_metadata);
-    let (metadata2, mut oracle2) = generate_oracle_data_from_metadata(input2_metadata);
+fn flatten_two(first_metadata: &String, second_metadata: &String, output_file: &String) {
+    let (metadata, mut oracle) = generate_oracle_data_from_metadata(first_metadata);
+    let (metadata2, oracle2) = generate_oracle_data_from_metadata(second_metadata);
 
     oracle.extend(oracle2);
     assert!(metadata.reduced_proof_count > 0);
