@@ -159,6 +159,9 @@ unsafe fn workload() -> ! {
             let output2 = full_statement_verifier::verify_recursion_layer();
             // Proving chains must be equal.
             let mut result = [0u32; 16];
+            for i in 8..16 {
+                assert_eq!(output1[i], output2[i], "Proving chains must be equal");
+            }
 
             //assert_eq!(output1[8..16], output2[8..16]);
 
