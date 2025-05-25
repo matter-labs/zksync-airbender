@@ -127,6 +127,10 @@ unsafe fn workload() -> ! {
 // This verifier can handle any circuit and any layer.
 // It uses the first word in the input to determine which circuit to verify.
 unsafe fn workload() -> ! {
+    use full_statement_verifier::verifier_common::{
+        blake2s_u32::DelegatedBlake2sState, transcript::Blake2sBufferingTranscript,
+    };
+
     let metadata = riscv_common::csr_read_word();
 
     // These values should match VerifierCircuitsIdentifiers.
@@ -149,6 +153,50 @@ unsafe fn workload() -> ! {
                 &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
             );
             riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
+        }
+        4 => {
+            let output1 = full_statement_verifier::verify_recursion_layer();
+            let output2 = full_statement_verifier::verify_recursion_layer();
+            // Proving chains must be equal.
+            let mut result = [0u32; 16];
+
+            //assert_eq!(output1[8..16], output2[8..16]);
+
+            /*use sha3::Digest;
+            let mut hasher = sha3::Keccak256::default();
+            for i in 0..8 {
+                hasher.update(&output1[i].to_be_bytes());
+            }
+            for i in 0..8 {
+                hasher.update(&output2[i].to_be_bytes());
+            }
+            let aa = hasher.finalize();
+            for i in 0..8 {
+                result[i] = u32::from_be_bytes(aa[i * 4..i * 4 + 4].try_into().unwrap());
+            }
+            */
+
+            let mut foo = DelegatedBlake2sState::new();
+            let mut merged = [0u32; 16];
+            merged[0..8].copy_from_slice(&output1[0..8]);
+            merged[8..16].copy_from_slice(&output2[0..8]);
+
+            foo.run_round_function_with_input::<false>(&merged, 16, true);
+
+            let blake_result = foo.read_state_for_output();
+            result[0..8].copy_from_slice(&blake_result[0..8]);
+
+            //let mut transcript = Blake2sBufferingTranscript::new();
+            //transcript.absorb(&output1[0..8]);
+            //transcript.absorb(&output2[0..8]);
+            //result[0..8].copy_from_slice(&transcript.finalize().0);
+
+            //result[0..8].copy_from_slice(&output1[8..16]);
+            //result[8..16].copy_from_slice(&output2[8..16]);
+
+            result[8..16].copy_from_slice(&output1[8..16]);
+
+            riscv_common::zksync_os_finish_success_extended(&result);
         }
         other => {
             let Some(pos) =

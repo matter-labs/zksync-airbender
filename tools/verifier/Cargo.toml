@@ -13,6 +13,7 @@ categories = ["cryptography"]
 verifier = { path = "../../verifier", features = ["verifier_program", "blake2_with_compression"], optional = true }
 full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false}
 riscv_common = { path = "../../riscv_common"}
+sha3 = { version = "0.10", default-features = false }
 
 [workspace]
 

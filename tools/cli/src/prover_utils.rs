@@ -50,6 +50,7 @@ pub enum VerifierCircuitsIdentifiers {
     RecursionLayer = 1,
     FinalLayer = 2,
     RiscV = 3,
+    CombinedRecursionLayers = 4,
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {

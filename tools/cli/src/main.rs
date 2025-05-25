@@ -150,6 +150,14 @@ enum Commands {
         #[arg(long)]
         output_file: String,
     },
+    FlattenTwo {
+        #[arg(long)]
+        input_metadata: String,
+        #[arg(long)]
+        input2_metadata: String,
+        #[arg(long)]
+        output_file: String,
+    },
     /// Generate End params and AUX values for a given binary and verification path.
     // These can be considered quasi 'verification' keys - as they tie the final proof
     // to the original bytecode (and verifications).
@@ -312,6 +320,11 @@ fn main() {
             input_metadata,
             output_file,
         } => flatten_all(input_metadata, output_file),
+        Commands::FlattenTwo {
+            input_metadata,
+            input2_metadata,
+            output_file,
+        } => flatten_two(input_metadata, input2_metadata, output_file),
         Commands::GenerateConstants {
             bin,
             universal_verifier,
@@ -473,6 +486,22 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     } else {
         oracle.insert(0, VerifierCircuitsIdentifiers::FinalLayer as u32);
     };
+
+    u32_to_file(output_file, &oracle);
+}
+
+fn flatten_two(input_metadata: &String, input2_metadata: &String, output_file: &String) {
+    let (metadata, mut oracle) = generate_oracle_data_from_metadata(input_metadata);
+    let (metadata2, mut oracle2) = generate_oracle_data_from_metadata(input2_metadata);
+
+    oracle.extend(oracle2);
+    assert!(metadata.reduced_proof_count > 0);
+    assert!(metadata2.reduced_proof_count > 0);
+
+    oracle.insert(
+        0,
+        VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32,
+    );
 
     u32_to_file(output_file, &oracle);
 }
