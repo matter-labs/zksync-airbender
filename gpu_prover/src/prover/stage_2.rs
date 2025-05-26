@@ -23,20 +23,16 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) struct StageTwoOutput<'a, C: ProverContext> {
     pub(crate) trace_holder: TraceHolder<BF, C>,
-    pub(crate) lookup_challenges: Arc<Mutex<Box<LookupChallenges, C::HostAllocator>>>,
-    pub(crate) last_row: Arc<Vec<BF, C::HostAllocator>>,
+    pub(crate) lookup_challenges: Option<Arc<Mutex<Box<LookupChallenges, C::HostAllocator>>>>,
+    pub(crate) last_row: Option<Arc<Vec<BF, C::HostAllocator>>>,
     pub(crate) offset_for_grand_product_poly: usize,
     pub(crate) offset_for_sum_over_delegation_poly: Option<usize>,
-    pub(crate) callbacks: Callbacks<'a>,
+    pub(crate) callbacks: Option<Callbacks<'a>>,
 }
 
 impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
-    pub fn new(
-        seed: Arc<Mutex<Seed>>,
+    pub fn allocate_trace_evaluations(
         circuit: &CompiledCircuitArtifact<BF>,
-        cached_data: &ProverCachedData,
-        setup: &SetupPrecomputations<C>,
-        stage_1_output: &mut StageOneOutput<C>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
         context: &C,
@@ -49,7 +45,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let log_domain_size = trace_len.trailing_zeros();
         let layout = circuit.stage_2_layout;
         let num_stage_2_cols = layout.total_width;
-        let mut trace_holder = TraceHolder::new(
+        let trace_holder = TraceHolder::allocate_only_evaluation(
             log_domain_size,
             log_lde_factor,
             0,
@@ -58,6 +54,33 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             true,
             context,
         )?;
+        Ok(Self {
+            trace_holder,
+            lookup_challenges: None,
+            last_row: None,
+            offset_for_grand_product_poly: 0,
+            offset_for_sum_over_delegation_poly: None,
+            callbacks: None,
+        })
+    }
+
+    pub fn generate(
+        &mut self,
+        seed: Arc<Mutex<Seed>>,
+        circuit: &CompiledCircuitArtifact<BF>,
+        cached_data: &ProverCachedData,
+        setup: &SetupPrecomputations<C>,
+        stage_1_output: &mut StageOneOutput<C>,
+        context: &C,
+    ) -> CudaResult<()>
+    where
+        C::HostAllocator: 'a,
+    {
+        let trace_len = circuit.trace_len;
+        assert!(trace_len.is_power_of_two());
+        let log_domain_size = trace_len.trailing_zeros();
+        let layout = circuit.stage_2_layout;
+        let num_stage_2_cols = layout.total_width;
         let mut callbacks = Callbacks::new();
         let lookup_challenges = Arc::new(Mutex::new(Box::<LookupChallenges, _>::new_in(
             Default::default(),
@@ -85,8 +108,6 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             *guard.deref_mut().deref_mut() = challenges;
         };
         callbacks.schedule(lookup_challenges_fn, stream)?;
-        let mut last_row = Vec::with_capacity_in(num_stage_2_cols, C::HostAllocator::default());
-        unsafe { last_row.set_len(num_stage_2_cols) };
         let num_stage_2_bf_cols = layout.num_base_field_polys();
         let num_stage_2_e4_cols = layout.num_ext4_field_polys();
         assert_eq!(
@@ -97,6 +118,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let generic_lookup_mappings = stage_1_output.generic_lookup_mapping.take().unwrap();
         let d_generic_lookups_args_to_table_entries_map =
             DeviceMatrix::new(&generic_lookup_mappings, trace_len);
+        let trace_holder = &mut self.trace_holder;
         let trace = trace_holder.get_evaluations_mut();
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
@@ -113,6 +135,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             stream,
         )?;
         drop(guard);
+        self.lookup_challenges = Some(lookup_challenges);
         let d_witness_cols =
             DeviceMatrix::new(&stage_1_output.witness_holder.get_evaluations(), trace_len);
         let d_memory_cols =
@@ -134,6 +157,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             stream,
         )?;
         drop(generic_lookup_mappings);
+        trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;
         trace_holder.produce_tree_caps(context)?;
         let mut d_last_row = context.alloc(num_stage_2_cols)?;
@@ -141,22 +165,24 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             DeviceMatrixChunk::new(trace_holder.get_evaluations(), trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
-        unsafe {
-            last_row.set_len(num_stage_2_cols);
-        }
+        let mut last_row = Vec::with_capacity_in(num_stage_2_cols, C::HostAllocator::default());
+        unsafe { last_row.set_len(num_stage_2_cols) };
         memory_copy_async(&mut last_row, d_last_row.deref(), stream)?;
         let last_row = Arc::new(last_row);
+        let last_row_clone = last_row.clone();
+        self.last_row = Some(last_row);
         let offset_for_grand_product_poly = layout
             .intermediate_polys_for_memory_argument
             .get_range(cached_data.offset_for_grand_product_accumulation_poly)
             .start;
+        self.offset_for_grand_product_poly = offset_for_grand_product_poly;
         let offset_for_sum_over_delegation_poly =
             if cached_data.handle_delegation_requests || cached_data.process_delegations {
                 Some(cached_data.delegation_processing_aux_poly.start())
             } else {
                 None
             };
-        let last_row_clone = last_row.clone();
+        self.offset_for_sum_over_delegation_poly = offset_for_sum_over_delegation_poly;
         let has_delegation_processing_aux_poly = circuit
             .stage_2_layout
             .delegation_processing_aux_poly
@@ -186,15 +212,8 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             Transcript::commit_with_seed(&mut seed.lock().unwrap(), &transcript_input);
         };
         callbacks.schedule(update_seed_fn, stream)?;
-        let output = Self {
-            trace_holder,
-            lookup_challenges,
-            last_row,
-            offset_for_grand_product_poly,
-            offset_for_sum_over_delegation_poly,
-            callbacks,
-        };
-        Ok(output)
+        self.callbacks = Some(callbacks);
+        Ok(())
     }
 
     pub fn get_grand_product_accumulator(offset: usize, last_row: &[BF]) -> E4 {

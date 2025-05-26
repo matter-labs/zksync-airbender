@@ -27,26 +27,22 @@ pub(crate) struct StageOneOutput<'a, C: ProverContext> {
     pub witness_holder: TraceHolder<BF, C>,
     pub memory_holder: TraceHolder<BF, C>,
     pub generic_lookup_mapping: Option<C::Allocation<u32>>,
-    pub callbacks: Callbacks<'a>,
+    pub callbacks: Option<Callbacks<'a>>,
     pub public_inputs: Option<Arc<Mutex<Vec<BF>>>>,
 }
 
 impl<'a, C: ProverContext> StageOneOutput<'a, C> {
-    pub fn new(
+    pub fn allocate_trace_holders(
         circuit: &CompiledCircuitArtifact<BF>,
-        setup: &SetupPrecomputations<C>,
-        tracing_data_transfer: TracingDataTransfer<'a, C>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        circuit_sequence: usize,
         context: &C,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
         let log_domain_size = trace_len.trailing_zeros();
-        let witness_subtree = &circuit.witness_layout;
-        let witness_columns_count = witness_subtree.total_width;
-        let mut witness_holder = TraceHolder::new(
+        let witness_columns_count = circuit.witness_layout.total_width;
+        let witness_holder = TraceHolder::new(
             log_domain_size,
             log_lde_factor,
             0,
@@ -55,9 +51,8 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
             true,
             context,
         )?;
-        let memory_subtree = &circuit.memory_layout;
-        let memory_columns_count = memory_subtree.total_width;
-        let mut memory_holder = TraceHolder::new(
+        let memory_columns_count = circuit.memory_layout.total_width;
+        let memory_holder = TraceHolder::new(
             log_domain_size,
             log_lde_factor,
             0,
@@ -66,6 +61,28 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
             true,
             context,
         )?;
+        Ok(Self {
+            witness_holder,
+            memory_holder,
+            generic_lookup_mapping: None,
+            callbacks: None,
+            public_inputs: None,
+        })
+    }
+
+    pub fn generate_witness(
+        &mut self,
+        circuit: &CompiledCircuitArtifact<BF>,
+        setup: &SetupPrecomputations<C>,
+        tracing_data_transfer: TracingDataTransfer<'a, C>,
+        circuit_sequence: usize,
+        context: &C,
+    ) -> CudaResult<()> {
+        let trace_len = circuit.trace_len;
+        assert!(trace_len.is_power_of_two());
+        let log_domain_size = trace_len.trailing_zeros();
+        let witness_subtree = &circuit.witness_layout;
+        let memory_subtree = &circuit.memory_layout;
         let generic_lookup_mapping_size = witness_subtree.width_3_lookups.len() << log_domain_size;
         let mut generic_lookup_mapping = context.alloc(generic_lookup_mapping_size)?;
         let TracingDataTransfer {
@@ -75,6 +92,7 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
             transfer,
         } = tracing_data_transfer;
         transfer.ensure_transferred(context)?;
+        self.callbacks = Some(transfer.callbacks);
         let stream = context.get_exec_stream();
         assert_eq!(COMMON_TABLE_WIDTH, 3);
         assert_eq!(NUM_COLUMNS_FOR_COMMON_TABLE_WIDTH_SETUP, 4);
@@ -100,6 +118,8 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
                 + timestamp_range_check_multiplicities_columns.num_elements,
             generic_multiplicities_columns.start
         );
+        let witness_holder = &mut self.witness_holder;
+        let memory_holder = &mut self.memory_holder;
         match data_device {
             TracingDataDevice::Main {
                 setup_and_teardown,
@@ -172,15 +192,26 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
             trace_len,
             context,
         )?;
-        memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
-        witness_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
-        Ok(Self {
-            witness_holder,
-            memory_holder,
-            generic_lookup_mapping: Some(generic_lookup_mapping),
-            callbacks: transfer.callbacks,
-            public_inputs: None,
-        })
+        self.generic_lookup_mapping = Some(generic_lookup_mapping);
+        Ok(())
+    }
+
+    pub fn commit_witness(
+        &mut self,
+        circuit: &'a CompiledCircuitArtifact<BF>,
+        context: &C,
+    ) -> CudaResult<()>
+    where
+        C::HostAllocator: 'a,
+    {
+        self.memory_holder
+            .make_evaluations_sum_to_zero_extend_and_commit(context)?;
+        self.memory_holder.produce_tree_caps(context)?;
+        self.witness_holder
+            .make_evaluations_sum_to_zero_extend_and_commit(context)?;
+        self.witness_holder.produce_tree_caps(context)?;
+        self.produce_public_inputs(circuit, context)?;
+        Ok(())
     }
 
     pub fn produce_public_inputs(
@@ -257,7 +288,10 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
             guard.extend(first_row_public_inputs);
             guard.extend(one_before_last_row_public_inputs);
         };
-        self.callbacks.schedule(function, stream)?;
+        self.callbacks
+            .as_mut()
+            .unwrap()
+            .schedule(function, stream)?;
         self.public_inputs = Some(public_inputs);
         Ok(())
     }
