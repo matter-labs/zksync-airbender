@@ -4,6 +4,12 @@
 #![feature(generic_const_exprs)]
 #![no_main]
 
+#[cfg(any(
+    feature = "universal_circuit",
+    feature = "universal_circuit_no_delegation"
+))]
+mod keccak;
+
 extern "C" {
     // Boundaries of the heap
     static mut _sheap: usize;
@@ -127,6 +133,8 @@ unsafe fn workload() -> ! {
 // This verifier can handle any circuit and any layer.
 // It uses the first word in the input to determine which circuit to verify.
 unsafe fn workload() -> ! {
+    use keccak::Keccak32;
+
     let metadata = riscv_common::csr_read_word();
 
     // These values should match VerifierCircuitsIdentifiers.
@@ -149,6 +157,24 @@ unsafe fn workload() -> ! {
                 &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
             );
             riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
+        }
+        4 => {
+            let output1 = full_statement_verifier::verify_recursion_layer();
+            let output2 = full_statement_verifier::verify_recursion_layer();
+            // Proving chains must be equal.
+            let mut result = [0u32; 16];
+            for i in 8..16 {
+                assert_eq!(output1[i], output2[i], "Proving chains must be equal");
+            }
+
+            // And the first 8 words are the hash of the two outputs.
+            let mut hasher = Keccak32::new();
+            hasher.update(&output1[0..8]);
+            hasher.update(&output2[0..8]);
+            result[0..8].copy_from_slice(&hasher.finalize());
+            result[8..16].copy_from_slice(&output1[8..16]);
+
+            riscv_common::zksync_os_finish_success_extended(&result);
         }
         other => {
             let Some(pos) =
