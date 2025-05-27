@@ -18,7 +18,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile 
         run: cargo build --verbose
       # - name: tests
@@ -36,7 +35,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
@@ -51,7 +49,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: tests 
         working-directory: ./circuit_defs/opcode_tests
         run: cargo test --profile test-release --lib --package opcode_tests
@@ -77,7 +74,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Run Blake(fibonacci) and prove
         working-directory: execution_utils
         run: cargo test --release -- --nocapture --exact test_prove_fib 
@@ -102,7 +98,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile 
         working-directory: ./risc_v_simulator
         run: cargo build --features delegation --verbose 
@@ -121,7 +116,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile default
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Regenerate verifiers
         run: ./recreate_verifiers.sh
       - name: Check if anything has changed
@@ -150,7 +144,6 @@ jobs:
   #         cargo install cargo-binutils
   #         rustup component add llvm-tools-preview
   #         rustup component add rust-src
-  #         git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
   #     - name: Regenerate verifiers
   #       working-directory: ./tools/verifier
   #       run: ./build.sh
@@ -176,7 +169,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: cargo build --profile cli -p cli --features include_verifiers
       - uses: actions/upload-artifact@v4
@@ -195,7 +187,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: cargo build --release -p cli --no-default-features
       - uses: actions/upload-artifact@v4
@@ -215,7 +206,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: RUSTFLAGS="-C target-feature=+avx512f" cargo build --release -p cli --no-default-features
       - uses: actions/upload-artifact@v4
@@ -238,7 +228,6 @@ jobs:
           cargo install cargo-binutils
           rustup component add llvm-tools-preview
           rustup component add rust-src
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: ObjCopy
         working-directory: tools/verifier
         run: cargo objcopy --profile cli  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
