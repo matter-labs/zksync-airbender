@@ -1,5 +1,6 @@
 name: Cargo deny check
 on: pull_request
+permissions: read-all
 jobs:
   cargo-deny:
     runs-on: ubuntu-latest
