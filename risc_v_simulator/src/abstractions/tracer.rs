@@ -1,4 +1,4 @@
-use crate::cycle::{state::RiscV32State, MachineConfig};
+use crate::cycle::{state::RiscV32State, state_new::RiscV32StateForUnrolledProver, MachineConfig};
 use cs::definitions::{TimestampData, TimestampScalar};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -42,20 +42,17 @@ impl RegisterOrIndirectReadWriteData {
 }
 
 pub trait Tracer<C: MachineConfig>: Sized {
-    type AuxData;
-
-    fn create_from_initial_state_for_num_cycles_and_chunk_size(
-        state: &RiscV32State<C>,
-        aux_data: Self::AuxData,
-        num_cycles: usize,
-        chunk_size: usize,
-    ) -> Self;
-
     #[inline(always)]
     fn at_cycle_start(&mut self, _current_state: &RiscV32State<C>) {}
 
     #[inline(always)]
     fn at_cycle_end(&mut self, _current_state: &RiscV32State<C>) {}
+
+    #[inline(always)]
+    fn at_cycle_start_ext(&mut self, _current_state: &RiscV32StateForUnrolledProver<C>) {}
+
+    #[inline(always)]
+    fn at_cycle_end_ext(&mut self, _current_state: &RiscV32StateForUnrolledProver<C>) {}
 
     #[inline(always)]
     fn trace_opcode_read(&mut self, _phys_address: u64, _read_value: u32) {}
@@ -90,44 +87,6 @@ pub trait Tracer<C: MachineConfig>: Sized {
     ) {
     }
 
-    // #[inline(always)]
-    // fn start_tracing_delegation_access(
-    //     &mut self,
-    //     _access_id: u32,
-    //     _proc_cycle: usize,
-    //     _cycle_timestamp: TimestampScalar,
-    // ) {
-    // }
-
-    // #[inline(always)]
-    // fn finish_tracing_delegation_access(&mut self) {}
-
-    // #[inline(always)]
-    // fn trace_batch_memory_access_in_delegation(
-    //     &mut self,
-    //     _phys_address_high: u16,
-    //     _accesses: &[BatchAccessPartialData],
-    // ) {
-    // }
-
-    // #[inline(always)]
-    // fn trace_batch_nondeterminism_access_in_delegation(
-    //     &mut self,
-    //     _non_determinism_accesses: &[u32],
-    // ) {
-    // }
-
-    // #[inline(always)]
-    // fn trace_register_and_indirect_access_in_delegation(
-    //     &mut self,
-    //     _base_register_offset: u32,
-    //     _register_index: u32,
-    //     _read_value: u32,
-    //     _written_value: u32,
-    //     _indirects: &[BatchAccessPartialData],
-    // ) {
-    // }
-
     #[inline(always)]
     fn record_delegation(
         &mut self,
@@ -142,15 +101,4 @@ pub trait Tracer<C: MachineConfig>: Sized {
     }
 }
 
-impl<C: MachineConfig> Tracer<C> for () {
-    type AuxData = ();
-
-    fn create_from_initial_state_for_num_cycles_and_chunk_size(
-        _state: &RiscV32State<C>,
-        _aux_data: Self::AuxData,
-        _num_cycles: usize,
-        _chunk_size: usize,
-    ) -> Self {
-        ()
-    }
-}
+impl<C: MachineConfig> Tracer<C> for () {}

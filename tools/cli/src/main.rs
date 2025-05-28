@@ -7,17 +7,14 @@ use blake2s_u32::Blake2sState;
 use clap::{Parser, Subcommand};
 use cli_lib::generate_constants::generate_constants_for_binary;
 use cli_lib::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
-    serialize_to_file, u32_from_hex_string, ProvingLimit, VerifierCircuitsIdentifiers,
-    DEFAULT_CYCLES,
+    create_proofs, generate_oracle_data_from_metadata, u32_from_hex_string, ProvingLimit,
+    VerifierCircuitsIdentifiers, DEFAULT_CYCLES,
 };
 use cli_lib::Machine;
 
 use cli_lib::vk::generate_vk;
-use execution_utils::ProgramProof;
 use reqwest::blocking::Client;
 use serde_json::Value;
-use std::path::Path;
 use std::{fs, io::Write, iter};
 
 use prover::{
@@ -89,14 +86,6 @@ enum Commands {
         /// If true, use GPU for proving.
         #[arg(long)]
         gpu: bool,
-    },
-    /// Run the 'final' step of proving (for example on the output from ZKSmith)
-    ProveFinal {
-        // Either load data from the input file or from RPC
-        #[clap(flatten)]
-        input: InputConfig,
-        #[arg(long, default_value = "output")]
-        output_dir: String,
     },
     /// Verifies a single proof.
     Verify {
@@ -194,12 +183,6 @@ fn fetch_data_from_json_rpc(
     }
 }
 
-fn fetch_data_from_url(url: &str) -> Result<Option<String>, reqwest::Error> {
-    let client = Client::new();
-    let response = client.get(url).send()?.text()?;
-    Ok(Some(response))
-}
-
 fn fetch_input_hex_string(input: &InputConfig) -> Result<Option<String>, reqwest::Error> {
     if let Some(input_file) = &input.input_file {
         Ok(Some(
@@ -210,21 +193,6 @@ fn fetch_input_hex_string(input: &InputConfig) -> Result<Option<String>, reqwest
             .input_batch
             .expect("input_batch must be set if input_rpc is set");
         fetch_data_from_json_rpc(&url, batch)
-    } else {
-        Ok(None)
-    }
-}
-
-fn fetch_final_input_json(input: &InputConfig) -> Result<Option<String>, reqwest::Error> {
-    if let Some(input_file) = &input.input_file {
-        Ok(Some(
-            fs::read_to_string(input_file).unwrap().trim().to_string(),
-        ))
-    } else if let Some(url) = &input.input_rpc {
-        let batch = input
-            .input_batch
-            .expect("input_batch must be set if input_rpc is set");
-        fetch_data_from_url(format!("{}/downloads/{}", url, batch).as_str())
     } else {
         Ok(None)
     }
@@ -255,19 +223,6 @@ fn main() {
                 until,
                 tmp_dir,
                 gpu.clone(),
-            );
-        }
-        Commands::ProveFinal { input, output_dir } => {
-            let input = fetch_final_input_json(input).expect("Failed to fetch");
-
-            let input_program_proof: ProgramProof = serde_json::from_str(&input.unwrap())
-                .expect("Failed to parse input_hex into ProgramProof");
-
-            let program_proof = create_final_proofs_from_program_proof(input_program_proof);
-
-            serialize_to_file(
-                &program_proof,
-                &Path::new(output_dir).join("final_program_proof.json"),
             );
         }
         Commands::Verify { proof } => {

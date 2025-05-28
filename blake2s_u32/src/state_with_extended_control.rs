@@ -48,7 +48,7 @@ const COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS: u32 = 0b001;
 const COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS: u32 = 0b010;
 
 #[derive(Clone, Copy, Debug)]
-#[repr(C)]
+#[repr(C, align(128))]
 pub struct Blake2RoundFunctionEvaluator {
     pub state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS], // represents current state
     extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
@@ -76,13 +76,9 @@ impl Blake2RoundFunctionEvaluator {
     #[allow(invalid_value)]
     pub fn new() -> Self {
         unsafe {
+            // NOTE: it would only be used in RISC-V simulated machine with zero-by-default state,
+            // where all memory is initialized and physical, so "touching" memory slots is not required
             let mut new: Self = MaybeUninit::uninit().assume_init();
-            // NOTE: for the convergence of the delegation argument in the circuit
-            // we have to "touch" all RAM slots before executing any delegation.
-            crate::spec_memzero_u32(
-                new.state.as_mut_ptr().cast::<u32>(),
-                new.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
-            );
             new.t = 0;
 
             // we will copy-over the initial state to avoid complications

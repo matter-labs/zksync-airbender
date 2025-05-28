@@ -40,8 +40,8 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  isa_tests:
-    name: ISA tests
+  simulator_isa_tests:
+    name: ISA tests for simulator
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
       - uses: actions/checkout@v3
@@ -52,11 +52,29 @@ jobs:
         run: |
           rustup set profile minimal
       - name: tests 
-        working-directory: ./circuit_defs/opcode_tests
-        run: cargo test --profile test-release --lib --package opcode_tests
+        working-directory: ./risc_v_simulator
+        run: cargo test --release --features=delegation
         # run: cargo test --release
       # - name: tests
       #   run: cargo test --profile cli -- --nocapture
+
+  # isa_tests:
+  #   name: ISA tests
+  #   runs-on: [matterlabs-ci-runner-highmem]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         rustflags: ""
+  #     - name: Setup
+  #       run: |
+  #         rustup set profile minimal
+  #     - name: tests 
+  #       working-directory: ./circuit_defs/opcode_tests
+  #       run: cargo test --profile test-release --lib --package opcode_tests
+  #       # run: cargo test --release
+  #     # - name: tests
+  #     #   run: cargo test --profile cli -- --nocapture
 
   full_recursion_fast:
     # full recursion using a pre-compiled binaries.

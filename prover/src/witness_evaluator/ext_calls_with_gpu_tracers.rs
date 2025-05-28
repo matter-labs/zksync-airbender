@@ -8,6 +8,7 @@ use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use crate::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use crate::witness_evaluator::new::evaluate_witness;
 use crate::witness_evaluator::new::SimpleWitnessProxy;
+use risc_v_simulator::cycle::state_new::DelegationCSRProcessor;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
 
@@ -16,7 +17,7 @@ use risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_
 pub fn dev_run_all_and_make_witness_ext_with_gpu_tracers<
     M: Machine<Mersenne31Field>,
     C: MachineConfig,
-    CSR: CustomCSRProcessor,
+    CSR: DelegationCSRProcessor,
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
     machine: M,
@@ -32,6 +33,7 @@ pub fn dev_run_all_and_make_witness_ext_with_gpu_tracers<
     trace_len: usize,
     csr_processor: CSR,
     csr_table: Option<LookupWrapper<Mersenne31Field>>,
+    non_determinism_responses: Vec<u32>,
     worker: &Worker,
 ) -> (
     Vec<WitnessEvaluationData<DEFAULT_TRACE_PADDING_MULTIPLE, Global>>,
@@ -117,6 +119,7 @@ where
             csr_processor,
             &mut memory,
             1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS),
+            non_determinism_responses,
             factories,
         );
 
@@ -346,7 +349,7 @@ where
 }
 
 pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
-    CSR: CustomCSRProcessor,
+    CSR: DelegationCSRProcessor,
     C: MachineConfig,
 >(
     num_cycles: usize,
@@ -355,6 +358,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
     mut custom_csr_processor: CSR,
     memory: &mut VectorMemoryImplWithRom,
     rom_address_space_bound: usize,
+    non_determinism_responses: Vec<u32>,
     delegation_factories: HashMap<u16, Box<dyn Fn() -> DelegationWitness>>,
 ) -> (
     u32,
@@ -366,15 +370,13 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
     use crate::tracers::main_cycle_optimized::DelegationTracingData;
     use crate::tracers::main_cycle_optimized::GPUFriendlyTracer;
     use crate::tracers::main_cycle_optimized::RamTracingData;
-    use risc_v_simulator::cycle::state::RiscV32State;
+    use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
     assert!(trace_size.is_power_of_two());
 
-    let mut state = RiscV32State::<C>::initial(initial_pc);
+    let mut state = RiscV32StateForUnrolledProver::<C>::initial(initial_pc);
 
-    let mut traced_main_circuits = vec![];
-
-    let ram_tracer =
-        RamTracingData::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
+    let bookkeeping_aux_data =
+        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
     let delegation_tracer = DelegationTracingData {
         all_per_type_logs: HashMap::new(),
         delegation_witness_factories: delegation_factories,
@@ -388,79 +390,60 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
     let num_cycles_in_chunk = trace_size - 1;
     // important - in out memory implementation first access in every chunk is timestamped as (trace_size * circuit_idx) + 4,
     // so we take care of it
-
-    let mut mmu = NoMMU { sapt: state.sapt };
-    let mut non_determinism = QuasiUARTSource::default();
+    let mut non_determinism = QuasiUARTSource::new_with_reads(non_determinism_responses);
 
     let mut num_traces_to_use = num_cycles / num_cycles_in_chunk;
     if num_cycles % num_cycles_in_chunk != 0 {
         num_traces_to_use += 1;
     }
 
-    let mut proc_cycle = 0usize;
-    let mut memory_tracer = Some(ram_tracer);
-    let mut delegation_tracer = Some(delegation_tracer);
-    let mut previous_pc = initial_pc.wrapping_sub(4);
+    let initial_ts = timestamp_from_chunk_cycle_and_sequence(0, num_cycles_in_chunk, 0);
+    let mut tracer = GPUFriendlyTracer::<_, _, true, true, true>::new(
+        initial_ts,
+        bookkeeping_aux_data,
+        delegation_tracer,
+        num_cycles_in_chunk,
+        num_traces_to_use,
+    );
+
     let mut end_reached = false;
 
-    for _chunk_idx in 0..num_traces_to_use {
-        let mem_tracer_to_use = memory_tracer.take().unwrap();
-        let delegation_tracer_to_use = delegation_tracer.take().unwrap();
-        let aux_data = (proc_cycle, mem_tracer_to_use, delegation_tracer_to_use);
-
-        let mut tracer: GPUFriendlyTracer<C> =
-            GPUFriendlyTracer::create_from_initial_state_for_num_cycles_and_chunk_size(
-                &state,
-                aux_data,
-                num_cycles_in_chunk,
-                num_cycles_in_chunk,
-            );
-
-        for _i in 0..num_cycles_in_chunk {
-            state.cycle_ext(
-                memory,
-                &mut tracer,
-                &mut mmu,
-                &mut non_determinism,
-                &mut custom_csr_processor,
-            );
-
-            proc_cycle += 1;
-
-            if end_reached {
-                assert_eq!(previous_pc, state.pc);
-            }
-
-            if previous_pc == state.pc {
-                if end_reached == false {
-                    println!("Took {} cycles to finish actual execution", proc_cycle);
-                }
-                end_reached = true;
-            }
-            previous_pc = state.pc;
+    for chunk_idx in 0..num_traces_to_use {
+        if chunk_idx != 0 {
+            let timestamp =
+                timestamp_from_chunk_cycle_and_sequence(0, num_cycles_in_chunk, chunk_idx);
+            tracer.prepare_for_next_chunk(timestamp);
         }
 
-        let GPUFriendlyTracer {
-            trace_chunk,
-            bookkeeping_aux_data,
-            delegation_tracer: delegation_tracer_returned,
-            cycles_passed,
-            current_tracing_delegation_type,
-            current_tracing_delegation_cycle_timestamp,
-            current_timestamp: _,
-        } = tracer;
+        dbg!(tracer.current_timestamp);
 
-        assert!(current_tracing_delegation_type.is_none());
-        assert!(current_tracing_delegation_cycle_timestamp.is_none());
-        assert_eq!(cycles_passed, proc_cycle);
+        let finished = state.run_cycles(
+            memory,
+            &mut tracer,
+            &mut non_determinism,
+            &mut custom_csr_processor,
+            num_cycles_in_chunk,
+        );
 
-        trace_chunk.assert_at_capacity();
-        traced_main_circuits.push(trace_chunk);
-        delegation_tracer = Some(delegation_tracer_returned);
-        memory_tracer = Some(bookkeeping_aux_data);
+        if finished {
+            end_reached = true;
+            break;
+        };
     }
 
     assert!(end_reached, "program execution did not finish");
+
+    let GPUFriendlyTracer {
+        bookkeeping_aux_data,
+        trace_chunk,
+        traced_chunks,
+        delegation_tracer,
+        ..
+    } = tracer;
+
+    // put latest chunk manually in traced ones
+    let mut traced_chunks = traced_chunks;
+    traced_chunks.push(trace_chunk);
 
     let RamTracingData {
         register_last_live_timestamps,
@@ -468,9 +451,10 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
         access_bitmask,
         num_touched_ram_cells,
         ..
-    } = memory_tracer.unwrap();
+    } = bookkeeping_aux_data;
 
     dbg!(num_touched_ram_cells);
+    let ram = memory.clone().get_final_ram_state();
 
     let mut teardown_data: Vec<(u32, (TimestampScalar, u32))> =
         Vec::with_capacity(num_touched_ram_cells);
@@ -480,7 +464,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
             let phys_address = word_idx << 2;
             let word_is_used = *bitmask & (1 << bit_idx) > 0;
             if word_is_used {
-                let word_value = memory.ram[word_idx];
+                let word_value = ram[word_idx];
                 let last_timestamp: TimestampScalar = ram_words_last_live_timestamps[word_idx];
                 teardown_data.push((phys_address as u32, (last_timestamp, word_value)));
             }
@@ -501,7 +485,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
         all_per_type_logs,
         current_per_type_logs,
         ..
-    } = delegation_tracer.unwrap();
+    } = delegation_tracer;
 
     let mut all_per_type_logs = all_per_type_logs;
     for (delegation_type, current_data) in current_per_type_logs.into_iter() {
@@ -521,7 +505,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
 
     (
         state.pc,
-        traced_main_circuits,
+        traced_chunks,
         all_per_type_logs,
         teardown_data,
         register_final_values,

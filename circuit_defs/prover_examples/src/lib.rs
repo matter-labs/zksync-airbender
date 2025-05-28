@@ -676,6 +676,7 @@ mod test {
 
     #[test]
     fn test_prove_full_machine() {
+        let cycles = (1 << 22) - 1;
         let num_instances = 1;
 
         let path = "./app.bin";
@@ -703,7 +704,7 @@ mod test {
         let non_determinism_source = QuasiUARTSource::default();
         let main_circuit_precomputations =
             setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-        let (_main_proofs, _delegation_proofs, _register_values) = crate::prove_image_execution(
+        let (main_proofs, delegation_proofs, register_values) = crate::prove_image_execution(
             num_instances,
             &binary,
             non_determinism_source,

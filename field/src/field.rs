@@ -124,164 +124,6 @@ pub trait BaseField: Field {
     }
 }
 
-// #[repr(C)]
-// #[derive(Clone, Copy, Hash)]
-// pub struct ExtensionField<F: Field, const DEGREE: usize> {
-//     pub coeffs: [F; DEGREE],
-// }
-
-// impl<F: Field, const DEGREE: usize> core::cmp::PartialEq for ExtensionField<F, DEGREE> {
-//     #[inline(always)]
-//     fn eq(&self, other: &Self) -> bool {
-//         self.coeffs
-//             .iter()
-//             .zip(other.coeffs.iter())
-//             .all(|(x, y)| x.eq(y))
-//     }
-// }
-
-// impl<F: Field, const DEGREE: usize> core::cmp::Eq for ExtensionField<F, DEGREE> {}
-
-// impl<F: Field, const DEGREE: usize> core::default::Default for ExtensionField<F, DEGREE> {
-//     #[inline(always)]
-//     fn default() -> Self {
-//         ExtensionField {
-//             coeffs: [F::default(); DEGREE],
-//         }
-//     }
-// }
-
-// impl<F: BaseField> Field for ExtensionField<F, 2>
-// where
-//     ExtensionField<F, 2>: core::fmt::Debug + core::fmt::Display,
-// {
-//     const ZERO: Self = ExtensionField {
-//         coeffs: [F::ZERO; 2],
-//     };
-//     const ONE: Self = ExtensionField {
-//         coeffs: [F::ONE, F::ZERO],
-//     };
-//     type CharField = F::CharField;
-
-//     #[inline]
-//     fn is_zero(&self) -> bool {
-//         self.coeffs[0].is_zero() && self.coeffs[1].is_zero()
-//     }
-//     #[inline]
-//     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
-//         self.coeffs[0].add_assign(&other.coeffs[0]);
-//         self.coeffs[1].add_assign(&other.coeffs[1]);
-
-//         self
-//     }
-
-//     #[inline]
-//     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
-//         self.coeffs[0].sub_assign(&other.coeffs[0]);
-//         self.coeffs[1].sub_assign(&other.coeffs[1]);
-
-//         self
-//     }
-
-//     #[inline]
-//     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
-//         let mut v0 = self.coeffs[0];
-//         v0.mul_assign(&other.coeffs[0]);
-//         let mut v1 = self.coeffs[1];
-//         v1.mul_assign(&other.coeffs[1]);
-
-//         let t = self.coeffs[0];
-//         self.coeffs[1].add_assign(&t);
-
-//         let mut t0 = other.coeffs[0];
-//         t0.add_assign(&other.coeffs[1]);
-//         self.coeffs[1].mul_assign(&t0);
-//         self.coeffs[1].sub_assign(&v0);
-//         self.coeffs[1].sub_assign(&v1);
-//         self.coeffs[0] = v0;
-//         F::mul_by_non_residue(&mut v1);
-//         self.coeffs[0].add_assign(&v1);
-
-//         self
-//     }
-
-//     #[inline]
-//     fn square(&mut self) -> &mut Self {
-//         let mut v0 = self.coeffs[0];
-//         v0.sub_assign(&self.coeffs[1]);
-//         let mut v3 = self.coeffs[0];
-//         let mut t0 = self.coeffs[1];
-//         F::mul_by_non_residue(&mut t0);
-//         v3.sub_assign(&t0);
-//         let mut v2 = self.coeffs[0];
-//         v2.mul_assign(&self.coeffs[1]);
-//         v0.mul_assign(&v3);
-//         v0.add_assign(&v2);
-
-//         self.coeffs[1] = v2;
-//         self.coeffs[1].double();
-//         self.coeffs[0] = v0;
-//         F::mul_by_non_residue(&mut v2);
-//         self.coeffs[0].add_assign(&v2);
-
-//         self
-//     }
-
-//     #[inline]
-//     fn negate(&mut self) -> &mut Self {
-//         self.coeffs[0].negate();
-//         self.coeffs[1].negate();
-
-//         self
-//     }
-
-//     #[inline]
-//     fn double(&mut self) -> &mut Self {
-//         self.coeffs[0].double();
-//         self.coeffs[1].double();
-
-//         self
-//     }
-
-//     fn inverse(&self) -> Option<Self> {
-//         let mut v0 = self.coeffs[0];
-//         v0.square();
-//         let mut v1 = self.coeffs[1];
-//         v1.square();
-//         // v0 = v0 - beta * v1
-//         let mut v1_by_nonresidue = v1;
-//         F::mul_by_non_residue(&mut v1_by_nonresidue);
-//         v0.sub_assign(&v1_by_nonresidue);
-//         match v0.inverse() {
-//             Some(inversed) => {
-//                 let mut c0 = self.coeffs[0];
-//                 c0.mul_assign(&inversed);
-//                 let mut c1 = self.coeffs[1];
-//                 c1.mul_assign(&inversed);
-//                 c1.negate();
-
-//                 let new = Self { coeffs: [c0, c1] };
-//                 Some(new)
-//             }
-//             None => None,
-//         }
-//     }
-
-//     #[inline]
-//     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
-//         self.coeffs[0].mul_by_two();
-//         self.coeffs[1].mul_by_two();
-//         self
-//     }
-
-//     #[inline]
-//     fn div_by_two(&'_ mut self) -> &'_ mut Self {
-//         self.coeffs[0].div_by_two();
-//         self.coeffs[1].div_by_two();
-//         self
-//     }
-// }
-
 pub trait FieldExtension<BaseField: Field> {
     const DEGREE: usize;
     fn mul_assign_by_base(&mut self, elem: &BaseField) -> &mut Self;
@@ -316,7 +158,8 @@ impl<F: Field> FieldExtension<F> for F {
 
     #[inline(always)]
     fn into_coeffs_in_base(self) -> [Self; Self::DEGREE] {
-        [self; Self::DEGREE]
+        // Rust compiler is bugging here, not relating Self::DEGREE and 1
+        unsafe { core::ptr::read((&self as *const F).cast()) }
     }
 
     #[inline(always)]
@@ -356,75 +199,6 @@ impl<F: Field> FieldExtension<F> for F {
     }
 }
 
-// impl<F: Field, const N: usize> FieldExtension<F> for ExtensionField<F, N> {
-//     const DEGREE: usize = N;
-//     #[inline(always)]
-//     fn mul_assign_by_base(&mut self, base: &F) -> &mut Self {
-//         self.coeffs.iter_mut().for_each(|x| {
-//             x.mul_assign(base);
-//         });
-//         self
-//     }
-
-//     #[inline(always)]
-//     fn add_assign_base(&mut self, elem: &F) -> &mut Self {
-//         self.coeffs[0].add_assign(elem);
-//         self
-//     }
-
-//     #[inline(always)]
-//     fn sub_assign_base(&mut self, elem: &F) -> &mut Self {
-//         self.coeffs[0].sub_assign(elem);
-//         self
-//     }
-
-//     #[inline(always)]
-//     fn into_coeffs_in_base(self) -> [F; Self::DEGREE] {
-//         debug_assert_eq!(Self::DEGREE, N);
-//         unsafe { core::ptr::read(self.coeffs.as_ptr().cast()) }
-//     }
-
-//     #[inline(always)]
-//     fn coeffs_in_base(&self) -> &[F] {
-//         &self.coeffs
-//     }
-
-//     #[inline(always)]
-//     fn from_coeffs_in_base(coeffs: &[F]) -> Self {
-//         debug_assert_eq!(coeffs.len(), 2);
-//         unsafe {
-//             Self {
-//                 coeffs: coeffs.try_into().unwrap_unchecked(),
-//             }
-//         }
-//     }
-
-//     #[inline(always)]
-//     fn from_coeffs_in_base_ref(coeffs: &[&F]) -> Self {
-//         Self {
-//             coeffs: core::array::from_fn(|idx| *coeffs[idx]),
-//         }
-//     }
-
-//     #[inline(always)]
-//     fn from_coeffs_in_base_iter<I: Iterator<Item = F>>(mut coefs_iter: I) -> Self {
-//         Self {
-//             coeffs: core::array::from_fn(|_| coefs_iter.next().unwrap()),
-//         }
-//     }
-
-//     #[inline(always)]
-//     fn from_base(elem: F) -> Self {
-//         let coeffs = core::array::from_fn(|idx: usize| if idx == 0 { elem } else { F::ZERO });
-//         Self { coeffs }
-//     }
-
-//     #[inline(always)]
-//     fn get_coef_mut(&mut self, idx: usize) -> &mut F {
-//         &mut self.coeffs[idx]
-//     }
-// }
-
 pub trait TwoAdicField: Field {
     /// The number of factors of two in this field's multiplicative group.
     const TWO_ADICITY: usize;
@@ -444,11 +218,3 @@ impl<F: PrimeField> Rand for F {
         F::from_u64_unchecked(rng.random_range(0..F::CHARACTERISTICS))
     }
 }
-
-// impl<F: Field + Rand, const DEGREE: usize> Rand for ExtensionField<F, DEGREE> {
-//     fn random_element<R: Rng + ?Sized>(rng: &mut R) -> Self {
-//         Self {
-//             coeffs: core::array::from_fn(|_: usize| F::random_element(rng)),
-//         }
-//     }
-// }

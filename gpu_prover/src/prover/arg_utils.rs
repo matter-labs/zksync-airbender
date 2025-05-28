@@ -782,6 +782,7 @@ pub struct IndirectAccess {
     pub read_value_col: u32,
     pub maybe_write_value_col: u32,
     pub address_derivation_carry_bit_col: u32,
+    pub address_derivation_carry_bit_num_elements: u32,
     pub is_write: bool,
 }
 
@@ -878,6 +879,9 @@ impl RegisterAndIndirectAccesses {
                             maybe_write_value_col: 0,
                             address_derivation_carry_bit_col: address_derivation_carry_bit.start()
                                 as u32,
+                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
+                                .num_elements()
+                                as u32,
                             is_write: false,
                         };
                     }
@@ -896,6 +900,9 @@ impl RegisterAndIndirectAccesses {
                             read_value_col: read_value.start() as u32,
                             maybe_write_value_col: write_value.start() as u32,
                             address_derivation_carry_bit_col: address_derivation_carry_bit.start()
+                                as u32,
+                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
+                                .num_elements()
                                 as u32,
                             is_write: true,
                         };

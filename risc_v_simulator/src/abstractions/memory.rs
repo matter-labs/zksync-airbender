@@ -54,6 +54,30 @@ pub trait MemorySource {
         trap: &mut TrapReason,
     );
     fn get(&self, phys_address: u64, access_type: AccessType, trap: &mut TrapReason) -> u32;
+
+    #[inline(always)]
+    fn set_noexcept(&mut self, phys_address: u64, value: u32) {
+        self.set(
+            phys_address,
+            value,
+            AccessType::MemStore,
+            &mut TrapReason::NoTrap,
+        );
+    }
+
+    #[inline(always)]
+    fn get_noexcept(&self, phys_address: u64) -> u32 {
+        self.get(phys_address, AccessType::MemLoad, &mut TrapReason::NoTrap)
+    }
+
+    #[inline(always)]
+    fn get_opcode_noexcept(&self, phys_address: u64) -> u32 {
+        self.get(
+            phys_address,
+            AccessType::Instruction,
+            &mut TrapReason::NoTrap,
+        )
+    }
 }
 
 pub struct VectorMemoryImpl {

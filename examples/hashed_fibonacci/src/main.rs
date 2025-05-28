@@ -3,7 +3,6 @@
 #![feature(allocator_api)]
 #![feature(generic_const_exprs)]
 #![no_main]
-#![no_builtins]
 
 use riscv_common::{csr_read_word, zksync_os_finish_success};
 
@@ -78,6 +77,17 @@ const MODULUS: u32 = 1_000_000_000;
 #[repr(align(65536))]
 struct Aligner;
 
+pub const CONFIGURED_IV: [u32; 8] = [
+    0x6A09E667 ^ 0x01010000 ^ 32,
+    0xBB67AE85,
+    0x3C6EF372,
+    0xA54FF53A,
+    0x510E527F,
+    0x9B05688C,
+    0x1F83D9AB,
+    0x5BE0CD19,
+];
+
 // Blake magic.
 pub const EXTENDED_IV: [u32; 16] = [
     0x6A09E667 ^ 0x01010000 ^ 32,
@@ -98,9 +108,11 @@ pub const EXTENDED_IV: [u32; 16] = [
     0x5BE0CD19,
 ];
 
+#[repr(C)]
 struct BlakeState {
     pub _aligner: Aligner,
-    pub state: [u32; 16],
+    pub state: [u32; 8],
+    pub ext_state: [u32; 16],
     pub input_buffer: [u32; 16],
     pub round_bitmask: u32,
     pub t: u32, // we limit ourselves to <4Gb inputs
@@ -128,19 +140,18 @@ unsafe fn workload() -> ! {
             // the expected 'ABI' of the delegation circuit.
             // When we later call the csr_trigger_delegation, it will look at all the fields
             // below.
-            state: EXTENDED_IV,
+            state: CONFIGURED_IV,
+            ext_state: EXTENDED_IV,
             input_buffer: [0u32; 16],
             round_bitmask: 0,
             t: 0,
         };
 
-        let mut state = [0u32; 24];
-        state[..8].copy_from_slice(&EXTENDED_IV[..8]);
         // let's hash the n-th fibonacci number.
         // The size will be u32 - so 4 bytes.
-        let t = 4u32;
+        state.t = 4u32;
 
-        // our data.
+        // our data - no alignment requirements
         let mut input_buffer = [0u32; 16];
         input_buffer[0] = hashed_b;
 
@@ -148,8 +159,8 @@ unsafe fn workload() -> ! {
         const NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER: u32 = 0b001;
 
         // This is some Blake initialization magic.
-        state[8 + 12] = t ^ EXTENDED_IV[12];
-        state[8 + 14] = 0xffffffff ^ EXTENDED_IV[14];
+        state.ext_state[12] = state.t ^ EXTENDED_IV[12];
+        state.ext_state[14] = 0xffffffff ^ EXTENDED_IV[14];
 
         // Now we have to call the 'precompile' - blake requires us to actually call it 10 times.
         let mut round_bitmask = 1;
@@ -158,7 +169,7 @@ unsafe fn workload() -> ! {
             // other fields from the BlakeState too (including input_buffer and round bitmask).
             // That's why we're in the 'unsafe' block.
             csr_trigger_delegation(
-                state.as_mut_ptr(),
+                ((&mut state) as *mut BlakeState).cast::<u32>(),
                 input_buffer.as_ptr(),
                 round_bitmask,
                 NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
@@ -168,13 +179,13 @@ unsafe fn workload() -> ! {
         }
         // final one with final xor
         csr_trigger_delegation(
-            state.as_mut_ptr(),
+            ((&mut state) as *mut BlakeState).cast::<u32>(),
             input_buffer.as_ptr(),
             round_bitmask,
             NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
         );
 
-        hashed_b = state[0];
+        hashed_b = state.state[0];
     }
 
     // If you want to verify the blake correctness, you have to remember about little endianness here.

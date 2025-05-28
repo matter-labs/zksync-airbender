@@ -110,7 +110,7 @@ impl<F: PrimeField> BoolNodeExpression<F> {
         lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
     ) {
         match self {
-            Self::Place(_place) => {
+            Self::Place(place) => {
                 // Do nothing, it can not be subexpression
             }
             // the rest is recursive

@@ -256,6 +256,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
                 let RegisterAndIndirectAccesses {
                     register_index,
+                    indirects_alignment_log2,
                     register_access,
                     indirect_accesses,
                 } = access;
@@ -323,13 +324,21 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 // address chunks are 16 bits range
 
                 if indirect_accesses.len() > 0 {
-                    // and we also enforce that read low is 0 mod 4 in such cases
+                    assert!(
+                        indirects_alignment_log2 >= std::mem::align_of::<u32>().trailing_zeros()
+                    );
+
+                    // and we also enforce that pointer is aligned, by performing an extra range-check over shifted one
                     let mut compiled_linear_terms = vec![];
                     let place = ColumnAddress::MemorySubtree(
                         request.register_access.get_read_value_columns().start(),
                     );
-                    compiled_linear_terms
-                        .push((F::from_u64_unchecked(1 << 2).inverse().unwrap(), place));
+                    compiled_linear_terms.push((
+                        F::from_u64_unchecked(1 << indirects_alignment_log2)
+                            .inverse()
+                            .unwrap(),
+                        place,
+                    ));
                     let compiled_constraint = CompiledDegree1Constraint {
                         linear_terms: compiled_linear_terms.into_boxed_slice(),
                         constant_term: F::ZERO,
@@ -337,6 +346,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
                     let expression = LookupExpression::Expression(compiled_constraint);
                     compiled_extra_range_check_16_expressions.push(expression);
                 }
+
+                let consider_aligned =
+                    if indirects_alignment_log2 < std::mem::align_of::<u32>().trailing_zeros() {
+                        false
+                    } else {
+                        indirect_accesses.len()
+                            <= 1 << (indirects_alignment_log2
+                                - std::mem::size_of::<u32>().trailing_zeros())
+                    };
 
                 // now process potential indirects
                 for (idx, access) in indirect_accesses.into_iter().enumerate() {
@@ -400,17 +418,24 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         // nothing is needed
                         ColumnSet::empty()
                     } else {
-                        let address_carry_var = add_compiler_defined_variable(
-                            &mut num_variables,
-                            &mut all_variables_to_place,
-                        );
+                        if consider_aligned {
+                            // we do not need to perform additional comparison, as adding constant offset
+                            // would not trigger carries
 
-                        layout_memory_subtree_variable(
-                            &mut memory_tree_offset,
-                            address_carry_var,
-                            &mut all_variables_to_place,
-                            &mut layout,
-                        )
+                            ColumnSet::empty()
+                        } else {
+                            let address_carry_var = add_compiler_defined_variable(
+                                &mut num_variables,
+                                &mut all_variables_to_place,
+                            );
+
+                            layout_memory_subtree_variable(
+                                &mut memory_tree_offset,
+                                address_carry_var,
+                                &mut all_variables_to_place,
+                                &mut layout,
+                            )
+                        }
                     };
 
                     let offset = (idx * core::mem::size_of::<u32>()) as u32;
@@ -431,37 +456,41 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         // - for [high] part we do not allow overflows, so we want to ensure that [high + carry] != 2^16
                         // latter can be done via single extra witness (1 column), that is cheaper than range check (2.5 columns)
 
-                        // low
-                        let mut compiled_linear_terms = vec![];
-                        let place = ColumnAddress::MemorySubtree(
-                            request.register_access.get_read_value_columns().start(),
-                        );
-                        compiled_linear_terms.push((F::ONE, place));
-                        let place = ColumnAddress::MemorySubtree(address_carry_column.start());
-                        let mut coeff = F::from_u64_unchecked(SHIFT_16);
-                        coeff.negate();
-                        compiled_linear_terms.push((coeff, place));
-                        let compiled_constraint = CompiledDegree1Constraint {
-                            linear_terms: compiled_linear_terms.into_boxed_slice(),
-                            constant_term: F::from_u64_unchecked(offset as u64),
-                        };
-                        let expression = LookupExpression::Expression(compiled_constraint);
-                        compiled_extra_range_check_16_expressions.push(expression);
+                        if consider_aligned == false {
+                            assert!(address_carry_column.num_elements() > 0);
 
-                        // high
-                        let mut compiled_linear_terms = vec![];
-                        let place = ColumnAddress::MemorySubtree(
-                            request.register_access.get_read_value_columns().start() + 1,
-                        );
-                        compiled_linear_terms.push((F::ONE, place));
-                        let place = ColumnAddress::MemorySubtree(address_carry_column.start());
-                        compiled_linear_terms.push((F::ONE, place));
-                        let compiled_constraint = CompiledDegree1Constraint {
-                            linear_terms: compiled_linear_terms.into_boxed_slice(),
-                            constant_term: F::ZERO,
-                        };
-                        let expression = LookupExpression::Expression(compiled_constraint);
-                        compiled_extra_range_check_16_expressions.push(expression);
+                            // low
+                            let mut compiled_linear_terms = vec![];
+                            let place = ColumnAddress::MemorySubtree(
+                                request.register_access.get_read_value_columns().start(),
+                            );
+                            compiled_linear_terms.push((F::ONE, place));
+                            let place = ColumnAddress::MemorySubtree(address_carry_column.start());
+                            let mut coeff = F::from_u64_unchecked(SHIFT_16);
+                            coeff.negate();
+                            compiled_linear_terms.push((coeff, place));
+                            let compiled_constraint = CompiledDegree1Constraint {
+                                linear_terms: compiled_linear_terms.into_boxed_slice(),
+                                constant_term: F::from_u64_unchecked(offset as u64),
+                            };
+                            let expression = LookupExpression::Expression(compiled_constraint);
+                            compiled_extra_range_check_16_expressions.push(expression);
+
+                            // high
+                            let mut compiled_linear_terms = vec![];
+                            let place = ColumnAddress::MemorySubtree(
+                                request.register_access.get_read_value_columns().start() + 1,
+                            );
+                            compiled_linear_terms.push((F::ONE, place));
+                            let place = ColumnAddress::MemorySubtree(address_carry_column.start());
+                            compiled_linear_terms.push((F::ONE, place));
+                            let compiled_constraint = CompiledDegree1Constraint {
+                                linear_terms: compiled_linear_terms.into_boxed_slice(),
+                                constant_term: F::ZERO,
+                            };
+                            let expression = LookupExpression::Expression(compiled_constraint);
+                            compiled_extra_range_check_16_expressions.push(expression);
+                        }
                     }
 
                     let indirect_access = match access {

@@ -50,13 +50,12 @@ pub fn run_till_end_for_gpu_for_machine_config<
     Vec<FinalRegisterValue>,
     Vec<Vec<(u32, (TimestampScalar, u32))>>, // lazy iniy/teardown data - all unique words touched, sorted ascending, but not in one vector
 ) {
+    use crate::cs::one_row_compiler::timestamp_from_chunk_cycle_and_sequence;
     use prover::tracers::main_cycle_optimized::DelegationTracingData;
     use prover::tracers::main_cycle_optimized::GPUFriendlyTracer;
     use prover::tracers::main_cycle_optimized::RamTracingData;
-    use setups::prover::risc_v_simulator::abstractions::tracer::Tracer;
-    use setups::prover::risc_v_simulator::cycle::state::RiscV32State;
+    use setups::prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
     use setups::prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
-    use setups::prover::risc_v_simulator::mmu::NoMMU;
 
     assert!(trace_size.is_power_of_two());
     let rom_address_space_bound = 1usize << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
@@ -70,10 +69,10 @@ pub fn run_till_end_for_gpu_for_machine_config<
     let num_cycles_upper_bound = num_cycles_upper_bound.next_multiple_of(cycles_per_chunk);
     let num_circuits_upper_bound = num_cycles_upper_bound / cycles_per_chunk;
 
-    let mut state = RiscV32State::<C>::initial(ENTRY_POINT);
+    let mut state = RiscV32StateForUnrolledProver::<C>::initial(ENTRY_POINT);
 
-    let ram_tracer =
-        RamTracingData::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
+    let bookkeeping_aux_data =
+        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
     let delegation_tracer = DelegationTracingData {
         all_per_type_logs: HashMap::new(),
         delegation_witness_factories: delegation_factories,
@@ -83,111 +82,82 @@ pub fn run_till_end_for_gpu_for_machine_config<
         mem_writes_offset: 0,
     };
 
-    let mut traced_main_circuits = Vec::with_capacity(num_circuits_upper_bound);
-
-    assert!(trace_size.is_power_of_two());
-    let num_cycles_in_chunk = trace_size - 1;
     // important - in our memory implementation first access in every chunk is timestamped as (trace_size * circuit_idx) + 4,
     // so we take care of it
 
-    let mut mmu = NoMMU { sapt: state.sapt };
-
-    let mut proc_cycle = 0;
-    let mut memory_tracer = Some(ram_tracer);
-    let mut delegation_tracer = Some(delegation_tracer);
     let mut custom_csr_processor = DelegationsCSRProcessor;
-    // TODO: check that custom processor supports all CSRs
-    let mut previous_pc = u32::MAX;
+
+    let initial_ts = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
+    let mut tracer = GPUFriendlyTracer::<_, _, true, true, true>::new(
+        initial_ts,
+        bookkeeping_aux_data,
+        delegation_tracer,
+        cycles_per_chunk,
+        num_circuits_upper_bound,
+    );
+
+    let mut end_reached = false;
     let mut circuits_needed = 0;
-    let mut last_needed_circuit = false;
 
     let now = std::time::Instant::now();
 
-    'outer: for _chunk_idx in 0..num_circuits_upper_bound {
-        circuits_needed = _chunk_idx + 1;
-        let mem_tracer_to_use = memory_tracer.take().unwrap();
-        let delegation_tracer_to_use = delegation_tracer.take().unwrap();
-        let aux_data = (proc_cycle, mem_tracer_to_use, delegation_tracer_to_use);
-        let mut tracer: GPUFriendlyTracer<C, A> =
-            GPUFriendlyTracer::create_from_initial_state_for_num_cycles_and_chunk_size(
-                &state,
-                aux_data,
-                num_cycles_upper_bound,
-                cycles_per_chunk,
-            );
-        for _ in 0..num_cycles_in_chunk {
-            state.cycle_ext(
-                &mut memory,
-                &mut tracer,
-                &mut mmu,
-                non_determinism,
-                &mut custom_csr_processor,
-            );
-
-            proc_cycle += 1;
-            if state.pc == previous_pc {
-                if !last_needed_circuit {
-                    println!(
-                        "Took {} cycles to finish execution. Ended at address 0x{:08x}",
-                        proc_cycle, state.pc
-                    );
-                }
-                last_needed_circuit = true;
-            }
-            previous_pc = state.pc;
+    for chunk_idx in 0..num_circuits_upper_bound {
+        circuits_needed = chunk_idx + 1;
+        if chunk_idx != 0 {
+            let timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, chunk_idx);
+            tracer.prepare_for_next_chunk(timestamp);
         }
 
-        let GPUFriendlyTracer {
-            trace_chunk,
-            bookkeeping_aux_data,
-            delegation_tracer: delegation_tracer_returned,
-            cycles_passed,
-            current_tracing_delegation_type,
-            current_tracing_delegation_cycle_timestamp,
-            current_timestamp: _,
-        } = tracer;
+        let finished = state.run_cycles(
+            &mut memory,
+            &mut tracer,
+            non_determinism,
+            &mut custom_csr_processor,
+            cycles_per_chunk,
+        );
 
-        assert!(current_tracing_delegation_type.is_none());
-        assert!(current_tracing_delegation_cycle_timestamp.is_none());
-        assert_eq!(proc_cycle, cycles_passed);
-
-        traced_main_circuits.push(trace_chunk);
-        delegation_tracer = Some(delegation_tracer_returned);
-        memory_tracer = Some(bookkeeping_aux_data);
-
-        // if it's the last circuit, then we just break out
-        if last_needed_circuit {
+        if finished {
+            println!("Ended at address 0x{:08x}", state.pc);
             println!("Took {} circuits to finish execution", circuits_needed);
-            break 'outer;
-        }
+            end_reached = true;
+            break;
+        };
     }
 
-    if last_needed_circuit == false {
-        panic!("end of the execution was never reached");
-    }
+    assert!(end_reached, "end of the execution was never reached");
+
+    let GPUFriendlyTracer {
+        bookkeeping_aux_data,
+        trace_chunk,
+        traced_chunks,
+        delegation_tracer,
+        ..
+    } = tracer;
+
+    // put latest chunk manually in traced ones
+    let mut traced_chunks = traced_chunks;
+    traced_chunks.push(trace_chunk);
+    assert_eq!(traced_chunks.len(), circuits_needed);
 
     let elapsed = now.elapsed();
-    let cycles_upper_bound = circuits_needed * num_cycles_in_chunk;
+    let cycles_upper_bound = circuits_needed * cycles_per_chunk;
     let speed = (cycles_upper_bound as f64) / elapsed.as_secs_f64() / 1_000_000f64;
     println!(
         "Simulator running speed with witness tracing is {} MHz: ran {} cycles over {:?}",
         speed, cycles_upper_bound, elapsed
     );
 
-    if state.pc != previous_pc {
-        panic!("Failed to reach the end of the program");
-    }
-
     let RamTracingData {
         register_last_live_timestamps,
         ram_words_last_live_timestamps,
         access_bitmask,
         ..
-    } = memory_tracer.unwrap();
+    } = bookkeeping_aux_data;
 
     // now we can co-join touched memory cells, their final values and timestamps
 
-    let memory_state_ref = &memory.ram;
+    let memory_final_state = memory.get_final_ram_state();
+    let memory_state_ref = &memory_final_state;
     let ram_words_last_live_timestamps_ref = &ram_words_last_live_timestamps;
 
     // parallel collect
@@ -238,7 +208,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
         all_per_type_logs,
         current_per_type_logs,
         ..
-    } = delegation_tracer.unwrap();
+    } = delegation_tracer;
 
     let mut all_per_type_logs = all_per_type_logs;
     for (delegation_type, current_data) in current_per_type_logs.into_iter() {
@@ -256,15 +226,86 @@ pub fn run_till_end_for_gpu_for_machine_config<
         }
     }
 
-    assert_eq!(circuits_needed, traced_main_circuits.len());
+    assert_eq!(circuits_needed, traced_chunks.len());
 
     (
         state.pc,
-        traced_main_circuits,
+        traced_chunks,
         all_per_type_logs,
         registers_final_states,
         chunks,
     )
+}
+
+pub fn run_till_end_for_machine_config_without_tracing<
+    ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    num_cycles_upper_bound: usize,
+    trace_size: usize,
+    binary: &[u32],
+    non_determinism: &mut ND,
+) -> (u32, [u32; 32]) {
+    use setups::prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
+    use setups::prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
+
+    assert!(trace_size.is_power_of_two());
+    let rom_address_space_bound = 1usize << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
+
+    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, rom_address_space_bound); // use full RAM
+    for (idx, insn) in binary.iter().enumerate() {
+        memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
+    }
+
+    let cycles_per_chunk = trace_size - 1;
+    let num_cycles_upper_bound = num_cycles_upper_bound.next_multiple_of(cycles_per_chunk);
+    let num_circuits_upper_bound = num_cycles_upper_bound / cycles_per_chunk;
+
+    let mut state = RiscV32StateForUnrolledProver::<C>::initial(ENTRY_POINT);
+
+    let num_cycles_in_chunk = trace_size - 1;
+    // important - in our memory implementation first access in every chunk is timestamped as (trace_size * circuit_idx) + 4,
+    // so we take care of it
+
+    let mut custom_csr_processor = DelegationsCSRProcessor;
+
+    let mut end_reached = false;
+    let mut circuits_needed = 0;
+
+    let now = std::time::Instant::now();
+
+    for chunk_idx in 0..num_circuits_upper_bound {
+        circuits_needed = chunk_idx + 1;
+
+        let finished = state.run_cycles(
+            &mut memory,
+            &mut (),
+            non_determinism,
+            &mut custom_csr_processor,
+            num_cycles_in_chunk,
+        );
+
+        if finished {
+            println!("Ended at address 0x{:08x}", state.pc);
+            println!("Took {} circuits to finish execution", circuits_needed);
+            end_reached = true;
+            break;
+        };
+    }
+
+    assert!(end_reached, "end of the execution was never reached");
+
+    let elapsed = now.elapsed();
+    let cycles_upper_bound = circuits_needed * num_cycles_in_chunk;
+    let speed = (cycles_upper_bound as f64) / elapsed.as_secs_f64() / 1_000_000f64;
+    println!(
+        "Simulator running speed without witness tracing is {} MHz: ran {} cycles over {:?}",
+        speed, cycles_upper_bound, elapsed
+    );
+
+    (state.pc, state.registers)
 }
 
 pub fn commit_memory_tree_for_riscv_circuit_using_gpu_tracer<C: MachineConfig, A: GoodAllocator>(

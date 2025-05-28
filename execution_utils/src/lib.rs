@@ -863,84 +863,6 @@ mod test {
         serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
     }
 
-    #[test]
-    fn test_prove_fib_using_gpu_tracers() {
-        let worker = prover::worker::Worker::new_with_num_threads(8);
-
-        let delegation_precomputations =
-            trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                &worker,
-            );
-
-        let mut binary = vec![];
-        std::fs::File::open("../examples/hashed_fibonacci/app.bin")
-            .unwrap()
-            .read_to_end(&mut binary)
-            .unwrap();
-
-        let expected_final_pc = find_binary_exit_point(&binary);
-        println!(
-            "Expected final PC for base program is 0x{:08x}",
-            expected_final_pc
-        );
-
-        let binary = get_padded_binary(&binary);
-
-        let main_circuit_precomputations = trace_and_split::setups::get_main_riscv_circuit_setup::<
-            Global,
-            Global,
-        >(&binary, &worker);
-
-        let end_params = compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-
-        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![123, 10]);
-
-        let (main_proofs, delegation_proofs, register_values) =
-            prover_examples::prove_image_execution_for_machine_with_gpu_tracers::<
-                _,
-                IMStandardIsaConfig,
-                _,
-            >(
-                10,
-                &binary,
-                non_determinism_source,
-                &main_circuit_precomputations,
-                &delegation_precomputations,
-                &worker,
-            );
-
-        let total_delegation_proofs: usize = delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-        println!(
-            "Created {} basic proofs and {} delegation proofs.",
-            main_proofs.len(),
-            total_delegation_proofs
-        );
-
-        let mut proofs_map = BTreeMap::new();
-        for (delegation_type, proofs) in delegation_proofs.into_iter() {
-            proofs_map.insert(delegation_type, proofs);
-        }
-
-        // base layer proofs know nothing about further recursion
-
-        let program_proof = ProgramProof {
-            base_layer_proofs: main_proofs,
-            delegation_proofs: proofs_map,
-            register_final_values: register_values,
-            end_params,
-            recursion_chain_preimage: None,
-            recursion_chain_hash: None,
-        };
-
-        let is_valid = verify_base_layer(&program_proof);
-
-        assert!(is_valid);
-
-        let mut dst = std::fs::File::create("base_layer.json").unwrap();
-        serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-    }
-
     // use verifier_common::VerifierFunctionPointer;
     // pub fn verify_risc_v_proof(single_proof: &Proof, verification_fn_ptr: VerifierFunctionPointer<
     //     CAP_SIZE,
@@ -1022,6 +944,54 @@ mod test {
         //     );
         // }
     }
+
+    // #[test]
+    // fn compare_witness() {
+    //     use verifier_common::prover::tracers::main_cycle_optimized::CycleData;
+
+    //     let reference_file = std::fs::File::open("./riscv_witness_chunk_0_reference.bin").unwrap();
+    //     let new_file = std::fs::File::open("./riscv_witness_chunk_0.bin").unwrap();
+
+    //     let reference_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(reference_file).unwrap();
+    //     println!("Deserialized reference one");
+    //     let new_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(new_file).unwrap();
+    //     println!("Deserialized new one");
+
+    //     assert_eq!(reference_witness.per_cycle_data.len(), new_witness.per_cycle_data.len());
+
+    //     for (i, (reference, new)) in reference_witness.per_cycle_data.iter().zip(new_witness.per_cycle_data.iter()).enumerate() {
+    //         if reference != new {
+    //             println!("Diverged at cycle {}:", i);
+    //             println!("Reference = {:?}", reference);
+    //             println!("New = {:?}", new);
+    //             panic!();
+    //         }
+    //     }
+    // }
+
+    // #[test]
+    // fn compare_inits_and_teardowns() {
+    // use verifier_common::prover::ShuffleRamSetupAndTeardown;
+
+    //     let reference_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0_reference.bin").unwrap();
+    //     let new_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0.bin").unwrap();
+
+    //     let reference_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(reference_file).unwrap();
+    //     println!("Deserialized reference one");
+    //     let new_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(new_file).unwrap();
+    //     println!("Deserialized new one");
+
+    //     assert_eq!(reference_witness.lazy_init_data.len(), new_witness.lazy_init_data.len());
+
+    //     for (i, (reference, new)) in reference_witness.lazy_init_data.iter().zip(new_witness.lazy_init_data.iter()).enumerate() {
+    //         if reference != new {
+    //             println!("Diverged at cycle {}:", i);
+    //             println!("Reference = {:?}", reference);
+    //             println!("New = {:?}", new);
+    //             panic!();
+    //         }
+    //     }
+    // }
 
     // #[test]
     // fn debug_poseidon2() {
