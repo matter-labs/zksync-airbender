@@ -35,6 +35,7 @@ impl Default for ProverContextConfig {
 pub trait ProverContext {
     type HostAllocator: GoodAllocator;
     type Allocation<T: Sync>: DerefMut<Target = DeviceSlice<T>> + CudaSliceMut<T> + Sync;
+    fn is_host_allocator_initialized() -> bool;
     fn initialize_host_allocator(
         allocation_block_log_size: u32,
         blocks_count: usize,
@@ -136,14 +137,18 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
     type HostAllocator = ConcurrentStaticHostAllocator;
     type Allocation<T: Sync> = DevicePoolAllocation<'a, T>;
 
+    fn is_host_allocator_initialized() -> bool {
+        ConcurrentStaticHostAllocator::is_initialized_global()
+    }
+
     fn initialize_host_allocator(
         allocation_block_log_size: u32,
         blocks_count: usize,
     ) -> CudaResult<()> {
-        if ConcurrentStaticHostAllocator::is_initialized_global() {
-            println!("ConcurrentStaticHostAllocator is already initialized",);
-            return Ok(());
-        }
+        assert!(
+            !ConcurrentStaticHostAllocator::is_initialized_global(),
+            "ConcurrentStaticHostAllocator can only be initialized once"
+        );
         let host_allocation_size = blocks_count << allocation_block_log_size;
         let host_allocation =
             HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)?;
