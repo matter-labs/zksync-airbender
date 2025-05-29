@@ -113,11 +113,11 @@ pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
 impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
     pub fn bit_width(&self) -> u32 {
         match self {
-            Self::U8Place(_place) => 8u32,
-            Self::U16Place(_place) => 16u32,
+            Self::U8Place(place) => 8u32,
+            Self::U16Place(place) => 16u32,
             // the rest is recursive
-            Self::U32FromMask(_inner) => 32u32,
-            Self::U32FromField(_inner) => 32u32,
+            Self::U32FromMask(inner) => 32u32,
+            Self::U32FromField(inner) => 32u32,
             Self::TruncateFromU32(inner) => {
                 assert_eq!(inner.bit_width(), 32);
                 16u32
@@ -138,9 +138,9 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 assert_eq!(inner.bit_width(), 32);
                 32u32
             }
-            Self::U32OracleValue { placeholder: _ } => 32,
-            Self::U16OracleValue { placeholder: _ } => 16,
-            Self::U8OracleValue { placeholder: _ } => 8,
+            Self::U32OracleValue { placeholder } => 32,
+            Self::U16OracleValue { placeholder } => 16,
+            Self::U8OracleValue { placeholder } => 8,
             // Binops
             Self::WrappingAdd { lhs, rhs }
             | Self::WrappingSub { lhs, rhs }
@@ -186,7 +186,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 additive_width
             }
             Self::Select {
-                selector: _,
+                selector,
                 if_true,
                 if_false,
             } => {
@@ -295,10 +295,10 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
         lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
     ) {
         match self {
-            Self::U8Place(_place) => {
+            Self::U8Place(place) => {
                 // nothing
             }
-            Self::U16Place(_place) => {
+            Self::U16Place(place) => {
                 // nothing
             }
             // the rest is recursive
@@ -310,13 +310,13 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_field_subexprs(inner);
             }
-            Self::U32OracleValue { placeholder: _ } => {
+            Self::U32OracleValue { placeholder } => {
                 // nothing
             }
-            Self::U16OracleValue { placeholder: _ } => {
+            Self::U16OracleValue { placeholder } => {
                 // nothing
             }
-            Self::U8OracleValue { placeholder: _ } => {
+            Self::U8OracleValue { placeholder } => {
                 // nothing
             }
             Self::WidenFromU8(inner)

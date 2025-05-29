@@ -5,7 +5,7 @@ use crate::devices::diffs::PC_INC_STEP;
 use crate::machine::machine_configurations::BasicFlagsSource;
 use crate::tables::*;
 
-pub fn assert_no_unimp<F: PrimeField, C: Circuit<F>>(_cs: &mut C, _next_opcode: Register<F>) {
+pub fn assert_no_unimp<F: PrimeField, C: Circuit<F>>(cs: &mut C, next_opcode: Register<F>) {
     todo!();
 
     // let term_low = Term::from(next_opcode.0[0]) - Term::<F>::from(UNIMP_OPCODE_LOW as u64);
@@ -281,7 +281,6 @@ pub(crate) fn read_opcode_from_rom<
     result
 }
 
-#[allow(dead_code)]
 pub(crate) fn get_register_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     reg_encoding: Num<F>,
@@ -359,7 +358,6 @@ pub(crate) fn prepare_rs2_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     (value, query)
 }
 
-#[allow(dead_code)]
 pub(crate) fn update_register_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     local_timestamp_in_cycle: usize,

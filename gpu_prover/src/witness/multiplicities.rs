@@ -138,15 +138,9 @@ pub(crate) fn generate_range_check_multiplicities<C: ProverContext>(
     let num_witness_cols = circuit.witness_layout.total_width;
     let num_memory_cols = circuit.memory_layout.total_width;
     assert_eq!(d_witness.stride(), trace_len);
-    assert_eq!(
-        d_witness.cols().next_multiple_of(2),
-        num_witness_cols.next_multiple_of(2),
-    );
+    assert_eq!(d_witness.cols(), num_witness_cols,);
     assert_eq!(d_memory.stride(), trace_len);
-    assert_eq!(
-        d_memory.cols().next_multiple_of(2),
-        num_memory_cols.next_multiple_of(2),
-    );
+    assert_eq!(d_memory.cols(), num_memory_cols,);
     // Stage 2 layout info is not used by the kernel, it's just to unblock
     // some checks in my layout structures.
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();

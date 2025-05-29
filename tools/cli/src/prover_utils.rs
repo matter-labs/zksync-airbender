@@ -25,7 +25,7 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
 }
-pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
+fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
@@ -78,17 +78,17 @@ fn full_machine_allowed_delegation_types() -> Vec<u32> {
     IMStandardIsaConfig::ALLOWED_DELEGATION_CSRS.to_vec()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProofMetadata {
     pub basic_proof_count: usize,
     pub reduced_proof_count: usize,
     pub final_proof_count: usize,
     pub delegation_proof_count: Vec<(u32, usize)>,
     pub register_values: Vec<FinalRegisterValue>,
-    // hash from current binary (from end pc and setup tree).
-    pub end_params: [u32; 8],
-    // blake hash of the prev_end_params_output (for debugging only).
-    pub prev_end_params_output_hash: Option<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]>,
+    // parameters used by the next recursion level.
+    pub end_params_output: [u32; 16],
+    // blake hash of the end_params_output (for debugging only).
+    pub end_params_output_hash: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
     // parameters from the previous recursion level.
     pub prev_end_params_output: Option<[u32; 16]>,
 }
@@ -103,9 +103,6 @@ impl ProofMetadata {
                 .iter()
                 .map(|(_, v)| *v)
                 .sum::<usize>()
-    }
-    pub fn create_prev_metadata(&self) -> ([u32; 8], Option<[u32; 16]>) {
-        (self.end_params, self.prev_end_params_output)
     }
 }
 
@@ -215,9 +212,9 @@ pub fn program_proof_from_proof_list_and_metadata(
         base_layer_proofs,
         delegation_proofs: proof_list.delegation_proofs.clone().into_iter().collect(),
         register_final_values: proof_metadata.register_values.clone(),
-        end_params: proof_metadata.end_params,
+        end_params: proof_metadata.end_params_output[8..16].try_into().unwrap(),
         recursion_chain_preimage: proof_metadata.prev_end_params_output,
-        recursion_chain_hash: proof_metadata.prev_end_params_output_hash,
+        recursion_chain_hash: Some(proof_metadata.end_params_output[0..8].try_into().unwrap()),
     }
 }
 pub fn create_proofs(
@@ -262,7 +259,7 @@ pub fn create_proofs(
         non_determinism_data,
         machine,
         num_instances,
-        prev_metadata.map(|x| x.create_prev_metadata()),
+        prev_metadata,
         &mut gpu_state,
     );
 
@@ -276,7 +273,7 @@ pub fn create_proofs(
             proof_list.write_to_directory(&base_tmp_dir);
             serialize_to_file(&proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
-        let (recursion_proof_list, recursion_proof_metadata) =
+        let (recursion_proof_list, recursion_proof_metadata, recursion_prev_metadata) =
             create_recursion_proofs(proof_list, proof_metadata, tmp_dir, &mut gpu_state);
         match until {
             ProvingLimit::FinalRecursion => {
@@ -288,8 +285,12 @@ pub fn create_proofs(
                 )
             }
             ProvingLimit::FinalProof => {
-                let program_proof =
-                    create_final_proofs(recursion_proof_list, recursion_proof_metadata, tmp_dir);
+                let program_proof = create_final_proofs(
+                    recursion_proof_list,
+                    recursion_proof_metadata,
+                    recursion_prev_metadata,
+                    tmp_dir,
+                );
 
                 serialize_to_file(
                     &program_proof,
@@ -357,7 +358,7 @@ pub fn create_proofs_internal(
     non_determinism_data: Vec<u32>,
     machine: &Machine,
     num_instances: usize,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
+    prev_metadata: Option<ProofMetadata>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
 ) -> (ProofList, ProofMetadata) {
     let worker = worker::Worker::new_with_num_threads(8);
@@ -370,7 +371,7 @@ pub fn create_proofs_internal(
 
     let (proof_list, register_values) = match machine {
         Machine::Standard => {
-            if prev_end_params_output.is_some() {
+            if prev_metadata.is_some() {
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
             }
             let (basic_proofs, delegation_proofs, register_values) = if let Some(gpu_shared_state) =
@@ -538,14 +539,8 @@ pub fn create_proofs_internal(
     );
     let last_proof = proof_list.get_last_proof();
 
-    let (end_params, prev_end_params_output) =
-        get_end_params_output(last_proof, prev_end_params_output);
-
-    let prev_end_params_output_hash = prev_end_params_output.map(|data| {
-        let mut tmp_hash = Blake2sBufferingTranscript::new();
-        tmp_hash.absorb(&data);
-        tmp_hash.finalize().0
-    });
+    let (end_params_output, end_params_output_hash) =
+        get_end_params_output(last_proof, &register_values);
 
     let proof_metadata = ProofMetadata {
         basic_proof_count: proof_list.basic_proofs.len(),
@@ -557,9 +552,9 @@ pub fn create_proofs_internal(
             .map(|(i, x)| (i.clone() as u32, x.len()))
             .collect::<Vec<_>>(),
         register_values,
-        end_params,
-        prev_end_params_output_hash,
-        prev_end_params_output,
+        end_params_output,
+        end_params_output_hash,
+        prev_end_params_output: prev_metadata.map(|prev_metadata| prev_metadata.end_params_output),
     };
 
     (proof_list, proof_metadata)
@@ -570,7 +565,7 @@ pub fn create_recursion_proofs(
     proof_metadata: ProofMetadata,
     tmp_dir: &Option<String>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
-) -> (ProofList, ProofMetadata) {
+) -> (ProofList, ProofMetadata, ProofMetadata) {
     assert!(
         proof_metadata.basic_proof_count > 0,
         "Recursion proofs can be created only for basic proofs.",
@@ -580,6 +575,7 @@ pub fn create_recursion_proofs(
     let mut recursion_level = 0;
     let mut current_proof_list = proof_list;
     let mut current_proof_metadata = proof_metadata.clone();
+    let mut prev_metadata = proof_metadata.clone();
 
     loop {
         println!("*** Starting recursion level {} ***", recursion_level);
@@ -593,7 +589,7 @@ pub fn create_recursion_proofs(
             non_determinism_data,
             &Machine::Reduced,
             current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
+            Some(prev_metadata.clone()),
             gpu_shared_state,
         );
 
@@ -606,48 +602,24 @@ pub fn create_recursion_proofs(
             serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
 
+        if recursion_level == 0 {
+            // We have to update the 'prev' metadata only on level 0 & 1.
+            prev_metadata = current_proof_metadata.clone();
+        }
         recursion_level += 1;
-
-        if should_stop_recursion(&current_proof_metadata) {
+        // TODO: check if we need to have 2 recursion levels.
+        if recursion_level > 1 && should_stop_recursion(&current_proof_metadata) {
             println!("Stopping recursion.");
             break;
         }
     }
-    (current_proof_list, current_proof_metadata)
+    (current_proof_list, current_proof_metadata, prev_metadata)
 }
 
-pub fn create_final_proofs_from_program_proof(input: ProgramProof) -> ProgramProof {
-    let reduced_proof_count = input.base_layer_proofs.len();
-    let proof_list = ProofList {
-        basic_proofs: vec![],
-        // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
-        reduced_proofs: input.base_layer_proofs,
-        final_proofs: vec![],
-        delegation_proofs: input.delegation_proofs.into_iter().collect(),
-    };
-
-    let proof_metadata = ProofMetadata {
-        basic_proof_count: 0,
-        reduced_proof_count,
-        final_proof_count: 0,
-        delegation_proof_count: vec![],
-        register_values: input.register_final_values,
-        end_params: input.end_params,
-        prev_end_params_output_hash: input.recursion_chain_hash,
-        prev_end_params_output: input.recursion_chain_preimage,
-    };
-
-    println!(
-        "input recursion chain preimage: {:?}",
-        input.recursion_chain_preimage
-    );
-
-    create_final_proofs(proof_list, proof_metadata, &None)
-}
-
-pub fn create_final_proofs(
+fn create_final_proofs(
     proof_list: ProofList,
     proof_metadata: ProofMetadata,
+    prev_metadata: ProofMetadata,
     tmp_dir: &Option<String>,
 ) -> ProgramProof {
     let binary = get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER);
@@ -655,6 +627,7 @@ pub fn create_final_proofs(
     let mut final_proof_level = 0;
     let mut current_proof_list = proof_list;
     let mut current_proof_metadata = proof_metadata.clone();
+    let mut prev_metadata = prev_metadata;
 
     loop {
         println!("*** Starting final_proofs level {} ***", final_proof_level);
@@ -662,12 +635,13 @@ pub fn create_final_proofs(
             &current_proof_metadata,
             &current_proof_list,
         );
+
         (current_proof_list, current_proof_metadata) = create_proofs_internal(
             &binary,
             non_determinism_data,
             &Machine::ReducedFinal,
             current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
+            Some(prev_metadata.clone()),
             &mut None,
         );
         if let Some(tmp_dir) = tmp_dir {
@@ -677,6 +651,10 @@ pub fn create_final_proofs(
             }
             current_proof_list.write_to_directory(&base_tmp_dir);
             serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
+        }
+        if final_proof_level == 0 {
+            // We have to update the 'prev' metadata only on level 0 & 1.
+            prev_metadata = current_proof_metadata.clone();
         }
         final_proof_level += 1;
         if current_proof_metadata.final_proof_count == 1 {
@@ -708,57 +686,25 @@ pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<See
     Some(hasher.finalize_reset())
 }
 
-/// Returns end_params, prev params
 fn get_end_params_output(
     last_proof: &Proof,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
-) -> ([u32; 8], Option<[u32; 16]>) {
+    register_values: &Vec<FinalRegisterValue>,
+) -> ([u32; 16], [u32; 8]) {
     // we need PC from the last proof.
     let end_params_output_suffix = get_end_params_output_suffix_from_proof(last_proof).unwrap();
-    // This describes the binary that we run.
-    let end_params = end_params_output_suffix.0;
 
-    let new_preimage = match prev_end_params_output {
-        // This arm means, that we're in the recursion layer.
-        Some((prev_bin, prev_params)) => match prev_params {
-            // We know that this was the previous binary, and the parameters that it accepted.
-            Some(prev_params) => {
-                // Now there are 2 options - either the previous binary was proving its own code
-                // (if we're in the second stage of recursion). Then let's not change the prev params.
-                if prev_params[8..16] == prev_bin {
-                    Some(prev_params)
-                } else {
-                    // Or previous binary could be different - then we should update the chain,
-                    // by computing (hash(previous) || prev_bin).
-                    let mut end_params_output = [0u32; 16];
-                    let mut hasher = Blake2sBufferingTranscript::new();
-                    hasher.absorb(&prev_params);
-                    let prev_params_hash = hasher.finalize().0;
+    let mut end_params_output = [0u32; 16];
+    // First 8 entries should be from registers.
+    for i in 0..8 {
+        end_params_output[i] = register_values[18 + i].value;
+    }
+    for i in 8..16 {
+        end_params_output[i] = end_params_output_suffix.0[i - 8];
+    }
 
-                    for i in 0..8 {
-                        end_params_output[i] = prev_params_hash[i];
-                    }
-                    for i in 8..16 {
-                        end_params_output[i] = prev_bin[i - 8];
-                    }
-
-                    Some(end_params_output)
-                }
-            }
-            // This means that we're verifying the base layer.
-            None => {
-                let mut end_params_output = [0u32; 16];
-                for i in 8..16 {
-                    end_params_output[i] = prev_bin[i - 8];
-                }
-                Some(end_params_output)
-            }
-        },
-        // For base layer.
-        None => None,
-    };
-
-    return (end_params, new_preimage);
+    let mut end_params_hash = Blake2sBufferingTranscript::new();
+    end_params_hash.absorb(&end_params_output);
+    (end_params_output, end_params_hash.finalize().0)
 }
 
 pub fn generate_oracle_data_from_metadata(metadata_path: &String) -> (ProofMetadata, Vec<u32>) {

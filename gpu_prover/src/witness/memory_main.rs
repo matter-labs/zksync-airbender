@@ -106,7 +106,7 @@ pub(crate) fn generate_memory_values_main(
     let count = trace.cycle_data.len();
     assert_eq!(setup_and_teardown.lazy_init_data.len(), count);
     assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width.next_multiple_of(2));
+    assert_eq!(memory.cols(), subtree.total_width);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
     let subtree = subtree.into();
@@ -134,7 +134,7 @@ pub(crate) fn generate_memory_and_witness_values_main(
     let count = trace.cycle_data.len();
     assert_eq!(setup_and_teardown.lazy_init_data.len(), count);
     assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width.next_multiple_of(2));
+    assert_eq!(memory.cols(), subtree.total_width);
     assert_eq!(witness.stride(), count + 1);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;

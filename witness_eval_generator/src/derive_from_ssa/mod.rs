@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use ::field::PrimeField;
+use cs::cs::witness_placer::graph_description::*;
 use cs::cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
@@ -10,7 +11,8 @@ use cs::definitions::Variable;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use cs::one_row_compiler::slice_to_token_array;
 use proc_macro2::*;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, TokenStreamExt, quote};
+use syn::*;
 
 mod boolean;
 mod field;
@@ -260,7 +262,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             }
                         }
                     },
-                    ColumnAddress::MemorySubtree(_idx) => {
+                    ColumnAddress::MemorySubtree(idx) => {
                         if self.write_into_memory {
                             todo!()
                         } else {
@@ -268,7 +270,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             quote! {}
                         }
                     }
-                    ColumnAddress::SetupSubtree(_idx) => {
+                    ColumnAddress::SetupSubtree(idx) => {
                         unreachable!("can not write to setup");
                     }
                     ColumnAddress::OptimizedOut(idx) => match source_subexpr {
@@ -418,7 +420,7 @@ pub fn derive_from_ssa(
         let ident = Ident::new(&format!("eval_fn_{}", fn_idx), Span::call_site());
         let generated_stream = generator.stream;
         let substream = quote! {
-            #[allow(unused_variables)]
+
             #inline_tag
             fn #ident<'a, 'b: 'a, W: WitnessTypeSet<#field_ident>, P: WitnessProxy<#field_ident, W> + 'b>(witness_proxy: &'a mut P) where W::Field: Copy, W::Mask: Copy, W::U32: Copy, W::U16: Copy, W::U8: Copy, W::I32: Copy {
                 #generated_stream
@@ -434,7 +436,6 @@ pub fn derive_from_ssa(
     quote! {
         #individual_fns_stream
 
-        #[allow(dead_code)]
         pub fn evaluate_witness_fn<'a, 'b: 'a, W: WitnessTypeSet<#field_ident>, P: WitnessProxy<#field_ident, W> + 'b>(witness_proxy: &'a mut P) where W::Field: Copy, W::Mask: Copy, W::U32: Copy, W::U16: Copy, W::U8: Copy, W::I32: Copy {
             #external_caller_stream
         }

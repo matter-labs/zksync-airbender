@@ -1929,8 +1929,8 @@ mod test {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let queries: Vec<[Mersenne31Field; 2]> = (0..num_queries)
             .map(|_| {
-                let a: u8 = rng.random();
-                let b: u8 = rng.random();
+                let a: u8 = rng.r#gen();
+                let b: u8 = rng.r#gen();
 
                 [Mersenne31Field(a as u32), Mersenne31Field(b as u32)]
             })

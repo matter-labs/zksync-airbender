@@ -447,44 +447,7 @@ impl<
 
             let is_signed_division = Boolean::or(&signed_div_flag, &signed_rem_flag, cs);
 
-            const NEW_SIGNS_VERSION: bool = false;
-            let divisor = if NEW_SIGNS_VERSION {
-                divisor.into_register_with_sign()
-            } else {
-                let divisor_eq_minus_one = divisor.into_register().equals_to::<CS>(cs, 0xffffffff);
-                let divident_eq_i32_min = divident.into_register().equals_to::<CS>(cs, 0x80000000);
-                let mask_operands = Boolean::multi_and(
-                    &[
-                        is_signed_division,
-                        divisor_eq_minus_one,
-                        divident_eq_i32_min,
-                    ],
-                    cs,
-                );
-
-                let masked_divisor_for_signed_underflow =
-                    Register([Num::Constant(F::ONE), Num::Constant(F::ZERO)]);
-                let masked_divisors_sign_for_signed_underflow = Boolean::Constant(false);
-
-                let divisor_words = Register::choose::<CS>(
-                    cs,
-                    &mask_operands,
-                    &masked_divisor_for_signed_underflow,
-                    &divisor.into_register(),
-                );
-                let divisor_sign = Boolean::choose(
-                    cs,
-                    &mask_operands,
-                    &masked_divisors_sign_for_signed_underflow,
-                    &divisor.sign_bit,
-                );
-
-                let divisor = RegisterWithSign {
-                    u16_limbs: divisor_words.0,
-                    sign_bit: divisor_sign,
-                };
-                divisor
-            };
+            let divisor = divisor.into_register_with_sign();
 
             // Allocate range-checked variables
             let quotient = opt_ctx.get_register_output(cs);
@@ -636,9 +599,11 @@ impl<
 
             cs.set_values(value_fn);
 
-            // aleksander is concerned with security of this optimisation
-            // so until it's proven we turn it off
-            let (quotient_sign, remainder_sign) = if NEW_SIGNS_VERSION {
+            // NB: this sign computation is formally proven correct via a z3 formal verifier
+            //     script in ./z3/div_optim_signextension.z3
+            //     to check it just install z3 and run `z3 div_optim_signextension.z3`
+            //     and check that it outputs the word `unsat`to show that the reduction is correct
+            let (quotient_sign, remainder_sign) = {
                 // the quotient sign is always dependent on combination of dividend/divisor signs
                 // unless quotient is zero of course
                 // quotient_sign == (dividend_sign ^ divisor_sign)  * (1 - quotient_is_zero)
@@ -661,30 +626,6 @@ impl<
                 };
 
                 (quotient_sign, remainder_sign)
-            } else {
-                let [quotient_sign, _] = opt_ctx.append_lookup_relation(
-                    cs,
-                    &[quotient.0[1].get_variable()],
-                    TableType::U16GetSignAndHighByte.to_num(),
-                    exec_flag,
-                );
-
-                let [remainder_sign, _] = opt_ctx.append_lookup_relation(
-                    cs,
-                    &[remainder.0[1].get_variable()],
-                    TableType::U16GetSignAndHighByte.to_num(),
-                    exec_flag,
-                );
-
-                // again, signs only make sense in signed operation
-                let quotient_sign = cs.add_variable_from_constraint(
-                    is_signed_division.get_terms() * Term::from(quotient_sign),
-                );
-                let remainder_sign = cs.add_variable_from_constraint(
-                    is_signed_division.get_terms() * Term::from(remainder_sign),
-                );
-
-                (Boolean::Is(quotient_sign), Boolean::Is(remainder_sign))
             };
 
             let divident_sign_extension =
@@ -708,135 +649,48 @@ impl<
             };
             opt_ctx.append_mul_relation_inner(relation);
 
-            // dbg!("MMMMM", divident, divisor, quotient, remainder);
-            // dbg!(         divident_sign, divisor_sign, quotient_sign, remainder_sign);
-            // dbg!("AAAAA", divident.get_value_signed(cs).unwrap(), divisor.get_value_signed(cs).unwrap(), quotient.get_value_signed(cs).unwrap(), remainder.get_value_signed(cs).unwrap());
-            // dbg!(         divident_sign.get_value(cs).unwrap(), divisor_sign.get_value(cs).unwrap(), quotient_sign.get_value(cs).unwrap(), remainder_sign.get_value(cs).unwrap());
-
-            // |REM| < |DIVISOR|
-            // // check that modulus of remainder is less than modulus of divisor
+            // INVARIANT:     |REM|<|DIVISOR| if DIVISOR != 0
+            // check that modulus of remainder is less than modulus of divisor
             // we simply mask one add_sub relation based on which case we're in
             // this only applies if the divisor is not zero!!! otherwise of course remainder will be larger
             //
             //     remainder_sign divisor_sign
-            // #0: 0              0  -->  r <  d --> (r-d) < 0 --> (r-d) must underflow
-            // #3: 1              1  --> -r < -d --> (d-r) < 0 --> (d-r) must underflow
-            // #1: 0              1  -->  r < -d --> (r+d) < 0 --> (r+d) must not overflow
-            // #2: 1              0  --> -d <  d --> (d+r) > 0 --> (d+r) must overflow more than barely (i.e. not eq 0 when overflow)
+            //     0              0            -->  r <  d --> (r-d) < 0    --> condition: underflow
+            //     1              1            --> -r < -d --> (r-d) > 0    --> !condition * !eq0
+            //     0              1            -->  r < -d --> (r+d) < 2^32 --> condition: !overflow
+            //     1              0            --> -r <  d --> (r+d) > 2^32 --> !condition * !eq0
+            //
+            // so just first determine condition, then determine if it's an inverse scenario
+            // condition: !xor * of + xor * !of (which is just a xor)
             let divisor_is_zero =
                 opt_ctx.append_is_zero_relation(divisor.into_register(), exec_flag, cs);
-            const NEW_VERSION: bool = false; // in the non-unrolled version the NEW_VERSION costs +4 variables in total after OptCtx.enforce_all
-            if NEW_VERSION {
-                let off0 = Boolean::and(&remainder_sign.toggle(), &divisor_sign.toggle(), cs); // (1-Sr)*(1-Sd)
-                let off3 = Boolean::and(&remainder_sign, &divisor_sign, cs); // Sr*Sd
-                let off1 = Boolean::and(&remainder_sign.toggle(), &divisor_sign, cs); // (1-Sr)*Sd
-                let off2 = Boolean::and(&remainder_sign, &divisor_sign.toggle(), cs); // Sr*(1-Sd)
-
+            let is_division_and_divisor_zero = Boolean::and(&divisor_is_zero, &exec_flag, cs);
+            let is_modular_inequality = {
+                let xor = Boolean::xor(&remainder_sign, &divisor_sign, cs);
+                // different sign: ADD
                 let indexers = opt_ctx.save_indexers();
-                let result0 = {
-                    opt_ctx.restore_indexers(indexers);
-                    let exec0 = Boolean::and(&exec_flag, &off0, cs); // THIS IS SUBOPTIMAL!
-                    let uf = opt_ctx
-                        .append_sub_relation(remainder, divisor.into_register(), exec0, cs)
-                        .1;
-                    Constraint::from(uf)
-                };
-                let result3 = {
-                    opt_ctx.restore_indexers(indexers);
-                    let exec3 = Boolean::and(&exec_flag, &off3, cs); // THIS IS SUBOPTIMAL!
-                    let uf = opt_ctx
-                        .append_sub_relation(divisor.into_register(), remainder, exec3, cs)
-                        .1;
-                    Constraint::from(uf)
-                };
-                let result1 = {
-                    opt_ctx.restore_indexers(indexers);
-                    let exec1 = Boolean::and(&exec_flag, &off1, cs); // THIS IS SUBOPTIMAL!
-                    let uf = opt_ctx
-                        .append_add_relation(divisor.into_register(), remainder, exec1, cs)
-                        .1;
-                    Constraint::from(1) - Term::from(uf)
-                };
-                let result2 = {
-                    opt_ctx.restore_indexers(indexers);
-                    let exec2 = Boolean::and(&exec_flag, &off2, cs); // THIS IS SUBOPTIMAL!
-                    let (out, uf) =
-                        opt_ctx.append_add_relation(divisor.into_register(), remainder, exec2, cs);
-                    let out_is_zero = opt_ctx.append_is_zero_relation(out, exec2, cs);
-                    // (1 - out_is_zero) * uf
-                    Constraint::from(Boolean::and(&out_is_zero.toggle(), &uf, cs))
-                };
-                // either we don't execute, or divisor was zero, or we check the inequality result
-                // result == off0*result0 + off1*result1 + off2*result2 + off3*result3
-                // (1 - result) * (1 - divisor_is_zero) * exec == 0
-                let result = Boolean::Is(
-                    cs.choose_from_orthogonal_variants_for_linear_terms(
-                        &[off0, off1, off2, off3],
-                        &[result0, result1, result2, result3],
-                    )
-                    .get_variable(),
-                );
-                let fin = Boolean::and(&result.toggle(), &divisor_is_zero.toggle(), cs);
-                cs.add_constraint(Term::from(fin) * Term::from(exec_flag));
-            } else {
-                // // check that modulus of remainder is less than modulus of divisor
-                // // (only in case if divisor is not zero)
-                let zero_reg = Register([Num::Constant(F::ZERO); 2]);
-
-                // Logic below is fine for unsigned cases too
-                let divisor_modulus = {
-                    let (divisor_neg, _uf_flag) = opt_ctx.append_sub_relation(
-                        zero_reg,
-                        divisor.into_register(),
-                        exec_flag,
-                        cs,
-                    );
-
-                    let divisor_modulus = Register::choose::<CS>(
-                        cs,
-                        &divisor_sign,
-                        &divisor_neg,
-                        &divisor.into_register(),
-                    );
-
-                    divisor_modulus
-                };
-
-                let rem_modulus = {
-                    let (rem_neg, _uf_flag) =
-                        opt_ctx.append_sub_relation(zero_reg, remainder, exec_flag, cs);
-
-                    // remainder flag is not boolean, so we choose via constraint
-                    let remainder_modulus_low = cs.add_variable_from_constraint(
-                        Term::from(remainder_sign) * Term::from(rem_neg.0[0])
-                            + (Term::from(1) - Term::from(remainder_sign))
-                                * Term::from(remainder.0[0]),
-                    );
-                    let remainder_modulus_high = cs.add_variable_from_constraint(
-                        Term::from(remainder_sign) * Term::from(rem_neg.0[1])
-                            + (Term::from(1) - Term::from(remainder_sign))
-                                * Term::from(remainder.0[1]),
-                    );
-                    let remainder_modulus = Register([
-                        Num::Var(remainder_modulus_low),
-                        Num::Var(remainder_modulus_high),
-                    ]);
-
-                    remainder_modulus
-                };
-
-                // If divisor is not 0 then remainder < divisor if we execute
-
-                let (_diff, bf) =
-                    opt_ctx.append_sub_relation(rem_modulus, divisor_modulus, exec_flag, cs);
-
-                // so, if divisor is 0, then bf - any, and if divisor is non-zero, then
-                // we must have bf == 1
-
-                // (1 - divisor_is_zero) * (1 - bf) * exec_flag = 0
-                let t = Boolean::and(&divisor_is_zero.toggle(), &bf.toggle(), cs);
-                cs.add_constraint(Term::from(t) * Term::from(exec_flag));
-            }
+                let exec_add = Boolean::and(&exec_flag, &xor, cs);
+                let (out, of) =
+                    opt_ctx.append_add_relation(remainder, divisor.into_register(), exec_add, cs);
+                // same sign: SUB
+                opt_ctx.restore_indexers(indexers);
+                let exec_sub = Boolean::and(&exec_flag, &xor.toggle(), cs);
+                let (out_, of_) =
+                    opt_ctx.append_sub_relation(remainder, divisor.into_register(), exec_sub, cs);
+                assert!(out == out_ && of == of_);
+                let condition = Boolean::xor(&xor, &of, cs);
+                let eq0 = cs.is_zero_reg(out);
+                let condition_variant = Boolean::and(&condition.toggle(), &eq0.toggle(), cs);
+                Boolean::choose(cs, &remainder_sign, &condition_variant, &condition)
+            };
+            let is_division_and_divisor_not_zero = {
+                // EXEC * (DIVISOR!=0) == EXEC * (1 - DIVISOR==0) = EXEC - EXEC * (DIVISOR==0)
+                Constraint::from(exec_flag) - Term::from(is_division_and_divisor_zero)
+            };
+            cs.add_constraint(
+                is_division_and_divisor_not_zero
+                    * (Term::from(1) - Term::from(is_modular_inequality)),
+            );
 
             // DIV-BY-0 MASK
             // when dividing by 0, our MulDivRelation leaves quotient undefined
@@ -845,7 +699,7 @@ impl<
             // we can just enforce with constant constraints
             // (saves 2 variables)
             {
-                let should_enforce = Boolean::and(&divisor_is_zero, &exec_flag, cs);
+                let should_enforce = is_division_and_divisor_zero;
                 let (quotient_low, quotient_high) = (quotient.0[0], quotient.0[1]);
                 let (constant_low, constant_high) = (0xffff, 0xffff); // -1 is quotient value when div-by-0
                 cs.add_constraint(

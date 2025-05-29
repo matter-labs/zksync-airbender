@@ -515,13 +515,13 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
 
     #[inline(always)]
     fn add_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
-        self.c0.add_assign_base(elem);
+        self.c0.add_assign(elem);
         self
     }
 
     #[inline(always)]
     fn sub_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
-        self.c0.sub_assign_base(elem);
+        self.c0.sub_assign(elem);
         self
     }
 
