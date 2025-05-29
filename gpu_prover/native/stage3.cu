@@ -456,7 +456,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
             enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col), alphas, acc_quadratic, acc_linear);
             enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col + 1), alphas, acc_quadratic, acc_linear);
           }
-          if (j > 0) {
+          if (j > 0 && access.address_derivation_carry_bit_num_elements > 0) {
             // Boolean check for carry bit
             const bf carry_bit = memory_cols.get_at_col(access.address_derivation_carry_bit_col);
             enforce_val_zero_if_pred_zero(carry_bit, carry_bit, alphas, acc_quadratic, acc_linear);
@@ -843,7 +843,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
 
         const e4 address_low_helper = (helpers++).get();
         const e4 address_high_helper = (helpers++).get();
-        if (flat_indirect_idx == start) {
+        if (flat_indirect_idx == start || access.address_derivation_carry_bit_num_elements == 0) {
           numerator = e4::mul(address_low_helper, base_low);
           numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
         } else {

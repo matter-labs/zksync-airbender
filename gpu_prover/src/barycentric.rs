@@ -189,20 +189,11 @@ pub fn batch_barycentric_eval(
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
     let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
     assert_eq!(setup_cols.rows(), n);
-    assert_eq!(
-        setup_cols.cols().next_multiple_of(2),
-        num_setup_cols.next_multiple_of(2)
-    );
+    assert_eq!(setup_cols.cols(), num_setup_cols);
     assert_eq!(witness_cols.rows(), n);
-    assert_eq!(
-        witness_cols.cols().next_multiple_of(2),
-        num_witness_cols.next_multiple_of(2),
-    );
+    assert_eq!(witness_cols.cols(), num_witness_cols,);
     assert_eq!(memory_cols.rows(), n);
-    assert_eq!(
-        memory_cols.cols().next_multiple_of(2),
-        num_memory_cols.next_multiple_of(2),
-    );
+    assert_eq!(memory_cols.cols(), num_memory_cols,);
     assert_eq!(stage_2_cols.rows(), n);
     assert_eq!(stage_2_cols.cols(), num_stage_2_cols);
     assert_eq!(composition_col.rows(), n);
