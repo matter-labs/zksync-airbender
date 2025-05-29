@@ -1,5 +1,6 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::context::Context;
+use era_cudart::device::{get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags, HostAllocation};
 use era_cudart::memory_pools::{
     AttributeHandler, CudaMemPoolAttributeU64, CudaOwnedMemPool, DevicePoolAllocation,
@@ -18,7 +19,6 @@ static DEFAULT_STREAM: CudaStream = CudaStream::DEFAULT;
 pub struct ProverContextConfig {
     pub powers_of_w_coarse_log_count: u32,
     pub allocation_block_log_size: u32,
-    pub host_allocated_blocks: usize,
     pub device_slack_blocks: usize,
 }
 
@@ -27,7 +27,6 @@ impl Default for ProverContextConfig {
         Self {
             powers_of_w_coarse_log_count: 12,
             allocation_block_log_size: 22,
-            host_allocated_blocks: 1 << 10,
             device_slack_blocks: 1,
         }
     }
@@ -36,6 +35,13 @@ impl Default for ProverContextConfig {
 pub trait ProverContext {
     type HostAllocator: GoodAllocator;
     type Allocation<T: Sync>: DerefMut<Target = DeviceSlice<T>> + CudaSliceMut<T> + Sync;
+    fn is_host_allocator_initialized() -> bool;
+    fn initialize_host_allocator(
+        allocation_block_log_size: u32,
+        blocks_count: usize,
+    ) -> CudaResult<()>;
+    fn get_device_id(&self) -> i32;
+    fn switch_to_device(&self) -> CudaResult<()>;
     fn get_exec_stream(&self) -> &CudaStream;
     fn get_h2d_stream(&self) -> &CudaStream;
     fn alloc<T: Sync>(&self, size: usize) -> CudaResult<Self::Allocation<T>>;
@@ -64,31 +70,18 @@ pub struct MemPoolProverContext<'a> {
     pub(crate) exec_stream: CudaStream,
     pub(crate) h2d_stream: CudaStream,
     pub(crate) mem_pool: CudaOwnedMemPool,
+    pub(crate) device_id: i32,
     _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> MemPoolProverContext<'a> {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        if ConcurrentStaticHostAllocator::is_initialized_global() {
-            println!("reusing existing static host allocator");
-        } else {
-            let host_allocation_size =
-                config.host_allocated_blocks << config.allocation_block_log_size;
-            let host_allocation =
-                HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)?;
-            ConcurrentStaticHostAllocator::initialize_global(
-                host_allocation,
-                config.allocation_block_log_size,
-            );
-            println!(
-                "initialized static host allocator with {} GB",
-                host_allocation_size as f32 / 1024.0 / 1024.0 / 1024.0
-            );
-        }
+        assert!(ConcurrentStaticHostAllocator::is_initialized_global());
         let inner = Context::create(12)?;
         let exec_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let mem_pool = CudaOwnedMemPool::create_for_device(0)?;
+        let device_id = get_device()?;
+        let mem_pool = CudaOwnedMemPool::create_for_device(device_id)?;
         mem_pool.set_attribute(CudaMemPoolAttributeU64::AttrReleaseThreshold, u64::MAX)?;
         let (free, _) = memory_get_info()?;
         let mut size = (free >> config.allocation_block_log_size) - config.device_slack_blocks;
@@ -123,7 +116,7 @@ impl<'a> MemPoolProverContext<'a> {
             }
         }
         println!(
-            "GPU usable memory: {} GB",
+            "initialized GPU memory pool for device ID {device_id} with {} GB of usable memory",
             (size << config.allocation_block_log_size) as f32 / 1024.0 / 1024.0 / 1024.0
         );
         mem_pool.set_attribute(CudaMemPoolAttributeU64::AttrUsedMemHigh, 0)?;
@@ -133,6 +126,7 @@ impl<'a> MemPoolProverContext<'a> {
             exec_stream,
             h2d_stream,
             mem_pool,
+            device_id,
             _phantom: PhantomData,
         };
         Ok(context)
@@ -142,6 +136,40 @@ impl<'a> MemPoolProverContext<'a> {
 impl<'a> ProverContext for MemPoolProverContext<'a> {
     type HostAllocator = ConcurrentStaticHostAllocator;
     type Allocation<T: Sync> = DevicePoolAllocation<'a, T>;
+
+    fn is_host_allocator_initialized() -> bool {
+        ConcurrentStaticHostAllocator::is_initialized_global()
+    }
+
+    fn initialize_host_allocator(
+        allocation_block_log_size: u32,
+        blocks_count: usize,
+    ) -> CudaResult<()> {
+        assert!(
+            !ConcurrentStaticHostAllocator::is_initialized_global(),
+            "ConcurrentStaticHostAllocator can only be initialized once"
+        );
+        let host_allocation_size = blocks_count << allocation_block_log_size;
+        let host_allocation =
+            HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)?;
+        ConcurrentStaticHostAllocator::initialize_global(
+            host_allocation,
+            allocation_block_log_size,
+        );
+        println!(
+            "initialized ConcurrentStaticHostAllocator with {} GB",
+            host_allocation_size as f32 / 1024.0 / 1024.0 / 1024.0
+        );
+        Ok(())
+    }
+
+    fn get_device_id(&self) -> i32 {
+        self.device_id
+    }
+
+    fn switch_to_device(&self) -> CudaResult<()> {
+        set_device(self.device_id)
+    }
 
     fn get_exec_stream(&self) -> &CudaStream {
         &self.exec_stream
@@ -161,8 +189,9 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         let result: CudaResult<Self::Allocation<T>> = unsafe { std::mem::transmute(result) };
         if result.is_err() {
             println!(
-                "failed to allocate {} bytes, currently allocated {} bytes",
+                "failed to allocate {} bytes from GPU memory pool of device ID {}, currently allocated {} bytes",
                 size * size_of::<T>(),
+                self.device_id,
                 self.get_used_mem_current()?
             );
         }

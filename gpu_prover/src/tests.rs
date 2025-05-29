@@ -1,12 +1,12 @@
 use crate::prover::context::{MemPoolProverContext, ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
-use crate::prover::proof::ProofJob;
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use crate::witness::trace_main::{get_aux_arguments_boundary_values, MainCircuitType};
 use crate::witness::CircuitType;
 use cs::definitions::split_timestamp;
 use cs::one_row_compiler::CompiledCircuitArtifact;
+use era_cudart::device::{get_device_count, get_device_properties, set_device};
 use era_cudart::event::elapsed_time;
 use era_cudart::event::CudaEvent;
 use era_cudart::memory::memory_copy;
@@ -40,7 +40,9 @@ use prover::{
 };
 use std::alloc::Global;
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::io::Read;
+use std::mem;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use trace_and_split::setups::{
@@ -59,9 +61,9 @@ pub const POW_BITS: u32 = 28;
 #[test]
 fn test_prove_hashed_fibonacci() -> CudaResult<()> {
     let instant = std::time::Instant::now();
+    MemPoolProverContext::initialize_host_allocator(22, 512)?;
     let mut prover_context_config = ProverContextConfig::default();
     prover_context_config.allocation_block_log_size = 22;
-    prover_context_config.host_allocated_blocks = 512;
     let prover_context = MemPoolProverContext::new(&prover_context_config)?;
     println!("prover_context created in {:?}", instant.elapsed());
 
@@ -113,11 +115,29 @@ fn test_prove_hashed_fibonacci() -> CudaResult<()> {
 #[test]
 fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
     let instant = std::time::Instant::now();
-    let mut prover_context_config = ProverContextConfig::default();
-    prover_context_config.allocation_block_log_size = 22;
-    prover_context_config.host_allocated_blocks = 512;
-    let prover_context = MemPoolProverContext::new(&prover_context_config)?;
-    println!("prover_context created in {:?}", instant.elapsed());
+    MemPoolProverContext::initialize_host_allocator(22, 512)?;
+    println!("host allocator initialized in {:?}", instant.elapsed());
+    let instant = std::time::Instant::now();
+    let device_count = get_device_count()?;
+    println!("Found {} CUDA capable devices", device_count);
+    let mut contexts = vec![];
+    for device_id in 0..device_count {
+        set_device(device_id)?;
+        let props = get_device_properties(device_id)?;
+        let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
+        println!(
+            "Device {}: {} ({} SMs, {} GB memory)",
+            device_id,
+            name,
+            props.multiProcessorCount,
+            props.totalGlobalMem as f32 / 1024.0 / 1024.0 / 1024.0
+        );
+        let mut prover_context_config = ProverContextConfig::default();
+        prover_context_config.allocation_block_log_size = 22;
+        let prover_context = MemPoolProverContext::new(&prover_context_config)?;
+        contexts.push(prover_context);
+    }
+    println!("prover contexts created in {:?}", instant.elapsed());
 
     let instant = std::time::Instant::now();
 
@@ -145,7 +165,7 @@ fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
         &binary,
         non_determinism_source,
         &main_circuit_precomputations,
-        &prover_context,
+        &contexts,
         &worker,
     )
 }
@@ -670,7 +690,7 @@ fn bench_proof_main<
     bytecode: &[u32],
     non_determinism: ND,
     precomputations: &MainCircuitPrecomputations<C, Global, P::HostAllocator>,
-    context: &P,
+    contexts: &[P],
     worker: &Worker,
 ) -> CudaResult<()>
 where
@@ -717,8 +737,15 @@ where
         setup_row_major.len(),
     );
     setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
-    let mut setup = SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, context)?;
-    setup.schedule_transfer(Arc::new(setup_evaluations), context)?;
+    let setup_evaluations = Arc::new(setup_evaluations);
+    let mut setups = Vec::with_capacity(contexts.len());
+    for context in contexts.iter() {
+        context.switch_to_device()?;
+        let mut setup =
+            SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, context)?;
+        setup.schedule_transfer(setup_evaluations.clone(), context)?;
+        setups.push(setup);
+    }
     let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
     nvtx::range_push!("warmup");
     {
@@ -726,87 +753,132 @@ where
             challenges: ExternalChallenges::draw_from_transcript_seed(Seed([0; 8]), true),
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
-        let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
-        transfer.schedule_transfer(context)?;
-        let job = crate::prover::proof::prove(
-            circuit,
-            external_values,
-            &mut setup,
-            transfer,
-            &precomputations.twiddles,
-            &precomputations.lde_precomputations,
-            0,
-            None,
-            lde_factor,
-            NUM_QUERIES,
-            POW_BITS,
-            None,
-            context,
-        )?;
-        job.finish()?;
+        for (context, setup) in contexts.iter().zip(setups.iter_mut()) {
+            context.switch_to_device()?;
+            let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
+            transfer.schedule_transfer(context)?;
+            let job = crate::prover::proof::prove(
+                circuit,
+                external_values,
+                setup,
+                transfer,
+                &precomputations.twiddles,
+                &precomputations.lde_precomputations,
+                0,
+                None,
+                lde_factor,
+                NUM_QUERIES,
+                POW_BITS,
+                None,
+                context,
+            )?;
+            job.finish()?;
+        }
     }
     println!("warmup done");
     nvtx::range_pop!();
 
-    let mut current_transfer = Some(TracingDataTransfer::new(
-        circuit_type,
-        data.clone(),
-        context,
-    )?);
-    let mut current_job: Option<ProofJob<_>> = None;
-    current_transfer
-        .as_mut()
-        .unwrap()
-        .schedule_transfer(context)?;
-    context.get_h2d_stream().synchronize()?;
-    context.get_exec_stream().synchronize()?;
+    let mut current_transfers = vec![];
+    let mut current_jobs = vec![];
+    let mut start_events = vec![];
+    let mut end_events = vec![];
+
+    for context in contexts.iter() {
+        context.switch_to_device()?;
+        let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
+        transfer.schedule_transfer(context)?;
+        current_transfers.push(transfer);
+        current_jobs.push(None);
+        context.get_h2d_stream().synchronize()?;
+        context.get_exec_stream().synchronize()?;
+        start_events.push(CudaEvent::create()?);
+        end_events.push(CudaEvent::create()?);
+    }
 
     const PROOF_COUNT: usize = 64;
 
     nvtx::range_push!("bench");
-    let start_event = CudaEvent::create()?;
-    start_event.record(context.get_exec_stream())?;
+
+    for (context, event) in contexts.iter().zip(start_events.iter()) {
+        event.record(context.get_exec_stream())?;
+    }
     for i in 0..PROOF_COUNT {
         let external_values = ExternalValues {
             challenges: ExternalChallenges::draw_from_transcript_seed(Seed([i as u32; 8]), true),
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
-        let mut next_transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
-        next_transfer.schedule_transfer(context)?;
-        let transfer = current_transfer.take().unwrap();
-        let job = crate::prover::proof::prove(
-            circuit,
-            external_values,
-            &mut setup,
-            transfer,
-            &precomputations.twiddles,
-            &precomputations.lde_precomputations,
-            0,
-            None,
-            lde_factor,
-            NUM_QUERIES,
-            POW_BITS,
-            None,
-            context,
-        )?;
-        if let Some(job) = current_job.take() {
-            job.finish()?;
+        for (((context, setup), current_transfer), current_job) in contexts
+            .iter()
+            .zip(setups.iter_mut())
+            .zip(current_transfers.iter_mut())
+            .zip(current_jobs.iter_mut())
+        {
+            context.switch_to_device()?;
+            let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
+            transfer.schedule_transfer(context)?;
+            mem::swap(current_transfer, &mut transfer);
+            let job = crate::prover::proof::prove(
+                circuit,
+                external_values,
+                setup,
+                transfer,
+                &precomputations.twiddles,
+                &precomputations.lde_precomputations,
+                0,
+                None,
+                lde_factor,
+                NUM_QUERIES,
+                POW_BITS,
+                None,
+                context,
+            )?;
+            let mut job = Some(job);
+            mem::swap(current_job, &mut job);
+            if let Some(job) = job {
+                job.finish()?;
+            }
         }
-        current_transfer = Some(next_transfer);
-        current_job = Some(job);
     }
-    let end_event = CudaEvent::create()?;
-    end_event.record(context.get_exec_stream())?;
-    current_job.take().unwrap().finish()?;
-    end_event.synchronize()?;
+    for (context, end_event) in contexts.iter().zip(end_events.iter_mut()) {
+        end_event.record(context.get_exec_stream())?;
+    }
+
+    for (end_event, current_job) in end_events.iter_mut().zip(current_jobs.iter_mut()) {
+        current_job.take().unwrap().finish()?;
+        end_event.synchronize()?;
+    }
     nvtx::range_pop!();
 
-    let elapsed_time = elapsed_time(&start_event, &end_event)?;
-    println!("Elapsed time: {:.3} ms", elapsed_time);
+    let mut elapsed_times = vec![];
+    for (start_event, end_event) in start_events.iter().zip(end_events.iter()) {
+        elapsed_times.push(elapsed_time(start_event, end_event)?);
+    }
+
+    for (context, elapsed_time) in contexts.iter().zip(elapsed_times.iter()) {
+        let device_id = context.get_device_id();
+        println!("Device ID {device_id} elapsed time: {:.3} ms", elapsed_time);
+        let average = elapsed_time / PROOF_COUNT as f32;
+        println!(
+            "Device ID {device_id} average proof time: {:.3} ms",
+            average
+        );
+        let speed = (PROOF_COUNT * trace_len) as f32 / elapsed_time / 1_000.0;
+        println!(
+            "Device ID {device_id} average proof speed: {:.3} MHz",
+            speed
+        );
+    }
+
+    let elapsed_time = elapsed_times.iter().sum::<f32>() / contexts.len() as f32;
+    println!("Combined average elapsed time: {:.3} ms", elapsed_time);
     let average = elapsed_time / PROOF_COUNT as f32;
-    println!("Average proof time: {:.3} ms", average);
+    println!("Combined average proof time: {:.3} ms", average);
     let speed = (PROOF_COUNT * trace_len) as f32 / elapsed_time / 1_000.0;
-    println!("Average proof speed: {:.3} MHz", speed);
+    println!("Combined average proof speed: {:.3} MHz", speed);
+    println!(
+        "Aggregate proof speed: {:.3} MHz",
+        speed * contexts.len() as f32
+    );
     Ok(())
 }
 

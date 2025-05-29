@@ -48,10 +48,12 @@ use trace_and_split::{
 use crate::{NUM_QUERIES, POW_BITS};
 
 pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
+    if !MemPoolProverContext::is_host_allocator_initialized() {
+        // allocate 1k 4 MB chunks (so around 4GB of host ram).
+        MemPoolProverContext::initialize_host_allocator(22, 1 << 10).unwrap();
+    }
     let mut prover_context_config = ProverContextConfig::default();
-    // allocate 1k 4 MB chunks (so around 4GB of host ram).
     prover_context_config.allocation_block_log_size = 22;
-    prover_context_config.host_allocated_blocks = 512;
 
     let prover_context = MemPoolProverContext::new(&prover_context_config).unwrap();
     prover_context
