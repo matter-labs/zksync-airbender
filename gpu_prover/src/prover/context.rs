@@ -1,4 +1,4 @@
-use crate::allocator::host::{ConcurrentStaticHostAllocator, STATIC_HOST_ALLOCATOR};
+use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::context::Context;
 use era_cudart::device::{get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags, HostAllocation};
