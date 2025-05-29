@@ -141,6 +141,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         blocks_count: usize,
     ) -> CudaResult<()> {
         if ConcurrentStaticHostAllocator::is_initialized_global() {
+            println!("ConcurrentStaticHostAllocator is already initialized",);
             return Ok(());
         }
         let host_allocation_size = blocks_count << allocation_block_log_size;
