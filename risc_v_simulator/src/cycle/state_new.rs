@@ -15,6 +15,10 @@ use crate::cycle::state::report_opcode;
 use crate::cycle::state::MARKER_CSR;
 use crate::cycle::state::NON_DETERMINISM_CSR;
 use crate::cycle::state::NUM_REGISTERS;
+#[cfg(feature = "opcode_stats")]
+use crate::cycle::state::OPCODES_COUNTER;
+#[cfg(feature = "cycle_marker")]
+use crate::cycle::state::{CycleMarker, Mark, CYCLE_MARKER};
 use crate::cycle::status_registers::TrapReason;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
@@ -148,13 +152,19 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
     #[inline(always)]
     fn add_marker(&self) {
         #[cfg(feature = "cycle_marker")]
-        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker(self.cycle_counter as u64))
+        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker())
     }
 
     #[inline(always)]
     fn add_delegation(id: u32) {
         #[cfg(feature = "cycle_marker")]
         CYCLE_MARKER.with_borrow_mut(|cm| cm.add_delegation(id))
+    }
+
+    #[inline(always)]
+    fn count_new_cycle_for_markers(&self) {
+        #[cfg(feature = "cycle_marker")]
+        CYCLE_MARKER.with_borrow_mut(|cm| cm.incr_cycle_counter())
     }
 
     #[inline(always)]
@@ -853,6 +863,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     panic!("Unknown opcode 0x{:08x}", opcode);
                 }
             }
+
+            self.count_new_cycle_for_markers();
 
             tracer.at_cycle_end_ext(&*self);
 
