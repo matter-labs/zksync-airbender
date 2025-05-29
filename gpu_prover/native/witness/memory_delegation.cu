@@ -129,7 +129,7 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
         write_u32_value(write_value_columns, write_value_value, memory);
         PRINT_U32(M, write_value_columns, write_value_value);
       }
-      if (access_index > 0) {
+      if (access_index != 0 && address_derivation_carry_bit_column.num_elements != 0) {
         const u32 derived_address = base_address + access_index * sizeof(u32);
         const bool carry_bit = derived_address >> 16 != base_address >> 16;
         write_u16_value(address_derivation_carry_bit_column, carry_bit, memory);

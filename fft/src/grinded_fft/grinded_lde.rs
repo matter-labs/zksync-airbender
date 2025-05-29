@@ -139,7 +139,7 @@ mod test {
 
         let mut input = vec![Mersenne31Complex::ONE; trace_len];
 
-        let mut rng = rand::rng();
+        let mut rng = rand::thread_rng();
         for i in 0..input.len() {
             input[i] = Mersenne31Complex::random_element(&mut rng);
         }

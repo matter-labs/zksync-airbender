@@ -1,27 +1,3 @@
-// use blake2s::blake2s_round_function;
-// use blake2s::BLAKE2S_ACCESS_ID;
-
-// use blake2_round_function::blake2_round_function;
-// use blake2_round_function::BLAKE2_ROUND_FUNCTION_ACCESS_ID;
-
-// use blake2_round_function_with_final_xor::blake2_round_function_with_xor;
-// use blake2_round_function_with_final_xor::BLAKE2_ROUND_FUNCTION_WITH_XOR_ACCESS_ID;
-
-// use blake2_round_function_state_in_registers::blake2_round_function_with_state_in_registers;
-// use blake2_round_function_state_in_registers::BLAKE2_ROUND_FUNCTION_WITH_STATE_IN_REGISTERS_ACCESS_ID;
-
-// use mersenne_ext4_fma::mersenne_ext4_fma_impl;
-// use mersenne_ext4_fma::MERSENNE_EXT4_FMA_ACCESS_ID;
-
-// use poseidon2_provide_witness_and_compress::poseidon2_witness_and_compress;
-// use poseidon2_provide_witness_and_compress::POSEIDON2_WITNESS_AND_COMPRESS_ACCESS_ID;
-
-// use mersenne_ext4_fma_indirect::mersenne_ext4_fma_indirect_impl;
-// use mersenne_ext4_fma_indirect::MERSENNE_EXT4_FMA_INDIRECT_ACCESS_ID;
-
-// use u256_bigint::u256_bigint_mul_and_double_add_impl;
-// use u256_bigint::U256_BIGINT_MUL_AND_DOUBLE_ADD_ACCESS_ID;
-
 use u256_ops_with_control::u256_ops_with_control_impl;
 use u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
 
@@ -40,15 +16,9 @@ use cs::definitions::TimestampScalar;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 
-// pub mod blake2_round_function;
-// pub mod blake2_round_function_state_in_registers;
+pub mod unrolled;
+
 pub mod blake2_round_function_with_compression_mode;
-// pub mod blake2_round_function_with_final_xor;
-// pub mod blake2s;
-// pub mod mersenne_ext4_fma;
-// pub mod mersenne_ext4_fma_indirect;
-// pub mod poseidon2_provide_witness_and_compress;
-// pub mod u256_bigint;
 pub mod u256_ops_with_control;
 
 #[derive(Clone, Copy, Debug)]

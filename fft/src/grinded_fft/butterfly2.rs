@@ -65,7 +65,7 @@ mod test {
         let log_n = fft_size.trailing_zeros();
         let mut input = vec![Mersenne31Complex::ONE; fft_size];
 
-        let mut rng = rand::rng();
+        let mut rng = rand::thread_rng();
         for i in 0..input.len() {
             input[i] = Mersenne31Complex::random_element(&mut rng);
         }

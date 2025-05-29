@@ -1,8 +1,11 @@
 use std::hash::Hash;
 
+mod decoder_utils;
 pub mod opcode_formats;
 pub mod state;
+pub mod state_new;
 pub mod status_registers;
+mod utils;
 
 pub trait MachineConfig:
     'static

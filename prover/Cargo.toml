@@ -46,7 +46,7 @@ timing_logs = []
 # Will evaluate quotient on main domain for satisfiability checks
 debug_satisfiable = []
 # Will perform witness evaluation in synthesis functions
-cs_debug = ["cs/debug_evaluate_witness"]
+cs_debug = ["cs/debug_evaluate_witness", "cs/debug_evaluate_constraints"]
 # Print detailed debug logs
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]

@@ -38,8 +38,8 @@ pub fn blake2_round_function_with_extended_control<
     let x12 = state.registers[12];
     let x13 = state.registers[13];
 
-    assert!(x10 % 4 == 0);
-    assert!(x11 % 4 == 0);
+    assert!(x10 % 128 == 0, "input pointer is unaligned");
+    assert!(x11 % 4 == 0, "input pointer is unaligned");
 
     // self-check so that we do not touch ROM
     assert!(x10 >= 1 << 21);

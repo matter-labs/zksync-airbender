@@ -12,7 +12,7 @@ cargo test full_machine_with_delegation_get_witness_graph
 # Delegations
 cargo test compile_blake2_with_extended_control
 cargo test blake_delegation_get_witness_graph
-cargo test test_compile_u256_ops_extended_control
+cargo test compile_u256_ops_extended_control
 cargo test bigint_delegation_get_witness_graph
 
 cd ../witness_eval_generator
