@@ -273,6 +273,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
         let register_index = request.register_index as usize;
 
+        if request.indirects_alignment_log2 < std::mem::align_of::<u32>().trailing_zeros() {
+            assert!(request.indirect_accesses.is_empty());
+        }
+
         let register_access = if request.register_write {
             let read_low = self.add_variable();
             let read_high = self.add_variable();
@@ -425,6 +429,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
         let access = RegisterAndIndirectAccesses {
             register_index: request.register_index,
+            indirects_alignment_log2: request.indirects_alignment_log2,
             register_access,
             indirect_accesses,
         };

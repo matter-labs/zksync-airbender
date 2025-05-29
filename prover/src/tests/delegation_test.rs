@@ -32,7 +32,7 @@ pub fn run_basic_delegation_test_impl(
 
     // load binary
 
-    let binary = std::fs::read("./app.bin").unwrap();
+    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .array_chunks::<4>()
@@ -117,6 +117,9 @@ pub fn run_basic_delegation_test_impl(
         );
     }
 
+    // 15 fibs, 1 hash
+    let non_determinism_responses = vec![15u32, 1];
+
     let (witness_chunks, register_final_values, delegation_circuits) =
         dev_run_all_and_make_witness_ext_with_gpu_tracers::<
             _,
@@ -134,6 +137,7 @@ pub fn run_basic_delegation_test_impl(
             trace_len,
             csr_processor,
             Some(LookupWrapper::Dimensional3(csr_table)),
+            non_determinism_responses,
             &worker,
         );
 

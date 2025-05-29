@@ -63,18 +63,21 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: vec![true; 8],
     };
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: vec![false; 8],
     };
 
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: true,
+        indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
 
@@ -813,25 +816,12 @@ mod test {
     use field::Mersenne31Field;
 
     #[test]
-    fn test_compile_u256_ops_extended_control() {
+    fn compile_u256_ops_extended_control() {
         let mut cs: BasicAssembly<Mersenne31Field> = BasicAssembly::<Mersenne31Field>::new();
         define_u256_ops_extended_control_delegation_circuit(&mut cs);
         let (circuit_output, _) = cs.finalize();
-        dbg!(circuit_output.lookups.len());
-        dbg!(circuit_output.register_and_indirect_memory_accesses.len());
-        dbg!(
-            circuit_output.register_and_indirect_memory_accesses.len()
-                + circuit_output
-                    .register_and_indirect_memory_accesses
-                    .iter()
-                    .map(|el| el.indirect_accesses.len())
-                    .sum::<usize>()
-        );
         let compiler = OneRowCompiler::default();
         let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-        dbg!(compiled.memory_layout.total_width);
-        dbg!(compiled.witness_layout.total_width);
-        dbg!(compiled.stage_2_layout.total_width);
 
         serialize_to_file(&compiled, "bigint_delegation_layout.json");
     }

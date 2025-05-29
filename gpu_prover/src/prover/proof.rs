@@ -202,18 +202,51 @@ where
     setup.ensure_commitment_produced(context)?;
     setup_range.end(stream)?;
 
-    // stage 1
-    let stage_1_range = device_tracing::Range::new("stage_1")?;
-    stage_1_range.start(stream)?;
-    let mut stage_1_output = StageOneOutput::new(
+    let mut stage_1_output = StageOneOutput::allocate_trace_holders(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        context,
+    )?;
+    #[cfg(feature = "print_gpu_mem_usage")]
+    {
+        print!("after stage_1.allocate_trace_holders ");
+        context.print_mem_pool_stats()?;
+    }
+
+    let mut stage_2_output = StageTwoOutput::allocate_trace_evaluations(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        context,
+    )?;
+    #[cfg(feature = "print_gpu_mem_usage")]
+    {
+        print!("after stage_2.allocate_trace_evaluations ");
+        context.print_mem_pool_stats()?;
+    }
+
+    // witness_generation
+    let witness_generation_range = device_tracing::Range::new("witness_generation")?;
+    witness_generation_range.start(stream)?;
+    stage_1_output.generate_witness(
         circuit,
         setup,
         tracing_data_transfer,
-        log_lde_factor,
-        log_tree_cap_size,
         circuit_sequence,
         context,
     )?;
+    witness_generation_range.end(stream)?;
+    #[cfg(feature = "print_gpu_mem_usage")]
+    {
+        print!("after generate_witness ");
+        context.print_mem_pool_stats()?;
+    }
+
+    // stage 1
+    let stage_1_range = device_tracing::Range::new("stage_1")?;
+    stage_1_range.start(stream)?;
+    stage_1_output.commit_witness(circuit, context)?;
     stage_1_range.end(stream)?;
     #[cfg(feature = "print_gpu_mem_usage")]
     {
@@ -222,9 +255,6 @@ where
     }
 
     setup.trace_holder.produce_tree_caps(context)?;
-    stage_1_output.witness_holder.produce_tree_caps(context)?;
-    stage_1_output.memory_holder.produce_tree_caps(context)?;
-    stage_1_output.produce_public_inputs(circuit, context)?;
 
     // seed
     let seed = initialize_seed::<C>(
@@ -241,18 +271,15 @@ where
     // stage 2
     let stage_2_range = device_tracing::Range::new("stage_2")?;
     stage_2_range.start(stream)?;
-    let stage_2_output = StageTwoOutput::new(
+    stage_2_output.generate(
         seed.clone(),
         circuit,
         &cached_data_values,
         setup,
         &mut stage_1_output,
-        log_lde_factor,
-        log_tree_cap_size,
         context,
     )?;
     stage_2_range.end(stream)?;
-
     #[cfg(feature = "print_gpu_mem_usage")]
     {
         print!("after stage_2 ");
@@ -395,8 +422,8 @@ where
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
 
-    callbacks.extend(stage_1_output.callbacks);
-    callbacks.extend(stage_2_output.callbacks);
+    callbacks.extend(stage_1_output.callbacks.unwrap());
+    callbacks.extend(stage_2_output.callbacks.unwrap());
     callbacks.extend(stage_3_output.callbacks);
     callbacks.extend(stage_4_output.callbacks);
     callbacks.extend(stage_5_output.callbacks);
@@ -411,20 +438,20 @@ where
         memory_tree_caps: stage_1_output.memory_holder.get_tree_caps(),
         setup_tree_caps: setup.trace_holder.get_tree_caps(),
         stage_2_tree_caps: stage_2_output.trace_holder.get_tree_caps(),
-        stage_2_last_row: stage_2_output.last_row.clone(),
+        stage_2_last_row: stage_2_output.last_row.unwrap(),
         stage_2_offset_for_memory_grand_product_poly: stage_2_output.offset_for_grand_product_poly,
         stage_2_offset_for_delegation_argument_poly: stage_2_output
             .offset_for_sum_over_delegation_poly,
         quotient_tree_caps: stage_3_output.trace_holder.get_tree_caps(),
-        evaluations_at_random_points: stage_4_output.values_at_z.clone(),
+        evaluations_at_random_points: stage_4_output.values_at_z,
         deep_poly_caps: stage_4_output.trace_holder.get_tree_caps(),
         intermediate_fri_oracle_caps: stage_5_output
             .fri_oracles
-            .iter()
-            .map(|o| o.tree_caps.clone())
+            .into_iter()
+            .map(|o| o.tree_caps)
             .collect_vec(),
-        last_fri_step_plain_leaf_values: stage_5_output.last_fri_step_plain_leaf_values.clone(),
-        final_monomial_form: stage_5_output.final_monomials.clone(),
+        last_fri_step_plain_leaf_values: stage_5_output.last_fri_step_plain_leaf_values,
+        final_monomial_form: stage_5_output.final_monomials,
         pow_output,
         queries_output,
         circuit_sequence: circuit_sequence as u16,

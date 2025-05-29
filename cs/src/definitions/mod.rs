@@ -280,7 +280,13 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
                         num_reg_or_indirect_writes += 1;
                     }
                     if j > 0 {
-                        num_booleans_for_indirect_address_derivation += 1;
+                        if access.indirect_accesses[j]
+                            .get_address_derivation_carry_bit_column()
+                            .num_elements()
+                            > 0
+                        {
+                            num_booleans_for_indirect_address_derivation += 1;
+                        }
                     }
                     j += 1;
                 }

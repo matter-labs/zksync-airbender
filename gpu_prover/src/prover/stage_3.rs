@@ -92,7 +92,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         let h_helpers_clone = h_helpers.clone();
         let h_constants_times_challenges_clone = h_constants_times_challenges.clone();
         let lookup_challenges_clone = stage_2_output.lookup_challenges.clone();
-        let stage_2_last_row_clone = stage_2_output.last_row.clone();
+        let stage_2_last_row_clone = stage_2_output.last_row.as_ref().unwrap().clone();
         let stage_2_offset_for_grand_product_poly = stage_2_output.offset_for_grand_product_poly;
         let offset_for_sum_over_delegation_poly =
             stage_2_output.offset_for_sum_over_delegation_poly;
@@ -140,7 +140,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
                 tau,
                 twiddles.omega,
                 twiddles.omega_inv,
-                &lookup_challenges_clone.lock().unwrap(),
+                &lookup_challenges_clone.as_ref().unwrap().lock().unwrap(),
                 &cached_data_clone,
                 circuit,
                 &external_values_clone,

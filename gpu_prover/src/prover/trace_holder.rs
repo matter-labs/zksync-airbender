@@ -83,14 +83,15 @@ impl<T: Sync, C: ProverContext> TraceHolder<T, C> {
         context: &C,
     ) -> CudaResult<Self> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
+        let instances_count = 1 << log_lde_factor;
         let ldes = allocate_ldes(
             log_domain_size,
-            log_lde_factor,
+            instances_count,
             columns_count,
             pad_to_even,
             context,
         )?;
-        let trees = allocate_trees(log_domain_size, log_lde_factor, log_rows_per_leaf, context)?;
+        let trees = allocate_trees(log_domain_size, instances_count, log_rows_per_leaf, context)?;
         Ok(Self {
             log_domain_size,
             log_lde_factor,
@@ -102,6 +103,53 @@ impl<T: Sync, C: ProverContext> TraceHolder<T, C> {
             trees,
             tree_caps: None,
         })
+    }
+
+    pub fn allocate_only_evaluation(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        pad_to_even: bool,
+        context: &C,
+    ) -> CudaResult<Self> {
+        let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
+        let ldes = allocate_ldes(log_domain_size, 1, columns_count, pad_to_even, context)?;
+        let trees = vec![];
+        Ok(Self {
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            padded_to_even,
+            ldes,
+            trees,
+            tree_caps: None,
+        })
+    }
+
+    pub fn allocate_to_full(&mut self, context: &C) -> CudaResult<()> {
+        let instances_count = 1 << self.log_lde_factor;
+        assert_eq!(self.ldes.len(), 1);
+        let ldes = allocate_ldes(
+            self.log_domain_size,
+            instances_count - 1,
+            self.columns_count,
+            self.padded_to_even,
+            context,
+        )?;
+        self.ldes.extend(ldes);
+        assert!(self.trees.is_empty());
+        let trees = allocate_trees(
+            self.log_domain_size,
+            instances_count,
+            self.log_rows_per_leaf,
+            context,
+        )?;
+        self.trees.extend(trees);
+        Ok(())
     }
 
     pub fn get_coset_evaluations(&self, coset_index: usize) -> &DeviceSlice<T> {
@@ -143,7 +191,7 @@ impl<T: Sync, C: ProverContext> TraceHolder<T, C> {
 
 pub(crate) fn allocate_ldes<T: Sync, C: ProverContext>(
     log_domain_size: u32,
-    log_lde_factor: u32,
+    instances_count: usize,
     columns_count: usize,
     pad_to_even: bool,
     context: &C,
@@ -154,9 +202,8 @@ pub(crate) fn allocate_ldes<T: Sync, C: ProverContext>(
         columns_count
     };
     let size = columns_count << log_domain_size;
-    let lde_factor = 1 << log_lde_factor;
-    let mut result = Vec::with_capacity(lde_factor);
-    for _ in 0..lde_factor {
+    let mut result = Vec::with_capacity(instances_count);
+    for _ in 0..instances_count {
         result.push(context.alloc(size)?);
     }
     Ok(result)
@@ -164,14 +211,13 @@ pub(crate) fn allocate_ldes<T: Sync, C: ProverContext>(
 
 pub(crate) fn allocate_trees<C: ProverContext>(
     log_domain_size: u32,
-    log_lde_factor: u32,
+    instances_count: usize,
     log_rows_per_leaf: u32,
     context: &C,
 ) -> CudaResult<Vec<C::Allocation<Digest>>> {
     let size = 1 << (log_domain_size + 1 - log_rows_per_leaf);
-    let lde_factor = 1 << log_lde_factor;
-    let mut result = Vec::with_capacity(lde_factor);
-    for _ in 0..lde_factor {
+    let mut result = Vec::with_capacity(instances_count);
+    for _ in 0..instances_count {
         result.push(context.alloc(size)?);
     }
     Ok(result)

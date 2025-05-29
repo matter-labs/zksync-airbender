@@ -3,6 +3,8 @@
 #![feature(let_chains)]
 #![feature(allocator_api)]
 
+// NOTE: Temporary disabled due to conflicts with witness evaluation
+
 // run them all with: cargo test --profile test-release --lib --package opcode_tests
 #[cfg(test)]
 mod opcodes {

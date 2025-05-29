@@ -37,8 +37,8 @@ pub fn u256_ops_with_control_impl<
     let x11 = state.registers[11];
     let x12 = state.registers[12];
 
-    assert!(x10 % 4 == 0);
-    assert!(x11 % 4 == 0);
+    assert!(x10 % 32 == 0, "input pointer is unaligned");
+    assert!(x11 % 32 == 0, "input pointer is unaligned");
 
     // self-check so that we do not touch ROM
     assert!(x10 >= 1 << 21);

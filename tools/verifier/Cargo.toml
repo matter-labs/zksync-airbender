@@ -40,7 +40,7 @@ default = ["universal_circuit"]
 [profile.cli]
 inherits = "dev"
 opt-level = 3
-# debug = false
+debug = false
 panic = "abort"
 # strip = true
 lto = "thin"

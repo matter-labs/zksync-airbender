@@ -230,6 +230,7 @@ extern "C" struct IndirectAccess {
   const unsigned read_value_col;
   const unsigned maybe_write_value_col;
   const unsigned address_derivation_carry_bit_col;
+  const unsigned address_derivation_carry_bit_num_elements;
   const bool is_write;
 };
 
