@@ -28,7 +28,7 @@ pub const MARKER_CSR: u32 = 0x7ff;
 #[cfg(feature = "opcode_stats")]
 thread_local! {
 
-    pub(crate) static OPCODES_COUNTER: std::cell::RefCell<std::collections::HashMap<&'static str, usize>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static OPCODES_COUNTER: std::cell::RefCell<std::collections::HashMap<&'static str, usize>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 #[inline(always)]
@@ -89,42 +89,36 @@ impl Mark {
 #[cfg(feature = "cycle_marker")]
 #[derive(Debug, Default)]
 pub struct CycleMarker {
-    cycle_counter: u64,
     pub markers: Vec<Mark>,
     pub delegation_counter: HashMap<u32, u64>,
 }
 
 #[cfg(feature = "cycle_marker")]
 impl CycleMarker {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         Self::default()
     }
 
     #[inline(always)]
-    pub(crate) fn add_marker(&mut self) {
+    fn add_marker(&mut self, count: u64) {
         self.markers.push(Mark {
-            cycles: self.cycle_counter,
+            cycles: count,
             delegations: self.delegation_counter.clone(),
         })
     }
 
     #[inline(always)]
-    pub(crate) fn add_delegation(&mut self, id: u32) {
+    fn add_delegation(&mut self, id: u32) {
         self.delegation_counter
             .entry(id)
             .and_modify(|n| *n += 1)
             .or_insert(1);
     }
-
-    #[inline(always)]
-    pub(crate) fn incr_cycle_counter(&mut self) {
-        self.cycle_counter += 1
-    }
 }
 
 #[cfg(feature = "cycle_marker")]
 thread_local! {
-  pub(crate) static CYCLE_MARKER: std::cell::RefCell<CycleMarker> = std::cell::RefCell::new(CycleMarker::new());
+  static CYCLE_MARKER: std::cell::RefCell<CycleMarker> = std::cell::RefCell::new(CycleMarker::new());
 }
 
 #[cfg(feature = "cycle_marker")]
@@ -270,6 +264,7 @@ pub struct RiscV32State<Config: MachineConfig = IMStandardIsaConfig> {
     pub pc: u32,
     pub extra_flags: ExtraFlags, // everything that doesn't need full register
 
+    pub cycle_counter: usize,
     pub timer: u64,
     pub timer_match: u64,
 
@@ -316,6 +311,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
             registers,
             pc,
             extra_flags,
+            cycle_counter,
             timer,
             timer_match,
             machine_mode_trap_data,
@@ -364,6 +360,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
             pc: initial_pc,
             extra_flags,
 
+            cycle_counter,
             timer,
             timer_match,
 
@@ -449,19 +446,13 @@ impl<Config: MachineConfig> RiscV32State<Config> {
     #[inline(always)]
     fn add_marker(&self) {
         #[cfg(feature = "cycle_marker")]
-        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker())
+        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker(self.cycle_counter as u64))
     }
 
     #[inline(always)]
     fn add_delegation(id: u32) {
         #[cfg(feature = "cycle_marker")]
         CYCLE_MARKER.with_borrow_mut(|cm| cm.add_delegation(id))
-    }
-
-    #[inline(always)]
-    fn count_new_cycle_for_markers(&self) {
-        #[cfg(feature = "cycle_marker")]
-        CYCLE_MARKER.with_borrow_mut(|cm| cm.incr_cycle_counter())
     }
 
     pub fn cycle_ext<
@@ -1403,7 +1394,10 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
         // Handle traps and interrupts.
         if trap.is_a_trap() {
-            println!("trap: {:?}, pc: {:08x}, instr: {:08x}", trap, pc, instr);
+            println!(
+                "trap: {:?}, pc: {:08x}, proc_cycle: {:?}, instr: {:08x}",
+                trap, pc, self.cycle_counter, instr
+            );
 
             if Config::HANDLE_EXCEPTIONS == false {
                 panic!("Simulator encountered an exception");
@@ -1446,7 +1440,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
         // for debugging
         self.sapt = mmu.read_sapt(current_privilege_mode, &mut trap);
-        self.count_new_cycle_for_markers();
+        self.cycle_counter += 1;
         tracer.at_cycle_end(&*self);
 
         //let trap = trap.as_register_value();
