@@ -14,7 +14,7 @@ use field::PrimeField;
 pub const LIMB_WIDTH: usize = 16;
 pub const LIMB_MASK: u64 = (1 << LIMB_WIDTH) - 1;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Num<F: PrimeField> {
     Var(Variable),
     Constant(F),
@@ -902,7 +902,7 @@ impl Boolean {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Register<F: PrimeField>(pub [Num<F>; REGISTER_SIZE]);
 
 impl<F: PrimeField> Register<F> {

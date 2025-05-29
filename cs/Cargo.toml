@@ -37,8 +37,6 @@ definitions_only = []
 compiler = ["blake2s_u32", "poseidon2", "itertools", "derivative", "smallvec", "proc-macro2", "syn", "quote", "divrem", "seq-macro", "super-seq-macro", "serde_json", "bincode"]
 # Will perform witness evaluation in synthesis functions
 debug_evaluate_witness = []
-# Will perform constraint evaluation in synthesis functions
-debug_evaluate_constraints = []
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 experimental_witness_eval = []

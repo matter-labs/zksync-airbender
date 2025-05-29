@@ -7,7 +7,6 @@
 
 template <u32 WIDTH> struct ColumnSet {
   u32 offset;
-  u32 num_elements;
 };
 
 enum ColumnAddressTag : u32 {

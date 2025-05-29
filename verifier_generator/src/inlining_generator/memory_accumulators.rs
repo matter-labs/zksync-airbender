@@ -947,12 +947,15 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                         false,
                     );
 
-                    let common_part_stream = if indirect_access_idx == 0
-                        || carry_bit_column.num_elements() == 0
-                    {
+                    let carry_bit_expr = read_value_expr(
+                        ColumnAddress::MemorySubtree(carry_bit_column.start()),
+                        idents,
+                        false,
+                    );
+
+                    let common_part_stream = if indirect_access_idx == 0 {
                         quote! {
-                            let mut address_low = #register_read_value_low_expr;
-                            address_low.add_assign_base(&Mersenne31Field(#offset));
+                            let address_low = #register_read_value_low_expr;
 
                             let mut address_contribution = #memory_argument_linearization_challenges_ident
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
@@ -993,13 +996,6 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                             numerator.add_assign(&address_contribution);
                         }
                     } else {
-                        assert!(carry_bit_column.num_elements() > 0);
-                        let carry_bit_expr = read_value_expr(
-                            ColumnAddress::MemorySubtree(carry_bit_column.start()),
-                            idents,
-                            false,
-                        );
-
                         quote! {
                             let mut address_low = #register_read_value_low_expr;
                             address_low.add_assign_base(&Mersenne31Field(#offset));

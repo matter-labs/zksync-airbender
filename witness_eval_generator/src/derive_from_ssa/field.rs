@@ -18,7 +18,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             let #new_ident = #witness_proxy_ident.get_memory_place(#idx);
                         }
                     }
-                    ColumnAddress::SetupSubtree(idx) => {
+                    ColumnAddress::SetupSubtree(_idx) => {
                         todo!();
                     }
                     ColumnAddress::OptimizedOut(idx) => {
@@ -28,7 +28,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                     }
                 }
             }
-            FieldNodeExpression::SubExpression(usize) => {
+            FieldNodeExpression::SubExpression(_usize) => {
                 unreachable!("not supported at the upper level");
             }
             FieldNodeExpression::Constant(constant) => {

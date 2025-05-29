@@ -145,6 +145,7 @@ fn test_full_machine_verifier_out_of_simulator() {
 
             set_iterator(it);
 
+            #[allow(invalid_value)]
             let mut proof_output: ProofOutput<
                 TREE_CAP_SIZE,
                 NUM_COSETS,
@@ -189,6 +190,7 @@ fn test_reduced_machine_verifier_out_of_simulator() {
 
             set_iterator(it);
 
+            #[allow(invalid_value)]
             let mut proof_output: ProofOutput<
                 TREE_CAP_SIZE,
                 NUM_COSETS,

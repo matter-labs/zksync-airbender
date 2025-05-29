@@ -42,7 +42,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             let #new_ident = #witness_proxy_ident.get_memory_place_u8(#idx);
                         }
                     }
-                    ColumnAddress::SetupSubtree(idx) => {
+                    ColumnAddress::SetupSubtree(_idx) => {
                         todo!();
                     }
                     ColumnAddress::OptimizedOut(idx) => {
@@ -67,7 +67,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             let #new_ident = #witness_proxy_ident.get_memory_place_u16(#idx);
                         }
                     }
-                    ColumnAddress::SetupSubtree(idx) => {
+                    ColumnAddress::SetupSubtree(_idx) => {
                         todo!();
                     }
                     ColumnAddress::OptimizedOut(idx) => {
@@ -78,9 +78,9 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 }
             }
 
-            FixedWidthIntegerNodeExpression::U8SubExpression(usize)
-            | FixedWidthIntegerNodeExpression::U16SubExpression(usize)
-            | FixedWidthIntegerNodeExpression::U32SubExpression(usize) => {
+            FixedWidthIntegerNodeExpression::U8SubExpression(_usize)
+            | FixedWidthIntegerNodeExpression::U16SubExpression(_usize)
+            | FixedWidthIntegerNodeExpression::U32SubExpression(_usize) => {
                 unreachable!("not supported at the upper level");
             }
             FixedWidthIntegerNodeExpression::U32OracleValue { placeholder } => {
@@ -139,7 +139,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             FixedWidthIntegerNodeExpression::U32FromField(expr) => {
                 let var_ident = self.field_expr_into_var(expr);
                 let new_ident = self.create_var();
-                let witness_placer_ident = &self.witness_placer_ident;
+                //let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = #var_ident.as_integer();
                 }
@@ -149,7 +149,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             | FixedWidthIntegerNodeExpression::WidenFromU16(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
                 let new_ident = self.create_var();
-                let witness_placer_ident = &self.witness_placer_ident;
+                //let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = #var_ident.widen();
                 }
@@ -159,7 +159,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             | FixedWidthIntegerNodeExpression::TruncateFromU32(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
                 let new_ident = self.create_var();
-                let witness_placer_ident = &self.witness_placer_ident;
+                //let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = #var_ident.truncate();
                 }
@@ -189,7 +189,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 let if_true = self.integer_expr_into_var(if_true);
                 let if_false = self.integer_expr_into_var(if_false);
                 let new_ident = self.create_var();
-                let witness_placer_ident = &self.witness_placer_ident;
+                //let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = WitnessComputationCore::select(& #selector, & #if_true, & #if_false);
                 }

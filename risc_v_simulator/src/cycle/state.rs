@@ -32,7 +32,7 @@ thread_local! {
 }
 
 #[inline(always)]
-pub(crate) fn report_opcode(_opcode: &'static str) {
+fn report_opcode(_opcode: &'static str) {
     #[cfg(feature = "opcode_stats")]
     OPCODES_COUNTER.with_borrow_mut(|el| {
         *el.entry(_opcode).or_default() += 1;
@@ -257,7 +257,6 @@ impl<C: MachineConfig> StateTracer<C> {
     }
 }
 
-#[deprecated]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RiscV32State<Config: MachineConfig = IMStandardIsaConfig> {
     pub registers: [u32; NUM_REGISTERS],
