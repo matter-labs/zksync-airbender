@@ -1,4 +1,4 @@
-use crate::allocator::host::ConcurrentStaticHostAllocator;
+use crate::allocator::host::{ConcurrentStaticHostAllocator, STATIC_HOST_ALLOCATOR};
 use crate::context::Context;
 use era_cudart::device::{get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags, HostAllocation};
@@ -140,6 +140,9 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         allocation_block_log_size: u32,
         blocks_count: usize,
     ) -> CudaResult<()> {
+        if ConcurrentStaticHostAllocator::is_initialized_global() {
+            return Ok(());
+        }
         let host_allocation_size = blocks_count << allocation_block_log_size;
         let host_allocation =
             HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)?;
