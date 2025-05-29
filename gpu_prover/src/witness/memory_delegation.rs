@@ -79,7 +79,7 @@ pub(crate) fn generate_memory_values_delegation(
 ) -> CudaResult<()> {
     let count = trace.num_requests;
     assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width.next_multiple_of(2));
+    assert_eq!(memory.cols(), subtree.total_width);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
     let subtree = subtree.into();
@@ -101,7 +101,7 @@ pub(crate) fn generate_memory_and_witness_values_delegation(
 ) -> CudaResult<()> {
     let count = trace.num_requests;
     assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width.next_multiple_of(2));
+    assert_eq!(memory.cols(), subtree.total_width);
     assert_eq!(witness.stride(), count + 1);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;

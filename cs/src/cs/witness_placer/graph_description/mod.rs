@@ -518,7 +518,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             };
 
             match el {
-                AssignedExpression::Unconditional(_expr) => {
+                AssignedExpression::Unconditional(expr) => {
                     // easy
                     unconditionally_resolved_variables.insert(variable);
                 }
@@ -526,7 +526,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    if let Some(_final_assignment) = final_assignment {
+                    if let Some(final_assignment) = final_assignment {
                         unconditionally_resolved_variables.insert(variable);
                         conditional_with_unconditional_overwrites.insert(variable);
                     } else {
@@ -592,7 +592,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
                 if has_outputs && can_skip_due_to_overwrite {
                     let mut skip_as_only_temporary_assignments = true;
-                    for (_variable, expr) in details.outputs.iter() {
+                    for (variable, expr) in details.outputs.iter() {
                         // quick check if this resolver can be skipped completely as it only assignments
                         // into variables, that are unconditionally overwritten at some point
                         match expr {
@@ -902,16 +902,16 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         let mut expr = expr.clone();
                         expr.make_subexpressions(&mut mapper, &lookup_fn);
                         match expr {
-                            Expression::Field(FieldNodeExpression::SubExpression(_idx))
-                            | Expression::Bool(BoolNodeExpression::SubExpression(_idx))
+                            Expression::Field(FieldNodeExpression::SubExpression(idx))
+                            | Expression::Bool(BoolNodeExpression::SubExpression(idx))
                             | Expression::U8(FixedWidthIntegerNodeExpression::U8SubExpression(
-                                _idx,
+                                idx,
                             ))
                             | Expression::U16(FixedWidthIntegerNodeExpression::U16SubExpression(
-                                _idx,
+                                idx,
                             ))
                             | Expression::U32(FixedWidthIntegerNodeExpression::U32SubExpression(
-                                _idx,
+                                idx,
                             )) => {
                                 let write_expr = RawExpression::WriteVariable {
                                     into_variable: *output_var,
@@ -938,16 +938,16 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         };
 
                         match value {
-                            Expression::Field(FieldNodeExpression::SubExpression(_idx))
-                            | Expression::Bool(BoolNodeExpression::SubExpression(_idx))
+                            Expression::Field(FieldNodeExpression::SubExpression(idx))
+                            | Expression::Bool(BoolNodeExpression::SubExpression(idx))
                             | Expression::U8(FixedWidthIntegerNodeExpression::U8SubExpression(
-                                _idx,
+                                idx,
                             ))
                             | Expression::U16(FixedWidthIntegerNodeExpression::U16SubExpression(
-                                _idx,
+                                idx,
                             ))
                             | Expression::U32(FixedWidthIntegerNodeExpression::U32SubExpression(
-                                _idx,
+                                idx,
                             )) => {
                                 let write_expr = RawExpression::WriteVariable {
                                     into_variable: *output_var,

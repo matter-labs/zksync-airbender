@@ -1,13 +1,19 @@
 pub const REGISTER_SIZE: usize = 2;
 pub const NUM_TIMESTAMP_COLUMNS_FOR_RAM: usize = 2;
 
-#[repr(transparent)]
+#[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct ColumnSet<const WIDTH: usize>(u32);
+pub struct ColumnSet<const WIDTH: usize> {
+    pub start: u32,
+    pub num_elements: u32,
+}
 
 impl<const WIDTH: usize> From<cs::definitions::ColumnSet<WIDTH>> for ColumnSet<WIDTH> {
     fn from(value: cs::definitions::ColumnSet<WIDTH>) -> Self {
-        Self(value.start as u32)
+        Self {
+            start: value.start as u32,
+            num_elements: value.num_elements as u32,
+        }
     }
 }
 

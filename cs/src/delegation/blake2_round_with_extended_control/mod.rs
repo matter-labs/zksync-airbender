@@ -63,24 +63,28 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        indirects_alignment_log2: 7, // 128 bytes - 32 + 64 for state and extended state are needed
         indirect_accesses: vec![true; 24],
     };
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        indirects_alignment_log2: 2, // just aligned by machine words
         indirect_accesses: vec![false; 16],
     };
 
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: false,
+        indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
 
     let x13_request = RegisterAccessRequest {
         register_index: 13,
         register_write: false,
+        indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
 
@@ -892,12 +896,8 @@ mod test {
         let mut cs = BasicAssembly::<Mersenne31Field>::new();
         define_blake2_with_extended_control_delegation_circuit(&mut cs);
         let (circuit_output, _) = cs.finalize();
-        dbg!(&circuit_output.lookups.len());
         let compiler = OneRowCompiler::default();
         let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-        dbg!(compiled.memory_layout.total_width);
-        dbg!(compiled.witness_layout.total_width);
-        dbg!(compiled.stage_2_layout.total_width);
 
         serialize_to_file(&compiled, "blake_delegation_layout.json");
     }

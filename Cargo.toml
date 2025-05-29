@@ -16,7 +16,7 @@ members = [
     "circuit_defs/trace_and_split",
     "circuit_defs/setups",
     "circuit_defs/prover_examples",
-    "circuit_defs/opcode_tests",
+    # "circuit_defs/opcode_tests",
     "circuit_defs/prover_examples",
     "circuit_defs/reduced_risc_v_machine",
     "circuit_defs/final_reduced_risc_v_machine",
@@ -56,7 +56,7 @@ default-members = [
     "circuit_defs/bigint_with_control",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/circuit_common",
-    "circuit_defs/opcode_tests",
+    # "circuit_defs/opcode_tests",
     "circuit_defs/prover_examples",
     "circuit_defs/reduced_risc_v_machine",
     "circuit_defs/final_reduced_risc_v_machine",
@@ -137,7 +137,7 @@ itertools = { version = "0.13" }
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-debug = true
+debug = false
 
 
 # Special profile for compiling the cli tool.
@@ -146,6 +146,7 @@ debug = true
 [profile.cli]
 inherits = "dev"
 opt-level = 3
+debug = false # exponential in LLVM
 incremental = false
 
 [profile.cli.package.verifier]

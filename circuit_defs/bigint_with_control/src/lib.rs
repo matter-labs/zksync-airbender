@@ -10,7 +10,7 @@ use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
     risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
-pub const DOMAIN_SIZE: usize = 1 << 20;
+pub const DOMAIN_SIZE: usize = 1 << 21;
 pub const NUM_DELEGATION_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
 pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];

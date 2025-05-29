@@ -289,15 +289,18 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                 }
 
                 if indirect_access_idx > 0 {
-                    // and the only non-trivial part is to compute address derivation carry bit
-                    let (derived_address, of) = base_address
-                        .overflowing_add((indirect_access_idx * std::mem::size_of::<u32>()) as u32);
-                    assert!(of == false);
-                    let carry_bit = (derived_address >> 16) != high;
+                    let carry_bit_column =
+                        indirect_access.get_address_derivation_carry_bit_column();
+                    if carry_bit_column.num_elements() > 0 {
+                        // and the only non-trivial part is to compute address derivation carry bit
+                        let (derived_address, of) = base_address.overflowing_add(
+                            (indirect_access_idx * std::mem::size_of::<u32>()) as u32,
+                        );
+                        assert!(of == false);
+                        let carry_bit = (derived_address >> 16) != high;
 
-                    memory_row[indirect_access
-                        .get_address_derivation_carry_bit_column()
-                        .start()] = Mersenne31Field(carry_bit as u32);
+                        memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
+                    }
                 }
 
                 if COMPUTE_WITNESS {
