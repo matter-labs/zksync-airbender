@@ -87,8 +87,10 @@ pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C
     memory.load_image(entry_point, binary.iter().copied());
 
     let mut previous_pc = entry_point;
+    let mut cycle_counter = 0u64;
 
     for _cycle in 0..cycles as usize {
+        cycle_counter += 1;
         RiscV32State::<C>::cycle(
             &mut state,
             &mut memory,
@@ -98,7 +100,7 @@ pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C
         );
 
         if state.pc == previous_pc {
-            println!("Took {} cycles to finish", state.cycle_counter);
+            println!("Took {} cycles to finish", cycle_counter);
             break;
         }
         previous_pc = state.pc;
