@@ -158,7 +158,8 @@ impl<F: Field> FieldExtension<F> for F {
 
     #[inline(always)]
     fn into_coeffs_in_base(self) -> [Self; Self::DEGREE] {
-        [self; Self::DEGREE]
+        // Rust compiler is bugging here, not relating Self::DEGREE and 1
+        unsafe { core::ptr::read((&self as *const F).cast()) }
     }
 
     #[inline(always)]
