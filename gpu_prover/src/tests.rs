@@ -61,7 +61,7 @@ pub const POW_BITS: u32 = 28;
 #[test]
 fn test_prove_hashed_fibonacci() -> CudaResult<()> {
     let instant = std::time::Instant::now();
-    MemPoolProverContext::initialize_host_allocator(22, 512)?;
+    MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22)?;
     let mut prover_context_config = ProverContextConfig::default();
     prover_context_config.allocation_block_log_size = 22;
     let prover_context = MemPoolProverContext::new(&prover_context_config)?;
@@ -115,7 +115,7 @@ fn test_prove_hashed_fibonacci() -> CudaResult<()> {
 #[test]
 fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
     let instant = std::time::Instant::now();
-    MemPoolProverContext::initialize_host_allocator(22, 512)?;
+    MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22)?;
     println!("host allocator initialized in {:?}", instant.elapsed());
     let instant = std::time::Instant::now();
     let device_count = get_device_count()?;

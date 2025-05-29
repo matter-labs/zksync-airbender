@@ -47,8 +47,11 @@ pub type ConcurrentStaticHostAllocator =
     StaticHostAllocator<ConcurrentInnerStaticHostAllocatorWrapper>;
 
 impl ConcurrentStaticHostAllocator {
-    pub fn initialize_global(backend: HostAllocation<u8>, log_chunk_size: u32) {
-        let allocator = ConcurrentStaticHostAllocator::new(backend, log_chunk_size);
+    pub fn initialize_global(
+        backends: impl IntoIterator<Item = HostAllocation<u8>>,
+        log_chunk_size: u32,
+    ) {
+        let allocator = ConcurrentStaticHostAllocator::new(backends, log_chunk_size);
         assert!(STATIC_HOST_ALLOCATOR.set(allocator).is_ok());
     }
 

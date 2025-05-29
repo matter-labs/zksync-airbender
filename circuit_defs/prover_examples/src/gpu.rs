@@ -49,8 +49,8 @@ use crate::{NUM_QUERIES, POW_BITS};
 
 pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
     if !MemPoolProverContext::is_host_allocator_initialized() {
-        // allocate 1k 4 MB chunks (so around 4GB of host ram).
-        MemPoolProverContext::initialize_host_allocator(22, 1 << 10).unwrap();
+        // allocate 4 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
+        MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22).unwrap();
     }
     let mut prover_context_config = ProverContextConfig::default();
     prover_context_config.allocation_block_log_size = 22;

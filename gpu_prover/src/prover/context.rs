@@ -37,8 +37,9 @@ pub trait ProverContext {
     type Allocation<T: Sync>: DerefMut<Target = DeviceSlice<T>> + CudaSliceMut<T> + Sync;
     fn is_host_allocator_initialized() -> bool;
     fn initialize_host_allocator(
-        allocation_block_log_size: u32,
-        blocks_count: usize,
+        host_allocations_count: usize,
+        blocks_per_allocation_count: usize,
+        block_log_size: u32,
     ) -> CudaResult<()>;
     fn get_device_id(&self) -> i32;
     fn switch_to_device(&self) -> CudaResult<()>;
@@ -142,22 +143,25 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
     }
 
     fn initialize_host_allocator(
-        allocation_block_log_size: u32,
-        blocks_count: usize,
+        host_allocations_count: usize,
+        blocks_per_allocation_count: usize,
+        block_log_size: u32,
     ) -> CudaResult<()> {
         assert!(
             !ConcurrentStaticHostAllocator::is_initialized_global(),
             "ConcurrentStaticHostAllocator can only be initialized once"
         );
-        let host_allocation_size = blocks_count << allocation_block_log_size;
-        let host_allocation =
-            HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)?;
-        ConcurrentStaticHostAllocator::initialize_global(
-            host_allocation,
-            allocation_block_log_size,
-        );
+        let host_allocation_size = blocks_per_allocation_count << block_log_size;
+        let mut allocations = vec![];
+        for _ in 0..host_allocations_count {
+            allocations.push(HostAllocation::alloc(
+                host_allocation_size,
+                CudaHostAllocFlags::DEFAULT,
+            )?);
+        }
+        ConcurrentStaticHostAllocator::initialize_global(allocations, block_log_size);
         println!(
-            "initialized ConcurrentStaticHostAllocator with {} GB",
+            "initialized ConcurrentStaticHostAllocator with {host_allocations_count} x {} GB",
             host_allocation_size as f32 / 1024.0 / 1024.0 / 1024.0
         );
         Ok(())

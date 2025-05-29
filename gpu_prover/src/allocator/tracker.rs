@@ -1,32 +1,38 @@
+use itertools::Itertools;
 use std::alloc::AllocError;
 use std::collections::{BTreeMap, BTreeSet, Bound};
 use std::ptr::NonNull;
 
 pub struct StaticAllocationsTracker {
-    ptr: NonNull<u8>,
-    len: usize,
+    ptrs: Vec<NonNull<u8>>,
+    lens: Vec<usize>,
     free_len_by_ptr: BTreeMap<NonNull<u8>, usize>,
     free_ptrs_by_len: BTreeMap<usize, BTreeSet<NonNull<u8>>>,
 }
 
 impl StaticAllocationsTracker {
-    pub fn new(ptr: NonNull<u8>, len: usize) -> Self {
+    pub fn new(ptrs_and_lens: &[(NonNull<u8>, usize)]) -> Self {
+        let len = ptrs_and_lens.len();
+        let mut ptrs = Vec::with_capacity(len);
+        let mut lens = Vec::with_capacity(len);
         let mut free_len_by_ptr = BTreeMap::new();
-        free_len_by_ptr.insert(ptr, len);
         let mut free_ptrs_by_len = BTreeMap::new();
-        let mut ptrs = BTreeSet::new();
-        ptrs.insert(ptr);
-        free_ptrs_by_len.insert(len, ptrs);
+        for &(ptr, len) in ptrs_and_lens.iter().sorted() {
+            ptrs.push(ptr);
+            lens.push(len);
+            free_len_by_ptr.insert(ptr, len);
+            let ptrs = free_ptrs_by_len.entry(len).or_insert_with(BTreeSet::new);
+            ptrs.insert(ptr);
+        }
         Self {
-            ptr,
-            len,
+            ptrs,
+            lens,
             free_len_by_ptr,
             free_ptrs_by_len,
         }
     }
 
     pub fn alloc(&mut self, len: usize) -> Result<NonNull<u8>, AllocError> {
-        // dbg!("alloc", len);
         let mut cursor = self.free_ptrs_by_len.lower_bound_mut(Bound::Included(&len));
         if let Some((&free_len, free_ptrs)) = cursor.peek_next() {
             let ptr = free_ptrs.pop_first().unwrap();
@@ -43,9 +49,6 @@ impl StaticAllocationsTracker {
                     .or_default()
                     .insert(new_free_ptr);
             }
-            // dbg!(ptr);
-            // dbg!(&self.free_len_by_ptr);
-            // dbg!(&self.free_ptrs_by_len);
             Ok(ptr)
         } else {
             Err(AllocError)
@@ -53,10 +56,17 @@ impl StaticAllocationsTracker {
     }
 
     pub fn free(&mut self, mut ptr: NonNull<u8>, mut len: usize) {
-        // dbg!("free", ptr, len);
         unsafe {
-            let offset = ptr.offset_from(self.ptr);
-            if offset < 0 || (offset as usize + len) > self.len {
+            let (self_ptr, self_len) = match self.ptrs.binary_search(&ptr) {
+                Ok(idx) => (self.ptrs[idx], self.lens[idx]),
+                Err(0) => panic!("out of bounds free"),
+                Err(idx) => {
+                    let idx = idx - 1;
+                    (self.ptrs[idx], self.lens[idx])
+                }
+            };
+            let offset = ptr.offset_from(self_ptr);
+            if offset < 0 || (offset as usize + len) > self_len {
                 panic!("out of bounds free");
             }
             let mut cursor = self.free_len_by_ptr.lower_bound_mut(Bound::Included(&ptr));
@@ -65,7 +75,7 @@ impl StaticAllocationsTracker {
                 if offset < len {
                     panic!("double free");
                 }
-                if offset == len {
+                if offset == len && ptr.add(len) != self_ptr.add(self_len) {
                     cursor.remove_next();
                     let ptrs = self.free_ptrs_by_len.get_mut(&next_len).unwrap();
                     ptrs.remove(&next_ptr);
@@ -80,7 +90,7 @@ impl StaticAllocationsTracker {
                 if offset < prev_len {
                     panic!("double free");
                 }
-                if offset == prev_len {
+                if offset == prev_len && ptr != self_ptr {
                     cursor.remove_prev();
                     let ptrs = self.free_ptrs_by_len.get_mut(&prev_len).unwrap();
                     ptrs.remove(&prev_ptr);
@@ -94,8 +104,6 @@ impl StaticAllocationsTracker {
         }
         self.free_len_by_ptr.insert(ptr, len);
         self.free_ptrs_by_len.entry(len).or_default().insert(ptr);
-        // dbg!(&self.free_len_by_ptr);
-        // dbg!(&self.free_ptrs_by_len);
     }
 }
 
