@@ -220,6 +220,31 @@ pub fn program_proof_from_proof_list_and_metadata(
         recursion_chain_hash: proof_metadata.prev_end_params_output_hash,
     }
 }
+pub fn proof_list_and_metadata_from_program_proof(
+    input: ProgramProof,
+) -> (ProofMetadata, ProofList) {
+    let reduced_proof_count = input.base_layer_proofs.len();
+    let proof_list = ProofList {
+        basic_proofs: vec![],
+        // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
+        reduced_proofs: input.base_layer_proofs,
+        final_proofs: vec![],
+        delegation_proofs: input.delegation_proofs.into_iter().collect(),
+    };
+
+    let proof_metadata = ProofMetadata {
+        basic_proof_count: 0,
+        reduced_proof_count,
+        final_proof_count: 0,
+        delegation_proof_count: vec![],
+        register_values: input.register_final_values,
+        end_params: input.end_params,
+        prev_end_params_output_hash: input.recursion_chain_hash,
+        prev_end_params_output: input.recursion_chain_preimage,
+    };
+    (proof_metadata, proof_list)
+}
+
 pub fn create_proofs(
     bin_path: &String,
     output_dir: &String,
@@ -617,30 +642,7 @@ pub fn create_recursion_proofs(
 }
 
 pub fn create_final_proofs_from_program_proof(input: ProgramProof) -> ProgramProof {
-    let reduced_proof_count = input.base_layer_proofs.len();
-    let proof_list = ProofList {
-        basic_proofs: vec![],
-        // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
-        reduced_proofs: input.base_layer_proofs,
-        final_proofs: vec![],
-        delegation_proofs: input.delegation_proofs.into_iter().collect(),
-    };
-
-    let proof_metadata = ProofMetadata {
-        basic_proof_count: 0,
-        reduced_proof_count,
-        final_proof_count: 0,
-        delegation_proof_count: vec![],
-        register_values: input.register_final_values,
-        end_params: input.end_params,
-        prev_end_params_output_hash: input.recursion_chain_hash,
-        prev_end_params_output: input.recursion_chain_preimage,
-    };
-
-    println!(
-        "input recursion chain preimage: {:?}",
-        input.recursion_chain_preimage
-    );
+    let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
 
     create_final_proofs(proof_list, proof_metadata, &None)
 }

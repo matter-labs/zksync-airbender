@@ -65,6 +65,15 @@ cargo run --profile cli verify-all --metadata output/metadata.json
 
 This will verify all the basic proofs, and also verify that the final results (data stored in the registers) is valid.
 
+## Proof verification from ProgramProof
+
+You can also verify the JSON with ProgramProof (that has all the proofs inlined inside JSON).
+
+Just run:
+```
+cli verify-all --program-proof /data/1.json
+```
+
 ## Passing inputs to the program
 
 Most of the programs will have to read data (via CRS register a.k.a oracle).
