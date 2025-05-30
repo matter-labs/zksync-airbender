@@ -370,14 +370,16 @@ pub fn merkle_tree_cap(values: &DeviceSlice<Digest>, cap_size: usize) -> &Device
 
 #[cfg(test)]
 mod tests {
-    use zksync_airbender::algebra::Mersenne31Field;
-    use zksync_airbender::monolith::Monolith;
-    use zksync_airbender::prover::merkle_tree::{AlgebraicSpongeBasedCompression, CompressionFunction};
     use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
     use rand::Rng;
     use serial_test::serial;
+    use zksync_airbender::algebra::Mersenne31Field;
+    use zksync_airbender::monolith::Monolith;
+    use zksync_airbender::prover::merkle_tree::{
+        AlgebraicSpongeBasedCompression, CompressionFunction,
+    };
 
     use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use crate::ops_simple::set_to_zero;

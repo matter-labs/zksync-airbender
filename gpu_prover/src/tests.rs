@@ -1,9 +1,10 @@
+use crate::circuit_type::CircuitType;
+use crate::circuit_type::MainCircuitType;
 use crate::prover::context::{MemPoolProverContext, ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::{get_aux_arguments_boundary_values, MainCircuitType};
-use crate::witness::CircuitType;
+use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use cs::definitions::split_timestamp;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::device::{get_device_count, get_device_properties, set_device};
@@ -225,7 +226,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             &inits_and_teardowns[circuit_sequence - num_paddings]
         };
 
-        let gpu_caps = {
+        let (gpu_caps, _) = {
             let lde_factor = setups::lde_factor_for_machine::<C>();
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
@@ -287,7 +288,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         let prec = &delegation_circuits_precomputations[idx].1;
         let mut per_tree_set = vec![];
         for el in els.iter() {
-            let gpu_caps = {
+            let (gpu_caps, _) = {
                 let circuit = &prec.compiled_circuit.compiled_circuit;
                 let trace_len = circuit.trace_len;
                 let lde_factor = prec.lde_factor;
@@ -370,6 +371,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
 
     let total_proving_start = std::time::Instant::now();
 
+    let gpu_circuit = Arc::new(risc_v_circuit_precomputations.compiled_circuit.clone());
+
     // now prove one by one
     let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.iter().enumerate() {
@@ -434,7 +437,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             worker,
         );
 
-        let gpu_proof = {
+        let (gpu_proof, _) = {
             let circuit = &risc_v_circuit_precomputations.compiled_circuit;
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
@@ -484,7 +487,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 aux_boundary_values,
             };
             let job = crate::prover::proof::prove(
-                circuit,
+                gpu_circuit.clone(),
                 external_values,
                 &mut setup,
                 transfer,
@@ -544,6 +547,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         let mut per_tree_set = vec![];
 
         let mut per_delegation_type_proofs = vec![];
+        let gpu_circuit = Arc::new(prec.compiled_circuit.compiled_circuit.clone());
+
         for (_circuit_idx, el) in els.iter().enumerate() {
             delegation_proofs_count += 1;
             let oracle = DelegationCircuitOracle { cycle_data: el };
@@ -584,11 +589,10 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 worker,
             );
 
-            let gpu_proof = {
-                let circuit = &prec.compiled_circuit.compiled_circuit;
+            let (gpu_proof, _) = {
                 let lde_factor = prec.lde_factor;
                 let log_lde_factor = lde_factor.trailing_zeros();
-                let trace_len = circuit.trace_len;
+                let trace_len = gpu_circuit.trace_len;
                 let log_domain_size = trace_len.trailing_zeros();
                 let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
                     .total_caps_size_log2 as u32;
@@ -606,7 +610,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 );
                 setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
                 let mut setup = SetupPrecomputations::new(
-                    circuit,
+                    &gpu_circuit,
                     log_lde_factor,
                     log_tree_cap_size,
                     prover_context,
@@ -618,7 +622,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
                 transfer.schedule_transfer(prover_context)?;
                 let job = crate::prover::proof::prove(
-                    circuit,
+                    gpu_circuit.clone(),
                     external_values,
                     &mut setup,
                     transfer,
@@ -714,6 +718,7 @@ fn bench_proof_main<
     };
     let lde_factor = setups::lde_factor_for_machine::<C>();
     let circuit = &precomputations.compiled_circuit;
+    let gpu_circuit = Arc::new(circuit.clone());
     let log_lde_factor = lde_factor.trailing_zeros();
     let log_domain_size = trace_len.trailing_zeros();
     let log_tree_cap_size =
@@ -752,7 +757,7 @@ fn bench_proof_main<
             let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
             transfer.schedule_transfer(context)?;
             let job = crate::prover::proof::prove(
-                circuit,
+                gpu_circuit.clone(),
                 external_values,
                 setup,
                 transfer,
@@ -812,7 +817,7 @@ fn bench_proof_main<
             transfer.schedule_transfer(context)?;
             mem::swap(current_transfer, &mut transfer);
             let job = crate::prover::proof::prove(
-                circuit,
+                gpu_circuit.clone(),
                 external_values,
                 setup,
                 transfer,

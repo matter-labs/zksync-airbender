@@ -1,3 +1,4 @@
+use crate::circuit_type::CircuitType;
 use crate::ops_simple::set_to_zero;
 use crate::prover::context::ProverContext;
 use crate::prover::transfer::Transfer;
@@ -6,11 +7,10 @@ use crate::witness::trace_main::{
     MainTraceDevice, MainTraceHost, ShuffleRamSetupAndTeardownDevice,
     ShuffleRamSetupAndTeardownHost,
 };
-use crate::witness::CircuitType;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
-pub(crate) enum TracingDataDevice<C: ProverContext> {
+pub enum TracingDataDevice<C: ProverContext> {
     Main {
         setup_and_teardown: ShuffleRamSetupAndTeardownDevice<C>,
         trace: MainTraceDevice<C>,
@@ -28,10 +28,10 @@ pub enum TracingDataHost<A: GoodAllocator> {
 }
 
 pub struct TracingDataTransfer<'a, C: ProverContext> {
-    pub(crate) circuit_type: CircuitType,
-    pub(crate) data_host: TracingDataHost<C::HostAllocator>,
-    pub(crate) data_device: TracingDataDevice<C>,
-    pub(crate) transfer: Transfer<'a, C>,
+    pub circuit_type: CircuitType,
+    pub data_host: TracingDataHost<C::HostAllocator>,
+    pub data_device: TracingDataDevice<C>,
+    pub transfer: Transfer<'a, C>,
 }
 
 impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {

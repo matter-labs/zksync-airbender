@@ -9,14 +9,6 @@ use prover::tracers::main_cycle_optimized::{CycleData, SingleCycleTracingData};
 use prover::ShuffleRamSetupAndTeardown;
 use std::sync::Arc;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum MainCircuitType {
-    FinalReducedRiscVMachine,
-    MachineWithoutSignedMulDiv,
-    ReducedRiscVMachine,
-    RiscVCycles,
-}
-
 pub struct MainTraceDevice<C: ProverContext> {
     pub(crate) cycle_data: C::Allocation<SingleCycleTracingData>,
 }
@@ -51,7 +43,7 @@ impl<M: MachineConfig, A: GoodAllocator> From<CycleData<M, A>> for MainTraceHost
     }
 }
 
-pub(crate) struct ShuffleRamSetupAndTeardownDevice<C: ProverContext> {
+pub struct ShuffleRamSetupAndTeardownDevice<C: ProverContext> {
     pub lazy_init_data: C::Allocation<LazyInitAndTeardown>,
 }
 

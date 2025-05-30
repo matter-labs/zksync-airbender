@@ -198,7 +198,7 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
 
     pub fn commit_witness(
         &mut self,
-        circuit: &'a CompiledCircuitArtifact<BF>,
+        circuit: &Arc<CompiledCircuitArtifact<BF>>,
         context: &C,
     ) -> CudaResult<()>
     where
@@ -216,7 +216,7 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
 
     pub fn produce_public_inputs(
         &mut self,
-        circuit: &'a CompiledCircuitArtifact<BF>,
+        circuit: &Arc<CompiledCircuitArtifact<BF>>,
         context: &C,
     ) -> CudaResult<()>
     where
@@ -265,10 +265,11 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
         )?;
         let public_inputs = Arc::new(Mutex::new(Vec::with_capacity(circuit.public_inputs.len())));
         let public_inputs_clone = public_inputs.clone();
+        let circuit_clone = circuit.clone();
         let function = move || {
             let mut first_row_public_inputs = vec![];
             let mut one_before_last_row_public_inputs = vec![];
-            for (location, column_address) in circuit.public_inputs.iter() {
+            for (location, column_address) in circuit_clone.public_inputs.iter() {
                 match location {
                     BoundaryConstraintLocation::FirstRow => {
                         let value = read_value(*column_address, &h_witness_first_row, &[]);

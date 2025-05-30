@@ -2,8 +2,9 @@ use std::{alloc::Global, collections::HashMap, sync::Arc};
 
 use cs::utils::split_timestamp;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use gpu_prover::cudart::result::CudaResult;
-use gpu_prover::witness::trace_delegation::{DelegationCircuitType, DelegationTraceHost};
+use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{
     prover::{
@@ -12,10 +13,7 @@ use gpu_prover::{
         setup::SetupPrecomputations,
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
-    witness::{
-        trace_main::{get_aux_arguments_boundary_values, MainCircuitType},
-        CircuitType,
-    },
+    witness::trace_main::get_aux_arguments_boundary_values,
 };
 use itertools::Itertools;
 use prover::{
@@ -114,7 +112,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     let mut memory_trees = vec![];
     // commit memory trees
     for (circuit_sequence, witness_chunk) in main_circuits_witness.iter().enumerate() {
-        let gpu_caps = {
+        let (gpu_caps, _) = {
             let lde_factor = setups::lde_factor_for_machine::<C>();
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
@@ -162,7 +160,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
         let prec = &delegation_circuits_precomputations[idx].1;
         let mut per_tree_set = vec![];
         for el in els.iter() {
-            let gpu_caps = {
+            let (gpu_caps, _) = {
                 let circuit = &prec.compiled_circuit.compiled_circuit;
                 let trace_len = circuit.trace_len;
                 let lde_factor = prec.lde_factor;
@@ -256,9 +254,10 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     };
 
     // now prove one by one
+    let main_compiled_circuit = Arc::new(risc_v_circuit_precomputations.compiled_circuit.clone());
     let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
-        let gpu_proof = {
+        let (gpu_proof, _) = {
             let lde_factor = setups::lde_factor_for_machine::<C>();
             let circuit = &risc_v_circuit_precomputations.compiled_circuit;
             let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
@@ -285,7 +284,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 aux_boundary_values,
             };
             let job = gpu_prover::prover::proof::prove(
-                circuit,
+                main_compiled_circuit.clone(),
                 external_values,
                 &mut gpu_setup_main,
                 transfer,
@@ -342,6 +341,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
             .unwrap();
         let prec = &delegation_circuits_precomputations[idx].1;
         let circuit = &prec.compiled_circuit.compiled_circuit;
+        let delegation_compiled_circuit = Arc::new(circuit.clone());
         let mut gpu_setup_delegation = {
             let lde_factor = prec.lde_factor;
             let log_lde_factor = lde_factor.trailing_zeros();
@@ -383,14 +383,14 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 challenges: external_challenges,
                 aux_boundary_values: AuxArgumentsBoundaryValues::default(),
             };
-            let gpu_proof = {
+            let (gpu_proof, _) = {
                 let trace = el.clone();
                 let data = TracingDataHost::Delegation(trace);
                 let circuit_type = CircuitType::Delegation(delegation_type);
                 let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
                 transfer.schedule_transfer(prover_context)?;
                 let job = gpu_prover::prover::proof::prove(
-                    circuit,
+                    delegation_compiled_circuit.clone(),
                     external_values,
                     &mut gpu_setup_delegation,
                     transfer,

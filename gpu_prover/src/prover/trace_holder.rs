@@ -441,319 +441,86 @@ pub(crate) fn transform_tree_caps(
         .collect_vec()
 }
 
-// pub fn populate_trace_ldes<C: ProverContext>(
-//     transfer: TraceTransfer<BF, C>,
-//     mut cosets: VecDeque<C::Allocation<BF>>,
-//     log_domain_size: u32,
-//     log_lde_factor: u32,
-//     context: &C,
-// ) -> CudaResult<Vec<C::Allocation<BF>>> {
-//     let TraceTransfer {
-//         trace,
-//         log_chunk_size,
-//         even_padding,
-//         temp_allocation,
-//         final_allocation,
-//         transferred_events,
-//         ..
-//     } = transfer;
-//     assert!(even_padding);
-//     assert_ne!(log_chunk_size, 0);
-//     let length = trace.len();
-//     let width = trace.width();
-//     assert_eq!(length.trailing_zeros(), log_domain_size);
-//     assert_eq!(cosets.len(), (1 << log_lde_factor) - 1);
-//     let padded_width = width.next_multiple_of(2);
-//     let len = length * width;
-//     let stream = context.get_exec_stream();
-//     let mut evaluations = final_allocation.unwrap();
-//     assert_eq!(evaluations.len(), length * padded_width);
-//     if padded_width != width {
-//         set_to_zero(&mut evaluations[len..], stream)?;
-//     }
-//     let stream = context.get_exec_stream();
-//     let evaluations_ref: &mut DeviceSlice<BF> = evaluations.deref_mut();
-//     let mut offset = 0;
-//     let target_l2_chunk_len = length * BF_COLS_CHUNK_FOR_L2;
-//     for (chunk, event) in evaluations_ref
-//         .chunks_mut(length << log_chunk_size)
-//         .zip_eq(transferred_events.into_iter())
-//     {
-//         stream.wait_event(&event, CudaStreamWaitEventFlags::DEFAULT)?;
-//         // The logic here should do the right thing for "tail chunks"
-//         // if the target_l2_chunk_len does not evenly divide chunk.len(),
-//         // even if target_l2_chunk_len happens to be >= chunk.len().
-//         for l2_chunk in chunk.chunks_mut(target_l2_chunk_len) {
-//             let l2_chunk_len = l2_chunk.len();
-//             assert!(offset < len);
-//             make_trace_evaluations_sum_to_zero(
-//                 &mut l2_chunk[..l2_chunk_len.min(len - offset)],
-//                 log_domain_size,
-//                 context,
-//             )?;
-//             let range = offset..offset + l2_chunk_len;
-//             let mut ldes = iter::once(l2_chunk)
-//                 .chain(cosets.iter_mut().map(|coset| &mut coset[range.clone()]))
-//                 .collect_vec();
-//             extend_trace(&mut ldes, 0, log_domain_size, log_lde_factor, stream)?;
-//             offset += l2_chunk_len;
-//         }
-//     }
-//     drop(temp_allocation);
-//     let result = iter::once(evaluations)
-//         .chain(cosets.into_iter())
-//         .collect_vec();
-//     Ok(result)
-// }
-//
-// pub(crate) fn compare_row_major_trace_ldes<
-//     const N: usize,
-//     A: GoodAllocator,
-//     L: DerefMut<Target = DeviceSlice<BF>>,
-// >(
-//     cpu_data: &[CosetBoundTracePart<N, A>],
-//     gpu_data: &[L],
-// ) {
-//     let mut error_count = 0;
-//     for (coset, (cpu_lde, gpu_lde)) in cpu_data.iter().zip(gpu_data.iter()).enumerate() {
-//         let trace_len = cpu_lde.trace.len();
-//         let gpu_lde_len = gpu_lde.len();
-//         assert_eq!(gpu_lde_len % trace_len, 0);
-//         let gpu_cols = gpu_lde_len / trace_len;
-//         let mut h_trace = vec![BF::default(); gpu_lde_len];
-//         memory_copy(&mut h_trace, gpu_lde.deref()).unwrap();
-//         let mut gpu_lde = vec![BF::default(); gpu_lde_len];
-//         assert_eq!(cpu_lde.trace.width().next_multiple_of(2), gpu_cols);
-//         transpose::transpose(&h_trace, &mut gpu_lde, trace_len, gpu_cols);
-//         let mut view = cpu_lde.trace.row_view(0..trace_len);
-//         for (row, gpu_row) in gpu_lde.chunks(gpu_cols).enumerate() {
-//             let cpu_row = view.current_row_ref();
-//             let gpu_row = &gpu_row[..cpu_row.len()];
-//             if cpu_row != gpu_row {
-//                 dbg!(coset, row, cpu_row, gpu_row);
-//                 error_count += 1;
-//                 if error_count > 4 {
-//                     panic!("too many errors");
-//                 }
-//             }
-//             view.advance_row();
-//         }
-//     }
-//     assert_eq!(error_count, 0);
-// }
-//
-// pub(crate) fn compare_column_major_trace_ldes<
-//     A: GoodAllocator,
-//     L: DerefMut<Target = DeviceSlice<E4>>,
-// >(
-//     cpu_data: &[CosetBoundColumnMajorTracePart<A>],
-//     gpu_data: &[L],
-// ) {
-//     for (coset, (cpu_lde, gpu_lde)) in cpu_data.iter().zip(gpu_data.iter()).enumerate() {
-//         let cpu_trace = &cpu_lde.trace;
-//         let trace_len = cpu_trace.len();
-//         let cols = cpu_trace.width();
-//         let gpu_lde_len = gpu_lde.len();
-//         assert_eq!(gpu_lde.len(), trace_len * cols);
-//         let mut h_gpu_lde = vec![E4::default(); gpu_lde_len];
-//         memory_copy(&mut h_gpu_lde, gpu_lde.deref()).unwrap();
-//         for (col, (gpu_col, cpu_col)) in h_gpu_lde
-//             .chunks(trace_len)
-//             .zip(cpu_trace.columns_iter())
-//             .enumerate()
-//         {
-//             if gpu_col != cpu_col {
-//                 for (i, (cpu, gpu)) in cpu_col.iter().zip(gpu_col.iter()).enumerate() {
-//                     assert_eq!(cpu, gpu, "coset: {}, col: {}, index: {}", coset, col, i);
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// pub(crate) fn compare_trace_trees<A: GoodAllocator, T: DerefMut<Target = DeviceSlice<Digest>>>(
-//     cpu_trees: &[Blake2sU32MerkleTreeWithCap<A>],
-//     gpu_trees: &[T],
-//     log_lde_factor: u32,
-//     log_tree_cap_size: u32,
-// ) {
-//     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-//     let coset_tree_cap_size = 1 << log_coset_tree_cap_size;
-//     for (coset, (cpu_tree, gpu_tree)) in cpu_trees.iter().zip(gpu_trees.iter()).enumerate() {
-//         let cpu_leaf_hashes = &cpu_tree.leaf_hashes;
-//         let leafs_count = cpu_tree.leaf_hashes.len();
-//         assert_eq!(gpu_tree.len(), leafs_count << 1);
-//         let mut h_tree = vec![Digest::default(); leafs_count << 1];
-//         memory_copy(&mut h_tree, gpu_tree.deref()).unwrap();
-//         let gpu_leaf_hashes = &h_tree[..leafs_count];
-//         if cpu_leaf_hashes != gpu_leaf_hashes {
-//             cpu_leaf_hashes
-//                 .iter()
-//                 .zip(gpu_leaf_hashes.iter())
-//                 .enumerate()
-//                 .for_each(|(i, (c, g))| {
-//                     assert_eq!(c, g, "coset: {}, leaf: {}", coset, i);
-//                 });
-//         }
-//         let cpu_cap = cpu_tree.get_cap().cap;
-//         assert_eq!(cpu_cap.len(), coset_tree_cap_size);
-//         let offset = (leafs_count - coset_tree_cap_size) << 1;
-//         assert_eq!(cpu_cap, h_tree[offset..][..coset_tree_cap_size]);
-//     }
-// }
-//
-// #[derive(Copy, Clone)]
-// pub enum TraceTransferAllocationType {
-//     None,
-//     Temp(usize),
-//     Final,
-// }
-//
-// pub(crate) struct TraceTransfer<'a, T: Copy + Send + Sync + 'static, C: ProverContext> {
-//     pub(crate) trace: &'a ColumnMajorTrace<T, C::HostAllocator>,
-//     pub(crate) log_chunk_size: u32,
-//     pub(crate) allocation_type: TraceTransferAllocationType,
-//     pub(crate) even_padding: bool,
-//     pub(crate) temp_allocation: Option<C::Allocation<T>>,
-//     pub(crate) final_allocation: Option<C::Allocation<T>>,
-//     pub(crate) allocated_event: CudaEvent,
-//     pub(crate) scheduled_count: usize,
-//     pub(crate) transferred_events: VecDeque<CudaEvent>,
-// }
-//
-// impl<'a, T: Copy + Send + Sync + 'static, C: ProverContext> TraceTransfer<'a, T, C> {
-//     pub fn new(
-//         trace: &'a ColumnMajorTrace<T, C::HostAllocator>,
-//         log_chunk_size: u32,
-//         allocation_type: TraceTransferAllocationType,
-//         even_padding: bool,
-//         context: &C,
-//     ) -> CudaResult<Self> {
-//         let width = trace.width();
-//         let padded_width = if even_padding {
-//             assert_ne!(log_chunk_size, 0);
-//             width.next_multiple_of(2)
-//         } else {
-//             width
-//         };
-//         let len = trace.len();
-//         let (temp_allocation, final_allocation) = match allocation_type {
-//             TraceTransferAllocationType::None => (None, None),
-//             TraceTransferAllocationType::Temp(chunks_count) => {
-//                 let count = chunks_count << log_chunk_size;
-//                 assert!(count < padded_width);
-//                 (Some(context.alloc(len * count)?), None)
-//             }
-//             TraceTransferAllocationType::Final => (None, Some(context.alloc(len * padded_width)?)),
-//         };
-//         let allocated_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-//         if matches!(allocation_type, TraceTransferAllocationType::None) {
-//             allocated_event.record(context.get_exec_stream())?;
-//         }
-//         let result = Self {
-//             trace,
-//             log_chunk_size,
-//             allocation_type,
-//             even_padding,
-//             temp_allocation,
-//             final_allocation,
-//             allocated_event,
-//             scheduled_count: 0,
-//             transferred_events: VecDeque::new(),
-//         };
-//         Ok(result)
-//     }
-//
-//     pub fn schedule(&mut self, max_columns_count: Option<usize>, context: &C) -> CudaResult<usize> {
-//         let width = match self.allocation_type {
-//             TraceTransferAllocationType::None => return Ok(0),
-//             TraceTransferAllocationType::Temp(chunks_count) => chunks_count << self.log_chunk_size,
-//             TraceTransferAllocationType::Final => self.trace.width(),
-//         };
-//         let len = self.trace.len();
-//         let mut remaining_count = width - self.scheduled_count;
-//         if let Some(max_columns_count) = max_columns_count {
-//             remaining_count = remaining_count.min(max_columns_count);
-//         }
-//         if remaining_count == 0 {
-//             return Ok(0);
-//         }
-//         let stream = context.get_h2d_stream();
-//         let range = self.scheduled_count * len..(self.scheduled_count + remaining_count) * len;
-//         let allocation = self
-//             .temp_allocation
-//             .as_mut()
-//             .or(self.final_allocation.as_mut())
-//             .unwrap();
-//         if self.scheduled_count == 0 {
-//             stream.wait_event(&self.allocated_event, CudaStreamWaitEventFlags::DEFAULT)?;
-//         }
-//         memory_copy_async(
-//             &mut allocation[range.clone()],
-//             &self.trace.as_slice()[range],
-//             stream,
-//         )?;
-//         self.scheduled_count += remaining_count;
-//         Ok(remaining_count)
-//     }
-//
-//     pub fn final_scheduled_count(&self) -> usize {
-//         match self.allocation_type {
-//             TraceTransferAllocationType::None => 0,
-//             TraceTransferAllocationType::Temp(chunks_count) => chunks_count << self.log_chunk_size,
-//             TraceTransferAllocationType::Final => self.trace.width(),
-//         }
-//     }
-//
-//     pub fn padded_width(&self) -> usize {
-//         let width = self.trace.width();
-//         if self.even_padding {
-//             width.next_multiple_of(2)
-//         } else {
-//             width
-//         }
-//     }
-//
-//     pub fn allocate_final(&mut self, context: &C) -> CudaResult<()> {
-//         assert_eq!(self.scheduled_count, self.final_scheduled_count());
-//         if matches!(
-//             self.allocation_type,
-//             TraceTransferAllocationType::None | TraceTransferAllocationType::Temp(_)
-//         ) {
-//             self.final_allocation = Some(context.alloc(self.trace.len() * self.padded_width())?);
-//             self.allocated_event.record(context.get_exec_stream())?;
-//         }
-//         Ok(())
-//     }
-//
-//     pub fn transfer_final(&mut self, context: &C) -> CudaResult<()> {
-//         assert_eq!(self.scheduled_count, self.final_scheduled_count());
-//         assert!(self.final_allocation.is_some());
-//         let length = self.trace.len();
-//         let width = self.trace.width();
-//         let stream = context.get_h2d_stream();
-//         stream.wait_event(&self.allocated_event, CudaStreamWaitEventFlags::DEFAULT)?;
-//         let final_allocation = self.final_allocation.as_mut().unwrap();
-//         let values: &mut DeviceSlice<T> = final_allocation.deref_mut();
-//         let chunk_size = length << self.log_chunk_size;
-//         for (i, (result_chunk, trace_chunk)) in values
-//             .chunks_mut(chunk_size)
-//             .zip(self.trace.as_slice().chunks(chunk_size))
-//             .enumerate()
-//         {
-//             let count = i << self.log_chunk_size;
-//             let offset = count * length;
-//             if self.temp_allocation.is_some() && count < self.scheduled_count {
-//                 let range = offset..offset + result_chunk.len();
-//                 let src = &self.temp_allocation.as_ref().unwrap()[range];
-//                 memory_copy_async(result_chunk, src, stream)?;
-//             } else if self.scheduled_count != width {
-//                 memory_copy_async(&mut result_chunk[..trace_chunk.len()], trace_chunk, stream)?;
-//             }
-//             let event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-//             event.record(stream)?;
-//             self.transferred_events.push_back(event);
-//         }
-//         Ok(())
-//     }
-// }
+#[allow(dead_code)]
+#[cfg(test)]
+mod test {
+    use crate::blake2s::Digest;
+    use crate::prover::trace_holder::DerefMut;
+    use crate::prover::BF;
+    use era_cudart::memory::memory_copy;
+    use era_cudart::slice::DeviceSlice;
+    use fft::GoodAllocator;
+    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+    use prover::merkle_trees::MerkleTreeConstructor;
+    use prover::prover_stages::CosetBoundTracePart;
+
+    pub(crate) fn compare_row_major_trace_ldes<
+        const N: usize,
+        A: GoodAllocator,
+        L: DerefMut<Target = DeviceSlice<BF>>,
+    >(
+        cpu_data: &[CosetBoundTracePart<N, A>],
+        gpu_data: &[L],
+    ) {
+        let mut error_count = 0;
+        for (coset, (cpu_lde, gpu_lde)) in cpu_data.iter().zip(gpu_data.iter()).enumerate() {
+            let trace_len = cpu_lde.trace.len();
+            let gpu_lde_len = gpu_lde.len();
+            assert_eq!(gpu_lde_len % trace_len, 0);
+            let gpu_cols = gpu_lde_len / trace_len;
+            let mut h_trace = vec![BF::default(); gpu_lde_len];
+            memory_copy(&mut h_trace, gpu_lde.deref()).unwrap();
+            let mut gpu_lde = vec![BF::default(); gpu_lde_len];
+            assert_eq!(cpu_lde.trace.width().next_multiple_of(2), gpu_cols);
+            transpose::transpose(&h_trace, &mut gpu_lde, trace_len, gpu_cols);
+            let mut view = cpu_lde.trace.row_view(0..trace_len);
+            for (row, gpu_row) in gpu_lde.chunks(gpu_cols).enumerate() {
+                let cpu_row = view.current_row_ref();
+                let gpu_row = &gpu_row[..cpu_row.len()];
+                if cpu_row != gpu_row {
+                    dbg!(coset, row, cpu_row, gpu_row);
+                    error_count += 1;
+                    if error_count > 4 {
+                        panic!("too many errors");
+                    }
+                }
+                view.advance_row();
+            }
+        }
+        assert_eq!(error_count, 0);
+    }
+
+    pub(crate) fn compare_trace_trees<
+        A: GoodAllocator,
+        T: DerefMut<Target = DeviceSlice<Digest>>,
+    >(
+        cpu_trees: &[Blake2sU32MerkleTreeWithCap<A>],
+        gpu_trees: &[T],
+        log_lde_factor: u32,
+        log_tree_cap_size: u32,
+    ) {
+        let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+        let coset_tree_cap_size = 1 << log_coset_tree_cap_size;
+        for (coset, (cpu_tree, gpu_tree)) in cpu_trees.iter().zip(gpu_trees.iter()).enumerate() {
+            let cpu_leaf_hashes = &cpu_tree.leaf_hashes;
+            let leafs_count = cpu_tree.leaf_hashes.len();
+            assert_eq!(gpu_tree.len(), leafs_count << 1);
+            let mut h_tree = vec![Digest::default(); leafs_count << 1];
+            memory_copy(&mut h_tree, gpu_tree.deref()).unwrap();
+            let gpu_leaf_hashes = &h_tree[..leafs_count];
+            if cpu_leaf_hashes != gpu_leaf_hashes {
+                cpu_leaf_hashes
+                    .iter()
+                    .zip(gpu_leaf_hashes.iter())
+                    .enumerate()
+                    .for_each(|(i, (c, g))| {
+                        assert_eq!(c, g, "coset: {}, leaf: {}", coset, i);
+                    });
+            }
+            let cpu_cap = cpu_tree.get_cap().cap;
+            assert_eq!(cpu_cap.len(), coset_tree_cap_size);
+            let offset = (leafs_count - coset_tree_cap_size) << 1;
+            assert_eq!(cpu_cap, h_tree[offset..][..coset_tree_cap_size]);
+        }
+    }
+}

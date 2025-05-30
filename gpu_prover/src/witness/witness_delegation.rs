@@ -1,5 +1,6 @@
-use super::trace_delegation::{DelegationCircuitType, DelegationTraceDevice, DelegationTraceRaw};
+use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use super::BF;
+use crate::circuit_type::DelegationCircuitType;
 use crate::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
