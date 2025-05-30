@@ -1,0 +1,27 @@
+[package]
+name = "playground"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+cs = { workspace = true }
+fft = { workspace = true }
+field = { workspace = true }
+trace_holder = { workspace = true }
+prover = { workspace = true }
+trace_and_split = { workspace = true }
+execution_utils = { workspace = true }
+worker = { workspace = true }
+itertools = "0.14.0"
+gpu_prover = { workspace = true }
+rayon = "1.10.0"
+risc_v_simulator = { workspace = true, features = ["delegation"] }
+crossbeam-channel = "0.5.15"
+crossbeam-queue = "0.3.12"
+log = "0.4"
