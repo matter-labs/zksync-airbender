@@ -33,7 +33,7 @@ impl Default for ProverContextConfig {
 }
 
 pub trait ProverContext {
-    type HostAllocator: GoodAllocator;
+    type HostAllocator: GoodAllocator + 'static;
     type Allocation<T: Sync>: DerefMut<Target = DeviceSlice<T>> + CudaSliceMut<T> + Sync;
     fn is_host_allocator_initialized() -> bool;
     fn initialize_host_allocator(
