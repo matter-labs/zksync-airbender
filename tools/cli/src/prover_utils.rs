@@ -7,6 +7,7 @@ use execution_utils::{
     get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
+use prover_examples::gpu::get_prover_context;
 use trace_and_split::FinalRegisterValue;
 use verifier_common::parse_field_els_as_u32_checked;
 
@@ -412,14 +413,16 @@ pub fn create_proofs_internal(
                     let delegation_precomputations =
                         gpu_shared_state.cache.get_or_create_delegations();
 
-                    let context = prover_examples::gpu::create_default_prover_context();
+                    //let context = prover_examples::gpu::create_default_prover_context();
+                    let context = get_prover_context();
+
                     prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
                         num_instances,
                         &binary,
                         non_determinism_source,
                         &main_circuit_precomputations,
                         &delegation_precomputations,
-                        &context,
+                        &*context,
                         &worker,
                     )
                     .unwrap()
@@ -473,14 +476,15 @@ pub fn create_proofs_internal(
 
                     //                        setups::all_delegation_circuits_precomputations(&worker);
 
-                    let context = prover_examples::gpu::create_default_prover_context();
+                    //let context = prover_examples::gpu::create_default_prover_context();
+                    let context = get_prover_context();
                     prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
                         num_instances,
                         &binary,
                         non_determinism_source,
                         &main_circuit_precomputations,
                         &delegation_precomputations,
-                        &context,
+                        &*context,
                         &worker,
                     )
                     .unwrap()

@@ -75,6 +75,9 @@ pub struct MemPoolProverContext<'a> {
     _phantom: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for MemPoolProverContext<'a> {}
+unsafe impl<'a> Sync for MemPoolProverContext<'a> {}
+
 impl<'a> MemPoolProverContext<'a> {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         assert!(ConcurrentStaticHostAllocator::is_initialized_global());

@@ -59,6 +59,34 @@ pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
     prover_context
 }
 
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::sync::Once;
+
+static GLOBAL_PROVER_CONTEXT: Lazy<Mutex<MemPoolProverContext<'static>>> = Lazy::new(|| {
+    // initialize inside the lock
+    let ctx = {
+        if !MemPoolProverContext::is_host_allocator_initialized() {
+            MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22)
+                .expect("init host allocator");
+        }
+        // “leak” the config so it has 'static lifetime
+        let cfg: &'static ProverContextConfig = {
+            let mut b = Box::new(ProverContextConfig::default());
+            b.allocation_block_log_size = 22;
+            Box::leak(b)
+        };
+        MemPoolProverContext::new(cfg).expect("create prover context")
+    };
+    Mutex::new(ctx)
+});
+
+pub fn get_prover_context() -> std::sync::MutexGuard<'static, MemPoolProverContext<'static>> {
+    GLOBAL_PROVER_CONTEXT
+        .lock()
+        .expect("prover context mutex poisoned")
+}
+
 pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
     C: MachineConfig,

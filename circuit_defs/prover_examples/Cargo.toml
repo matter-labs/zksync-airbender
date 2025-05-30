@@ -19,6 +19,7 @@ serde_json = "*"
 bincode = { version = "1.3" }
 transpose = "0.2"
 itertools = { workspace = true }
+once_cell= { version = "1.21.3" }
 
 # dependencies for gpu
 gpu_prover = { path = " ../../../../gpu_prover", optional = true }
