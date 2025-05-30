@@ -1,0 +1,18 @@
+[package]
+name = "playground"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+prover = { workspace = true }
+execution_utils = { workspace = true }
+gpu_prover = { workspace = true }
+log = { workspace = true }
+env_logger = "0.11"
+itertools = "0.14"

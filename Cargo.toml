@@ -51,6 +51,7 @@ members = [
     "witness_eval_generator",
     "gpu_witness_eval_generator",
     "circuit_defs/machine_without_signed_mul_div",
+    "playground"
 ]
 
 default-members = [
