@@ -695,6 +695,12 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
             DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
         )>,
     >,
+    delegation_setups: Arc<
+        Vec<(
+            u32,
+            Arc<Vec<Mersenne31Field, ConcurrentStaticHostAllocator>>,
+        )>,
+    >,
     gpu_threads: &Vec<GpuThread>,
     worker: &Worker,
 ) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
@@ -847,9 +853,7 @@ where
         circuit_type: CircuitType::Main(MainCircuitType::RiscVCycles),
         lde_factor: setups::lde_factor_for_machine::<C>(),
         trace_len,
-        /*setup_evaluations: create_circuit_setup(
-            &risc_v_circuit_precomputations.setup.ldes[0].trace,
-        ),*/
+
         setup_evaluations: risc_v_setup.clone(),
         // make this into some Arc.
         compiled_circuit: risc_v_circuit_precomputations.compiled_circuit.clone(),
@@ -925,8 +929,13 @@ where
             circuit_type,
             lde_factor: prec.lde_factor,
             trace_len: circuit.trace_len,
-            // TODO: get this from outside.
-            setup_evaluations: Arc::new(create_circuit_setup(&prec.setup.ldes[0].trace)),
+            setup_evaluations: delegation_setups
+                .iter()
+                .find(|(el, _)| *el == delegation_type_id)
+                .map_or_else(
+                    || panic!("Delegation setup for type {} not found", delegation_type_id),
+                    |(_, setup)| setup.clone(),
+                ),
             compiled_circuit: prec.compiled_circuit.compiled_circuit.clone(),
         });
 

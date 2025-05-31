@@ -397,7 +397,7 @@ pub fn create_proofs_internal(
                         .get_or_create_main_circuit(&binary)
                         .clone();
                     let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations().clone();
+                        gpu_shared_state.cache.get_or_create_delegations();
 
                     if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
                         // MultiGPU case
@@ -407,7 +407,8 @@ pub fn create_proofs_internal(
                             non_determinism_source,
                             main_circuit_precomputations.0,
                             main_circuit_precomputations.1,
-                            delegation_precomputations,
+                            delegation_precomputations.0,
+                            delegation_precomputations.1,
                             &gpu_threads,
                             &worker,
                         )
@@ -420,7 +421,7 @@ pub fn create_proofs_internal(
                             &binary,
                             non_determinism_source,
                             &main_circuit_precomputations.0,
-                            &delegation_precomputations,
+                            &delegation_precomputations.0,
                             &context,
                             &worker,
                         )
@@ -471,7 +472,7 @@ pub fn create_proofs_internal(
                         .get_or_create_reduced_circuit(&binary)
                         .clone();
                     let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations().clone();
+                        gpu_shared_state.cache.get_or_create_delegations();
 
                     if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
                         // MultiGPU case
@@ -482,7 +483,8 @@ pub fn create_proofs_internal(
                             main_circuit_precomputations.0,
 
                             main_circuit_precomputations.1,
-                            delegation_precomputations,
+                            delegation_precomputations.0,
+                            delegation_precomputations.1,
                             &gpu_threads,
                             &worker,
                         )
@@ -495,7 +497,7 @@ pub fn create_proofs_internal(
                             &binary,
                             non_determinism_source,
                             &main_circuit_precomputations.0,
-                            &delegation_precomputations,
+                            &delegation_precomputations.0,
                             &context,
                             &worker,
                         )
