@@ -1,11 +1,24 @@
-use std::{ffi::CStr, thread, time::Duration};
+use std::{alloc::Global, ffi::CStr, thread, time::Duration};
 
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use era_cudart::{
     device::{get_device_count, get_device_properties, set_device},
     result::CudaResult,
 };
-use gpu_prover::prover::context::{MemPoolProverContext, ProverContext};
+use gpu_prover::{
+    allocator::host::ConcurrentStaticHostAllocator,
+    prover::context::{MemPoolProverContext, ProverContext},
+};
+use prover::{
+    prover_stages::Proof,
+    risc_v_simulator::{
+        abstractions::non_determinism::NonDeterminismCSRSource, cycle::MachineConfig,
+    },
+    worker::Worker,
+    VectorMemoryImplWithRom,
+};
+use setups::{DelegationCircuitPrecomputations, MainCircuitPrecomputations};
+use trace_and_split::FinalRegisterValue;
 
 use crate::gpu::create_default_prover_context;
 
@@ -121,4 +134,29 @@ impl GpuThread {
 
         tx
     }
+}
+
+pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
+    ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+    C: MachineConfig,
+>(
+    num_instances_upper_bound: usize,
+    bytecode: &[u32],
+    non_determinism: ND,
+    risc_v_circuit_precomputations: &MainCircuitPrecomputations<
+        C,
+        Global,
+        ConcurrentStaticHostAllocator,
+    >,
+    delegation_circuits_precomputations: &[(
+        u32,
+        DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
+    )],
+    gpu_threads: &Vec<GpuThread>,
+    worker: &Worker,
+) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
+where
+    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
+{
+    todo!()
 }

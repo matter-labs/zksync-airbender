@@ -336,6 +336,8 @@ fn should_stop_recursion(proof_metadata: &ProofMetadata) -> bool {
 pub struct GpuSharedState {
     #[cfg(feature = "gpu")]
     pub cache: SetupCache<Global, prover_examples::gpu::ConcurrentStaticHostAllocator>,
+    #[cfg(feature = "gpu")]
+    pub gpu_threads: Option<Vec<prover_examples::multigpu::GpuThread>>,
 }
 
 #[cfg(feature = "gpu")]
@@ -349,6 +351,16 @@ impl GpuSharedState {
             .get_or_create_reduced_circuit(&get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER));
         self.cache.get_or_create_delegations();
         println!("Creating setup took {:?}", now.elapsed());
+    }
+
+    pub fn enable_multigpu(&mut self) {
+        use prover_examples::multigpu::GpuThread;
+        if self.gpu_threads.is_some() {
+            panic!("GPU threads already initialized.");
+        }
+        let mut gpu_threads = GpuThread::init_multigpu().expect("Failed to initialize GPU threads");
+        GpuThread::start_multigpu(&mut gpu_threads);
+        self.gpu_threads = Some(gpu_threads);
     }
 }
 
@@ -387,17 +399,32 @@ pub fn create_proofs_internal(
                     let delegation_precomputations =
                         gpu_shared_state.cache.get_or_create_delegations();
 
-                    let context = prover_examples::gpu::create_default_prover_context();
-                    prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &context,
-                        &worker,
-                    )
-                    .unwrap()
+                    if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
+                        // MultiGPU case
+                        prover_examples::multigpu::multigpu_prove_image_execution_for_machine_with_gpu_tracers(
+                            num_instances,
+                            &binary,
+                            non_determinism_source,
+                            &main_circuit_precomputations,
+                            &delegation_precomputations,
+                            &gpu_threads,
+                            &worker,
+                        )
+                        .unwrap()
+                    } else {
+                        // Single GPU with a local context (slower)
+                        let context = prover_examples::gpu::create_default_prover_context();
+                        prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
+                            num_instances,
+                            &binary,
+                            non_determinism_source,
+                            &main_circuit_precomputations,
+                            &delegation_precomputations,
+                            &context,
+                            &worker,
+                        )
+                        .unwrap()
+                    }
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -442,23 +469,35 @@ pub fn create_proofs_internal(
                         .cache
                         .get_or_create_reduced_circuit(&binary)
                         .clone();
-                    //setups::get_reduced_riscv_circuit_setup(&binary, &worker);
                     let delegation_precomputations =
                         gpu_shared_state.cache.get_or_create_delegations();
 
-                    //                        setups::all_delegation_circuits_precomputations(&worker);
-
-                    let context = prover_examples::gpu::create_default_prover_context();
-                    prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &context,
-                        &worker,
-                    )
-                    .unwrap()
+                    if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
+                        // MultiGPU case
+                        prover_examples::multigpu::multigpu_prove_image_execution_for_machine_with_gpu_tracers(
+                            num_instances,
+                            &binary,
+                            non_determinism_source,
+                            &main_circuit_precomputations,
+                            &delegation_precomputations,
+                            &gpu_threads,
+                            &worker,
+                        )
+                        .unwrap()
+                    } else {
+                        // Single GPU with a local context (slower)
+                        let context = prover_examples::gpu::create_default_prover_context();
+                        prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
+                            num_instances,
+                            &binary,
+                            non_determinism_source,
+                            &main_circuit_precomputations,
+                            &delegation_precomputations,
+                            &context,
+                            &worker,
+                        )
+                        .unwrap()
+                    }
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
