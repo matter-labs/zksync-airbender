@@ -809,6 +809,9 @@ where
 
     // now prove one by one
     let mut main_proofs = vec![];
+
+    let mut main_proofs_responses = vec![];
+
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
         let (resp_tx, resp_rx) = bounded::<CudaResult<Proof>>(1);
 
@@ -842,23 +845,7 @@ where
             .send_job(GpuJob::ProveMainCircuit(request))
             .unwrap();
 
-        // TODO: this wait could be also done later.
-        let gpu_proof = resp_rx.recv().unwrap()?;
-        memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
-        delegation_argument_sum.add_assign(&gpu_proof.delegation_argument_accumulator.unwrap());
-
-        aux_memory_trees.push(gpu_proof.memory_tree_caps.clone());
-
-        main_proofs.push(gpu_proof);
-    }
-
-    if main_circuits_witness_len > 0 {
-        println!(
-            "=== Total proving time: {:?} for {} circuits - avg: {:?}",
-            total_proving_start.elapsed(),
-            main_circuits_witness_len,
-            total_proving_start.elapsed() / main_circuits_witness_len.try_into().unwrap()
-        )
+        main_proofs_responses.push(resp_rx);
     }
 
     // all the same for delegation circuit
@@ -866,6 +853,9 @@ where
     let mut delegation_proofs = vec![];
     let delegation_proving_start = std::time::Instant::now();
     let mut delegation_proofs_count = 0u32;
+
+    let mut proving_jobs: HashMap<_, _, RandomState> = HashMap::default();
+
     // commit memory trees
     for delegation_type in delegation_types.iter().cloned() {
         let els = &delegation_circuits_witness[&delegation_type];
@@ -900,9 +890,6 @@ where
             setup_start.elapsed()
         );
 
-        let mut per_tree_set = vec![];
-
-        let mut per_delegation_type_proofs = vec![];
         for (_circuit_idx, el) in els.iter().enumerate() {
             delegation_proofs_count += 1;
 
@@ -924,6 +911,40 @@ where
                 .send_job(GpuJob::ProveDelegationCircuit(request))
                 .unwrap();
 
+            proving_jobs
+                .entry(delegation_type)
+                .or_insert_with(Vec::new)
+                .push(resp_rx);
+        }
+    }
+
+    for resp_rx in main_proofs_responses {
+        // TODO: this wait could be also done later.
+        let gpu_proof = resp_rx.recv().unwrap()?;
+        memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
+        delegation_argument_sum.add_assign(&gpu_proof.delegation_argument_accumulator.unwrap());
+
+        aux_memory_trees.push(gpu_proof.memory_tree_caps.clone());
+
+        main_proofs.push(gpu_proof);
+    }
+
+    if main_circuits_witness_len > 0 {
+        println!(
+            "=== Total (async) proving time: {:?} for {} circuits - avg: {:?}",
+            total_proving_start.elapsed(),
+            main_circuits_witness_len,
+            total_proving_start.elapsed() / main_circuits_witness_len.try_into().unwrap()
+        )
+    }
+
+    for delegation_type in delegation_types.iter().cloned() {
+        let delegation_type_id = delegation_type as u32;
+
+        let mut per_tree_set = vec![];
+        let mut per_delegation_type_proofs = vec![];
+
+        for resp_rx in proving_jobs.remove(&delegation_type).unwrap() {
             // TODO: this wait could be also done later.
             let gpu_proof = resp_rx.recv().unwrap()?;
 
@@ -941,7 +962,7 @@ where
 
     if delegation_proofs_count > 0 {
         println!(
-            "=== Total delegation proving time: {:?} for {} circuits - avg: {:?}",
+            "=== Total (async) delegation proving time: {:?} for {} circuits - avg: {:?}",
             delegation_proving_start.elapsed(),
             delegation_proofs_count,
             delegation_proving_start.elapsed() / delegation_proofs_count
