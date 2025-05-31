@@ -158,6 +158,10 @@ const ALL_LAYOUTS: &[(
         "final_reduced_risc_v_machine",
     ),
     (
+        create_machine_without_signed_mul_div_layout_with_delegation,
+        "machine_without_signed_mul_div",
+    ),
+    (
         create_blake_with_compression_delegation_layout,
         "blake2_with_compression",
     ),
@@ -165,11 +169,6 @@ const ALL_LAYOUTS: &[(
         create_bigint_with_control_delegation_layout,
         "bigint_with_control",
     ),
-    // (create_blake_delegation_layout, "blake2_single_round"),
-    // (
-    //     create_poseidon2_delegation_layout,
-    //     "poseidon2_compression_with_witness",
-    // ),
 ];
 
 fn main() {

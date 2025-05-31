@@ -49,6 +49,7 @@ members = [
     "circuit_defs/bigint_with_control",
     "witness_eval_generator",
     "gpu_witness_eval_generator",
+    "circuit_defs/machine_without_signed_mul_div",
 ]
 
 default-members = [
@@ -110,6 +111,7 @@ circuit_common = { path = "./circuit_defs/circuit_common" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
 risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
+machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
 reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }
 final_reduced_risc_v_machine = {path = "./circuit_defs/final_reduced_risc_v_machine"}
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
