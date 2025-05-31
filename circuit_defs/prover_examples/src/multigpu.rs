@@ -15,6 +15,7 @@ use gpu_prover::{
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
     witness::{
+        trace_delegation::DelegationTraceHost,
         trace_main::{
             get_aux_arguments_boundary_values, MainCircuitType, MainTraceHost,
             ShuffleRamSetupAndTeardownHost,
@@ -49,6 +50,7 @@ use crate::{
 pub enum GpuJob {
     ComputeSomething(u32),
     MainCircuitMemoryCommit(MainCircuitMemoryCommitRequest),
+    DelegationCircuitMemoryCommit(DelegationCircuitMemoryCommitRequest),
     Shutdown,
 }
 
@@ -57,6 +59,14 @@ pub struct MainCircuitMemoryCommitRequest {
     trace_len: usize,
     setup_and_teardown: Option<ShuffleRamSetupAndTeardownHost<ConcurrentStaticHostAllocator>>,
     witness_chunk: MainTraceHost<ConcurrentStaticHostAllocator>,
+    circuit_type: CircuitType,
+    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+    pub reply_to: Sender<CudaResult<Vec<MerkleTreeCapVarLength>>>,
+}
+
+pub struct DelegationCircuitMemoryCommitRequest {
+    lde_factor: usize,
+    witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
     circuit_type: CircuitType,
     compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
     pub reply_to: Sender<CudaResult<Vec<MerkleTreeCapVarLength>>>,
@@ -175,6 +185,26 @@ impl GpuThread {
 
                             println!("[GPU {}] Finished MainCircuitMemoryCommit.", device_id);
                         }
+                        GpuJob::DelegationCircuitMemoryCommit(request) => {
+                            println!(
+                                "[GPU {}] Received DelegationCircuitMemoryCommit request",
+                                device_id
+                            );
+                            let result = GpuThread::compute_delegation_circuit_memory_commit(
+                                request.lde_factor,        // lde_factor
+                                request.witness_chunk,     // witness_chunk
+                                request.circuit_type,      // circuit_type
+                                &request.compiled_circuit, // compiled_circuit
+                                &context,                  // prover_context
+                            );
+
+                            request.reply_to.send(result).unwrap();
+
+                            println!(
+                                "[GPU {}] Finished DelegationCircuitMemoryCommit.",
+                                device_id
+                            );
+                        }
                     },
                     Err(TryRecvError::Empty) => {
                         // No message right now → just loop again immediately.
@@ -230,6 +260,57 @@ impl GpuThread {
         };
         Ok(gpu_caps)
     }
+
+    fn compute_delegation_circuit_memory_commit(
+        lde_factor: usize,
+        witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
+        circuit_type: CircuitType,
+        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+        prover_context: &MemPoolProverContext<'_>,
+    ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
+        let gpu_caps = {
+            let trace_len = compiled_circuit.trace_len;
+
+            let log_lde_factor = lde_factor.trailing_zeros();
+            let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize]
+                .total_caps_size_log2 as u32;
+
+            let data = TracingDataHost::Delegation(witness_chunk);
+
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+            transfer.schedule_transfer(prover_context)?;
+            let job = commit_memory(
+                transfer,
+                compiled_circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                prover_context,
+            )?;
+            job.finish()?
+        };
+        Ok(gpu_caps)
+    }
+}
+
+pub struct GpuThreadManager<'a> {
+    pub gpu_threads: &'a Vec<GpuThread>,
+    pub current: usize,
+}
+
+impl<'a> GpuThreadManager<'a> {
+    pub fn send_job(&mut self, job: GpuJob) -> Result<(), TryRecvError> {
+        if self.gpu_threads.is_empty() {
+            return Err(TryRecvError::Disconnected);
+        }
+
+        let gpu_thread = &self.gpu_threads[self.current];
+        gpu_thread.send_job(job)?;
+
+        // Round-robin to the next GPU thread.
+        self.current = (self.current + 1) % self.gpu_threads.len();
+
+        Ok(())
+    }
 }
 
 pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
@@ -254,6 +335,10 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
 where
     [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
 {
+    let mut gpu_manager = GpuThreadManager {
+        gpu_threads,
+        current: 0,
+    };
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -306,7 +391,7 @@ where
             reply_to: resp_tx,
         };
 
-        gpu_threads[0]
+        gpu_manager
             .send_job(GpuJob::MainCircuitMemoryCommit(request))
             .unwrap();
 
@@ -314,12 +399,6 @@ where
         let gpu_caps = resp_rx.recv().unwrap()?;
         memory_trees.push(gpu_caps);
     }
-
-    // REMOVE REMOVE
-    set_device(1).unwrap();
-    let prover_context_val = create_default_prover_context();
-    let prover_context = &prover_context_val;
-    // REMOVE REMOVE
 
     // same for delegation circuits
     let mut delegation_memory_trees = vec![];
@@ -337,33 +416,35 @@ where
         let prec = &delegation_circuits_precomputations[idx].1;
         let mut per_tree_set = vec![];
         for el in els.iter() {
-            let gpu_caps = {
-                let circuit = &prec.compiled_circuit.compiled_circuit;
-                let trace_len = circuit.trace_len;
-                let lde_factor = prec.lde_factor;
-                let log_lde_factor = lde_factor.trailing_zeros();
-                let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES
-                    [trace_len.trailing_zeros() as usize]
-                    .total_caps_size_log2 as u32;
-                let trace = el.clone();
-                let data = TracingDataHost::Delegation(trace);
-                let circuit_type = CircuitType::Delegation(delegation_type);
-                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
-                transfer.schedule_transfer(prover_context)?;
-                let job = commit_memory(
-                    transfer,
-                    &circuit,
-                    log_lde_factor,
-                    log_tree_cap_size,
-                    prover_context,
-                )?;
-                job.finish()?
+            let (resp_tx, resp_rx) = bounded::<CudaResult<Vec<MerkleTreeCapVarLength>>>(1);
+
+            let request = DelegationCircuitMemoryCommitRequest {
+                lde_factor: prec.lde_factor,
+                witness_chunk: el.clone(),
+                circuit_type: CircuitType::Delegation(delegation_type),
+                // TODO: this is the only one that is being copied around.. in the future - maybe Arc?
+                compiled_circuit: prec.compiled_circuit.compiled_circuit.clone(),
+                reply_to: resp_tx,
             };
+
+            gpu_manager
+                .send_job(GpuJob::DelegationCircuitMemoryCommit(request))
+                .unwrap();
+
+            // TODO: this wait could be also done later.
+            let gpu_caps = resp_rx.recv().unwrap()?;
+
             per_tree_set.push(gpu_caps);
         }
 
         delegation_memory_trees.push((delegation_type_id, per_tree_set));
     }
+
+    // REMOVE REMOVE
+    set_device(1).unwrap();
+    let prover_context_val = create_default_prover_context();
+    let prover_context = &prover_context_val;
+    // REMOVE REMOVE
 
     let setup_caps = DefaultTreeConstructor::dump_caps(&risc_v_circuit_precomputations.setup.trees);
 
