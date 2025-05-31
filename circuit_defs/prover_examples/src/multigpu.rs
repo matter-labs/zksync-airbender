@@ -132,7 +132,7 @@ pub struct SetSetupRequest {
     lde_factor: usize,
     trace_len: usize,
     // TODO: change into some Arc.
-    setup_evaluations: Vec<Mersenne31Field, ConcurrentStaticHostAllocator>,
+    setup_evaluations: Arc<Vec<Mersenne31Field, ConcurrentStaticHostAllocator>>,
     compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
 }
 
@@ -454,7 +454,7 @@ impl GpuThread {
     fn set_circuit_setup<'a>(
         lde_factor: usize,
         trace_len: usize,
-        setup_evaluations: Vec<Mersenne31Field, ConcurrentStaticHostAllocator>,
+        setup_evaluations: Arc<Vec<Mersenne31Field, ConcurrentStaticHostAllocator>>,
         compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
         prover_context: &MemPoolProverContext<'a>,
     ) -> CudaResult<SetupPrecomputations<'a, MemPoolProverContext<'a>>> {
@@ -470,7 +470,7 @@ impl GpuThread {
                 log_tree_cap_size,
                 prover_context,
             )?;
-            setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+            setup.schedule_transfer(setup_evaluations, prover_context)?;
             setup
         };
 
@@ -659,6 +659,12 @@ impl<'a> GpuThreadManager<'a> {
 pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
     setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
 ) -> Vec<Mersenne31Field, B> {
+    // TODO: put it all in a single method.
+    // TODO: currently allocating 20 GB - do better management.
+    if !MemPoolProverContext::is_host_allocator_initialized() {
+        // allocate 4 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
+        MemPoolProverContext::initialize_host_allocator(20, 1 << 8, 22).unwrap();
+    }
     let mut setup_evaluations =
         Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());
     unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
@@ -682,6 +688,7 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
     risc_v_circuit_precomputations: Arc<
         MainCircuitPrecomputations<C, Global, ConcurrentStaticHostAllocator>,
     >,
+    risc_v_setup: Arc<Vec<Mersenne31Field, ConcurrentStaticHostAllocator>>,
     delegation_circuits_precomputations: Arc<
         Vec<(
             u32,
@@ -840,9 +847,11 @@ where
         circuit_type: CircuitType::Main(MainCircuitType::RiscVCycles),
         lde_factor: setups::lde_factor_for_machine::<C>(),
         trace_len,
-        setup_evaluations: create_circuit_setup(
+        /*setup_evaluations: create_circuit_setup(
             &risc_v_circuit_precomputations.setup.ldes[0].trace,
-        ),
+        ),*/
+        setup_evaluations: risc_v_setup.clone(),
+        // make this into some Arc.
         compiled_circuit: risc_v_circuit_precomputations.compiled_circuit.clone(),
     });
 
@@ -916,7 +925,8 @@ where
             circuit_type,
             lde_factor: prec.lde_factor,
             trace_len: circuit.trace_len,
-            setup_evaluations: create_circuit_setup(&prec.setup.ldes[0].trace),
+            // TODO: get this from outside.
+            setup_evaluations: Arc::new(create_circuit_setup(&prec.setup.ldes[0].trace)),
             compiled_circuit: prec.compiled_circuit.compiled_circuit.clone(),
         });
 
