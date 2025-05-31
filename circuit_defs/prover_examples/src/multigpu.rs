@@ -128,9 +128,7 @@ pub struct GpuThread {
 
 impl GpuThread {
     pub fn init_multigpu() -> CudaResult<Vec<GpuThread>> {
-        // REMOVE REMOVE - temporary hack.
-        let device_count = 1;
-        //let device_count = get_device_count()?;
+        let device_count = get_device_count()?;
         let mut gpu_threads = Vec::with_capacity(device_count as usize);
         for device_id in 0..device_count {
             let gpu_thread = GpuThread::new(device_id)?;
