@@ -2,7 +2,7 @@ use std::{
     alloc::{Allocator, Global},
     collections::{HashMap, HashSet},
     ffi::CStr,
-    hash::RandomState,
+    hash::{Hash, RandomState},
     sync::Arc,
     thread,
     time::Duration,
@@ -740,7 +740,7 @@ where
 
     let (num_paddings, inits_and_teardowns) = inits_and_teardowns;
 
-    let mut memory_trees = vec![];
+    let mut memory_tree_requests = vec![];
     // commit memory trees
     for (circuit_sequence, witness_chunk) in main_circuits_witness.iter().enumerate() {
         let (resp_tx, resp_rx) = bounded::<CudaResult<Vec<MerkleTreeCapVarLength>>>(1);
@@ -764,16 +764,15 @@ where
             .send_job(GpuJob::MainCircuitMemoryCommit(request))
             .unwrap();
 
-        // TODO: this wait could be also done later.
-        let gpu_caps = resp_rx.recv().unwrap()?;
-        memory_trees.push(gpu_caps);
+        memory_tree_requests.push(resp_rx);
     }
 
     // same for delegation circuits
-    let mut delegation_memory_trees = vec![];
 
     let mut delegation_types: Vec<_> = delegation_circuits_witness.keys().copied().collect();
     delegation_types.sort();
+
+    let mut delegation_memory_trees_requests = HashMap::new();
 
     for delegation_type in delegation_types.iter().cloned() {
         let els = &delegation_circuits_witness[&delegation_type];
@@ -783,7 +782,6 @@ where
             .position(|el| el.0 == delegation_type_id)
             .unwrap();
         let prec = &delegation_circuits_precomputations[idx].1;
-        let mut per_tree_set = vec![];
         for el in els.iter() {
             let (resp_tx, resp_rx) = bounded::<CudaResult<Vec<MerkleTreeCapVarLength>>>(1);
 
@@ -800,12 +798,33 @@ where
                 .send_job(GpuJob::DelegationCircuitMemoryCommit(request))
                 .unwrap();
 
-            // TODO: this wait could be also done later.
-            let gpu_caps = resp_rx.recv().unwrap()?;
+            delegation_memory_trees_requests
+                .entry(delegation_type_id)
+                .or_insert_with(Vec::new)
+                .push(resp_rx);
+        }
+    }
 
+    // Now pick up the results.
+
+    let mut memory_trees = vec![];
+    for resp_rx in memory_tree_requests.into_iter() {
+        let gpu_caps = resp_rx.recv().unwrap()?;
+        memory_trees.push(gpu_caps);
+    }
+
+    let mut delegation_memory_trees = vec![];
+    for delegation_type in delegation_types.iter().cloned() {
+        let delegation_type_id = delegation_type as u32;
+        let mut per_tree_set = vec![];
+
+        for resp_rx in delegation_memory_trees_requests
+            .remove(&delegation_type_id)
+            .unwrap()
+        {
+            let gpu_caps = resp_rx.recv().unwrap()?;
             per_tree_set.push(gpu_caps);
         }
-
         delegation_memory_trees.push((delegation_type_id, per_tree_set));
     }
 
