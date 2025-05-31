@@ -70,7 +70,9 @@ pub struct GpuThread {
 
 impl GpuThread {
     pub fn init_multigpu() -> CudaResult<Vec<GpuThread>> {
-        let device_count = get_device_count()?;
+        // REMOVE REMOVE - temporary hack.
+        let device_count = 1;
+        //let device_count = get_device_count()?;
         let mut gpu_threads = Vec::with_capacity(device_count as usize);
         for device_id in 0..device_count {
             let gpu_thread = GpuThread::new(device_id)?;
@@ -100,7 +102,6 @@ impl GpuThread {
 
     /// Creates a new GPU thread.
     pub fn new(device_id: i32) -> CudaResult<Self> {
-        //set_device(device_id)?;
         let props = get_device_properties(device_id)?;
         let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
         println!(
@@ -309,43 +310,17 @@ where
             .send_job(GpuJob::MainCircuitMemoryCommit(request))
             .unwrap();
 
+        // TODO: this wait could be also done later.
         let gpu_caps = resp_rx.recv().unwrap()?;
-
-        /*
-        let gpu_caps = {
-            let lde_factor = setups::lde_factor_for_machine::<C>();
-            let log_lde_factor = lde_factor.trailing_zeros();
-            let log_domain_size = trace_len.trailing_zeros();
-            let log_tree_cap_size =
-                OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-            let setup_and_teardown = if circuit_sequence < num_paddings {
-                None
-            } else {
-                Some(inits_and_teardowns[circuit_sequence - num_paddings].clone())
-            };
-            let trace = witness_chunk.clone();
-            let data = TracingDataHost::Main {
-                setup_and_teardown,
-                trace,
-            };
-
-            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
-            transfer.schedule_transfer(prover_context)?;
-            let job = commit_memory(
-                transfer,
-                &risc_v_circuit_precomputations.compiled_circuit,
-                log_lde_factor,
-                log_tree_cap_size,
-                prover_context,
-            )?;
-            job.finish()?
-        };*/
-
         memory_trees.push(gpu_caps);
     }
 
-    todo!();
-    /*
+    // REMOVE REMOVE
+    set_device(1).unwrap();
+    let prover_context_val = create_default_prover_context();
+    let prover_context = &prover_context_val;
+    // REMOVE REMOVE
+
     // same for delegation circuits
     let mut delegation_memory_trees = vec![];
 
@@ -433,7 +408,7 @@ where
         let setup_row_major = &risc_v_circuit_precomputations.setup.ldes[0].trace;
         let mut setup_evaluations = Vec::with_capacity_in(
             setup_row_major.as_slice().len(),
-            P::HostAllocator::default(),
+            ConcurrentStaticHostAllocator::default(),
         );
         unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
         transpose::transpose(
@@ -552,7 +527,7 @@ where
             let setup_row_major = &prec.setup.ldes[0].trace;
             let mut setup_evaluations = Vec::with_capacity_in(
                 setup_row_major.as_slice().len(),
-                P::HostAllocator::default(),
+                ConcurrentStaticHostAllocator::default(),
             );
             unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
             transpose::transpose(
@@ -645,5 +620,5 @@ where
 
     assert_eq!(aux_memory_challenges_seed, memory_challenges_seed);
 
-    Ok((main_proofs, delegation_proofs, final_register_values))*/
+    Ok((main_proofs, delegation_proofs, final_register_values))
 }
