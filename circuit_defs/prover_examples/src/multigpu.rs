@@ -1,5 +1,6 @@
 use std::{
     alloc::{Allocator, Global},
+    collections::HashSet,
     ffi::CStr,
     sync::Arc,
     thread,
@@ -34,8 +35,8 @@ use prover::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
         ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
     },
-    fft::GoodAllocator,
-    field::{Field, Mersenne31Field, Mersenne31Quartic},
+    fft::{GoodAllocator, LdePrecomputations, Twiddles},
+    field::{Field, Mersenne31Complex, Mersenne31Field, Mersenne31Quartic},
     merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength, MerkleTreeConstructor},
     prover_stages::Proof,
     risc_v_simulator::{
@@ -59,6 +60,8 @@ pub enum GpuJob {
     ComputeSomething(u32),
     MainCircuitMemoryCommit(MainCircuitMemoryCommitRequest),
     DelegationCircuitMemoryCommit(DelegationCircuitMemoryCommitRequest),
+    SetMainSetup(SetMainSetupRequest),
+    ProveMainCircuit(ProveMainCircuitRequest),
     Shutdown,
 }
 
@@ -78,6 +81,29 @@ pub struct DelegationCircuitMemoryCommitRequest {
     circuit_type: CircuitType,
     compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
     pub reply_to: Sender<CudaResult<Vec<MerkleTreeCapVarLength>>>,
+}
+
+pub struct ProveMainCircuitRequest {
+    lde_factor: usize,
+    circuit_sequence: usize,
+    aux_boundary_values: AuxArgumentsBoundaryValues,
+    setup_and_teardown: Option<ShuffleRamSetupAndTeardownHost<ConcurrentStaticHostAllocator>>,
+    witness_chunk: MainTraceHost<ConcurrentStaticHostAllocator>,
+    circuit_type: CircuitType,
+    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+    external_challenges: ExternalChallenges,
+    twiddles: Twiddles<Mersenne31Complex, Global>,
+    lde_precomputations: LdePrecomputations<Global>,
+    pub reply_to: Sender<CudaResult<Proof>>,
+}
+
+#[derive(Clone)]
+pub struct SetMainSetupRequest {
+    lde_factor: usize,
+    trace_len: usize,
+    // TODO: change into some Arc.
+    setup_evaluations: Vec<Mersenne31Field, ConcurrentStaticHostAllocator>,
+    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
 }
 
 /// Thread that is responsible for running all computation on a single gpu.
@@ -158,6 +184,9 @@ impl GpuThread {
             set_device(device_id).unwrap();
             let context = create_default_prover_context();
 
+            // TODO: be smart about drop or re-use.
+            let mut gpu_setup_main = None;
+
             println!("[GPU {}] GPU context ready.", device_id);
             loop {
                 match rx.try_recv() {
@@ -212,6 +241,43 @@ impl GpuThread {
                                 "[GPU {}] Finished DelegationCircuitMemoryCommit.",
                                 device_id
                             );
+                        }
+
+                        GpuJob::SetMainSetup(request) => {
+                            println!("[GPU {}] Received SetMainSetup request", device_id);
+                            gpu_setup_main = Some(
+                                GpuThread::set_main_setup(
+                                    request.lde_factor,        // lde_factor
+                                    request.trace_len,         // trace_len
+                                    request.setup_evaluations, // setup_evaluations
+                                    &request.compiled_circuit, // compiled_circuit
+                                    &context,                  // prover_context
+                                )
+                                .unwrap(),
+                            );
+                            println!("[GPU {}] Finished SetMainSetup.", device_id);
+                        }
+                        GpuJob::ProveMainCircuit(request) => {
+                            let mut gpu_setup_main_ref = gpu_setup_main.as_mut().unwrap();
+                            println!("[GPU {}] Received ProveMainCircuit request", device_id);
+                            let result = GpuThread::prove_main_circuit(
+                                request.lde_factor,       // lde_factor
+                                request.circuit_sequence, // trace_len
+                                request.setup_and_teardown,
+                                request.aux_boundary_values, // setup_and_teardown
+                                request.witness_chunk,       // witness_chunk
+                                request.circuit_type,        // circuit_type
+                                &request.compiled_circuit,   // compiled_circuit
+                                request.external_challenges,
+                                &request.twiddles,
+                                &request.lde_precomputations,
+                                &context, // prover_context
+                                &mut gpu_setup_main_ref,
+                            );
+
+                            request.reply_to.send(result).unwrap();
+
+                            println!("[GPU {}] Finished ProveMainCircuit.", device_id);
                         }
                     },
                     Err(TryRecvError::Empty) => {
@@ -298,26 +364,127 @@ impl GpuThread {
         };
         Ok(gpu_caps)
     }
+
+    fn set_main_setup<'a>(
+        lde_factor: usize,
+        trace_len: usize,
+        setup_evaluations: Vec<Mersenne31Field, ConcurrentStaticHostAllocator>,
+        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+        prover_context: &MemPoolProverContext<'a>,
+    ) -> CudaResult<SetupPrecomputations<'a, MemPoolProverContext<'a>>> {
+        let gpu_setup_main = {
+            let log_lde_factor = lde_factor.trailing_zeros();
+            let log_domain_size = trace_len.trailing_zeros();
+            let log_tree_cap_size =
+                OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+
+            let mut setup = SetupPrecomputations::new(
+                compiled_circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                prover_context,
+            )?;
+            setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+            setup
+        };
+
+        Ok(gpu_setup_main)
+    }
+
+    fn prove_main_circuit<'a>(
+        lde_factor: usize,
+        circuit_sequence: usize,
+        setup_and_teardown: Option<ShuffleRamSetupAndTeardownHost<ConcurrentStaticHostAllocator>>,
+        aux_boundary_values: AuxArgumentsBoundaryValues,
+        witness_chunk: MainTraceHost<ConcurrentStaticHostAllocator>,
+        circuit_type: CircuitType,
+        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+        external_challenges: ExternalChallenges,
+        twiddles: &Twiddles<Mersenne31Complex, Global>,
+        lde_precomputations: &LdePrecomputations<Global>,
+        prover_context: &MemPoolProverContext<'a>,
+        gpu_setup_main: &mut SetupPrecomputations<'a, MemPoolProverContext<'a>>,
+    ) -> CudaResult<Proof> {
+        let gpu_proof = {
+            let data = TracingDataHost::Main {
+                setup_and_teardown,
+                trace: witness_chunk.into(),
+            };
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+            transfer.schedule_transfer(prover_context)?;
+            let external_values = ExternalValues {
+                challenges: external_challenges,
+                aux_boundary_values,
+            };
+            let job = gpu_prover::prover::proof::prove(
+                compiled_circuit,
+                external_values,
+                gpu_setup_main,
+                transfer,
+                twiddles,
+                lde_precomputations,
+                circuit_sequence,
+                None,
+                lde_factor,
+                NUM_QUERIES,
+                POW_BITS,
+                None,
+                prover_context,
+            )?;
+            job.finish()?
+        };
+        Ok(gpu_proof)
+    }
 }
 
 pub struct GpuThreadManager<'a> {
     pub gpu_threads: &'a Vec<GpuThread>,
     pub current: usize,
+    pub threads_with_main_setup: HashSet<usize>,
+    pub main_setup_request: Option<SetMainSetupRequest>,
 }
 
 impl<'a> GpuThreadManager<'a> {
+    pub fn new(gpu_threads: &'a Vec<GpuThread>) -> Self {
+        Self {
+            gpu_threads,
+            current: 0,
+            threads_with_main_setup: HashSet::new(),
+            main_setup_request: None,
+        }
+    }
     pub fn send_job(&mut self, job: GpuJob) -> Result<(), TryRecvError> {
         if self.gpu_threads.is_empty() {
             return Err(TryRecvError::Disconnected);
         }
 
         let gpu_thread = &self.gpu_threads[self.current];
+
+        match job {
+            GpuJob::ProveMainCircuit(_) => {
+                if !self.threads_with_main_setup.contains(&self.current) {
+                    if let Some(main_setup_request) = self.main_setup_request.clone() {
+                        // We have to pass the new setup to the device.
+                        println!("Sending main setup to GPU thread {}", self.current);
+                        gpu_thread.send_job(GpuJob::SetMainSetup(main_setup_request))?;
+                        self.threads_with_main_setup.insert(self.current);
+                    }
+                }
+            }
+            _ => {}
+        }
+
         gpu_thread.send_job(job)?;
 
         // Round-robin to the next GPU thread.
         self.current = (self.current + 1) % self.gpu_threads.len();
 
         Ok(())
+    }
+
+    pub fn set_main_setup(&mut self, setup_request: SetMainSetupRequest) {
+        self.threads_with_main_setup.clear();
+        self.main_setup_request = Some(setup_request);
     }
 }
 
@@ -359,10 +526,7 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
 where
     [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
 {
-    let mut gpu_manager = GpuThreadManager {
-        gpu_threads,
-        current: 0,
-    };
+    let mut gpu_manager = GpuThreadManager::new(gpu_threads);
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -509,76 +673,54 @@ where
 
     let main_circuits_witness_len = main_circuits_witness.len();
 
-    let mut gpu_setup_main = {
-        let setup_evaluations =
-            create_circuit_setup(&risc_v_circuit_precomputations.setup.ldes[0].trace);
-        let circuit = &risc_v_circuit_precomputations.compiled_circuit;
-        let lde_factor = setups::lde_factor_for_machine::<C>();
-        let log_lde_factor = lde_factor.trailing_zeros();
-        let log_domain_size = trace_len.trailing_zeros();
-        let log_tree_cap_size =
-            OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-        println!(
-            "Setup beforetransfer took {:?}",
-            total_proving_start.elapsed()
-        );
-        println!("Setup length: {}", setup_evaluations.len());
-
-        let mut setup =
-            SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, prover_context)?;
-        setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
-        setup
-    };
+    gpu_manager.set_main_setup(SetMainSetupRequest {
+        lde_factor: setups::lde_factor_for_machine::<C>(),
+        trace_len,
+        setup_evaluations: create_circuit_setup(
+            &risc_v_circuit_precomputations.setup.ldes[0].trace,
+        ),
+        compiled_circuit: risc_v_circuit_precomputations.compiled_circuit.clone(),
+    });
 
     println!("Setup took {:?}", total_proving_start.elapsed());
 
     // now prove one by one
     let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
-        let gpu_proof = {
-            let lde_factor = setups::lde_factor_for_machine::<C>();
-            let circuit = &risc_v_circuit_precomputations.compiled_circuit;
-            let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
-                (None, AuxArgumentsBoundaryValues::default())
-            } else {
-                let shuffle_rams = &inits_and_teardowns[circuit_sequence - num_paddings];
-                (
-                    Some(shuffle_rams.clone()),
-                    get_aux_arguments_boundary_values(
-                        &shuffle_rams.lazy_init_data,
-                        cycles_per_circuit,
-                    ),
-                )
-            };
-            let trace = witness_chunk.into();
-            let data = TracingDataHost::Main {
-                setup_and_teardown,
-                trace,
-            };
-            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
-            transfer.schedule_transfer(prover_context)?;
-            let external_values = ExternalValues {
-                challenges: external_challenges,
-                aux_boundary_values,
-            };
-            let job = gpu_prover::prover::proof::prove(
-                circuit,
-                external_values,
-                &mut gpu_setup_main,
-                transfer,
-                &risc_v_circuit_precomputations.twiddles,
-                &risc_v_circuit_precomputations.lde_precomputations,
-                circuit_sequence,
-                None,
-                lde_factor,
-                NUM_QUERIES,
-                POW_BITS,
-                None,
-                prover_context,
-            )?;
-            job.finish()?
+        let (resp_tx, resp_rx) = bounded::<CudaResult<Proof>>(1);
+
+        let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
+            (None, AuxArgumentsBoundaryValues::default())
+        } else {
+            let shuffle_rams = &inits_and_teardowns[circuit_sequence - num_paddings];
+            (
+                Some(shuffle_rams.clone()),
+                get_aux_arguments_boundary_values(&shuffle_rams.lazy_init_data, cycles_per_circuit),
+            )
         };
 
+        let request = ProveMainCircuitRequest {
+            lde_factor: setups::lde_factor_for_machine::<C>(),
+            circuit_sequence,
+            aux_boundary_values,
+            setup_and_teardown,
+            witness_chunk,
+            circuit_type,
+            // TODO: this is the only one that is being copied around.. in the future - maybe Arc?
+            compiled_circuit: risc_v_circuit_precomputations.compiled_circuit.clone(),
+            external_challenges,
+            // Replace with some Arc
+            twiddles: risc_v_circuit_precomputations.twiddles.clone(),
+            lde_precomputations: risc_v_circuit_precomputations.lde_precomputations.clone(),
+            reply_to: resp_tx,
+        };
+
+        gpu_manager
+            .send_job(GpuJob::ProveMainCircuit(request))
+            .unwrap();
+
+        // TODO: this wait could be also done later.
+        let gpu_proof = resp_rx.recv().unwrap()?;
         memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
         delegation_argument_sum.add_assign(&gpu_proof.delegation_argument_accumulator.unwrap());
 
@@ -586,8 +728,6 @@ where
 
         main_proofs.push(gpu_proof);
     }
-
-    drop(gpu_setup_main);
 
     if main_circuits_witness_len > 0 {
         println!(

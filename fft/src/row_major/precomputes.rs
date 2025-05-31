@@ -84,6 +84,7 @@ pub fn precompute_inverse_twiddles_for_fft<E: TwoAdicField, A: GoodAllocator>(
 
 // Twiddles are agnostic to domains, as we will use separate precomputations to distribute powers
 // in a bitreversed manners
+#[derive(Clone)]
 pub struct Twiddles<E: TwoAdicField, A: GoodAllocator> {
     pub forward_twiddles: Vec<E, A>,
     pub forward_twiddles_not_bitreversed: Vec<E, A>,
@@ -127,6 +128,7 @@ impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
 
 // All our FFTs are natural ordered values -> bitreversed unscaled monomials -> natural ordered values in other coset,
 // so we put scaling by 1/N and multiplication by powers of coset offset to the second FFT
+#[derive(Clone)]
 pub struct DomainBoundLdePrecomputations<A: GoodAllocator> {
     pub bitreversed_powers: Vec<Vec<Mersenne31Complex, A>>,
     pub taus: Vec<Mersenne31Complex>,
@@ -251,6 +253,7 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
     }
 }
 
+#[derive(Clone)]
 pub struct LdePrecomputations<A: GoodAllocator> {
     pub domain_bound_precomputations: Vec<Option<DomainBoundLdePrecomputations<A>>>,
     pub domain_size: usize,

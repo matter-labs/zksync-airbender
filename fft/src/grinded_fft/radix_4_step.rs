@@ -14,6 +14,7 @@ use std::sync::Arc;
 use trace_holder::RowMajorTraceView;
 use worker::Worker;
 
+#[derive(Clone)]
 pub struct Radix4 {
     pub twiddles: Box<[Mersenne31Complex]>,
 
