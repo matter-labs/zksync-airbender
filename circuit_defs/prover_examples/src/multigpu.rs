@@ -100,13 +100,15 @@ pub struct ProveMainCircuitRequest {
 }
 
 pub struct ProveDelegationCircuitRequest {
-    lde_factor: usize,
     witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
     circuit_type: CircuitType,
-    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
     external_challenges: ExternalChallenges,
-    twiddles: Twiddles<Mersenne31Complex, Global>,
-    lde_precomputations: LdePrecomputations<Global>,
+    precomputations: Arc<
+        Vec<(
+            u32,
+            DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
+        )>,
+    >,
     pub reply_to: Sender<CudaResult<Proof>>,
 }
 
@@ -319,13 +321,10 @@ impl GpuThread {
                                 device_id
                             );
                             let result = GpuThread::prove_delegation_circuit(
-                                request.lde_factor,
-                                &request.compiled_circuit,
                                 request.witness_chunk,
                                 request.circuit_type.as_delegation().unwrap(),
                                 request.external_challenges,
-                                &request.twiddles,
-                                &request.lde_precomputations,
+                                &request.precomputations,
                                 &context, // prover_context
                                 &mut gpu_setup_ref,
                             );
@@ -492,14 +491,13 @@ impl GpuThread {
     }
 
     fn prove_delegation_circuit<'a>(
-        lde_factor: usize,
-        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
         witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
         delegation_type: DelegationCircuitType,
-
         external_challenges: ExternalChallenges,
-        twiddles: &Twiddles<Mersenne31Complex, Global>,
-        lde_precomputations: &LdePrecomputations<Global>,
+        delegation_circuits_precomputations: &Vec<(
+            u32,
+            DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
+        )>,
         prover_context: &MemPoolProverContext<'a>,
         gpu_setup_delegation: &mut SetupPrecomputations<'a, MemPoolProverContext<'a>>,
     ) -> CudaResult<Proof> {
@@ -507,21 +505,29 @@ impl GpuThread {
             challenges: external_challenges,
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
+        let delegation_type_id = delegation_type as u32;
+
+        let idx = delegation_circuits_precomputations
+            .iter()
+            .position(|el| el.0 == delegation_type_id)
+            .unwrap();
+        let prec = &delegation_circuits_precomputations[idx].1;
+
         let gpu_proof = {
             let data = TracingDataHost::Delegation(witness_chunk);
             let circuit_type = CircuitType::Delegation(delegation_type);
             let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
             transfer.schedule_transfer(prover_context)?;
             let job = gpu_prover::prover::proof::prove(
-                compiled_circuit,
+                &prec.compiled_circuit.compiled_circuit,
                 external_values,
                 gpu_setup_delegation,
                 transfer,
-                twiddles,
-                lde_precomputations,
+                &prec.twiddles,
+                &prec.lde_precomputations,
                 0,
                 Some(delegation_type as u16),
-                lde_factor,
+                prec.lde_factor,
                 NUM_QUERIES,
                 POW_BITS,
                 None,
@@ -638,15 +644,15 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
     num_instances_upper_bound: usize,
     bytecode: &[u32],
     non_determinism: ND,
-    risc_v_circuit_precomputations: &MainCircuitPrecomputations<
-        C,
-        Global,
-        ConcurrentStaticHostAllocator,
+    risc_v_circuit_precomputations: Arc<
+        MainCircuitPrecomputations<C, Global, ConcurrentStaticHostAllocator>,
     >,
-    delegation_circuits_precomputations: &[(
-        u32,
-        DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
-    )],
+    delegation_circuits_precomputations: Arc<
+        Vec<(
+            u32,
+            DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
+        )>,
+    >,
     gpu_threads: &Vec<GpuThread>,
     worker: &Worker,
 ) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
@@ -896,14 +902,11 @@ where
             let (resp_tx, resp_rx) = bounded::<CudaResult<Proof>>(1);
 
             let request = ProveDelegationCircuitRequest {
-                lde_factor: prec.lde_factor,
                 // TODO: remove thsi clone
                 witness_chunk: el.clone(),
                 circuit_type,
-                compiled_circuit: circuit.clone(),
                 external_challenges,
-                twiddles: prec.twiddles.clone(),
-                lde_precomputations: prec.lde_precomputations.clone(),
+                precomputations: delegation_circuits_precomputations.clone(),
                 reply_to: resp_tx,
             };
 
