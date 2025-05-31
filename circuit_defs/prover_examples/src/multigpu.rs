@@ -1,7 +1,8 @@
 use std::{
     alloc::{Allocator, Global},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::CStr,
+    hash::RandomState,
     sync::Arc,
     thread,
     time::Duration,
@@ -22,7 +23,7 @@ use gpu_prover::{
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
     witness::{
-        trace_delegation::DelegationTraceHost,
+        trace_delegation::{DelegationCircuitType, DelegationTraceHost},
         trace_main::{
             get_aux_arguments_boundary_values, MainCircuitType, MainTraceHost,
             ShuffleRamSetupAndTeardownHost,
@@ -60,8 +61,9 @@ pub enum GpuJob {
     ComputeSomething(u32),
     MainCircuitMemoryCommit(MainCircuitMemoryCommitRequest),
     DelegationCircuitMemoryCommit(DelegationCircuitMemoryCommitRequest),
-    SetMainSetup(SetMainSetupRequest),
+    SetSetup(SetSetupRequest),
     ProveMainCircuit(ProveMainCircuitRequest),
+    ProveDelegationCircuit(ProveDelegationCircuitRequest),
     Shutdown,
 }
 
@@ -97,8 +99,20 @@ pub struct ProveMainCircuitRequest {
     pub reply_to: Sender<CudaResult<Proof>>,
 }
 
+pub struct ProveDelegationCircuitRequest {
+    lde_factor: usize,
+    witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
+    circuit_type: CircuitType,
+    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+    external_challenges: ExternalChallenges,
+    twiddles: Twiddles<Mersenne31Complex, Global>,
+    lde_precomputations: LdePrecomputations<Global>,
+    pub reply_to: Sender<CudaResult<Proof>>,
+}
+
 #[derive(Clone)]
-pub struct SetMainSetupRequest {
+pub struct SetSetupRequest {
+    circuit_type: CircuitType,
     lde_factor: usize,
     trace_len: usize,
     // TODO: change into some Arc.
@@ -187,6 +201,12 @@ impl GpuThread {
             // TODO: be smart about drop or re-use.
             let mut gpu_setup_main = None;
 
+            let mut delegation_setup: HashMap<
+                gpu_prover::witness::trace_delegation::DelegationCircuitType,
+                SetupPrecomputations<'_, MemPoolProverContext<'_>>,
+                RandomState,
+            > = HashMap::default();
+
             println!("[GPU {}] GPU context ready.", device_id);
             loop {
                 match rx.try_recv() {
@@ -243,19 +263,28 @@ impl GpuThread {
                             );
                         }
 
-                        GpuJob::SetMainSetup(request) => {
-                            println!("[GPU {}] Received SetMainSetup request", device_id);
-                            gpu_setup_main = Some(
-                                GpuThread::set_main_setup(
-                                    request.lde_factor,        // lde_factor
-                                    request.trace_len,         // trace_len
-                                    request.setup_evaluations, // setup_evaluations
-                                    &request.compiled_circuit, // compiled_circuit
-                                    &context,                  // prover_context
-                                )
-                                .unwrap(),
+                        GpuJob::SetSetup(request) => {
+                            println!(
+                                "[GPU {}] Received SetSetup request: {:?}",
+                                device_id, request.circuit_type
                             );
-                            println!("[GPU {}] Finished SetMainSetup.", device_id);
+
+                            let new_setup = GpuThread::set_circuit_setup(
+                                request.lde_factor,        // lde_factor
+                                request.trace_len,         // trace_len
+                                request.setup_evaluations, // setup_evaluations
+                                &request.compiled_circuit, // compiled_circuit
+                                &context,                  // prover_context
+                            )
+                            .unwrap();
+                            match request.circuit_type {
+                                // FIXME: here we could represent differnt circuit types (eg recursion).
+                                CircuitType::Main(_) => gpu_setup_main = Some(new_setup),
+                                CircuitType::Delegation(delegation_circuit_type) => {
+                                    delegation_setup.insert(delegation_circuit_type, new_setup);
+                                }
+                            }
+                            println!("[GPU {}] Finished SetSetup.", device_id);
                         }
                         GpuJob::ProveMainCircuit(request) => {
                             let mut gpu_setup_main_ref = gpu_setup_main.as_mut().unwrap();
@@ -278,6 +307,34 @@ impl GpuThread {
                             request.reply_to.send(result).unwrap();
 
                             println!("[GPU {}] Finished ProveMainCircuit.", device_id);
+                        }
+                        GpuJob::ProveDelegationCircuit(request) => {
+                            let delegation_id = request
+                                .circuit_type
+                                .as_delegation()
+                                .expect("Expected delegation circuit type");
+
+                            let mut gpu_setup_ref =
+                                delegation_setup.get_mut(&delegation_id).unwrap();
+                            println!(
+                                "[GPU {}] Received ProveDelegationCircuit request",
+                                device_id
+                            );
+                            let result = GpuThread::prove_delegation_circuit(
+                                request.lde_factor,
+                                &request.compiled_circuit,
+                                request.witness_chunk,
+                                request.circuit_type.as_delegation().unwrap(),
+                                request.external_challenges,
+                                &request.twiddles,
+                                &request.lde_precomputations,
+                                &context, // prover_context
+                                &mut gpu_setup_ref,
+                            );
+
+                            request.reply_to.send(result).unwrap();
+
+                            println!("[GPU {}] Finished ProveDelegationCircuit.", device_id);
                         }
                     },
                     Err(TryRecvError::Empty) => {
@@ -365,7 +422,7 @@ impl GpuThread {
         Ok(gpu_caps)
     }
 
-    fn set_main_setup<'a>(
+    fn set_circuit_setup<'a>(
         lde_factor: usize,
         trace_len: usize,
         setup_evaluations: Vec<Mersenne31Field, ConcurrentStaticHostAllocator>,
@@ -435,13 +492,55 @@ impl GpuThread {
         };
         Ok(gpu_proof)
     }
+
+    fn prove_delegation_circuit<'a>(
+        lde_factor: usize,
+        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+        witness_chunk: DelegationTraceHost<ConcurrentStaticHostAllocator>,
+        delegation_type: DelegationCircuitType,
+
+        external_challenges: ExternalChallenges,
+        twiddles: &Twiddles<Mersenne31Complex, Global>,
+        lde_precomputations: &LdePrecomputations<Global>,
+        prover_context: &MemPoolProverContext<'a>,
+        gpu_setup_delegation: &mut SetupPrecomputations<'a, MemPoolProverContext<'a>>,
+    ) -> CudaResult<Proof> {
+        let external_values = ExternalValues {
+            challenges: external_challenges,
+            aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+        };
+        let gpu_proof = {
+            let data = TracingDataHost::Delegation(witness_chunk);
+            let circuit_type = CircuitType::Delegation(delegation_type);
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+            transfer.schedule_transfer(prover_context)?;
+            let job = gpu_prover::prover::proof::prove(
+                compiled_circuit,
+                external_values,
+                gpu_setup_delegation,
+                transfer,
+                twiddles,
+                lde_precomputations,
+                0,
+                Some(delegation_type as u16),
+                lde_factor,
+                NUM_QUERIES,
+                POW_BITS,
+                None,
+                prover_context,
+            )?;
+            job.finish()?
+        };
+        Ok(gpu_proof)
+    }
 }
 
 pub struct GpuThreadManager<'a> {
     pub gpu_threads: &'a Vec<GpuThread>,
     pub current: usize,
-    pub threads_with_main_setup: HashSet<usize>,
-    pub main_setup_request: Option<SetMainSetupRequest>,
+    pub threads_with_setup: HashMap<CircuitType, HashSet<usize>>,
+    pub main_setup_request: Option<SetSetupRequest>,
+    pub setup_requests: HashMap<CircuitType, SetSetupRequest>,
 }
 
 impl<'a> GpuThreadManager<'a> {
@@ -449,10 +548,38 @@ impl<'a> GpuThreadManager<'a> {
         Self {
             gpu_threads,
             current: 0,
-            threads_with_main_setup: HashSet::new(),
+            threads_with_setup: Default::default(),
             main_setup_request: None,
+            setup_requests: Default::default(),
         }
     }
+
+    fn send_setup_to_gpu_if_needed(
+        &mut self,
+        circuit_type: CircuitType,
+    ) -> Result<(), TryRecvError> {
+        if !self
+            .threads_with_setup
+            .get(&circuit_type)
+            .map_or(false, |x| x.contains(&self.current))
+        {
+            if let Some(main_setup_request) = self.setup_requests.get(&circuit_type) {
+                // We have to pass the new setup to the device.
+                println!("Sending main setup to GPU thread {}", self.current);
+                let tmp_request = main_setup_request.clone();
+                let gpu_thread = &self.gpu_threads[self.current];
+
+                gpu_thread.send_job(GpuJob::SetSetup(tmp_request))?;
+
+                self.threads_with_setup
+                    .get_mut(&circuit_type)
+                    .unwrap()
+                    .insert(self.current);
+            }
+        }
+        Ok(())
+    }
+
     pub fn send_job(&mut self, job: GpuJob) -> Result<(), TryRecvError> {
         if self.gpu_threads.is_empty() {
             return Err(TryRecvError::Disconnected);
@@ -460,17 +587,16 @@ impl<'a> GpuThreadManager<'a> {
 
         let gpu_thread = &self.gpu_threads[self.current];
 
-        match job {
+        match &job {
             GpuJob::ProveMainCircuit(_) => {
-                if !self.threads_with_main_setup.contains(&self.current) {
-                    if let Some(main_setup_request) = self.main_setup_request.clone() {
-                        // We have to pass the new setup to the device.
-                        println!("Sending main setup to GPU thread {}", self.current);
-                        gpu_thread.send_job(GpuJob::SetMainSetup(main_setup_request))?;
-                        self.threads_with_main_setup.insert(self.current);
-                    }
-                }
+                let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
+                self.send_setup_to_gpu_if_needed(circuit_type)?;
             }
+            GpuJob::ProveDelegationCircuit(request) => {
+                let circuit_type = request.circuit_type;
+                self.send_setup_to_gpu_if_needed(circuit_type)?;
+            }
+
             _ => {}
         }
 
@@ -482,9 +608,12 @@ impl<'a> GpuThreadManager<'a> {
         Ok(())
     }
 
-    pub fn set_main_setup(&mut self, setup_request: SetMainSetupRequest) {
-        self.threads_with_main_setup.clear();
-        self.main_setup_request = Some(setup_request);
+    pub fn set_setup(&mut self, setup_request: SetSetupRequest) {
+        self.threads_with_setup
+            .insert(setup_request.circuit_type, HashSet::new());
+
+        self.setup_requests
+            .insert(setup_request.circuit_type, setup_request);
     }
 }
 
@@ -628,12 +757,6 @@ where
         delegation_memory_trees.push((delegation_type_id, per_tree_set));
     }
 
-    // REMOVE REMOVE
-    set_device(1).unwrap();
-    let prover_context_val = create_default_prover_context();
-    let prover_context = &prover_context_val;
-    // REMOVE REMOVE
-
     let setup_caps = DefaultTreeConstructor::dump_caps(&risc_v_circuit_precomputations.setup.trees);
 
     // commit memory challenges
@@ -673,7 +796,9 @@ where
 
     let main_circuits_witness_len = main_circuits_witness.len();
 
-    gpu_manager.set_main_setup(SetMainSetupRequest {
+    gpu_manager.set_setup(SetSetupRequest {
+        // FIXME: for now 'hardcoding' this (as we have just 1 representation in gpu).
+        circuit_type: CircuitType::Main(MainCircuitType::RiscVCycles),
         lde_factor: setups::lde_factor_for_machine::<C>(),
         trace_len,
         setup_evaluations: create_circuit_setup(
@@ -761,26 +886,16 @@ where
         let circuit = &prec.compiled_circuit.compiled_circuit;
         let setup_start = std::time::Instant::now();
 
-        let mut gpu_setup_delegation = {
-            let lde_factor = prec.lde_factor;
-            let log_lde_factor = lde_factor.trailing_zeros();
-            let trace_len = circuit.trace_len;
-            let log_domain_size = trace_len.trailing_zeros();
-            let log_tree_cap_size =
-                OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+        let circuit_type = CircuitType::Delegation(delegation_type);
 
-            let setup_evaluations = create_circuit_setup(&prec.setup.ldes[0].trace);
+        gpu_manager.set_setup(SetSetupRequest {
+            circuit_type,
+            lde_factor: prec.lde_factor,
+            trace_len: circuit.trace_len,
+            setup_evaluations: create_circuit_setup(&prec.setup.ldes[0].trace),
+            compiled_circuit: prec.compiled_circuit.compiled_circuit.clone(),
+        });
 
-            println!("Setup before transfer took {:?}", setup_start.elapsed());
-            let mut setup = SetupPrecomputations::new(
-                circuit,
-                log_lde_factor,
-                log_tree_cap_size,
-                prover_context,
-            )?;
-            setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
-            setup
-        };
         println!(
             "Setup for delegation type {} took {:?}",
             delegation_type_id,
@@ -793,34 +908,26 @@ where
         for (_circuit_idx, el) in els.iter().enumerate() {
             delegation_proofs_count += 1;
 
-            // and prove
-            let external_values = ExternalValues {
-                challenges: external_challenges,
-                aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+            let (resp_tx, resp_rx) = bounded::<CudaResult<Proof>>(1);
+
+            let request = ProveDelegationCircuitRequest {
+                lde_factor: prec.lde_factor,
+                // TODO: remove thsi clone
+                witness_chunk: el.clone(),
+                circuit_type,
+                compiled_circuit: circuit.clone(),
+                external_challenges,
+                twiddles: prec.twiddles.clone(),
+                lde_precomputations: prec.lde_precomputations.clone(),
+                reply_to: resp_tx,
             };
-            let gpu_proof = {
-                let trace = el.clone();
-                let data = TracingDataHost::Delegation(trace);
-                let circuit_type = CircuitType::Delegation(delegation_type);
-                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
-                transfer.schedule_transfer(prover_context)?;
-                let job = gpu_prover::prover::proof::prove(
-                    circuit,
-                    external_values,
-                    &mut gpu_setup_delegation,
-                    transfer,
-                    &prec.twiddles,
-                    &prec.lde_precomputations,
-                    0,
-                    Some(delegation_type as u16),
-                    prec.lde_factor,
-                    NUM_QUERIES,
-                    POW_BITS,
-                    None,
-                    prover_context,
-                )?;
-                job.finish()?
-            };
+
+            gpu_manager
+                .send_job(GpuJob::ProveDelegationCircuit(request))
+                .unwrap();
+
+            // TODO: this wait could be also done later.
+            let gpu_proof = resp_rx.recv().unwrap()?;
 
             memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
             delegation_argument_sum.sub_assign(&gpu_proof.delegation_argument_accumulator.unwrap());
@@ -832,8 +939,6 @@ where
 
         aux_delegation_memory_trees.push((delegation_type_id, per_tree_set));
         delegation_proofs.push((delegation_type_id, per_delegation_type_proofs));
-
-        drop(gpu_setup_delegation);
     }
 
     if delegation_proofs_count > 0 {
