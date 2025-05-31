@@ -84,7 +84,6 @@ pub fn precompute_inverse_twiddles_for_fft<E: TwoAdicField, A: GoodAllocator>(
 
 // Twiddles are agnostic to domains, as we will use separate precomputations to distribute powers
 // in a bitreversed manners
-#[derive(Clone)]
 pub struct Twiddles<E: TwoAdicField, A: GoodAllocator> {
     pub forward_twiddles: Vec<E, A>,
     pub forward_twiddles_not_bitreversed: Vec<E, A>,
@@ -253,7 +252,6 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
     }
 }
 
-#[derive(Clone)]
 pub struct LdePrecomputations<A: GoodAllocator> {
     pub domain_bound_precomputations: Vec<Option<DomainBoundLdePrecomputations<A>>>,
     pub domain_size: usize,

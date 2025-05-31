@@ -397,7 +397,7 @@ pub fn create_proofs_internal(
                         .get_or_create_main_circuit(&binary)
                         .clone();
                     let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations();
+                        gpu_shared_state.cache.get_or_create_delegations().clone();
 
                     if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
                         // MultiGPU case
@@ -405,8 +405,8 @@ pub fn create_proofs_internal(
                             num_instances,
                             &binary,
                             non_determinism_source,
-                            &main_circuit_precomputations,
-                            &delegation_precomputations,
+                            main_circuit_precomputations,
+                            delegation_precomputations,
                             &gpu_threads,
                             &worker,
                         )
@@ -470,7 +470,7 @@ pub fn create_proofs_internal(
                         .get_or_create_reduced_circuit(&binary)
                         .clone();
                     let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations();
+                        gpu_shared_state.cache.get_or_create_delegations().clone();
 
                     if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
                         // MultiGPU case
@@ -478,8 +478,8 @@ pub fn create_proofs_internal(
                             num_instances,
                             &binary,
                             non_determinism_source,
-                            &main_circuit_precomputations,
-                            &delegation_precomputations,
+                            main_circuit_precomputations,
+                            delegation_precomputations,
                             &gpu_threads,
                             &worker,
                         )

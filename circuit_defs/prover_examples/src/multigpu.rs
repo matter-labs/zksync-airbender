@@ -62,9 +62,25 @@ pub enum GpuJob {
     MainCircuitMemoryCommit(MainCircuitMemoryCommitRequest),
     DelegationCircuitMemoryCommit(DelegationCircuitMemoryCommitRequest),
     SetSetup(SetSetupRequest),
-    ProveMainCircuit(ProveMainCircuitRequest),
+    ProveMainCircuit(ProveMainCircuitRequest<IMStandardIsaConfig>),
+    ProveReducedCircuit(ProveMainCircuitRequest<IWithoutByteAccessIsaConfigWithDelegation>),
     ProveDelegationCircuit(ProveDelegationCircuitRequest),
     Shutdown,
+}
+
+pub trait CreateGpuJob: MachineConfig {
+    fn create_job(request: ProveMainCircuitRequest<Self>) -> GpuJob;
+}
+
+impl CreateGpuJob for IMStandardIsaConfig {
+    fn create_job(request: ProveMainCircuitRequest<Self>) -> GpuJob {
+        GpuJob::ProveMainCircuit(request)
+    }
+}
+impl CreateGpuJob for IWithoutByteAccessIsaConfigWithDelegation {
+    fn create_job(request: ProveMainCircuitRequest<Self>) -> GpuJob {
+        GpuJob::ProveReducedCircuit(request)
+    }
 }
 
 pub struct MainCircuitMemoryCommitRequest {
@@ -85,17 +101,15 @@ pub struct DelegationCircuitMemoryCommitRequest {
     pub reply_to: Sender<CudaResult<Vec<MerkleTreeCapVarLength>>>,
 }
 
-pub struct ProveMainCircuitRequest {
+pub struct ProveMainCircuitRequest<C: MachineConfig + CreateGpuJob> {
     lde_factor: usize,
     circuit_sequence: usize,
     aux_boundary_values: AuxArgumentsBoundaryValues,
     setup_and_teardown: Option<ShuffleRamSetupAndTeardownHost<ConcurrentStaticHostAllocator>>,
     witness_chunk: MainTraceHost<ConcurrentStaticHostAllocator>,
     circuit_type: CircuitType,
-    compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
     external_challenges: ExternalChallenges,
-    twiddles: Twiddles<Mersenne31Complex, Global>,
-    lde_precomputations: LdePrecomputations<Global>,
+    precomputations: Arc<MainCircuitPrecomputations<C, Global, ConcurrentStaticHostAllocator>>,
     pub reply_to: Sender<CudaResult<Proof>>,
 }
 
@@ -296,10 +310,8 @@ impl GpuThread {
                                 request.aux_boundary_values, // setup_and_teardown
                                 request.witness_chunk,       // witness_chunk
                                 request.circuit_type,        // circuit_type
-                                &request.compiled_circuit,   // compiled_circuit
                                 request.external_challenges,
-                                &request.twiddles,
-                                &request.lde_precomputations,
+                                &request.precomputations,
                                 &context, // prover_context
                                 &mut gpu_setup_main_ref,
                             );
@@ -307,6 +319,26 @@ impl GpuThread {
                             request.reply_to.send(result).unwrap();
 
                             println!("[GPU {}] Finished ProveMainCircuit.", device_id);
+                        }
+                        GpuJob::ProveReducedCircuit(request) => {
+                            let mut gpu_setup_main_ref = gpu_setup_main.as_mut().unwrap();
+                            println!("[GPU {}] Received ProveReducedCircuit request", device_id);
+                            let result = GpuThread::prove_main_circuit(
+                                request.lde_factor,       // lde_factor
+                                request.circuit_sequence, // trace_len
+                                request.setup_and_teardown,
+                                request.aux_boundary_values, // setup_and_teardown
+                                request.witness_chunk,       // witness_chunk
+                                request.circuit_type,        // circuit_type
+                                request.external_challenges,
+                                &request.precomputations,
+                                &context, // prover_context
+                                &mut gpu_setup_main_ref,
+                            );
+
+                            request.reply_to.send(result).unwrap();
+
+                            println!("[GPU {}] Finished ProveReducedCircuit.", device_id);
                         }
                         GpuJob::ProveDelegationCircuit(request) => {
                             let delegation_id = request
@@ -445,17 +477,15 @@ impl GpuThread {
         Ok(gpu_setup_main)
     }
 
-    fn prove_main_circuit<'a>(
+    fn prove_main_circuit<'a, C: MachineConfig + CreateGpuJob>(
         lde_factor: usize,
         circuit_sequence: usize,
         setup_and_teardown: Option<ShuffleRamSetupAndTeardownHost<ConcurrentStaticHostAllocator>>,
         aux_boundary_values: AuxArgumentsBoundaryValues,
         witness_chunk: MainTraceHost<ConcurrentStaticHostAllocator>,
         circuit_type: CircuitType,
-        compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
         external_challenges: ExternalChallenges,
-        twiddles: &Twiddles<Mersenne31Complex, Global>,
-        lde_precomputations: &LdePrecomputations<Global>,
+        precomputations: &MainCircuitPrecomputations<C, Global, ConcurrentStaticHostAllocator>,
         prover_context: &MemPoolProverContext<'a>,
         gpu_setup_main: &mut SetupPrecomputations<'a, MemPoolProverContext<'a>>,
     ) -> CudaResult<Proof> {
@@ -471,12 +501,12 @@ impl GpuThread {
                 aux_boundary_values,
             };
             let job = gpu_prover::prover::proof::prove(
-                compiled_circuit,
+                &precomputations.compiled_circuit,
                 external_values,
                 gpu_setup_main,
                 transfer,
-                twiddles,
-                lde_precomputations,
+                &precomputations.twiddles,
+                &precomputations.lde_precomputations,
                 circuit_sequence,
                 None,
                 lde_factor,
@@ -596,6 +626,11 @@ impl<'a> GpuThreadManager<'a> {
                 let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
                 self.send_setup_to_gpu_if_needed(circuit_type)?;
             }
+            GpuJob::ProveReducedCircuit(_) => {
+                // FIXME: this is broken, but we have to fix it later.
+                let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
+                self.send_setup_to_gpu_if_needed(circuit_type)?;
+            }
             GpuJob::ProveDelegationCircuit(request) => {
                 let circuit_type = request.circuit_type;
                 self.send_setup_to_gpu_if_needed(circuit_type)?;
@@ -639,7 +674,7 @@ pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
 
 pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-    C: MachineConfig,
+    C: MachineConfig + CreateGpuJob,
 >(
     num_instances_upper_bound: usize,
     bytecode: &[u32],
@@ -838,18 +873,13 @@ where
             setup_and_teardown,
             witness_chunk,
             circuit_type,
-            // TODO: this is the only one that is being copied around.. in the future - maybe Arc?
-            compiled_circuit: risc_v_circuit_precomputations.compiled_circuit.clone(),
             external_challenges,
             // Replace with some Arc
-            twiddles: risc_v_circuit_precomputations.twiddles.clone(),
-            lde_precomputations: risc_v_circuit_precomputations.lde_precomputations.clone(),
+            precomputations: risc_v_circuit_precomputations.clone(),
             reply_to: resp_tx,
         };
 
-        gpu_manager
-            .send_job(GpuJob::ProveMainCircuit(request))
-            .unwrap();
+        gpu_manager.send_job(C::create_job(request)).unwrap();
 
         main_proofs_responses.push(resp_rx);
     }
