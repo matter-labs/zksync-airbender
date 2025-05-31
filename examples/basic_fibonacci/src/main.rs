@@ -17,7 +17,7 @@ extern "C" {
     static mut _estack: usize;
 }
 
-core::arch::global_asm!(include_str!("asm/asm_reduced.S"));
+core::arch::global_asm!(include_str!("../../scripts/asm/asm_reduced.S"));
 
 #[no_mangle]
 extern "C" fn eh_personality() {}

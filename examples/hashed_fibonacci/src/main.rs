@@ -14,9 +14,14 @@ extern "C" {
     // Boundaries of the stack
     static mut _sstack: usize;
     static mut _estack: usize;
+
+    // Boundaries of the data region - to init .data section. Yet unused
+    static mut _sdata: usize;
+    static mut _edata: usize;
+    static mut _sidata: usize;
 }
 
-core::arch::global_asm!(include_str!("asm/asm_reduced.S"));
+core::arch::global_asm!(include_str!("../../scripts/asm/asm_reduced.S"));
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
