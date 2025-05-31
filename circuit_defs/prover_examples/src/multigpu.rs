@@ -1,4 +1,10 @@
-use std::{alloc::Global, ffi::CStr, sync::Arc, thread, time::Duration};
+use std::{
+    alloc::{Allocator, Global},
+    ffi::CStr,
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use cs::utils::split_timestamp;
@@ -11,7 +17,7 @@ use gpu_prover::{
     prover::{
         context::{MemPoolProverContext, ProverContext},
         memory::commit_memory,
-        setup::SetupPrecomputations,
+        setup::{self, SetupPrecomputations},
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
     witness::{
@@ -28,6 +34,7 @@ use prover::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
         ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
     },
+    fft::GoodAllocator,
     field::{Field, Mersenne31Field, Mersenne31Quartic},
     merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength, MerkleTreeConstructor},
     prover_stages::Proof,
@@ -35,6 +42,7 @@ use prover::{
         abstractions::non_determinism::NonDeterminismCSRSource,
         cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation, MachineConfig},
     },
+    trace_holder::RowMajorTrace,
     worker::Worker,
     VectorMemoryImplWithRom,
 };
@@ -313,6 +321,22 @@ impl<'a> GpuThreadManager<'a> {
     }
 }
 
+pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
+    setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
+) -> Vec<Mersenne31Field, B> {
+    let mut setup_evaluations =
+        Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());
+    unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+    transpose::transpose(
+        setup_row_major.as_slice(),
+        &mut setup_evaluations,
+        setup_row_major.padded_width,
+        setup_row_major.len(),
+    );
+    setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+    setup_evaluations
+}
+
 pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
     C: MachineConfig,
@@ -486,30 +510,27 @@ where
     let main_circuits_witness_len = main_circuits_witness.len();
 
     let mut gpu_setup_main = {
-        let setup_row_major = &risc_v_circuit_precomputations.setup.ldes[0].trace;
-        let mut setup_evaluations = Vec::with_capacity_in(
-            setup_row_major.as_slice().len(),
-            ConcurrentStaticHostAllocator::default(),
-        );
-        unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
-        transpose::transpose(
-            setup_row_major.as_slice(),
-            &mut setup_evaluations,
-            setup_row_major.padded_width,
-            setup_row_major.len(),
-        );
-        setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+        let setup_evaluations =
+            create_circuit_setup(&risc_v_circuit_precomputations.setup.ldes[0].trace);
         let circuit = &risc_v_circuit_precomputations.compiled_circuit;
         let lde_factor = setups::lde_factor_for_machine::<C>();
         let log_lde_factor = lde_factor.trailing_zeros();
         let log_domain_size = trace_len.trailing_zeros();
         let log_tree_cap_size =
             OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+        println!(
+            "Setup beforetransfer took {:?}",
+            total_proving_start.elapsed()
+        );
+        println!("Setup length: {}", setup_evaluations.len());
+
         let mut setup =
             SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, prover_context)?;
         setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
         setup
     };
+
+    println!("Setup took {:?}", total_proving_start.elapsed());
 
     // now prove one by one
     let mut main_proofs = vec![];
@@ -598,6 +619,8 @@ where
             .unwrap();
         let prec = &delegation_circuits_precomputations[idx].1;
         let circuit = &prec.compiled_circuit.compiled_circuit;
+        let setup_start = std::time::Instant::now();
+
         let mut gpu_setup_delegation = {
             let lde_factor = prec.lde_factor;
             let log_lde_factor = lde_factor.trailing_zeros();
@@ -605,19 +628,10 @@ where
             let log_domain_size = trace_len.trailing_zeros();
             let log_tree_cap_size =
                 OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-            let setup_row_major = &prec.setup.ldes[0].trace;
-            let mut setup_evaluations = Vec::with_capacity_in(
-                setup_row_major.as_slice().len(),
-                ConcurrentStaticHostAllocator::default(),
-            );
-            unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
-            transpose::transpose(
-                setup_row_major.as_slice(),
-                &mut setup_evaluations,
-                setup_row_major.padded_width,
-                setup_row_major.len(),
-            );
-            setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+
+            let setup_evaluations = create_circuit_setup(&prec.setup.ldes[0].trace);
+
+            println!("Setup before transfer took {:?}", setup_start.elapsed());
             let mut setup = SetupPrecomputations::new(
                 circuit,
                 log_lde_factor,
@@ -627,6 +641,11 @@ where
             setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
             setup
         };
+        println!(
+            "Setup for delegation type {} took {:?}",
+            delegation_type_id,
+            setup_start.elapsed()
+        );
 
         let mut per_tree_set = vec![];
 
