@@ -107,7 +107,10 @@ enum Commands {
     /// Verifies whole run (potentially multiple proofs)
     VerifyAll {
         #[arg(short, long)]
-        metadata: String,
+        metadata: Option<String>,
+
+        #[arg(short, long)]
+        program_proof: Option<String>,
     },
     Run {
         #[arg(short, long)]
@@ -279,12 +282,24 @@ fn main() {
                 panic!("Not enabled - please compile with `include_verifiers` feature.")
             }
         }
-        Commands::VerifyAll { metadata } => {
+        Commands::VerifyAll {
+            metadata,
+            program_proof,
+        } => {
             #[cfg(feature = "include_verifiers")]
-            verify_all(metadata);
+            {
+                if let Some(metadata) = metadata {
+                    verify_all(metadata);
+                } else if let Some(program_proof) = program_proof {
+                    verify_all_program_proof(program_proof);
+                } else {
+                    panic!("Please either provide --metadata or --program_proof");
+                }
+            }
             #[cfg(not(feature = "include_verifiers"))]
             {
                 let _ = metadata;
+                let _ = program_proof;
                 panic!("Not enabled - please compile with `include_verifiers` feature.")
             }
         }
@@ -499,6 +514,34 @@ fn verify_all(metadata_path: &String) {
         let output = full_statement_verifier::verify_final_recursion_layer();
         println!("Output is: {:?}", output);
     };
+    assert!(
+        verifier_common::prover::nd_source_std::try_read_word().is_none(),
+        "Expected that all words from CSR were consumed"
+    );
+}
+
+#[cfg(feature = "include_verifiers")]
+fn verify_all_program_proof(program_proof_path: &String) {
+    use cli_lib::prover_utils::{
+        generate_oracle_data_from_metadata_and_proof_list,
+        proof_list_and_metadata_from_program_proof,
+    };
+
+    let input_program_proof: ProgramProof = deserialize_from_file(&program_proof_path);
+    //serde_json::from_str(&input.unwrap()).expect("Failed to parse input_hex into ProgramProof");
+    let (metadata, proof_list) = proof_list_and_metadata_from_program_proof(input_program_proof);
+
+    let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+    let it = oracle_data.into_iter();
+
+    verifier_common::prover::nd_source_std::set_iterator(it);
+
+    // Assume that program proof has only recursion proofs.
+    println!("Running continue recursive");
+    assert!(metadata.reduced_proof_count > 0);
+    let output = full_statement_verifier::verify_recursion_layer();
+    println!("Output is: {:?}", output);
+
     assert!(
         verifier_common::prover::nd_source_std::try_read_word().is_none(),
         "Expected that all words from CSR were consumed"
