@@ -929,7 +929,7 @@ where
 
     let mut proving_jobs: HashMap<_, _, RandomState> = HashMap::default();
 
-    // commit memory trees
+    // Do the delegation proving.
     for delegation_type in delegation_types.iter().cloned() {
         let els = &delegation_circuits_witness[&delegation_type];
         let delegation_type_id = delegation_type as u32;
