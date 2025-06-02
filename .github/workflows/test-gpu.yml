@@ -1,0 +1,140 @@
+name: Test on GPU
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  zksync-airbender-build:
+    runs-on: [ ubuntu-latest ]
+    strategy:
+      matrix:
+        cuda: [ "12.6.0-devel-ubuntu24.04" ]
+        package: [ "zksmith" ]
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}
+    env:
+      RUST_TOOLCHAIN: nightly
+#      BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
+    steps:
+      - name: Prepare environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt update && apt install -y cmake git jq libssl-dev pkg-config wget
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Setup rustup
+        run: |
+          wget -q -O - https://sh.rustup.rs | bash -s -- -y --default-toolchain $RUST_TOOLCHAIN --profile minimal
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          echo "export PATH=\"$HOME/.cargo/bin:\$PATH\"" >> "${HOME}/.bash_profile"
+
+#      - name: Setup CMake
+#        run: |
+#          curl -LO https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-x86_64.sh && \
+#            chmod +x cmake-3.24.3-linux-x86_64.sh && \
+#            ./cmake-3.24.3-linux-x86_64.sh --skip-license --prefix=/usr/local
+#
+#      - name: Prepare bellman-cuda directory
+#        shell: bash
+#        # Curl ugliness is required because gh can't work with authentication: https://github.com/cli/cli/issues/2680.
+#        run: |
+#          release=($(curl --silent https://api.github.com/repos/matter-labs/era-bellman-cuda/releases | jq -r '.[0] | .name, .tarball_url, .assets[0].browser_download_url'))
+#          curl --silent -L "${release[1]}" --output bellman-cuda-source.tar.gz
+#          curl --silent -L "${release[2]}" --output bellman-cuda.tar.gz
+#          mkdir -p bellman-cuda
+#          tar xvfz bellman-cuda.tar.gz -C ./bellman-cuda
+#          tar xvfz bellman-cuda-source.tar.gz -C ./bellman-cuda --strip-components=1 --wildcards \*/src/
+
+      - name: Check CMake version
+        run: |
+          cmake --version
+
+      - name: Check CUDA version
+        run: |
+          nvcc --version
+
+#      - name: Setup rust
+#        run: |
+#          rustup set profile minimal
+#          rustup toolchain install nightly-2025-05-24
+#          rustup default nightly-2025-05-24
+
+      - name: Just build the test binary
+        shell: bash
+        run: |
+          mkdir artifacts
+          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
+          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release
+
+#      - name: Build tests and copy binary to a separate dir
+#        shell: bash
+#        run: |
+#          mkdir artifacts
+#          CUDAARCHS=89 CARGO_TARGET_DIR=./build \
+#          cargo +nightly-2025-05-24 test -p ${{ matrix.package }} --no-run --release --message-format=json -q \
+#          | jq -r 'select(.executable != null) | .executable' \
+#          | while read binary; do
+#            cp "$binary" artifacts/${{ matrix.package }}
+#          done
+
+#      - name: Upload test binary
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+#          path: artifacts/${{ matrix.package }}
+#          if-no-files-found: error
+
+#  zksync-airbender-test:
+#    runs-on: [ matterlabs-ci-gpu-runner ]
+#    strategy:
+#      matrix:
+#        package: [ "zksmith" ]
+#    needs: zksync-airbender-build
+#    env:
+#      BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
+#    steps:
+#      - name: Prepare environment
+#        run: |
+#          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+#
+#      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+#
+#      - name: Check Nvidia driver version
+#        run: |
+#          nvidia-smi
+#
+#      - name: Prepare bellman-cuda directory
+#        shell: bash
+#        # Curl ugliness is required because gh can't work with authentication: https://github.com/cli/cli/issues/2680.
+#        run: |
+#          release=($(curl --silent https://api.github.com/repos/matter-labs/era-bellman-cuda/releases | jq -r '.[0] | .name, .tarball_url, .assets[0].browser_download_url'))
+#          curl --silent -L "${release[1]}" --output bellman-cuda-source.tar.gz
+#          curl --silent -L "${release[2]}" --output bellman-cuda.tar.gz
+#          mkdir -p bellman-cuda
+#          tar xvfz bellman-cuda.tar.gz -C ./bellman-cuda
+#          tar xvfz bellman-cuda-source.tar.gz -C ./bellman-cuda --strip-components=1 --wildcards \*/src/
+#
+#
+#      - name: Download test binary built with CUDA 12.6
+#        uses: actions/download-artifact@v4
+#        with:
+#          name: zksync-airbender-12.6.0-devel-ubuntu20.04-${{ matrix.package }}-test-binary
+#          path: zksync-airbender-test-binary/12.6/
+#
+#      - name: Run test binary built with CUDA 12.6
+#        id: test_cuda_12_5
+#        continue-on-error: true
+#        run: |
+#          chmod +x zksync-airbender-test-binary/12.6/${{ matrix.package }}
+#          zksync-airbender-test-binary/12.6/${{ matrix.package }} --nocapture
