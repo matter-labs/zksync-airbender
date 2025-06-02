@@ -21,7 +21,7 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
-      RUST_TOOLCHAIN: nightly
+      RUST_TOOLCHAIN: nightly-2025-03-15
 #      BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
     steps:
       - name: Prepare environment
