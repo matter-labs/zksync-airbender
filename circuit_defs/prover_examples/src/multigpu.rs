@@ -25,7 +25,7 @@ use era_cudart::{
 use gpu_prover::{
     allocator::host::ConcurrentStaticHostAllocator,
     prover::{
-        context::{MemPoolProverContext, ProverContext},
+        context::MemPoolProverContext,
         memory::commit_memory,
         setup::SetupPrecomputations,
         tracing_data::{TracingDataHost, TracingDataTransfer},
@@ -153,6 +153,7 @@ pub struct GpuThread {
 }
 
 impl GpuThread {
+    /// Creates a new GPU threads - one for each GPU device.
     pub fn init_multigpu() -> CudaResult<Vec<GpuThread>> {
         let device_count = get_device_count()?;
         let mut gpu_threads = Vec::with_capacity(device_count as usize);
@@ -164,6 +165,7 @@ impl GpuThread {
         Ok(gpu_threads)
     }
 
+    /// Starts gpu threads. Each one will fully occupy a single core.
     pub fn start_multigpu(gpu_threads: &mut Vec<GpuThread>) {
         initialize_host_allocator_if_needed();
 
@@ -172,6 +174,8 @@ impl GpuThread {
         }
     }
 
+    /// Sends a single job to the GPU thread.
+    // Most jobs will have a reply_to channel inside to get back the results.
     pub fn send_job(&self, job: GpuJob) -> Result<(), TryRecvError> {
         if let Some(gpu_thread) = &self.gpu_thread {
             gpu_thread.send(job).map_err(|_| TryRecvError::Disconnected)
@@ -180,7 +184,7 @@ impl GpuThread {
         }
     }
 
-    /// Creates a new GPU thread.
+    /// Creates a new GPU thread for a given device id.
     pub fn new(device_id: i32) -> CudaResult<Self> {
         let props = get_device_properties(device_id)?;
         let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
@@ -198,6 +202,7 @@ impl GpuThread {
         })
     }
 
+    /// Starts the gpu thread for a given device.
     pub fn start(&mut self) {
         if self.gpu_thread.is_none() {
             let gpu_thread = Self::spawn_gpu_thread(self.device_id);
@@ -210,6 +215,7 @@ impl GpuThread {
         }
     }
 
+    /// Main loop with the gpu thread - it will block the CPU core until it recevies a shutdown command.
     fn spawn_gpu_thread(device_id: i32) -> Sender<GpuJob> {
         // Create a channel.  We only need Sender in the parent; Receiver moves into the GPU thread.
         let (tx, rx): (Sender<GpuJob>, Receiver<GpuJob>) = unbounded();
@@ -221,6 +227,7 @@ impl GpuThread {
             let context = create_default_prover_context();
 
             let mut gpu_setup_main = None;
+            let mut gpu_setup_reduced = None;
 
             let mut delegation_setup: HashMap<
                 gpu_prover::witness::trace_delegation::DelegationCircuitType,
@@ -291,8 +298,15 @@ impl GpuThread {
                             )
                             .unwrap();
                             match request.circuit_type {
-                                // FIXME: here we could represent differnt circuit types (eg recursion).
-                                CircuitType::Main(_) => gpu_setup_main = Some(new_setup),
+                                CircuitType::Main(MainCircuitType::RiscVCycles) => {
+                                    gpu_setup_main = Some(new_setup)
+                                }
+                                CircuitType::Main(MainCircuitType::ReducedRiscVMachine) => {
+                                    gpu_setup_reduced = Some(new_setup)
+                                }
+                                CircuitType::Main(MainCircuitType::FinalReducedRiscVMachine) => {
+                                    panic!("Not supported")
+                                }
                                 CircuitType::Delegation(delegation_circuit_type) => {
                                     delegation_setup.insert(delegation_circuit_type, new_setup);
                                 }
@@ -320,7 +334,7 @@ impl GpuThread {
                             println!("[GPU {}] Finished ProveMainCircuit.", device_id);
                         }
                         GpuJob::ProveReducedCircuit(request) => {
-                            let mut gpu_setup_main_ref = gpu_setup_main.as_mut().unwrap();
+                            let mut gpu_setup_reduced_ref = gpu_setup_reduced.as_mut().unwrap();
                             println!("[GPU {}] Received ProveReducedCircuit request", device_id);
                             let result = GpuThread::prove_main_circuit(
                                 request.lde_factor,
@@ -332,7 +346,7 @@ impl GpuThread {
                                 request.external_challenges,
                                 &request.precomputations,
                                 &context,
-                                &mut gpu_setup_main_ref,
+                                &mut gpu_setup_reduced_ref,
                             );
 
                             request.reply_to.send(result).unwrap();
@@ -625,8 +639,7 @@ impl<'a> GpuThreadManager<'a> {
                 self.send_setup_to_gpu_if_needed(circuit_type)?;
             }
             GpuJob::ProveReducedCircuit(_) => {
-                // FIXME: this is broken, but we have to fix it later.
-                let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
+                let circuit_type = CircuitType::Main(MainCircuitType::ReducedRiscVMachine);
                 self.send_setup_to_gpu_if_needed(circuit_type)?;
             }
             GpuJob::ProveDelegationCircuit(request) => {
@@ -861,8 +874,7 @@ where
     let main_circuits_witness_len = main_circuits_witness.len();
 
     gpu_manager.set_setup(SetSetupRequest {
-        // FIXME: for now 'hardcoding' this (as we have just 1 representation in gpu).
-        circuit_type: CircuitType::Main(MainCircuitType::RiscVCycles),
+        circuit_type,
         lde_factor: setups::lde_factor_for_machine::<C>(),
         trace_len,
 
