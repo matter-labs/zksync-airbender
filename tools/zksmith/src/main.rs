@@ -70,6 +70,7 @@ impl LocalProver {
 
         let mut gpu_state = GpuSharedState::default();
         gpu_state.preheat_for_universal_verifier(&binary);
+        gpu_state.enable_multigpu();
 
         LocalProver { binary, gpu_state }
     }
