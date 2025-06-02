@@ -44,7 +44,6 @@ use prover::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
         ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
     },
-    fft::GoodAllocator,
     field::{Field, Mersenne31Field, Mersenne31Quartic},
     merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength, MerkleTreeConstructor},
     prover_stages::Proof,
@@ -52,7 +51,6 @@ use prover::{
         abstractions::non_determinism::NonDeterminismCSRSource,
         cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation, MachineConfig},
     },
-    trace_holder::RowMajorTrace,
     worker::Worker,
     VectorMemoryImplWithRom,
 };
@@ -215,7 +213,7 @@ impl GpuThread {
         }
     }
 
-    /// Main loop with the gpu thread - it will block the CPU core until it recevies a shutdown command.
+    /// Main loop with the gpu thread - it will block the CPU core until it receives a shutdown command.
     fn spawn_gpu_thread(device_id: i32) -> Sender<GpuJob> {
         // Create a channel.  We only need Sender in the parent; Receiver moves into the GPU thread.
         let (tx, rx): (Sender<GpuJob>, Receiver<GpuJob>) = unbounded();
@@ -665,23 +663,6 @@ impl<'a> GpuThreadManager<'a> {
         self.setup_requests
             .insert(setup_request.circuit_type, setup_request);
     }
-}
-
-pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
-    setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
-) -> Vec<Mersenne31Field, B> {
-    initialize_host_allocator_if_needed();
-    let mut setup_evaluations =
-        Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());
-    unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
-    transpose::transpose(
-        setup_row_major.as_slice(),
-        &mut setup_evaluations,
-        setup_row_major.padded_width,
-        setup_row_major.len(),
-    );
-    setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
-    setup_evaluations
 }
 
 pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<

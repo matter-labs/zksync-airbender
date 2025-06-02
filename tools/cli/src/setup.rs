@@ -3,7 +3,7 @@ use prover::{
     field::Mersenne31Field,
     risc_v_simulator::cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
 };
-use prover_examples::multigpu::create_circuit_setup;
+use prover_examples::create_circuit_setup;
 use setups::{DelegationCircuitPrecomputations, MainCircuitPrecomputations};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
