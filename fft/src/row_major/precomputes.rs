@@ -127,7 +127,6 @@ impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
 
 // All our FFTs are natural ordered values -> bitreversed unscaled monomials -> natural ordered values in other coset,
 // so we put scaling by 1/N and multiplication by powers of coset offset to the second FFT
-#[derive(Clone)]
 pub struct DomainBoundLdePrecomputations<A: GoodAllocator> {
     pub bitreversed_powers: Vec<Vec<Mersenne31Complex, A>>,
     pub taus: Vec<Mersenne31Complex>,
