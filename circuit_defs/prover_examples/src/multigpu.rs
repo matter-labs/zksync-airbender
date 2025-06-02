@@ -60,7 +60,9 @@ use setups::{DelegationCircuitPrecomputations, MainCircuitPrecomputations};
 use trace_and_split::{fs_transform_for_memory_and_delegation_arguments, FinalRegisterValue};
 
 use crate::{
-    gpu::{create_default_prover_context, trace_execution_for_gpu},
+    gpu::{
+        create_default_prover_context, initialize_host_allocator_if_needed, trace_execution_for_gpu,
+    },
     NUM_QUERIES, POW_BITS,
 };
 
@@ -163,10 +165,8 @@ impl GpuThread {
     }
 
     pub fn start_multigpu(gpu_threads: &mut Vec<GpuThread>) {
-        if !MemPoolProverContext::is_host_allocator_initialized() {
-            // allocate 4 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
-            MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22).unwrap();
-        }
+        initialize_host_allocator_if_needed();
+
         for gpu_thread in gpu_threads.iter_mut() {
             gpu_thread.start();
         }
@@ -657,12 +657,7 @@ impl<'a> GpuThreadManager<'a> {
 pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
     setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
 ) -> Vec<Mersenne31Field, B> {
-    // TODO: put it all in a single method.
-    // TODO: currently allocating 20 GB - do better management.
-    if !MemPoolProverContext::is_host_allocator_initialized() {
-        // allocate 4 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
-        MemPoolProverContext::initialize_host_allocator(20, 1 << 8, 22).unwrap();
-    }
+    initialize_host_allocator_if_needed();
     let mut setup_evaluations =
         Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());
     unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
