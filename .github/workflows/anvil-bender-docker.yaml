@@ -8,6 +8,10 @@ on:
         required: false
         default: "latest"
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-images:
     name: Anvil Bender - Build and Push Docker Image
