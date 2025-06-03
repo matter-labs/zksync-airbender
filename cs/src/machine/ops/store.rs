@@ -189,7 +189,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
             }
 
             let base_value = rd_or_mem_store_query.read_value;
-            // NOTE: here it's yes unconstrainted byte, but if we take this branch - it becomes constrainted
+            // NOTE: here it's yes unconstrained byte, but if we take this branch - it becomes constrained
             let src_half_word = src2
                 .get_register_with_decomposition_and_sign()
                 .unwrap()

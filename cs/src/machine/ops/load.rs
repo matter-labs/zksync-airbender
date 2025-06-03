@@ -345,7 +345,7 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
             *is_register = Boolean::Is(t);
             // *is_register = execute_family;
 
-            // and if we do not perform memory read, then addresses are constrainted to be RS2 index read access formally
+            // and if we do not perform memory read, then addresses are constrained to be RS2 index read access formally
             let rs2_index = inputs.get_rs2_index();
             cs.add_constraint(
                 (rs2_index - Term::from(address[0]))
@@ -478,7 +478,7 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
             *is_register = Boolean::Is(t);
             // *is_register = execute_family;
 
-            // and if we do not perform memory read, then addresses are constrainted to be RS2 index read access formally
+            // and if we do not perform memory read, then addresses are constrained to be RS2 index read access formally
             let rs2_index = inputs.get_rs2_index();
             cs.add_constraint(
                 (rs2_index - Term::from(address[0]))

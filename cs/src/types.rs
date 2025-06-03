@@ -1182,7 +1182,7 @@ impl<F: PrimeField> RegisterWithSign<F> {
 #[derive(Clone, Debug)]
 pub struct RegisterDecompositionWithSign<F: PrimeField> {
     pub u16_limbs: [Num<F>; 2],
-    pub low_word_unconstrainted_decomposition: (Variable, Constraint<F>),
+    pub low_word_unconstrained_decomposition: (Variable, Constraint<F>),
     pub high_word_decomposition: (Constraint<F>, Variable),
     pub sign_bit: Boolean,
 }
@@ -1214,7 +1214,7 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
 
         Self {
             u16_limbs: reg.0,
-            low_word_unconstrainted_decomposition: (byte_0, byte_1),
+            low_word_unconstrained_decomposition: (byte_0, byte_1),
             high_word_decomposition: (byte_2, byte_3),
             sign_bit: sign,
         }

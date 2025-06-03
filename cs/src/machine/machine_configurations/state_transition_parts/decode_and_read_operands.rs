@@ -219,7 +219,7 @@ pub(crate) fn optimized_decode_and_preallocate_mem_queries_for_bytecode_in_rom<
         // so any reads will have to be range-checked
         let read_value =
             Register::new_unchecked_from_placeholder(cs, Placeholder::ShuffleRamReadValue(2));
-        // Also unchecked, as it would be constrainted in STORE opcode, or at the end of the cycle
+        // Also unchecked, as it would be constrained in STORE opcode, or at the end of the cycle
         let write_value =
             Register::new_unchecked_from_placeholder(cs, Placeholder::ShuffleRamWriteValue(2));
 

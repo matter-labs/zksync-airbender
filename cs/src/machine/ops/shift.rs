@@ -150,11 +150,11 @@ impl<
             .get_register_with_decomposition_and_sign()
             .unwrap()
             .sign_bit;
-        // This will be constrainted by lookup
+        // This will be constrained by lookup
         let shift_amount_low_byte = src2
             .get_register_with_decomposition_and_sign()
             .unwrap()
-            .low_word_unconstrainted_decomposition
+            .low_word_unconstrained_decomposition
             .0;
 
         // This will truncate the shift

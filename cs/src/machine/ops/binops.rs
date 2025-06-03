@@ -122,26 +122,26 @@ impl<
         let src1_byte0 = Constraint::<F>::from(
             src1.get_register_with_decomposition_and_sign()
                 .unwrap()
-                .low_word_unconstrainted_decomposition
+                .low_word_unconstrained_decomposition
                 .0,
         );
         let src2_byte0 = Constraint::<F>::from(
             src2.get_register_with_decomposition_and_sign()
                 .unwrap()
-                .low_word_unconstrainted_decomposition
+                .low_word_unconstrained_decomposition
                 .0,
         );
 
         let src1_byte1 = src1
             .get_register_with_decomposition_and_sign()
             .unwrap()
-            .low_word_unconstrainted_decomposition
+            .low_word_unconstrained_decomposition
             .1
             .clone();
         let src2_byte1 = src2
             .get_register_with_decomposition_and_sign()
             .unwrap()
-            .low_word_unconstrainted_decomposition
+            .low_word_unconstrained_decomposition
             .1
             .clone();
 
