@@ -129,7 +129,7 @@ mod test {
         );
 
         let compiled =
-            default_compile_machine::<_, SECOND_WORD_BITS>(machine, rom_table, Some(csr_table), 22);
+            default_compile_machine::<_, SECOND_WORD_BITS>(machine, rom_table, Some(csr_table), 20);
         serialize_to_file(&compiled, "full_machine_with_delegation_layout.json");
     }
 

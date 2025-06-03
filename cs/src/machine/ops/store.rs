@@ -302,104 +302,105 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
             // support only SW/LW, and so we assume code is trusted
             assert!(ASSUME_TRUSTED_CODE);
 
-            todo!();
+            let src1 = src1.get_register();
+            let imm = inputs.get_imm();
 
-            // // this is common for FAMILY of memory instructions
+            let (unaligned_address, _of_flag) =
+                opt_ctx.append_add_relation(src1, imm, execute_family, cs);
 
-            // let src1 = src1.get_register();
-            // let imm = inputs.get_imm();
+            // we will need an aligned address in any case
+            let [bit_0, bit_1] = opt_ctx.append_lookup_relation(
+                cs,
+                &[unaligned_address.0[0].get_variable()],
+                TableType::MemoryOffsetGetBits.to_num(),
+                execute_family,
+            );
 
-            // let (unaligned_address, _of_flag) =
-            //     opt_ctx.append_add_relation(src1, imm, execute_family, cs);
+            // check alignment in case of subword accesses
+            if ASSUME_TRUSTED_CODE {
+                // unprovable if we do not have proper alignment
+                cs.add_constraint(
+                    (Term::from(bit_0) + Term::from(bit_1)) * execute_family.get_terms(),
+                );
+            } else {
+                todo!();
+            }
 
-            // let [bit_0, bit_1] = opt_ctx.append_lookup_relation(
-            //     cs,
-            //     &[unaligned_address.0[0].get_variable()],
-            //     TableType::MemoryOffsetGetBits.to_num(),
-            //     execute_family,
-            // );
-            // let aligned_address_low_constraint = {
-            //     Constraint::from(unaligned_address.0[0].get_variable())
-            //         - (Term::from(bit_1) * Term::from(2))
-            //         - Term::from(bit_0)
-            // };
+            // NOTE: we do NOT cast presumable bits to booleans, as it's under conditional assignment of lookup
 
-            // // NOTE: in a form that we use the "share" lookup we can not use Boolean::or here (that uses custom witness generation)
-            // // that assumes that some values are booleans. Instead we evaluate it as generic constraint
+            // NOTE: all lookup actions here are conditional, so we should not assume that boolean is so,
+            // and should not use special operations like Boolean::and where witness generation is specialized.
 
-            // // 1 - b + ab
-            // // res = 1 - (1 - a)(1-b) = a + b - ab
-            // let is_unaligned = cs.add_variable_from_constraint(
-            //     Constraint::from(bit_0) + Term::from(bit_1) - Term::from(bit_0) * Term::from(bit_1),
-            // );
+            // This is ok even for masking into x0 read/write for query as we are globally predicated by memory operations flags,
+            // so if it's not a memory operation it'll be overwritten during merge of memory queries
 
-            // // unprovable if unaligned
-            // cs.add_constraint(Term::from(is_unaligned) * execute_family.get_terms());
+            let [is_ram_range, _address_high_bits_for_rom] = opt_ctx.append_lookup_relation(
+                cs,
+                &[unaligned_address.0[1].get_variable()],
+                TableType::RomAddressSpaceSeparator.to_num(),
+                execute_family,
+            );
 
-            // // NOTE: whether it's read or write, we will always read from src1 + imm
-            // let (source, mem_load_query, address_is_in_ram_range) =
-            //     read_from_shuffle_ram_or_bytecode_no_decomposition_with_ctx(
-            //         cs,
-            //         mem_load_timestamp,
-            //         aligned_address_low_constraint,
-            //         unaligned_address.0[1],
-            //         opt_ctx,
-            //         execute_family,
-            //     );
+            // we can not write into ROM
+            if ASSUME_TRUSTED_CODE {
+                // NOTE: `should_write_mem` always conditioned over execution of the opcode itself
+                cs.add_constraint(
+                    execute_family.get_terms() * (Term::from(1) - Term::from(is_ram_range)),
+                );
+            } else {
+                // we should trap maybe
+                todo!()
+            }
 
-            // // NOTE: `should_write_mem` always conditioned over execution of the opcode itself
-            // cs.add_constraint(
-            //     should_write_mem.get_terms()
-            //         * (Term::from(1) - Term::from(address_is_in_ram_range)),
-            // );
+            // constraint that write address that we use is a valid one
+            let ShuffleRamQueryType::RegisterOrRam {
+                is_register: _,
+                address,
+            } = rd_or_mem_store_query.query_type
+            else {
+                unreachable!()
+            };
+            cs.add_constraint(
+                (Term::from(unaligned_address.0[0]) - Term::from(address[0]))
+                    * Term::from(execute_family),
+            );
+            cs.add_constraint(
+                (Term::from(unaligned_address.0[1]) - Term::from(address[1]))
+                    * Term::from(execute_family),
+            );
 
-            // // if we will do STORE, then it'll be the value
-            // let val_to_store = src2.get_register();
+            // constraint written values
 
-            // let returned_value = [
-            //     Constraint::<F>::from(source.0[0].get_variable()),
-            //     Constraint::<F>::from(source.0[1].get_variable()),
-            // ];
+            // if we store full word, then it's just src2
+            let word_to_store = src2.get_register();
+            cs.add_constraint(
+                (Term::from(word_to_store.0[0]) - Term::from(rd_or_mem_store_query.write_value[0]))
+                    * Term::from(execute_family),
+            );
+            cs.add_constraint(
+                (Term::from(word_to_store.0[1]) - Term::from(rd_or_mem_store_query.write_value[1]))
+                    * Term::from(execute_family),
+            );
 
-            // let value_to_store = Register([val_to_store.0[0], val_to_store.0[1]]);
+            let ShuffleRamQueryType::RegisterOrRam { is_register, .. } =
+                &mut rd_or_mem_store_query.query_type
+            else {
+                unreachable!()
+            };
+            let t = cs.add_variable_from_constraint_allow_explicit_linear(
+                Term::from(1u64) - Term::from(execute_family),
+            );
+            *is_register = Boolean::Is(t);
+            // here we do not need to constraint address if case if we did NOT perform write,
+            // as we anyway expect a writeback to be performed
 
-            // // we add read query if we LOAD
-            // memory_queries.push(mem_load_query);
-
-            // let execute_read = execute_family;
-            // let execute_write = should_write_mem;
-
-            // // and we form join query if we STORE
-            // let mut mem_store_query = mem_load_query;
-            // mem_store_query.local_timestamp_in_cycle = mem_store_timestamp;
-            // mem_store_query.write_value = std::array::from_fn(|i| {
-            //     cs.choose(
-            //         execute_write,
-            //         value_to_store.0[i],
-            //         Num::Var(mem_store_query.read_value[i]),
-            //     )
-            //     .get_variable()
-            // });
-
-            // memory_queries.push(mem_store_query);
-
-            // if execute_family.get_value(cs).unwrap_or(false) {
-            //     println!("MEMORY");
-            //     dbg!(execute_read.get_value(cs));
-            //     dbg!(should_write_mem.get_value(cs));
-            //     dbg!(execute_write.get_value(cs));
-            //     dbg!(src1.get_value_unsigned(cs));
-            //     dbg!(src2.get_register().get_value_unsigned(cs));
-            //     // dbg!(rd.get_value_unsigned(cs));
-            // }
-
-            // CommonDiffs {
-            //     exec_flag: execute_family,
-            //     trapped: None,
-            //     trap_reason: None,
-            //     rd_value: Some(returned_value),
-            //     new_pc_value: NextPcValue::Default,
-            // }
+            CommonDiffs {
+                exec_flag: execute_family,
+                trapped: None,
+                trap_reason: None,
+                rd_value: vec![],
+                new_pc_value: NextPcValue::Default,
+            }
         }
     }
 }
