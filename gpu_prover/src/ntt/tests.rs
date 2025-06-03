@@ -19,8 +19,9 @@ use crate::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceM
 use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::REAL_COLS_PER_BLOCK;
 use crate::ntt::{
-    bitrev_Z_to_natural_composition_main_domain_evals, bitrev_Z_to_natural_trace_coset_evals,
-    natural_composition_coset_evals_to_bitrev_Z, natural_trace_main_domain_evals_to_bitrev_Z,
+    bitrev_Z_to_natural_composition_main_evals, bitrev_Z_to_natural_trace_coset_evals,
+    natural_composition_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
+    natural_trace_main_evals_to_bitrev_Z,
 };
 
 type BF = BaseField;
@@ -107,7 +108,7 @@ fn run_natural_evals_to_bitrev_Z(
         let mut outputs_device_matrix =
             DeviceMatrixChunkMut::new(&mut outputs_device[0..memory_size], stride, OFFSET, n);
         match evals_are {
-            EvalsAre::TraceMainDomain => natural_trace_main_domain_evals_to_bitrev_Z(
+            EvalsAre::TraceMainDomain => natural_trace_main_evals_to_bitrev_Z(
                 &inputs_device_matrix,
                 &mut outputs_device_matrix,
                 log_n,
@@ -147,7 +148,7 @@ fn run_natural_evals_to_bitrev_Z(
         let mut inplace_output_view_matrix =
             DeviceMatrixChunkMut::new(&mut inplace_output_view[0..memory_size], stride, OFFSET, n);
         match evals_are {
-            EvalsAre::TraceMainDomain => natural_trace_main_domain_evals_to_bitrev_Z(
+            EvalsAre::TraceMainDomain => natural_trace_main_evals_to_bitrev_Z(
                 &inplace_input_view_matrix,
                 &mut inplace_output_view_matrix,
                 log_n,
@@ -314,7 +315,7 @@ fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_c
             DeviceMatrixChunkMut::new(&mut xy_device[0..memory_size], stride, OFFSET, n);
         let mut Zs_device_matrix =
             DeviceMatrixChunkMut::new(&mut Zs_device[0..memory_size], stride, OFFSET, n);
-        natural_trace_main_domain_evals_to_bitrev_Z(
+        natural_trace_main_evals_to_bitrev_Z(
             &xy_device_matrix,
             &mut Zs_device_matrix,
             log_n,
@@ -344,7 +345,7 @@ fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_c
             DeviceMatrixChunkMut::new(&mut inplace_xy_view[0..memory_size], stride, OFFSET, n);
         let mut inplace_Zs_view_matrix =
             DeviceMatrixChunkMut::new(&mut inplace_Zs_view[0..memory_size], stride, OFFSET, n);
-        natural_trace_main_domain_evals_to_bitrev_Z(
+        natural_trace_main_evals_to_bitrev_Z(
             &inplace_xy_view_matrix,
             &mut inplace_Zs_view_matrix,
             log_n,
@@ -466,7 +467,7 @@ fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_c
     ctx.destroy().unwrap();
 }
 
-fn run_bitrev_Z_to_natural_composition_main_domain_evals(
+fn run_bitrev_Z_to_natural_composition_main_evals(
     log_n_range: Range<usize>,
     num_bf_cols: usize,
 ) {
@@ -513,7 +514,7 @@ fn run_bitrev_Z_to_natural_composition_main_domain_evals(
             DeviceMatrixChunk::new(&mut Zs_device[0..memory_size], stride, OFFSET, n);
         let mut evals_device_matrix =
             DeviceMatrixChunkMut::new(&mut evals_device[0..memory_size], stride, OFFSET, n);
-        bitrev_Z_to_natural_composition_main_domain_evals(
+        bitrev_Z_to_natural_composition_main_evals(
             &Zs_device_matrix,
             &mut evals_device_matrix,
             log_n,
@@ -542,7 +543,7 @@ fn run_bitrev_Z_to_natural_composition_main_domain_evals(
             DeviceMatrixChunk::new(&mut inplace_Zs_view[0..memory_size], stride, OFFSET, n);
         let mut inplace_evals_view_matrix =
             DeviceMatrixChunkMut::new(&mut inplace_evals_view[0..memory_size], stride, OFFSET, n);
-        bitrev_Z_to_natural_composition_main_domain_evals(
+        bitrev_Z_to_natural_composition_main_evals(
             &inplace_Zs_view_matrix,
             &mut inplace_evals_view_matrix,
             log_n,
@@ -616,9 +617,124 @@ fn run_bitrev_Z_to_natural_composition_main_domain_evals(
     ctx.destroy().unwrap();
 }
 
+fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
+    let ctx = Context::create(12).unwrap();
+    let n_max = 1 << (log_n_range.end - 1);
+    // let num_Z_cols = (num_bf_cols + 1) / 2;
+    assert_eq!(num_bf_cols % 2, 0);
+    let worker = Worker::new();
+    let fwd_twiddles = precompute_twiddles_for_fft::<E2, Global, false>(n_max, &worker);
+    let inv_twiddles = precompute_twiddles_for_fft::<E2, Global, true>(n_max, &worker);
+
+    // Hardcoded because zksync_airbender only uses a single non-trace coset domain.
+    let log_extension_degree: u32 = 1;
+
+    let mut rng = rand::rng();
+    const OFFSET: usize = 0;
+    let max_stride: usize = n_max + OFFSET;
+    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
+    let mut src_orig_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    src_orig_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
+    let mut src_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    let mut dst_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    let mut src_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();
+    let mut dst_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();
+    let exec_stream = CudaStream::create().unwrap();
+    let aux_stream = CudaStream::create().unwrap();
+    for log_n in log_n_range {
+        let n = (1 << log_n) as usize;
+        let stride = n + OFFSET;
+        let memory_size = stride * num_bf_cols;
+
+        // Imitate what we'll see in practice for trace evals
+        (&mut src_host[0..memory_size]).copy_from_slice(&src_orig_host[0..memory_size]);
+
+        for col in 0..num_bf_cols {
+            let start = (col * stride + OFFSET) as usize;
+            let range = start..start + n;
+            let sum: BF = (&src_host[range])
+                .iter()
+                .fold(BF::ZERO, |sum, val| *sum.clone().add_assign(val));
+            src_host[start + n - 1].sub_assign(&sum);
+        }
+
+        // Nonbitrev to bitrev, out of place
+        memory_copy_async(
+            &mut src_device[0..memory_size],
+            &src_host[0..memory_size],
+            &exec_stream,
+        )
+        .unwrap();
+        let src_device_matrix =
+            DeviceMatrixChunkMut::new(&mut src_device[0..memory_size], stride, OFFSET, n);
+        let mut dst_device_matrix =
+            DeviceMatrixChunkMut::new(&mut dst_device[0..memory_size], stride, OFFSET, n);
+        natural_main_evals_to_natural_coset_evals(
+            &src_device_matrix,
+            &mut dst_device_matrix,
+            log_n,
+            num_bf_cols,
+            &exec_stream,
+            &aux_stream,
+        )
+        .unwrap();
+        memory_copy_async(
+            &mut dst_host[0..memory_size],
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+
+        exec_stream.synchronize().unwrap();
+
+        // Recover CPU monomial forms and copy Z back to xy
+        let fwd_twiddles = &fwd_twiddles[..(n >> 1)];
+        let inv_twiddles = &inv_twiddles[..(n >> 1)];
+        let tau_order = n * (1 << log_extension_degree);
+        let tau: E2 = domain_generator_for_size(tau_order as u64);
+        let tau_inv_pow_H_over_2 = tau.pow(n as u32 >> 1).inverse().expect("must exist");
+        for ntt in 0..num_bf_cols {
+            let start = ntt * stride + OFFSET;
+            let range = start..start + n as usize;
+            let gpu_evals = &dst_host[range.clone()];
+            let src_evals = &src_host[range];
+            let mut cpu_ref: Vec<E2> = src_evals
+                .iter()
+                .map(|c0| E2::from_coeffs_in_base(&[*c0, BF::ZERO]))
+                .collect();
+            ifft_natural_to_natural::<BF, E2, E2>(&mut cpu_ref, E2::ONE, inv_twiddles);
+            fft_natural_to_bitreversed(&mut cpu_ref, tau_inv_pow_H_over_2, tau, fwd_twiddles);
+            bitreverse_enumeration_inplace(&mut cpu_ref);
+            for i in 0..n {
+                assert_eq!(
+                    cpu_ref[i].imag_part(),
+                    BF::ZERO,
+                    "2^{} ntt {} i {}",
+                    log_n,
+                    ntt,
+                    i,
+                );
+                assert_eq!(
+                    cpu_ref[i].real_part(),
+                    gpu_evals[i],
+                    "2^{} ntt {} i {}",
+                    log_n,
+                    ntt,
+                    i,
+                );
+            }
+        }
+    }
+    ctx.destroy().unwrap();
+}
+
 #[test]
 #[serial]
-fn test_natural_trace_main_domain_evals_to_bitrev_Z() {
+fn test_natural_trace_main_evals_to_bitrev_Z() {
     run_natural_evals_to_bitrev_Z(
         1..17,
         2 * REAL_COLS_PER_BLOCK as usize + 2,
@@ -629,7 +745,7 @@ fn test_natural_trace_main_domain_evals_to_bitrev_Z() {
 #[test]
 #[serial]
 #[ignore]
-fn test_natural_trace_main_domain_evals_to_bitrev_Z_large() {
+fn test_natural_trace_main_evals_to_bitrev_Z_large() {
     run_natural_evals_to_bitrev_Z(17..25, 2, EvalsAre::TraceMainDomain);
 }
 
@@ -665,8 +781,8 @@ fn test_natural_composition_coset_evals_to_bitrev_Z_large() {
 
 #[test]
 #[serial]
-fn test_bitrev_Z_to_natural_composition_main_domain_evals() {
-    run_bitrev_Z_to_natural_composition_main_domain_evals(
+fn test_bitrev_Z_to_natural_composition_main_evals() {
+    run_bitrev_Z_to_natural_composition_main_evals(
         1..17,
         2 * REAL_COLS_PER_BLOCK as usize + 4,
     );
@@ -675,6 +791,23 @@ fn test_bitrev_Z_to_natural_composition_main_domain_evals() {
 #[test]
 #[serial]
 #[ignore]
-fn test_bitrev_Z_to_natural_composition_main_domain_evals_large() {
-    run_bitrev_Z_to_natural_composition_main_domain_evals(17..22, 4);
+fn test_bitrev_Z_to_natural_composition_main_evals_large() {
+    run_bitrev_Z_to_natural_composition_main_evals(17..22, 4);
+}
+
+#[test]
+#[serial]
+fn test_natural_main_evals_to_natural_coset_evals() {
+    run_natural_main_evals_to_natural_coset_evals(
+        1..16,
+        // 1..17,
+        2 * REAL_COLS_PER_BLOCK as usize + 4,
+    );
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn test_natural_main_evals_to_natural_coset_evals_large() {
+    run_natural_main_evals_to_natural_coset_evals(17..22, 4);
 }

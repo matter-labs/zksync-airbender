@@ -1,12 +1,10 @@
 use super::context::ProverContext;
 use super::BF;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
-use crate::device_structures::{
-    DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixMut,
-};
+use crate::device_structures::{ DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut };
 use crate::ntt::{
-    bitrev_Z_to_natural_composition_main_domain_evals, bitrev_Z_to_natural_trace_coset_evals,
-    natural_composition_coset_evals_to_bitrev_Z, natural_trace_main_domain_evals_to_bitrev_Z,
+    bitrev_Z_to_natural_composition_main_evals,
+    natural_composition_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
 };
 use crate::ops_cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops_simple::{neg, set_to_zero};
@@ -45,12 +43,14 @@ impl<C: ProverContext> TraceHolder<BF, C> {
 
     pub fn extend_and_commit(&mut self, source_coset_index: usize, context: &C) -> CudaResult<()> {
         let stream = context.get_exec_stream();
+        let aux_stream = context.get_ntt_aux_stream();
         extend_trace(
             &mut self.ldes,
             source_coset_index,
             self.log_domain_size,
             self.log_lde_factor,
             stream,
+            aux_stream,
         )?;
         populate_trees_from_trace_ldes::<C>(
             &self.ldes,
@@ -283,14 +283,13 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     Ok(())
 }
 
-const BF_COLS_CHUNK_FOR_L2: usize = 2;
-
 pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
     ldes: &mut [L],
     source_coset_index: usize,
     log_domain_size: u32,
     log_lde_factor: u32,
     stream: &CudaStream,
+    aux_stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(log_lde_factor, 1);
     let lde_factor = 1 << log_lde_factor;
@@ -299,67 +298,46 @@ pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
     assert_eq!(len, ldes[1].len());
     let domain_size = 1 << log_domain_size;
     assert_eq!(len & ((domain_size << 1) - 1), 0);
+    let num_bf_cols = len >> log_domain_size;
     if source_coset_index == 0 {
         let (src_evals, dst_evals) = ldes.split_at_mut(1);
         let src_evals = &src_evals[0];
-        let const_dst_evals = unsafe { DeviceSlice::from_raw_parts(dst_evals[0].as_ptr(), len) };
         let dst_evals = &mut dst_evals[0];
-        for ((src_col_pair, const_dst_col_pair), dst_col_pair) in src_evals
-            .chunks(BF_COLS_CHUNK_FOR_L2 * domain_size)
-            .zip(const_dst_evals.chunks(BF_COLS_CHUNK_FOR_L2 * domain_size))
-            .zip(dst_evals.chunks_mut(BF_COLS_CHUNK_FOR_L2 * domain_size))
-        {
-            // NTTs internally assert that all chunks contain BF_COLS_CHUNK_FOR_L2 cols.
-            let src_evals_matrix = DeviceMatrix::new(src_col_pair, domain_size);
-            let const_dst_evals_matrix = DeviceMatrix::new(const_dst_col_pair, domain_size);
-            let mut dst_evals_matrix = DeviceMatrixMut::new(dst_col_pair, domain_size);
-            let dst_matrix_ref = &mut dst_evals_matrix;
-            natural_trace_main_domain_evals_to_bitrev_Z(
-                &src_evals_matrix,
-                dst_matrix_ref,
-                log_domain_size as usize,
-                src_evals_matrix.cols(),
-                stream,
-            )?;
-            bitrev_Z_to_natural_trace_coset_evals(
-                &const_dst_evals_matrix,
-                dst_matrix_ref,
-                log_domain_size as usize,
-                const_dst_evals_matrix.cols(),
-                stream,
-            )?;
-        }
+        let src_evals_matrix = DeviceMatrix::new(src_evals, domain_size);
+        let mut dst_matrix = DeviceMatrixMut::new(dst_evals, domain_size);
+        // let dst_matrix_ref = &mut dst_matrix;
+        natural_main_evals_to_natural_coset_evals(
+            &src_evals_matrix,
+            &mut dst_matrix,
+            log_domain_size as usize,
+            num_bf_cols,
+            stream,
+            aux_stream,
+        )?;
     } else {
         assert_eq!(source_coset_index, 1);
         let (dst_evals, src_evals) = ldes.split_at_mut(1);
         let src_evals = &src_evals[0];
         let const_dst_evals = unsafe { DeviceSlice::from_raw_parts(dst_evals[0].as_ptr(), len) };
         let dst_evals = &mut dst_evals[0];
-        for ((src_col_pair, const_dst_col_pair), dst_col_pair) in src_evals
-            .chunks(BF_COLS_CHUNK_FOR_L2 * domain_size)
-            .zip(const_dst_evals.chunks(BF_COLS_CHUNK_FOR_L2 * domain_size))
-            .zip(dst_evals.chunks_mut(BF_COLS_CHUNK_FOR_L2 * domain_size))
-        {
-            // NTTs internally assert that all chunks contain BF_COLS_CHUNK_FOR_L2 cols
-            let src_evals_matrix = DeviceMatrix::new(src_col_pair, domain_size);
-            let const_dst_evals_matrix = DeviceMatrix::new(const_dst_col_pair, domain_size);
-            let mut dst_evals_matrix = DeviceMatrixMut::new(dst_col_pair, domain_size);
-            let dst_matrix_ref = &mut dst_evals_matrix;
-            natural_composition_coset_evals_to_bitrev_Z(
-                &src_evals_matrix,
-                dst_matrix_ref,
-                log_domain_size as usize,
-                src_evals_matrix.cols(),
-                stream,
-            )?;
-            bitrev_Z_to_natural_composition_main_domain_evals(
-                &const_dst_evals_matrix,
-                dst_matrix_ref,
-                log_domain_size as usize,
-                const_dst_evals_matrix.cols(),
-                stream,
-            )?;
-        }
+        let src_evals_matrix = DeviceMatrix::new(src_evals, domain_size);
+        let const_dst_matrix = DeviceMatrix::new(const_dst_evals, domain_size);
+        let mut dst_matrix = DeviceMatrixMut::new(dst_evals, domain_size);
+        // let dst_matrix_ref = &mut dst_matrix;
+        natural_composition_coset_evals_to_bitrev_Z(
+            &src_evals_matrix,
+            &mut dst_matrix,
+            log_domain_size as usize,
+            num_bf_cols,
+            stream,
+        )?;
+        bitrev_Z_to_natural_composition_main_evals(
+            &const_dst_matrix,
+            &mut dst_matrix,
+            log_domain_size as usize,
+            num_bf_cols,
+            stream,
+        )?;
     }
     Ok(())
 }
