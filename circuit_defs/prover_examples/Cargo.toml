@@ -26,6 +26,9 @@ nvtx = { version = "1", optional = true}
 cs = { workspace = true, optional = true}
 era_cudart = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_cudart", optional = true }
 
+# For multigpu
+crossbeam = { version = "0.8" , optional = true}
+
 [dev-dependencies]
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
 
@@ -41,4 +44,4 @@ timing_logs = []
 
 default = ["timing_logs"]
 
-gpu = ["gpu_prover", "nvtx", "cs", "era_cudart"]
+gpu = ["gpu_prover", "nvtx", "cs", "era_cudart", "crossbeam"]
