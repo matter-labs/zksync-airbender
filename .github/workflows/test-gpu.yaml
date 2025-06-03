@@ -27,8 +27,11 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt update && apt install -y cmake git jq libssl-dev pkg-config wget curl
+          apt update && apt install -y cmake git jq libssl-dev pkg-config wget curl debootstrap file
           echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+          mkdir -p /22.04-sysroot
+          debootstrap --variant=buildd jammy /22.04-sysroot http://archive.ubuntu.com/ubuntu/
+
 
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
 
@@ -49,12 +52,14 @@ jobs:
           mkdir artifacts
           cp /usr/local/cuda/lib64/libcudart_static.a /usr/local/cuda/lib64/libcudart.a
           CUDAARCHS=80 CARGO_TARGET_DIR=./build \
-          RUSTFLAGS='-C target-feature=+crt-static' \
+          RUSTFLAGS='-C link-arg=--sysroot=/22.04-sysroot' \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
             cp "$binary" artifacts/${{ matrix.package }}
           done
+          ls -la artifacts/${{ matrix.package }}
+          file artifacts/${{ matrix.package }}
 
       - name: Upload test binary
         uses: actions/upload-artifact@v4
@@ -92,5 +97,7 @@ jobs:
       - name: Run test binary built with CUDA 12.6
         id: test_cuda_12_6
         run: |
-          chmod +x zksync-airbender-test-binary/12.6/${{ matrix.package }}
-          zksync-airbender-test-binary/12.6/${{ matrix.package }} --nocapture
+          find . -name zksmith
+          ls -la ./zksync-airbender-test-binary/12.6/zksmith
+          chmod a+x ./zksync-airbender-test-binary/12.6/zksmith
+          ./zksync-airbender-test-binary/12.6/zksmith --nocapture
