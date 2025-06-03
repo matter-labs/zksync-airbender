@@ -14,7 +14,7 @@ docker run \
   -p 8011:8011 \
   -p 3030:3030 \
   --name ohbender \
-  ohbender:latest
+  matterlabs/ohbender:latest
 ```
 
 After that, you can send transactions to localhost:8011, and check the prover status on localhost:3030
@@ -55,11 +55,3 @@ sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
-
-
-docker run \
-  --gpus all \
-  -p 8012:8011 \
-  -p 3031:3030 \
-  --name ohbender \
-  ohbender:latest
