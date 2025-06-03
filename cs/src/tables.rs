@@ -657,8 +657,19 @@ impl quote::ToTokens for TableType {
             TableType::U16SelectByteAndGetByteSign => {
                 quote! { TableType::U16SelectByteAndGetByteSign }
             }
-            a @ _ => {
-                todo!("Support {:?}", a);
+            TableType::ConditionalOpUnsignedConditionsResolver => {
+                todo!()
+            }
+            TableType::StoreByteSourceContribution => {
+                quote! { TableType::StoreByteSourceContribution }
+            }
+            TableType::StoreByteExistingContribution => {
+                quote! { TableType::StoreByteExistingContribution }
+            }
+            TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
+            TableType::TruncateShift => quote! { TableType::TruncateShift },
+            TableType::DynamicPlaceholder => {
+                unimplemented!("should not appear in final circuits")
             }
         };
 
@@ -1049,79 +1060,6 @@ pub fn create_quick_decoder_decomposition_table_7x3x6<F: PrimeField>(id: u32) ->
         id,
     )
 }
-
-// pub fn create_mret_process_low_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_low in 0..=u16::MAX {
-//         // we need to get(!) mpp(11-12), and set mie(3) to previous mpie and set mpie(7) to 1
-//         // hence the splitting:
-//         //      low = [0-2, mie(3), 4-6, mpie(7), 8-10, mpp(11-12), 13-15]
-//         const MIE_BIT: u16 = 1u16 << 3;
-//         const MPIE_BIT: u16 = 1u16 << 7;
-//         const MPP_BITS: u16 = 3u16 << 11;
-//         let current_mpp = (csr_low & !MPP_BITS) >> 11;
-//         let current_mpie = (csr_low & !MPIE_BIT) >> 7;
-//         let mut result = csr_low;
-//         result &= !MIE_BIT; // clear MIE
-//         result |= current_mpie << 3; // set MIE to MPIE
-//         result &= !MPIE_BIT; // clear MPIE
-//         result |= 1 << 7; // set MPIE to 1
-//         result &= !MPP_BITS; // clear MPP
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_low as u64),
-//             F::from_u64_unchecked(current_mpp as u64),
-//             F::from_u64_unchecked(result as u64),
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "MRET process low table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
-
-// pub fn create_mret_clear_high_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_high in 0..=u16::MAX {
-//         // we need to clear mprv(17),
-//         //      high = [16, mprv(17), 18-31]
-//         const MPRV_BIT: u16 = 1u16 << 1;
-//         let mut result = csr_high;
-//         result &= !MPRV_BIT; // clear MIE
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_high as u64),
-//             F::from_u64_unchecked(result as u64),
-//             F::ZERO,
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "MRET clear high table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
-
-// pub fn create_trap_process_low_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_low in 0..=u16::MAX {
-//         // on trap the system moves current mie(3) into mpie(1)
-//         // low = [0-2, mie(3), 4-6, mpie(1), 8-15]
-//         const MIE_BIT: u16 = 1u16 << 3;
-//         const MPIE_BIT: u16 = 1u16 << 7;
-//         let current_mie = (csr_low & !MIE_BIT) >> 3;
-//         let _current_mpie = (csr_low & !MPIE_BIT) >> 7;
-//         let mut result = csr_low;
-//         result &= !MPIE_BIT; // clear MPIE
-//         result |= current_mie << 7; // set MPIE to MIE
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_low as u64),
-//             F::from_u64_unchecked(result as u64),
-//             F::ZERO,
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "TRAP process low table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
 
 pub fn create_u16_get_sign_and_high_byte_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let keys = key_for_continuous_log2_range(16);
@@ -1608,25 +1546,11 @@ pub fn create_formal_width_3_range_check_table_for_single_entry<F: PrimeField, c
     )
 }
 
-pub const LEFT_OR_RIGHT_BIT_INDEX: usize = 0;
-pub const ARITHMETIC_SHIFT_INDEX: usize = 1;
-pub const NUM_BYTE_INDEX_BITS: usize = 2;
-pub const NUM_SHIFT_TYPE_BITS: usize = 2;
-pub const NUM_SHIFT_AMOUNT_BITS: usize = 5;
-
 pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // This table takes single byte + flags (shift right/left and SRA) + two-bit byte index, and then produces
-    // contributions of this byte into two 16-bit words
+    // take 16 bits of input half-word and [0..=32 range for shift, as we model everything as SRL,
+    // and SLL by 0 should be special-case SRL by 32 in our case
 
-    // TODO: condier alternative option to take 16-bit words, that would lead
-    // to table size 16 + 5 + 2 + 1 = 24 bits
-
-    // TODO: consider just reusing funct3 and funct7
-    const TOTAL_INPUT_BIT_SIZE: usize =
-        8 + NUM_SHIFT_AMOUNT_BITS + NUM_SHIFT_TYPE_BITS + NUM_BYTE_INDEX_BITS;
-    let keys = key_for_continuous_log2_range(TOTAL_INPUT_BIT_SIZE);
-
-    assert!(F::CHAR_BITS - 1 >= TOTAL_INPUT_BIT_SIZE);
+    let keys = key_for_continuous_range((32 * (1 << 16)) - 1);
 
     let table_name = "Shift implementation table".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
@@ -1634,44 +1558,40 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
         table_name,
         1,
         |keys| {
-            let mut a = keys[0].as_u64_reduced();
+            let a = keys[0].as_u64_reduced();
+            let input_word = a as u16;
+            let right_shift_amount = (a >> 16) as u32;
+            assert!(right_shift_amount <= 32);
 
-            let byte_index = a & ((1 << NUM_BYTE_INDEX_BITS) - 1);
-            a >>= NUM_BYTE_INDEX_BITS;
-            let shift_type_bits = a & ((1 << NUM_SHIFT_TYPE_BITS) - 1);
-            a >>= NUM_SHIFT_TYPE_BITS;
-            let shift_amount = a & ((1 << NUM_SHIFT_AMOUNT_BITS) - 1);
-            a >>= NUM_SHIFT_AMOUNT_BITS;
-            let input = (a as u32) << (byte_index * 8);
-            let is_right_shift = shift_type_bits & (1 << LEFT_OR_RIGHT_BIT_INDEX) != 0;
-            let is_arithmetic_shift = shift_type_bits & (1 << ARITHMETIC_SHIFT_INDEX) != 0;
+            if right_shift_amount != 32 {
+                let t = (input_word as u32) << 16;
+                let t = t >> right_shift_amount;
+                let in_place = (t >> 16) as u16;
+                let underflow = t as u16;
 
-            let result_contribution = if is_right_shift == false {
-                if is_arithmetic_shift == false {
-                    // SLL
-                    input << shift_amount
-                } else {
-                    // padding, but we should not encounter it in practice
-                    0u32
-                }
+                let mut result = [F::ZERO; 3];
+                result[0] = F::from_u64_unchecked(in_place as u64);
+                result[1] = F::from_u64_unchecked(underflow as u64);
+
+                (a as usize, result)
             } else {
-                if is_arithmetic_shift == false {
-                    // SRL
-                    input >> shift_amount
-                } else {
-                    // SRA
-                    ((input as i32) >> shift_amount) as u32
-                }
-            };
+                // special case where it's actually SLL by 0
+                // Usually we take SLL result as
+                // low = low_limb_underflow
+                // high = high_limb_underflow + low_limb_to_keep
+                // and it should be consistent as we do not differentiate high/low limb in this case
 
-            let low = result_contribution as u16;
-            let high = (result_contribution >> 16) as u16;
+                // But it can be satisfied as there is no right shift by 32, so this way we move
+                // original word into "underflow", and it composes well into the result we want
+                let in_place = 0;
+                let underflow = input_word;
 
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(low as u64);
-            result[1] = F::from_u64_unchecked(high as u64);
+                let mut result = [F::ZERO; 3];
+                result[0] = F::from_u64_unchecked(in_place as u64);
+                result[1] = F::from_u64_unchecked(underflow as u64);
 
-            (a as usize, result)
+                (a as usize, result)
+            }
         },
         Some(first_key_index_gen_fn::<F, 3>),
         id,
@@ -1751,7 +1671,7 @@ pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable
         Some(|keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();
-            assert!(keys[2].is_zero());
+
             assert!(a < (1u64 << 8));
             assert!(b < (1u64 << 1));
 
@@ -1866,7 +1786,7 @@ pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> Lo
         Some(|keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();
-            assert!(keys[2].is_zero());
+
             assert!(a < (1u64 << 16));
             assert!(b < (1u64 << 1));
 
@@ -1913,7 +1833,7 @@ pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> 
         Some(|keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();
-            assert!(keys[2].is_zero());
+
             assert!(a < (1u64 << 16));
             assert!(b < (1u64 << 1));
 
