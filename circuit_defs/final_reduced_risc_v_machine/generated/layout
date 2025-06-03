@@ -2608,24 +2608,6 @@
             "WitnessSubtree": 35
           },
           {
-            "WitnessSubtree": 87
-          }
-        ],
-        [
-          2147483646,
-          {
-            "WitnessSubtree": 35
-          },
-          {
-            "WitnessSubtree": 88
-          }
-        ],
-        [
-          1,
-          {
-            "WitnessSubtree": 35
-          },
-          {
             "WitnessSubtree": 93
           }
         ]
@@ -2634,7 +2616,7 @@
         [
           1,
           {
-            "WitnessSubtree": 88
+            "WitnessSubtree": 87
           }
         ],
         [
@@ -2654,25 +2636,7 @@
             "WitnessSubtree": 35
           },
           {
-            "WitnessSubtree": 87
-          }
-        ],
-        [
-          1,
-          {
-            "WitnessSubtree": 35
-          },
-          {
-            "WitnessSubtree": 89
-          }
-        ],
-        [
-          2147483646,
-          {
-            "WitnessSubtree": 35
-          },
-          {
-            "WitnessSubtree": 93
+            "WitnessSubtree": 88
           }
         ]
       ],
@@ -2680,13 +2644,13 @@
         [
           1,
           {
-            "WitnessSubtree": 87
+            "WitnessSubtree": 88
           }
         ],
         [
           1,
           {
-            "WitnessSubtree": 93
+            "WitnessSubtree": 89
           }
         ],
         [
@@ -4315,15 +4279,6 @@
         [
           1,
           {
-            "WitnessSubtree": 31
-          },
-          {
-            "WitnessSubtree": 35
-          }
-        ],
-        [
-          1,
-          {
             "WitnessSubtree": 33
           },
           {
@@ -4332,6 +4287,12 @@
         ]
       ],
       "linear_terms": [
+        [
+          31,
+          {
+            "WitnessSubtree": 31
+          }
+        ],
         [
           2147483646,
           {
@@ -4455,7 +4416,7 @@
           }
         ],
         [
-          42,
+          7,
           {
             "WitnessSubtree": 31
           }
@@ -4568,12 +4529,21 @@
           }
         ],
         [
+          2097152,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 35
+          }
+        ],
+        [
           65536,
           {
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 85
+            "WitnessSubtree": 86
           }
         ],
         [
@@ -4788,12 +4758,21 @@
           }
         ],
         [
+          2097152,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 35
+          }
+        ],
+        [
           65536,
           {
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 85
+            "WitnessSubtree": 86
           }
         ],
         [
@@ -4932,7 +4911,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 35
+            "WitnessSubtree": 34
           }
         ],
         [
@@ -4950,7 +4929,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 85
+            "WitnessSubtree": 86
           }
         ]
       ],
@@ -5474,7 +5453,7 @@
             "WitnessSubtree": 42
           },
           {
-            "WitnessSubtree": 108
+            "WitnessSubtree": 109
           }
         ]
       ],
@@ -5482,7 +5461,7 @@
         [
           1,
           {
-            "WitnessSubtree": 108
+            "WitnessSubtree": 109
           }
         ],
         [
@@ -7067,28 +7046,28 @@
     593921,
     659457,
     659457,
+    659585,
+    659585,
     659713,
-    659713,
-    659841,
-    725377,
-    1249665,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    1253761,
-    3350913,
-    3350913,
-    3350913,
-    3350913,
-    3350913
+    725249,
+    1249537,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    1253633,
+    5447937,
+    5447937,
+    5447937,
+    5447937,
+    5447937
   ],
-  "total_tables_size": 3351425
+  "total_tables_size": 5447937
 }

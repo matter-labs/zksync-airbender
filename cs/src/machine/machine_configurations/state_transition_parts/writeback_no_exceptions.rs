@@ -55,10 +55,10 @@ pub(crate) fn writeback_no_exception_with_opcodes_in_rom<
             );
             let reg_write_value_high = cs.add_variable_from_constraint(
                 (Term::from(1) - Term::from(reg_is_zero.get_variable().unwrap()))
-                    * Term::from(new_reg_val.0[0]),
+                    * Term::from(new_reg_val.0[1]),
             );
 
-            // now contraint that if we do update register, then address is correct
+            // now constraint that if we do update register, then address is correct
             let ShuffleRamQueryType::RegisterOrRam {
                 is_register,
                 address,
@@ -69,9 +69,10 @@ pub(crate) fn writeback_no_exception_with_opcodes_in_rom<
             let Boolean::Is(..) = is_register else {
                 panic!("Memory opcode must resolve RD/STORE query `is_register` flag");
             };
+            // if we write to RD - we should make a constraint over the address, that it comes from opcode
             cs.add_constraint((rd_constraint.clone() - Term::from(address[0])) * update_rd.clone());
             cs.add_constraint((Term::from(address[1])) * update_rd.clone());
-            // x0 for BRANCH instructions
+            // x0 for BRANCH instructions as it's not even encoded in the opcode
             cs.add_constraint((Term::from(address[0])) * Term::from(b_insn));
             cs.add_constraint((Term::from(address[1])) * Term::from(b_insn));
 

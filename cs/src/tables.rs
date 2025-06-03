@@ -1165,7 +1165,7 @@ pub fn create_memory_load_signs_table<F: PrimeField>(id: u32) -> LookupTable<F, 
 }
 
 pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(1 + 1 + 5 + 1);
+    let keys = key_for_continuous_log2_range(1 + 1 + 5);
     const TABLE_NAME: &'static str = "SRA sign bits filler table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -1175,9 +1175,10 @@ pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3>
             let a = keys[0].as_u64_reduced();
             let input_sign = a & 1 > 0;
             let is_sra = (a >> 1) & 1 > 0;
-            let shift_amount_ext = a >> 2;
+            let shift_amount = a >> 2;
+            assert!(shift_amount < 32);
 
-            if input_sign == false || is_sra == false || shift_amount_ext >= 32 {
+            if input_sign == false || is_sra == false {
                 // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
                 // in practice, but we have to fill the table)
                 let result = [F::ZERO; 3];
@@ -1190,7 +1191,7 @@ pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3>
 
                     (a as usize, result)
                 } else {
-                    let (mask, _) = u32::MAX.overflowing_shl(32 - (shift_amount_ext as u32));
+                    let (mask, _) = u32::MAX.overflowing_shl(32 - (shift_amount as u32));
 
                     let mut result = [F::ZERO; 3];
                     result[0] = F::from_u64_unchecked(mask as u16 as u64);
@@ -1547,10 +1548,9 @@ pub fn create_formal_width_3_range_check_table_for_single_entry<F: PrimeField, c
 }
 
 pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // take 16 bits of input half-word and [0..=32 range for shift, as we model everything as SRL,
-    // and SLL by 0 should be special-case SRL by 32 in our case
+    // take 16 bits of input half-word || shift || is_right
 
-    let keys = key_for_continuous_range((32 * (1 << 16)) - 1);
+    let keys = key_for_continuous_log2_range(16 + 5 + 1);
 
     let table_name = "Shift implementation table".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
@@ -1560,38 +1560,30 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
         |keys| {
             let a = keys[0].as_u64_reduced();
             let input_word = a as u16;
-            let right_shift_amount = (a >> 16) as u32;
-            assert!(right_shift_amount <= 32);
+            let shift_amount = ((a >> 16) & 0b1_1111) as u32;
+            let is_right_shift = (a >> (16 + 5)) > 0;
 
-            if right_shift_amount != 32 {
-                let t = (input_word as u32) << 16;
-                let t = t >> right_shift_amount;
+            let (in_place, overflow) = if is_right_shift {
+                let input = (input_word as u32) << 16;
+                let t = input >> shift_amount;
                 let in_place = (t >> 16) as u16;
-                let underflow = t as u16;
+                let overflow = t as u16;
 
-                let mut result = [F::ZERO; 3];
-                result[0] = F::from_u64_unchecked(in_place as u64);
-                result[1] = F::from_u64_unchecked(underflow as u64);
-
-                (a as usize, result)
+                (in_place, overflow)
             } else {
-                // special case where it's actually SLL by 0
-                // Usually we take SLL result as
-                // low = low_limb_underflow
-                // high = high_limb_underflow + low_limb_to_keep
-                // and it should be consistent as we do not differentiate high/low limb in this case
+                let input = input_word as u32;
+                let t = input << shift_amount;
+                let in_place = t as u16;
+                let overflow = (t >> 16) as u16;
 
-                // But it can be satisfied as there is no right shift by 32, so this way we move
-                // original word into "underflow", and it composes well into the result we want
-                let in_place = 0;
-                let underflow = input_word;
+                (in_place, overflow)
+            };
 
-                let mut result = [F::ZERO; 3];
-                result[0] = F::from_u64_unchecked(in_place as u64);
-                result[1] = F::from_u64_unchecked(underflow as u64);
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked(in_place as u64);
+            result[1] = F::from_u64_unchecked(overflow as u64);
 
-                (a as usize, result)
-            }
+            (a as usize, result)
         },
         Some(first_key_index_gen_fn::<F, 3>),
         id,
@@ -1765,7 +1757,7 @@ pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> Lo
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,
-        3,
+        2,
         |keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();
@@ -1812,7 +1804,7 @@ pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,
-        3,
+        2,
         |keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();

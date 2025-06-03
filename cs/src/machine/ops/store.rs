@@ -119,7 +119,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
         let src2 = inputs.get_rs2_or_equivalent();
 
         if execute_family.get_value(cs).unwrap_or(false) {
-            println!("MEMORY");
+            println!("STORE");
             println!("Address = {:?}", src1.get_register().get_value_unsigned(cs));
         }
 
@@ -208,7 +208,6 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
                 TableType::StoreByteSourceContribution.to_num(),
                 execute_family,
             );
-
             let [to_keep_contribution] = opt_ctx.append_lookup_relation(
                 cs,
                 &[subword_to_use_for_update, bit_0],

@@ -114,13 +114,9 @@ impl<
 {
     fn define_used_tables() -> Vec<TableType> {
         if SUPPORT_SRA {
-            vec![
-                TableType::TruncateShift,
-                TableType::ShiftImplementation,
-                TableType::SRASignFiller,
-            ]
+            vec![TableType::ShiftImplementation, TableType::SRASignFiller]
         } else {
-            vec![TableType::TruncateShift, TableType::ShiftImplementation]
+            vec![TableType::ShiftImplementation]
         }
     }
 
@@ -162,9 +158,9 @@ impl<
             cs,
             &[
                 Constraint::from(shift_amount_low_byte),
-                Constraint::from(is_right_shift),
+                Constraint::from(0b1_1111), // truncate to 5 bits
             ],
-            TableType::TruncateShift.to_num(),
+            TableType::And.to_num(),
             exec_flag,
         );
 
@@ -198,30 +194,23 @@ impl<
         use crate::tables::*;
 
         if SUPPORT_ROT == false {
-            // We use a table that takes 16 bits limb and 5 bit shift amount, and produces 2 values: one that is "overflow"/"underflow" -
-            // for bits that will get pushed out of the word, and another one for bits that will remain in the word.
-            // This will allow us to use few selections to get proper result of LOGICAL shift, whether it's left or right.
-
-            // At the end we will make extra contribution from SRA filler
-
-            // Example: over 4-bit integers. Left shift by 3 and right by 1 can be modeled by properly taking the limbs
-            // 0b0011 >> 1 = (0b0001, 0b1000)
-            // 0b0011 << 3 = (0b1000, 0b0001)
-
-            let [low_limb_to_keep, low_limb_underflow] = opt_ctx
+            // these shifts are quite trivial - they do a shift
+            let [low_in_place, shifted_from_low_place] = opt_ctx
                 .append_lookup_relation_from_linear_terms::<1, 2>(
                     cs,
                     &[Constraint::from(input.0[0])
-                        + (Term::from(1 << 16) * Term::from(shift_amount_low_byte))],
+                        + (Term::from(1 << 16) * Term::from(shift_amount_to_use))
+                        + (Term::from(1 << 21) * Term::from(is_right_shift))],
                     TableType::ShiftImplementation.to_num(),
                     exec_flag,
                 );
 
-            let [high_limb_to_keep, high_limb_underflow] = opt_ctx
+            let [high_in_place, shifted_from_high_place] = opt_ctx
                 .append_lookup_relation_from_linear_terms::<1, 2>(
                     cs,
                     &[Constraint::from(input.0[1])
-                        + (Term::from(1 << 16) * Term::from(shift_amount_low_byte))],
+                        + (Term::from(1 << 16) * Term::from(shift_amount_to_use))
+                        + (Term::from(1 << 21) * Term::from(is_right_shift))],
                     TableType::ShiftImplementation.to_num(),
                     exec_flag,
                 );
@@ -231,13 +220,13 @@ impl<
             // We modeled everything as RIGHT logical shift (and adjusted the shift value for SLL),
             // so our contribtuions are (we only need to get ones from logical shifts, and can unconditionally add from SRA as it's 0 if shift is logical)
             let selected_low = cs.add_variable_from_constraint(
-                Term::from(is_right_shift) * (Term::from(low_limb_to_keep) + Term::from(high_limb_underflow)) + // SRL
-                (Term::from(1) - Term::from(is_right_shift)) * (Term::from(low_limb_underflow)), // SLL
+                Term::from(is_right_shift) * (Term::from(low_in_place) + Term::from(shifted_from_high_place)) + // SRL
+                (Term::from(1) - Term::from(is_right_shift)) * Term::from(low_in_place), // SLL
             );
 
             let selected_high = cs.add_variable_from_constraint(
-                Term::from(is_right_shift) * (Term::from(high_limb_to_keep)) + // SRL
-                (Term::from(1) - Term::from(is_right_shift)) * (Term::from(high_limb_underflow) + Term::from(low_limb_to_keep)), // SLL
+                Term::from(is_right_shift) * (Term::from(high_in_place)) + // SRL
+                (Term::from(1) - Term::from(is_right_shift)) * (Term::from(high_in_place) + Term::from(shifted_from_low_place)), // SLL
             );
 
             let mut returned_value = [
@@ -246,13 +235,14 @@ impl<
             ];
 
             if SUPPORT_SRA {
-                let is_sra = boolean_set.get_minor_flag(SHIFT_COMMON_OP_KEY, SHIFT_RIGHT_KEY);
+                let is_sra =
+                    boolean_set.get_minor_flag(SHIFT_COMMON_OP_KEY, SHIFT_RIGHT_ALGEBRAIC_KEY);
                 let [sra_filler_low, sra_filler_high] = opt_ctx
                     .append_lookup_relation_from_linear_terms::<1, 2>(
                         cs,
                         &[Constraint::from(input_sign)
                             + (Term::from(1 << 1) * Term::from(is_sra))
-                            + (Term::from(1 << 2) * Term::from(shift_amount_low_byte))],
+                            + (Term::from(1 << 2) * Term::from(shift_amount_to_use))],
                         TableType::SRASignFiller.to_num(),
                         exec_flag,
                     );
