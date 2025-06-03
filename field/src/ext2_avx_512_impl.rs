@@ -85,31 +85,31 @@ impl Field for Mersenne31FieldAVX512Quartic {
         c1: Mersenne31ComplexVectorized::ZERO,
     };
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn is_one(&self) -> bool {
         *self == Self::ONE
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.add_assign(&other.c0);
         self.c1.add_assign(&other.c1);
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.sub_assign(&other.c0);
         self.c1.sub_assign(&other.c1);
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         let mut v0 = self.c0;
         v0.mul_assign(&other.c0);
@@ -131,7 +131,7 @@ impl Field for Mersenne31FieldAVX512Quartic {
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn square(&'_ mut self) -> &'_ mut Self {
         let mut v0 = self.c0;
         v0.sub_assign(&self.c1);
@@ -153,21 +153,21 @@ impl Field for Mersenne31FieldAVX512Quartic {
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn negate(&'_ mut self) -> &'_ mut Self {
         self.c0.negate();
         self.c1.negate();
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn double(&mut self) -> &mut Self {
         self.c0.double();
         self.c1.double();
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn inverse(&self) -> Option<Self> {
         let mut v0 = self.c0;
         v0.square();
@@ -195,31 +195,31 @@ impl Field for Mersenne31FieldAVX512Quartic {
 
 impl FieldExtension<Mersenne31ComplexVectorized> for Mersenne31FieldAVX512Quartic {
     const DEGREE: usize = 2;
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn mul_assign_by_base(&mut self, base: &Mersenne31ComplexVectorized) -> &mut Self {
         self.c0.mul_assign(base);
         self.c1.mul_assign(base);
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn add_assign_base(&mut self, elem: &Mersenne31ComplexVectorized) -> &mut Self {
         self.c0.add_assign(elem);
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn sub_assign_base(&mut self, elem: &Mersenne31ComplexVectorized) -> &mut Self {
         self.c0.sub_assign(elem);
         self
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn into_coeffs_in_base(self) -> [Mersenne31ComplexVectorized; 2] {
         [self.c0, self.c1]
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn coeffs_in_base(&self) -> &[Mersenne31ComplexVectorized] {
         unsafe {
             core::slice::from_raw_parts(
@@ -229,7 +229,7 @@ impl FieldExtension<Mersenne31ComplexVectorized> for Mersenne31FieldAVX512Quarti
         }
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn from_coeffs_in_base(coeffs: &[Mersenne31ComplexVectorized]) -> Self {
         Self {
             c0: coeffs[0],
@@ -253,7 +253,7 @@ impl FieldExtension<Mersenne31ComplexVectorized> for Mersenne31FieldAVX512Quarti
         }
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn from_base(elem: Mersenne31ComplexVectorized) -> Self {
         Self {
             c0: elem,
@@ -261,7 +261,7 @@ impl FieldExtension<Mersenne31ComplexVectorized> for Mersenne31FieldAVX512Quarti
         }
     }
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn get_coef_mut(&mut self, idx: usize) -> &mut Mersenne31ComplexVectorized {
         if idx == 0 {
             return &mut self.c0;
@@ -550,7 +550,7 @@ impl FieldLikeVectorized for Mersenne31FieldAVX512Quartic {
     type Base = Mersenne31Quartic;
     const SIZE_FACTOR: usize = WIDTH;
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    #[inline(always)]
     fn constant(value: Self::Base) -> Self {
         Self {
             c0: Mersenne31ComplexVectorized::constant(value.c0),
