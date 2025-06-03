@@ -95,7 +95,7 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineWithDelegationNoExceptionHandli
             ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
         >(
             cs,
-            <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
+            // <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
             splitting,
             boolean_keys,
         )

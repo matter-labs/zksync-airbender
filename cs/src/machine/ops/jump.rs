@@ -120,7 +120,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Custom(dst),
             }
         } else {
@@ -169,7 +169,7 @@ impl<
                 exec_flag,
                 trapped: Some(trapped),
                 trap_reason: Some(trap_reason),
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Custom(dst),
             }
         }

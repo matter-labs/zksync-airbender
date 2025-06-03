@@ -51,7 +51,7 @@ pub fn apply_non_determinism_csr_only_assuming_no_unimp<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {

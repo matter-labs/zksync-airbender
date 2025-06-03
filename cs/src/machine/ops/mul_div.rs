@@ -123,7 +123,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {
@@ -182,7 +182,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         }
@@ -411,7 +411,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {
@@ -709,7 +709,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         }

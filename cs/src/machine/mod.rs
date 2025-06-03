@@ -53,7 +53,7 @@ pub fn basic_invalid_bitmask() -> u64 {
     basic_invalid_bitmask
 }
 
-pub trait RegisterValueSource<F: PrimeField>: 'static + Clone + Copy {
+pub trait RegisterValueSource<F: PrimeField>: 'static + Clone {
     fn get_register(&self) -> Register<F>;
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F>;
     fn get_register_with_decomposition_and_sign(&self) -> Option<RegisterDecompositionWithSign<F>>;
@@ -77,13 +77,13 @@ impl<F: PrimeField> RegisterValueSource<F> for RegisterDecomposition<F> {
 
 impl<F: PrimeField> RegisterValueSource<F> for RegisterDecompositionWithSign<F> {
     fn get_register(&self) -> Register<F> {
-        self.into_register()
+        self.clone().into_register()
     }
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F> {
-        self.into_register_decomposition()
+        todo!();
     }
     fn get_register_with_decomposition_and_sign(&self) -> Option<RegisterDecompositionWithSign<F>> {
-        Some(*self)
+        Some(self.clone())
     }
     fn get_sign_bit(&self) -> Option<Boolean> {
         Some(self.sign_bit)
@@ -95,6 +95,7 @@ pub trait DecoderOutputSource<F: PrimeField, RS: RegisterValueSource<F>>: 'stati
     fn get_rs2_or_equivalent(&self) -> RS;
     fn get_imm(&self) -> Register<F>;
     fn get_pc_next(&self) -> Register<F>;
+    fn get_rs2_index(&self) -> Constraint<F>;
     fn funct3(&self) -> Num<F>;
     fn funct12(&self) -> Constraint<F>;
 }
@@ -183,20 +184,22 @@ pub trait MachineOp<
         const ASSUME_TRUSTED_CODE: bool,
         const OUTPUT_EXACT_EXCEPTIONS: bool,
     >(
-        cs: &mut CS,
-        machine_state: &ST,
-        inputs: &DE,
-        boolean_set: &BS,
-        opt_ctx: &mut OptimizationContext<F, CS>,
-        _memory_queries: &mut Vec<ShuffleRamMemQuery>,
+        _cs: &mut CS,
+        _machine_state: &ST,
+        _inputs: &DE,
+        _boolean_set: &BS,
+        _rs2_or_mem_load_query: &mut ShuffleRamMemQuery,
+        _rd_or_mem_store_query: &mut ShuffleRamMemQuery,
+        _opt_ctx: &mut OptimizationContext<F, CS>,
     ) -> CommonDiffs<F> {
-        Self::apply::<CS, ASSUME_TRUSTED_CODE, OUTPUT_EXACT_EXCEPTIONS>(
-            cs,
-            machine_state,
-            inputs,
-            boolean_set,
-            opt_ctx,
-        )
+        unimplemented!("not implemented by default for opcodes that do not support it");
+        // Self::apply::<CS, ASSUME_TRUSTED_CODE, OUTPUT_EXACT_EXCEPTIONS>(
+        //     cs,
+        //     machine_state,
+        //     inputs,
+        //     boolean_set,
+        //     opt_ctx,
+        // )
     }
 }
 

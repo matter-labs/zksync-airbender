@@ -119,8 +119,61 @@ impl<
 
         let funct3 = inputs.funct3();
 
-        let src1_decomposition = src1.get_register_with_decomposition().u8_decomposition;
-        let src2_decomposition = src2.get_register_with_decomposition().u8_decomposition;
+        let src1_byte0 = Constraint::<F>::from(
+            src1.get_register_with_decomposition_and_sign()
+                .unwrap()
+                .low_word_unconstrainted_decomposition
+                .0,
+        );
+        let src2_byte0 = Constraint::<F>::from(
+            src2.get_register_with_decomposition_and_sign()
+                .unwrap()
+                .low_word_unconstrainted_decomposition
+                .0,
+        );
+
+        let src1_byte1 = src1
+            .get_register_with_decomposition_and_sign()
+            .unwrap()
+            .low_word_unconstrainted_decomposition
+            .1
+            .clone();
+        let src2_byte1 = src2
+            .get_register_with_decomposition_and_sign()
+            .unwrap()
+            .low_word_unconstrainted_decomposition
+            .1
+            .clone();
+
+        let src1_byte2 = src1
+            .get_register_with_decomposition_and_sign()
+            .unwrap()
+            .high_word_decomposition
+            .0
+            .clone();
+        let src2_byte2 = src2
+            .get_register_with_decomposition_and_sign()
+            .unwrap()
+            .high_word_decomposition
+            .0
+            .clone();
+
+        let src1_byte3 = Constraint::<F>::from(
+            src1.get_register_with_decomposition_and_sign()
+                .unwrap()
+                .high_word_decomposition
+                .1,
+        );
+        let src2_byte3 = Constraint::<F>::from(
+            src2.get_register_with_decomposition_and_sign()
+                .unwrap()
+                .high_word_decomposition
+                .1,
+        );
+
+        let src1_decomposition = [src1_byte0, src1_byte1, src1_byte2, src1_byte3];
+
+        let src2_decomposition = [src2_byte0, src2_byte1, src2_byte2, src2_byte3];
 
         // NB: we don't need explicit range checks here: the correctness will be enforced by the call
         // to binary table - first and second tables are costrainted to be 8-bits long
@@ -128,9 +181,9 @@ impl<
         let iter = itertools::multizip((src1_decomposition.iter(), src2_decomposition.iter()));
 
         for (left_in, right_in) in iter {
-            let [out] = opt_ctx.append_lookup_relation::<2, 1>(
+            let [out] = opt_ctx.append_lookup_relation_from_linear_terms::<2, 1>(
                 cs,
-                &[left_in.get_variable(), right_in.get_variable()],
+                &[left_in.clone(), right_in.clone()],
                 funct3,
                 exec_flag,
             );
@@ -160,7 +213,7 @@ impl<
             exec_flag,
             trapped: None,
             trap_reason: None,
-            rd_value: Some(returned_value),
+            rd_value: vec![(returned_value, exec_flag)],
             new_pc_value: NextPcValue::Default,
         }
     }
