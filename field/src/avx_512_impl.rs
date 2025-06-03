@@ -40,25 +40,25 @@ impl Rand for Mersenne31FieldVectorized {
 }
 
 impl Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     #[must_use]
     pub fn to_vector(self) -> __m512i {
         unsafe { transmute(self) }
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     #[must_use]
     pub unsafe fn from_vector(vector: __m512i) -> Self {
         transmute(vector)
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     #[must_use]
     pub const fn broadcast(value: Mersenne31Field) -> Self {
         Self([value; WIDTH])
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn permute(&mut self, ix: &[u32; 16]) -> &mut Self {
         let ix = *ix;
         let ix: __m512i = unsafe { transmute(ix) };
@@ -70,7 +70,7 @@ impl Mersenne31FieldVectorized {
         self
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     pub fn interleave(&self, other: Self, block_len: usize) -> (Self, Self) {
         let (v0, v1) = (self.to_vector(), other.to_vector());
         let (res0, res1) = match block_len {
@@ -84,7 +84,7 @@ impl Mersenne31FieldVectorized {
         unsafe { (Self::from_vector(res0), Self::from_vector(res1)) }
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     pub fn interleave_radix4(
         &self,
         b: Self,
@@ -123,7 +123,7 @@ impl Mersenne31FieldVectorized {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn add(lhs: __m512i, rhs: __m512i) -> __m512i {
     unsafe {
@@ -133,7 +133,7 @@ fn add(lhs: __m512i, rhs: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn sub(lhs: __m512i, rhs: __m512i) -> __m512i {
     unsafe {
@@ -143,7 +143,7 @@ fn sub(lhs: __m512i, rhs: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn movehdup_epi32(a: __m512i) -> __m512i {
     unsafe {
@@ -151,7 +151,7 @@ fn movehdup_epi32(a: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn mask_movehdup_epi32(src: __m512i, k: __mmask16, a: __m512i) -> __m512i {
     unsafe {
@@ -161,7 +161,7 @@ fn mask_movehdup_epi32(src: __m512i, k: __mmask16, a: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn mask_moveldup_epi32(src: __m512i, k: __mmask16, a: __m512i) -> __m512i {
     unsafe {
@@ -171,7 +171,7 @@ fn mask_moveldup_epi32(src: __m512i, k: __mmask16, a: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn mul(lhs: __m512i, rhs: __m512i) -> __m512i {
     unsafe {
@@ -188,7 +188,7 @@ fn mul(lhs: __m512i, rhs: __m512i) -> __m512i {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 pub fn mul_m31c_interleaved(a: __m512i, b: __m512i, x: __m512i, y: __m512i) -> (__m512i, __m512i) {
     let ax_c0 = mask_moveldup_epi32(a, ODDS, x);
@@ -208,7 +208,7 @@ pub fn mul_m31c_interleaved(a: __m512i, b: __m512i, x: __m512i, y: __m512i) -> (
     (ab, xy)
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 pub fn mul_by_twiddle_m31c_interleaved(
     a: __m512i,
@@ -281,7 +281,7 @@ pub fn mul_by_twiddle_m31c_interleaved(
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 pub fn rotate_90_m31c_interleaved_forward(a: __m512i, x: __m512i) -> (__m512i, __m512i) {
     unsafe {
@@ -295,7 +295,7 @@ pub fn rotate_90_m31c_interleaved_forward(a: __m512i, x: __m512i) -> (__m512i, _
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 pub fn rotate_90_m31c_interleaved_inversed(a: __m512i, x: __m512i) -> (__m512i, __m512i) {
     unsafe {
@@ -311,7 +311,7 @@ pub fn rotate_90_m31c_interleaved_inversed(a: __m512i, x: __m512i) -> (__m512i, 
 
 impl Add for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn add(self, rhs: Self) -> Self {
         let lhs = self.to_vector();
         let rhs = rhs.to_vector();
@@ -322,7 +322,7 @@ impl Add for Mersenne31FieldVectorized {
 
 impl Mul for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Self) -> Self {
         let lhs = self.to_vector();
         let rhs = rhs.to_vector();
@@ -333,7 +333,7 @@ impl Mul for Mersenne31FieldVectorized {
 
 impl Sub for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self.to_vector();
         let rhs = rhs.to_vector();
@@ -343,20 +343,20 @@ impl Sub for Mersenne31FieldVectorized {
 }
 
 impl From<Mersenne31Field> for Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn from(value: Mersenne31Field) -> Self {
         Self::broadcast(value)
     }
 }
 
 impl Default for Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn default() -> Self {
         Mersenne31Field::default().into()
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn interleave1_radix4(
     a: __m512i,
@@ -435,7 +435,7 @@ fn interleave1_radix4(
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn interleave4_radix4(
     a: __m512i,
@@ -514,7 +514,7 @@ fn interleave4_radix4(
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn interleave1_antidiagonal(x: __m512i, y: __m512i) -> __m512i {
     const INTERLEAVE1_INDICES: __m512i = unsafe {
@@ -526,7 +526,7 @@ fn interleave1_antidiagonal(x: __m512i, y: __m512i) -> __m512i {
     unsafe { x86_64::_mm512_permutex2var_epi32(x, INTERLEAVE1_INDICES, y) }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn interleave1(x: __m512i, y: __m512i) -> (__m512i, __m512i) {
     let t = interleave1_antidiagonal(x, y);
@@ -540,7 +540,7 @@ fn interleave1(x: __m512i, y: __m512i) -> (__m512i, __m512i) {
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 #[must_use]
 fn interleave4(x: __m512i, y: __m512i) -> (__m512i, __m512i) {
     const INTERLEAVE4_INDICES: __m512i = unsafe {
@@ -559,7 +559,7 @@ fn interleave4(x: __m512i, y: __m512i) -> (__m512i, __m512i) {
 }
 
 impl Mersenne31FieldVectorized {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn slice_into_base_slice_mut(
         input: &mut [Mersenne31FieldVectorized],
     ) -> &mut [Mersenne31Field] {
@@ -583,7 +583,7 @@ impl Field for Mersenne31FieldVectorized {
     const ZERO: Self = Self([Mersenne31Field::ZERO; WIDTH]);
     const ONE: Self = Self([Mersenne31Field::ONE; WIDTH]);
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
@@ -592,31 +592,31 @@ impl Field for Mersenne31FieldVectorized {
         *self == Self::ONE
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self + *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self - *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self * *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&'_ mut self) -> &'_ mut Self {
         let other = *self;
         self.mul_assign(&other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&'_ mut self) -> &'_ mut Self {
         let mut order = Self([Mersenne31Field(Mersenne31Field::ORDER); WIDTH]);
         let neg = order.sub_assign(&self);
@@ -624,13 +624,13 @@ impl Field for Mersenne31FieldVectorized {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&'_ mut self) -> &'_ mut Self {
         let other = *self;
         self.add_assign(&other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn inverse(&self) -> Option<Self> {
         let mut error = false;
         let mut res = *self;
@@ -651,7 +651,7 @@ impl FieldLikeVectorized for Mersenne31FieldVectorized {
     type Base = Mersenne31Field;
     const SIZE_FACTOR: usize = 16;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn constant(value: Self::Base) -> Self {
         Self([value; WIDTH])
     }

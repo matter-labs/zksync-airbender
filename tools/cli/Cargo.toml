@@ -29,6 +29,7 @@ worker = {path = "../../worker"}
 clap = { version = "4.5.21", features = ["derive"] }
 blake2s_u32 = { workspace = true }
 execution_utils = { path = "../../execution_utils"}
+field = { workspace = true }
 
 risc_v_cycles_verifier = { path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}
 reduced_risc_v_machine_verifier = { path = "../../circuit_defs/reduced_risc_v_machine/verifier", optional = true }
@@ -48,7 +49,8 @@ sha3 = { package = "sha3_ce", version = "=0.10.6" }
 include_verifiers = ["full_statement_verifier", "risc_v_cycles_verifier", "blake2_with_compression_verifier", "reduced_risc_v_machine_verifier", 
     "risc_v_cycles_verifier/replace_csr", "risc_v_cycles_verifier/proof_utils", 
     "verifier_common/replace_csr", "verifier_common/proof_utils",
-    "reduced_risc_v_machine_verifier/replace_csr", "reduced_risc_v_machine_verifier/proof_utils"]
+    "reduced_risc_v_machine_verifier/replace_csr", "reduced_risc_v_machine_verifier/proof_utils",
+    "field/no_inline"]
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.

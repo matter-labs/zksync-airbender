@@ -67,7 +67,7 @@ pub trait Field:
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
         unimplemented!()
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
         // Default implementation
         self.mul_assign(a);
@@ -75,7 +75,7 @@ pub trait Field:
 
         self
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
         // Default implementation
         let mut t = *a;
@@ -141,58 +141,58 @@ pub trait FieldExtension<BaseField: Field> {
 
 impl<F: Field> FieldExtension<F> for F {
     const DEGREE: usize = 1;
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base(coefs: &[F]) -> Self {
         coefs[0]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base_coeffs_array(coefs: &[F; Self::DEGREE]) -> Self {
         coefs[0]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_ref(coefs: &[&F]) -> Self {
         *coefs[0]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn into_coeffs_in_base(self) -> [Self; Self::DEGREE] {
         // Rust compiler is bugging here, not relating Self::DEGREE and 1
         unsafe { core::ptr::read((&self as *const F).cast()) }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_iter<I: Iterator<Item = F>>(mut coefs_iter: I) -> Self {
         coefs_iter.next().unwrap()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn coeffs_in_base(&self) -> &[F] {
         core::slice::from_ref(self)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, elem: &F) -> &mut Self {
         self.mul_assign(elem)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_base(&mut self, elem: &F) -> &mut Self {
         self.add_assign(elem)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign_base(&mut self, elem: &F) -> &mut Self {
         self.sub_assign(elem)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: F) -> Self {
         elem
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn get_coef_mut(&mut self, idx: usize) -> &mut F {
         assert_eq!(idx, 0);
         self

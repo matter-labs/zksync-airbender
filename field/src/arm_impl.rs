@@ -38,7 +38,7 @@ impl Rand for Mersenne31FieldVectorized {
 }
 
 impl Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     #[must_use]
     pub const fn broadcast(value: Mersenne31Field) -> Self {
         Self([value; WIDTH])
@@ -47,7 +47,7 @@ impl Mersenne31FieldVectorized {
 
 impl Add for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn add(self, rhs: Self) -> Self {
         let mut res = Self::default();
         seq!(N in 0..16 {
@@ -59,7 +59,7 @@ impl Add for Mersenne31FieldVectorized {
 
 impl Mul for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Self) -> Self {
         let mut res = Self::default();
         seq!(N in 0..16 {
@@ -72,7 +72,7 @@ impl Mul for Mersenne31FieldVectorized {
 
 impl Sub for Mersenne31FieldVectorized {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         let mut res = Self::default();
         seq!(N in 0..16 {
@@ -83,21 +83,21 @@ impl Sub for Mersenne31FieldVectorized {
 }
 
 impl From<Mersenne31Field> for Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn from(value: Mersenne31Field) -> Self {
         Self::broadcast(value)
     }
 }
 
 impl Default for Mersenne31FieldVectorized {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn default() -> Self {
         Mersenne31Field::default().into()
     }
 }
 
 impl Mersenne31FieldVectorized {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn slice_into_base_slice_mut(
         input: &mut [Mersenne31FieldVectorized],
     ) -> &mut [Mersenne31Field] {
@@ -121,41 +121,41 @@ impl Field for Mersenne31FieldVectorized {
     const ZERO: Self = Self([Mersenne31Field::ZERO; WIDTH]);
     const ONE: Self = Self([Mersenne31Field::ONE; WIDTH]);
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_one(&self) -> bool {
         *self == Self::ONE
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self + *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self - *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self * *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&'_ mut self) -> &'_ mut Self {
         let other = *self;
         self.mul_assign(&other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&'_ mut self) -> &'_ mut Self {
         let mut order = Self([Mersenne31Field(Mersenne31Field::ORDER); WIDTH]);
         let neg = order.sub_assign(&self);
@@ -163,13 +163,13 @@ impl Field for Mersenne31FieldVectorized {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&'_ mut self) -> &'_ mut Self {
         let other = *self;
         self.add_assign(&other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn inverse(&self) -> Option<Self> {
         let mut error = false;
         let mut res = *self;
@@ -190,7 +190,7 @@ impl FieldLikeVectorized for Mersenne31FieldVectorized {
     type Base = Mersenne31Field;
     const SIZE_FACTOR: usize = 16;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn constant(value: Self::Base) -> Self {
         Self([value; WIDTH])
     }

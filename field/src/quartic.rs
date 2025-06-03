@@ -30,12 +30,12 @@ const _: () = const {
 };
 
 impl Mersenne31Quartic {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(c0: Mersenne31Complex, c1: Mersenne31Complex) -> Self {
         Self { c0, c1 }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn from_array_of_base(els: [Mersenne31Field; 4]) -> Self {
         Self {
             c0: Mersenne31Complex {
@@ -49,7 +49,7 @@ impl Mersenne31Quartic {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const Mersenne31Field) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[Mersenne31Field; 4]>().read();
         Self {
@@ -59,7 +59,7 @@ impl Mersenne31Quartic {
     }
 
     #[cfg(not(target_arch = "riscv32"))]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn project_ref_from_array(els: &'_ [Mersenne31Field; 4]) -> &'_ Self {
         if core::mem::align_of::<Self>() == core::mem::align_of::<Mersenne31Field>()
             && core::mem::size_of::<Self>() == core::mem::size_of::<Mersenne31Field>() * 4
@@ -72,7 +72,7 @@ impl Mersenne31Quartic {
     }
 
     #[cfg(target_arch = "riscv32")]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn project_ref_from_array(els: &'_ [Mersenne31Field; 4]) -> &'_ Self {
         // alignments match, so we can just cast pointer
         unsafe { core::mem::transmute(els) }
@@ -80,7 +80,7 @@ impl Mersenne31Quartic {
 }
 
 impl core::cmp::PartialEq for Mersenne31Quartic {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn eq(&self, other: &Self) -> bool {
         self.c0 == other.c0 && self.c1 == other.c1
     }
@@ -89,7 +89,7 @@ impl core::cmp::PartialEq for Mersenne31Quartic {
 impl core::cmp::Eq for Mersenne31Quartic {}
 
 impl core::default::Default for Mersenne31Quartic {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn default() -> Self {
         Self {
             c0: Mersenne31Complex::ZERO,
@@ -120,17 +120,17 @@ impl Field for Mersenne31Quartic {
 
     type CharField = Mersenne31Complex;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         self.c0.is_zero() && self.c1.is_zero()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_one(&self) -> bool {
         self.c0.is_one() && self.c1.is_zero()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.add_assign(&other.c0);
         self.c1.add_assign(&other.c1);
@@ -138,7 +138,7 @@ impl Field for Mersenne31Quartic {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.sub_assign(&other.c0);
         self.c1.sub_assign(&other.c1);
@@ -146,7 +146,7 @@ impl Field for Mersenne31Quartic {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         let mut v0 = self.c0;
         v0.mul_assign(&other.c0);
@@ -168,7 +168,7 @@ impl Field for Mersenne31Quartic {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&mut self) -> &mut Self {
         let mut v0 = self.c0;
         v0.sub_assign(&self.c1);
@@ -190,7 +190,7 @@ impl Field for Mersenne31Quartic {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&mut self) -> &mut Self {
         self.c0.negate();
         self.c1.negate();
@@ -198,7 +198,7 @@ impl Field for Mersenne31Quartic {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&mut self) -> &mut Self {
         self.c0.double();
         self.c1.double();
@@ -230,21 +230,21 @@ impl Field for Mersenne31Quartic {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
         self.c0.mul_by_two();
         self.c1.mul_by_two();
         self
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
         self.c0.div_by_two();
         self.c1.div_by_two();
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
         #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
         fma_implementation(self, a, b);
@@ -285,14 +285,14 @@ impl core::fmt::Display for Mersenne31Quartic {
 impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     const DEGREE: usize = 2;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
         self.c0.mul_assign(elem);
         self.c1.mul_assign(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base_coeffs_array(coefs: &[Mersenne31Complex; 2]) -> Self {
         Self {
             c0: coefs[0],
@@ -300,7 +300,7 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn into_coeffs_in_base(self) -> [Mersenne31Complex; 2] {
         let Self { c0, c1 } = self;
 
@@ -315,12 +315,12 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
         Self { c0, c1 }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Complex]) -> Self {
         todo!();
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Complex>>(_coefs_iter: I) -> Self {
         todo!();
     }
@@ -329,19 +329,19 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
         todo!();
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
         self.c0.add_assign_base(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
         self.c0.sub_assign_base(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Complex) -> Self {
         Self {
             c0: elem,
@@ -349,7 +349,7 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Complex {
         todo!();
     }
@@ -358,7 +358,7 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
 impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
     const DEGREE: usize = 4;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.mul_assign_by_base(elem);
         self.c1.mul_assign_by_base(elem);
@@ -366,7 +366,7 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         self
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn into_coeffs_in_base(self) -> [Mersenne31Field; 4] {
         let Mersenne31Quartic { c0, c1 } = self;
         let [c2, c3] = c1.into_coeffs_in_base();
@@ -375,7 +375,7 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         [c0, c1, c2, c3]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base_coeffs_array(coefs: &[Mersenne31Field; 4]) -> Self {
         Self {
             c0: Mersenne31Complex {
@@ -402,12 +402,12 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Field]) -> Self {
         todo!();
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Field>>(_coefs_iter: I) -> Self {
         todo!()
     }
@@ -416,13 +416,13 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         todo!();
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.add_assign_base(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.sub_assign_base(elem);
         self
@@ -442,14 +442,14 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
 }
 
 #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn fma_implementation(dst: &mut Mersenne31Quartic, a: &Mersenne31Quartic, b: &Mersenne31Quartic) {
     dst.mul_assign(a);
     dst.add_assign(b);
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn fma_implementation_via_delegation(
     dst: &mut Mersenne31Quartic,
     a: &Mersenne31Quartic,

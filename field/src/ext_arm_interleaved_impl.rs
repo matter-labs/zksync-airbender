@@ -22,7 +22,7 @@ pub struct Mersenne31ComplexVectorizedInterleaved {
 }
 
 impl From<Mersenne31Complex> for Mersenne31ComplexVectorizedInterleaved {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn from(value: Mersenne31Complex) -> Self {
         unsafe {
             transmute::<[Mersenne31Complex; WIDTH], Mersenne31ComplexVectorizedInterleaved>(
@@ -33,7 +33,7 @@ impl From<Mersenne31Complex> for Mersenne31ComplexVectorizedInterleaved {
 }
 
 impl Default for Mersenne31ComplexVectorizedInterleaved {
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn default() -> Self {
         Self {
             chunk_0: Mersenne31FieldVectorized::default(),
@@ -88,54 +88,54 @@ impl Field for Mersenne31ComplexVectorizedInterleaved {
         }
     };
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_one(&self) -> bool {
         *self == Self::ONE
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self + *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self - *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         *self = *self * *other;
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&'_ mut self) -> &'_ mut Self {
         todo!()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&'_ mut self) -> &'_ mut Self {
         self.chunk_0.negate();
         self.chunk_1.negate();
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&mut self) -> &mut Self {
         self.chunk_0.double();
         self.chunk_1.double();
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn inverse(&self) -> Option<Self> {
         todo!()
     }
@@ -143,7 +143,7 @@ impl Field for Mersenne31ComplexVectorizedInterleaved {
 
 impl Add for Mersenne31ComplexVectorizedInterleaved {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn add(self, rhs: Self) -> Self {
         Self {
             chunk_0: self.chunk_0 + rhs.chunk_0,
@@ -154,7 +154,7 @@ impl Add for Mersenne31ComplexVectorizedInterleaved {
 
 impl Sub for Mersenne31ComplexVectorizedInterleaved {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         Self {
             chunk_0: self.chunk_0 - rhs.chunk_0,
@@ -165,7 +165,7 @@ impl Sub for Mersenne31ComplexVectorizedInterleaved {
 
 impl Mul for Mersenne31ComplexVectorizedInterleaved {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Self) -> Self {
         let mut value0 = unsafe {
             transmute::<Mersenne31ComplexVectorizedInterleaved, [Mersenne31Complex; WIDTH]>(self)
@@ -184,7 +184,7 @@ impl Mul for Mersenne31ComplexVectorizedInterleaved {
 
 impl Mul<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedInterleaved {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Mersenne31FieldVectorized) -> Self {
         let mut res = self;
         res.chunk_0.mul_assign(&rhs);
@@ -195,7 +195,7 @@ impl Mul<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedInterleaved {
 
 impl Mul<Mersenne31ComplexVectorized> for Mersenne31ComplexVectorizedInterleaved {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Mersenne31ComplexVectorized) -> Self {
         let mut value0 = unsafe {
             transmute::<Mersenne31ComplexVectorizedInterleaved, [Mersenne31Complex; WIDTH]>(self)
@@ -210,7 +210,7 @@ impl Mul<Mersenne31ComplexVectorized> for Mersenne31ComplexVectorizedInterleaved
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 pub fn rotate_90_forward(
     value: Mersenne31ComplexVectorizedInterleaved,
 ) -> Mersenne31ComplexVectorizedInterleaved {
@@ -227,7 +227,7 @@ pub fn rotate_90_forward(
     }
 }
 
-#[inline]
+#[cfg_attr(not(feature = "no_inline"), inline)]
 pub fn rotate_90_inversed(
     value: Mersenne31ComplexVectorizedInterleaved,
 ) -> Mersenne31ComplexVectorizedInterleaved {
@@ -248,29 +248,29 @@ impl FieldExtension<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedIn
     const DEGREE: usize = 2;
 
     // THIS WORKS FOR BROADCASTED BASE VALUE ONLY
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, base: &Mersenne31FieldVectorized) -> &mut Self {
         self.chunk_0.mul_assign(base);
         self.chunk_1.mul_assign(base);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_base(&mut self, _elem: &Mersenne31FieldVectorized) -> &mut Self {
         todo!()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign_base(&mut self, _elem: &Mersenne31FieldVectorized) -> &mut Self {
         todo!()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn into_coeffs_in_base(self) -> [Mersenne31FieldVectorized; 2] {
         [self.chunk_0, self.chunk_1]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn coeffs_in_base(&self) -> &[Mersenne31FieldVectorized] {
         // &[self.c0, self.c1]
         unsafe {
@@ -281,7 +281,7 @@ impl FieldExtension<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedIn
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base(coeffs: &[Mersenne31FieldVectorized]) -> Self {
         Self {
             chunk_0: coeffs[0],
@@ -305,7 +305,7 @@ impl FieldExtension<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedIn
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31FieldVectorized) -> Self {
         Self {
             chunk_0: elem,
@@ -313,7 +313,7 @@ impl FieldExtension<Mersenne31FieldVectorized> for Mersenne31ComplexVectorizedIn
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn get_coef_mut(&mut self, idx: usize) -> &mut Mersenne31FieldVectorized {
         if idx == 0 {
             &mut self.chunk_0
@@ -336,7 +336,7 @@ impl FieldLikeVectorized for Mersenne31ComplexVectorizedInterleaved {
     type Base = Mersenne31Complex;
     const SIZE_FACTOR: usize = WIDTH;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn constant(value: Self::Base) -> Self {
         Self::from(value)
     }
