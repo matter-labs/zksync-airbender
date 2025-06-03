@@ -178,29 +178,6 @@ pub trait MachineOp<
         boolean_set: &BS,
         opt_ctx: &mut OptimizationContext<F, CS>,
     ) -> CommonDiffs<F>;
-
-    fn apply_with_mem_access<
-        CS: Circuit<F>,
-        const ASSUME_TRUSTED_CODE: bool,
-        const OUTPUT_EXACT_EXCEPTIONS: bool,
-    >(
-        _cs: &mut CS,
-        _machine_state: &ST,
-        _inputs: &DE,
-        _boolean_set: &BS,
-        _rs2_or_mem_load_query: &mut ShuffleRamMemQuery,
-        _rd_or_mem_store_query: &mut ShuffleRamMemQuery,
-        _opt_ctx: &mut OptimizationContext<F, CS>,
-    ) -> CommonDiffs<F> {
-        unimplemented!("not implemented by default for opcodes that do not support it");
-        // Self::apply::<CS, ASSUME_TRUSTED_CODE, OUTPUT_EXACT_EXCEPTIONS>(
-        //     cs,
-        //     machine_state,
-        //     inputs,
-        //     boolean_set,
-        //     opt_ctx,
-        // )
-    }
 }
 
 pub trait Machine<F: PrimeField>: 'static + Clone + Default {

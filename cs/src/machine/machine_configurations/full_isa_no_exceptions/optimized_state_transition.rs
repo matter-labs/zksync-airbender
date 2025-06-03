@@ -177,7 +177,13 @@ pub(crate) fn optimized_base_isa_state_transition<
     cs.set_log(&opt_ctx, "JUMP");
 
     let [rs1_query, mut rs2_or_mem_load_query, mut rd_or_mem_store_query] = memory_queries;
-    let application_result = MemoryOp::<true, true>::apply_with_mem_access::<
+
+    let application_result = LoadOp::<true, true>::spec_apply::<
+        _,
+        _,
+        _,
+        _,
+        _,
         _,
         ASSUME_TRUSTED_CODE,
         OUTPUT_EXACT_EXCEPTIONS,
@@ -187,11 +193,30 @@ pub(crate) fn optimized_base_isa_state_transition<
         &decoder_output,
         &flags_source,
         &mut rs2_or_mem_load_query,
+        &mut opt_ctx,
+    );
+    application_results.push(application_result);
+    cs.set_log(&opt_ctx, "LOAD");
+
+    let application_result = StoreOp::<true>::spec_apply::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        ASSUME_TRUSTED_CODE,
+        OUTPUT_EXACT_EXCEPTIONS,
+    >(
+        cs,
+        &initial_state,
+        &decoder_output,
+        &flags_source,
         &mut rd_or_mem_store_query,
         &mut opt_ctx,
     );
     application_results.push(application_result);
-    cs.set_log(&opt_ctx, "MEMORY");
+    cs.set_log(&opt_ctx, "STORE");
 
     if PERFORM_DELEGATION == false {
         // CSR operation must be hand implemented for most of the machines, even though we can declare support of it in the opcode
