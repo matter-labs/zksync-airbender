@@ -3831,7 +3831,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree1Constraint {
                 linear_terms: &[
                     (
-                        Mersenne31Field(1u32),
+                        Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(29usize),
                     ),
                     (
@@ -3839,7 +3839,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(15usize),
                     ),
                 ],
-                constant_term: Mersenne31Field(0u32),
+                constant_term: Mersenne31Field(1u32),
             },
             StaticVerifierCompiledDegree1Constraint {
                 linear_terms: &[

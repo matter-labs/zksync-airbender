@@ -471,11 +471,11 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
                 unreachable!()
             };
             // TODO: fix compiler to handle it
-            let t = cs.add_variable_from_constraint_allow_explicit_linear(Constraint::from(
-                execute_family,
-            ));
+            // TODO: fix compiler to handle it
+            let t = cs.add_variable_from_constraint_allow_explicit_linear(
+                Term::from(1u64) - Term::from(execute_family),
+            );
             *is_register = Boolean::Is(t);
-            // *is_register = execute_family;
 
             // and if we do not perform memory read, then addresses are constrained to be RS2 index read access formally
             let rs2_index = inputs.get_rs2_index();

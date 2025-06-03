@@ -4432,13 +4432,15 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let a = *(witness.get_unchecked(30usize));
+                        let mut a = *(witness.get_unchecked(30usize));
+                        a.negate();
                         a
                     };
                     {
                         let a = *(memory.get_unchecked(15usize));
                         individual_term.sub_assign(&a);
                     }
+                    individual_term.add_assign_base(&Mersenne31Field(1u32));
                     individual_term
                 };
                 individual_term
