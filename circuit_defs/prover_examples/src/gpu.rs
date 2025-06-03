@@ -47,11 +47,15 @@ use trace_and_split::{
 
 use crate::{NUM_QUERIES, POW_BITS};
 
-pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
+pub fn initialize_host_allocator_if_needed() {
     if !MemPoolProverContext::is_host_allocator_initialized() {
-        // allocate 4 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
-        MemPoolProverContext::initialize_host_allocator(4, 1 << 8, 22).unwrap();
+        // allocate 8 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
+        MemPoolProverContext::initialize_host_allocator(8, 1 << 8, 22).unwrap();
     }
+}
+
+pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
+    initialize_host_allocator_if_needed();
     let mut prover_context_config = ProverContextConfig::default();
     prover_context_config.allocation_block_log_size = 22;
 
