@@ -123,8 +123,9 @@ pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
     ],
 ];
 
-pub(crate) fn get_main_to_coset_launch_chain(log_n: usize)
--> (Vec<(N2B_LAUNCH, u32)>, Vec<(B2N_LAUNCH, u32)>) {
+pub(crate) fn get_main_to_coset_launch_chain(
+    log_n: usize,
+) -> (Vec<(N2B_LAUNCH, u32)>, Vec<(B2N_LAUNCH, u32)>) {
     assert!(log_n >= 16);
     let n2b_plan = &STAGE_PLANS_N2B[log_n - 16];
     let b2n_plan = &STAGE_PLANS_B2N[log_n - 16];
@@ -134,7 +135,6 @@ pub(crate) fn get_main_to_coset_launch_chain(log_n: usize)
     assert_eq!(n2b_launches.len(), b2n_launches.len());
     (n2b_launches, b2n_launches)
 }
-
 
 // Each block can process up to REAL_COLS_PER_BLOCK real columns
 // and/or COMPLEX_COLS_PER_BLOCK complex columns, which amortizes

@@ -101,8 +101,8 @@ extern "C" __launch_bounds__(128, 8) __global__
                                                                vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
                                                                const unsigned log_extension_degree, const unsigned coset_idx, const unsigned grid_offset) {
-  bitrev_Z_to_natural_coset_evals_initial_stages_warp<3>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree,
-                                                         coset_idx, grid_offset);
+  bitrev_Z_to_natural_coset_evals_initial_stages_warp<3>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree, coset_idx,
+                                                         grid_offset);
 }
 
 extern "C" __launch_bounds__(128, 8) __global__
@@ -110,8 +110,8 @@ extern "C" __launch_bounds__(128, 8) __global__
                                                                vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
                                                                const unsigned log_extension_degree, const unsigned coset_idx, const unsigned grid_offset) {
-  bitrev_Z_to_natural_coset_evals_initial_stages_warp<2>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree,
-                                                         coset_idx, grid_offset);
+  bitrev_Z_to_natural_coset_evals_initial_stages_warp<2>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree, coset_idx,
+                                                         grid_offset);
 }
 
 template <unsigned LOG_VALS_PER_THREAD>
@@ -508,8 +508,8 @@ extern "C" __launch_bounds__(512, 2) __global__
 // Simple, non-optimized kernel used for log_n < 16, to unblock debugging small proofs.
 extern "C" __launch_bounds__(512, 2) __global__
     void bitrev_Z_to_natural_coset_evals_one_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt,
-                                                 const unsigned log_extension_degree, const unsigned coset_idx) {
+                                                   const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt,
+                                                   const unsigned log_extension_degree, const unsigned coset_idx) {
   const unsigned col_pair = blockIdx.x / blocks_per_ntt;
   const unsigned bid_in_ntt = blockIdx.x - col_pair * blocks_per_ntt;
   const unsigned tid_in_ntt = threadIdx.x + bid_in_ntt * blockDim.x;

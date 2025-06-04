@@ -20,7 +20,7 @@ use crate::device_structures::{
 };
 use crate::field::BaseField;
 use crate::ntt::utils::{
-    COMPLEX_COLS_PER_BLOCK, get_main_to_coset_launch_chain, STAGE_PLANS_B2N, STAGE_PLANS_N2B
+    get_main_to_coset_launch_chain, COMPLEX_COLS_PER_BLOCK, STAGE_PLANS_B2N, STAGE_PLANS_N2B,
 };
 use crate::utils::GetChunksCount;
 
@@ -138,7 +138,8 @@ fn bitrev_Z_to_natural_evals(
         let num_chunks = num_Z_cols.get_chunks_count(COMPLEX_COLS_PER_BLOCK);
         if let Some((kern, stages_this_launch)) = kernel {
             stage += stages_this_launch;
-            let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, u32, u32) = match kern {
+            let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, u32, u32) = match kern
+            {
                 INITIAL_7_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
                     n / (4 * 128),
@@ -321,39 +322,37 @@ fn natural_evals_to_bitrev_Z(
         let num_chunks = (num_Z_cols + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
         if let Some((kern, stages_this_launch)) = kernel {
             stage += stages_this_launch;
-            let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, u32, u32) =
-                match kern {
-                    FINAL_7_WARP => (
-                        if evals_are_coset {
-                            coset_evals_to_Z_final_7_stages_warp
-                        } else {
-                            main_domain_evals_to_Z_final_7_stages_warp
-                        },
-                        n / (4 * 128),
-                        128,
-                    ),
-                    FINAL_8_WARP => (
-                        if evals_are_coset {
-                            coset_evals_to_Z_final_8_stages_warp
-                        } else {
-                            main_domain_evals_to_Z_final_8_stages_warp
-                        },
-                        n / (4 * 256),
-                        128,
-                    ),
-                    FINAL_9_TO_12_BLOCK => (
-                        if evals_are_coset {
-                            coset_evals_to_Z_final_9_to_12_stages_block
-                        } else {
-                            main_domain_evals_to_Z_final_9_to_12_stages_block
-                        },
-                        n / 4096,
-                        512,
-                    ),
-                    NONFINAL_7_OR_8_BLOCK => {
-                        (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512)
-                    }
-                };
+            let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, u32, u32) = match kern
+            {
+                FINAL_7_WARP => (
+                    if evals_are_coset {
+                        coset_evals_to_Z_final_7_stages_warp
+                    } else {
+                        main_domain_evals_to_Z_final_7_stages_warp
+                    },
+                    n / (4 * 128),
+                    128,
+                ),
+                FINAL_8_WARP => (
+                    if evals_are_coset {
+                        coset_evals_to_Z_final_8_stages_warp
+                    } else {
+                        main_domain_evals_to_Z_final_8_stages_warp
+                    },
+                    n / (4 * 256),
+                    128,
+                ),
+                FINAL_9_TO_12_BLOCK => (
+                    if evals_are_coset {
+                        coset_evals_to_Z_final_9_to_12_stages_block
+                    } else {
+                        main_domain_evals_to_Z_final_9_to_12_stages_block
+                    },
+                    n / 4096,
+                    512,
+                ),
+                NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512),
+            };
             let inputs = if start_stage == 0 {
                 inputs_matrix
             } else {
@@ -442,7 +441,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             )
         };
         let const_outputs_matrix = DeviceMatrixChunk::new(
-            const_outputs_slice, 
+            const_outputs_slice,
             outputs_matrix.stride(),
             outputs_matrix.offset(),
             outputs_matrix.rows(),
@@ -480,13 +479,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
 
     let l2_working_set_e2_elems = 1 << 20;
-    let l2_working_set_e2_elems_per_stream = l2_working_set_e2_elems >> 1; 
+    let l2_working_set_e2_elems_per_stream = l2_working_set_e2_elems >> 1;
 
     let start_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     let end_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
 
-    use crate::ntt::utils::N2B_LAUNCH::*;
     use crate::ntt::utils::B2N_LAUNCH::*;
+    use crate::ntt::utils::N2B_LAUNCH::*;
     let (n2b_plan, b2n_plan) = get_main_to_coset_launch_chain(log_n as usize);
 
     // Run first n2b kernel over the entire input.
@@ -519,10 +518,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let stream_refs = [exec_stream, aux_stream];
     let mut stream_selector = 0;
     for row_range in &(0..n).chunks(l2_working_set_e2_elems_per_stream) {
-        for col in 0..num_Z_cols {
-
-        }
-        
+        for col in 0..num_Z_cols {}
     }
 
     end_event.record(aux_stream)?;

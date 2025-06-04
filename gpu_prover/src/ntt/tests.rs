@@ -467,10 +467,7 @@ fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_c
     ctx.destroy().unwrap();
 }
 
-fn run_bitrev_Z_to_natural_composition_main_evals(
-    log_n_range: Range<usize>,
-    num_bf_cols: usize,
-) {
+fn run_bitrev_Z_to_natural_composition_main_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
     let ctx = Context::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     // let num_Z_cols = (num_bf_cols + 1) / 2;
@@ -782,10 +779,7 @@ fn test_natural_composition_coset_evals_to_bitrev_Z_large() {
 #[test]
 #[serial]
 fn test_bitrev_Z_to_natural_composition_main_evals() {
-    run_bitrev_Z_to_natural_composition_main_evals(
-        1..17,
-        2 * REAL_COLS_PER_BLOCK as usize + 4,
-    );
+    run_bitrev_Z_to_natural_composition_main_evals(1..17, 2 * REAL_COLS_PER_BLOCK as usize + 4);
 }
 
 #[test]

@@ -491,8 +491,8 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
 extern "C" __launch_bounds__(512, 2) __global__
     void evals_to_Z_nonfinal_7_or_8_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                 const unsigned num_Z_cols, const unsigned grid_offset) {
+                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                 const unsigned grid_offset) {
   evals_to_Z_nonfinal_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols, grid_offset);
 }
 
