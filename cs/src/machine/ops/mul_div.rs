@@ -28,7 +28,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for MulOp<SUPPORT_SIGNED> {
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -38,17 +37,11 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for MulOp<SUPPORT_SIGNED> {
         let params = match (opcode, func3, func7) {
             (OPERATION_OP, 0b000, M_EXT_FUNCT7) => {
                 // MUL
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    MUL_COMMON_OP_KEY,
-                    &[MUL_OP_KEY][..],
-                )
+                (InstructionType::RType, MUL_COMMON_OP_KEY, &[MUL_OP_KEY][..])
             }
             (OPERATION_OP, 0b001, M_EXT_FUNCT7) if SUPPORT_SIGNED => {
                 // MULH
                 (
-                    BASE_R_TYPE_AUX_DATA,
                     InstructionType::RType,
                     MUL_COMMON_OP_KEY,
                     &[MULH_OP_KEY][..],
@@ -57,7 +50,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for MulOp<SUPPORT_SIGNED> {
             (OPERATION_OP, 0b010, M_EXT_FUNCT7) if SUPPORT_SIGNED => {
                 // MULHSU
                 (
-                    BASE_R_TYPE_AUX_DATA,
                     InstructionType::RType,
                     MUL_COMMON_OP_KEY,
                     &[MULHSU_OP_KEY][..],
@@ -67,12 +59,7 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for MulOp<SUPPORT_SIGNED> {
                 // MULHU
                 // we only need MUL_OP_KEY to indicate that we take low value, and some other flags to indicated that
                 // we use signed ops
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    MUL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::RType, MUL_COMMON_OP_KEY, &[][..])
             }
             _ => return Err(()),
         };
@@ -136,7 +123,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {
@@ -195,7 +182,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         }
@@ -213,7 +200,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for DivRemOp<SUPPORT_SIGNED>
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -224,7 +210,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for DivRemOp<SUPPORT_SIGNED>
             (OPERATION_OP, 0b100, M_EXT_FUNCT7) if SUPPORT_SIGNED => {
                 // DIV
                 (
-                    BASE_R_TYPE_AUX_DATA,
                     InstructionType::RType,
                     DIVREM_COMMON_OP_KEY,
                     &[DIV_OP_KEY][..],
@@ -233,7 +218,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for DivRemOp<SUPPORT_SIGNED>
             (OPERATION_OP, 0b101, M_EXT_FUNCT7) => {
                 // DIVU
                 (
-                    BASE_R_TYPE_AUX_DATA,
                     InstructionType::RType,
                     DIVREM_COMMON_OP_KEY,
                     &[DIVU_OP_KEY][..],
@@ -242,7 +226,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for DivRemOp<SUPPORT_SIGNED>
             (OPERATION_OP, 0b110, M_EXT_FUNCT7) if SUPPORT_SIGNED => {
                 // REM
                 (
-                    BASE_R_TYPE_AUX_DATA,
                     InstructionType::RType,
                     DIVREM_COMMON_OP_KEY,
                     &[REM_OP_KEY][..],
@@ -251,12 +234,7 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for DivRemOp<SUPPORT_SIGNED>
             (OPERATION_OP, 0b111, M_EXT_FUNCT7) => {
                 // REMU
                 // same as for MUL, we are fine to only use DIVU_OP_KEY
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    DIVREM_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::RType, DIVREM_COMMON_OP_KEY, &[][..])
             }
             _ => return Err(()),
         };
@@ -433,7 +411,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {
@@ -731,7 +709,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         }

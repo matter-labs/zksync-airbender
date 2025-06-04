@@ -30,12 +30,11 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
             Box::new(LuiOp),
             Box::new(AuiPc),
             Box::new(BinaryOp),
-            // Box::new(MulOp::<false>),
-            // Box::new(DivRemOp::<false>),
             Box::new(ConditionalOp::<true>),
             Box::new(ShiftOp::<true, false>),
             Box::new(JumpOp),
-            Box::new(MemoryOp::<false, false>),
+            Box::new(LoadOp::<false, false>),
+            Box::new(StoreOp::<false>),
             Box::new(MopOp),
             Box::new(CsrOp::<false, false, false>),
         ]
@@ -48,10 +47,6 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
         set.extend(<LuiOp as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
         set.extend(<AuiPc as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
         set.extend(<BinaryOp as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
-        // set.extend(<MulOp<false> as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
-        // set.extend(
-        //     <DivRemOp<false> as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables(),
-        // );
         set.extend(<ConditionalOp<true> as MachineOp<
             F,
             ST<F>,
@@ -67,13 +62,14 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
             BS,
         >>::define_used_tables());
         set.extend(<JumpOp as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
-        set.extend(<MemoryOp<false, false> as MachineOp<
+        set.extend(<LoadOp<false, false> as MachineOp<
             F,
             ST<F>,
             RS<F>,
             DE<F>,
             BS,
         >>::define_used_tables());
+        set.extend(<StoreOp<false> as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
         set.extend(<MopOp as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
         // set.extend(<CsrOp::<false, false> as MachineOp::<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
 
@@ -99,7 +95,7 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
             ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
         >(
             cs,
-            <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
+            // <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
             splitting,
             boolean_keys,
         )

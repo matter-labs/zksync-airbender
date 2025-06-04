@@ -1,11 +1,9 @@
 [build]
 target = "riscv32i-unknown-none-elf"
 rustflags = [
-  # "--cfg", "no_global_oom_handling",
-  # "-C", "target-feature=+m,-unaligned-scalar-mem,+relax,+zbb",
   "-C", "target-feature=+m,-unaligned-scalar-mem,+relax",
-  "-C", "link-arg=-Tsrc/lds/memory.x",
-  "-C", "link-arg=-Tsrc/lds/link.x",
+  "-C", "link-arg=-T../scripts/lds/memory.x",
+  "-C", "link-arg=-T../scripts/lds/link.x",
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
 ]

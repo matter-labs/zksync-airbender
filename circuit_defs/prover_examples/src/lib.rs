@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 pub use prover;
 use prover::cs::utils::split_timestamp;
+use prover::trace_holder::RowMajorTrace;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
@@ -35,6 +36,8 @@ use trace_and_split::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
+#[cfg(feature = "gpu")]
+pub mod multigpu;
 
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
@@ -666,6 +669,25 @@ where
     assert_eq!(aux_memory_challenges_seed, memory_challenges_seed);
 
     (main_proofs, delegation_proofs, final_register_values)
+}
+
+pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
+    setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
+) -> Vec<Mersenne31Field, B> {
+    #[cfg(feature = "gpu")]
+    gpu::initialize_host_allocator_if_needed();
+
+    let mut setup_evaluations =
+        Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());
+    unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+    transpose::transpose(
+        setup_row_major.as_slice(),
+        &mut setup_evaluations,
+        setup_row_major.padded_width,
+        setup_row_major.len(),
+    );
+    setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+    setup_evaluations
 }
 
 #[cfg(test)]

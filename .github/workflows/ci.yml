@@ -292,7 +292,7 @@ jobs:
       - name: Setup
         run: chmod +x ./cli && mkdir output
       - name: Run
-        run: ./cli run --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt --cycles 10000000 --expected-results 297985633,48911
+        run: ./cli run --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt --cycles 10000000 --expected-results 788843751,500000
       - name: Prove
         run: ./cli prove --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt
       - name: Verify 0      

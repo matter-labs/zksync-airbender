@@ -225,7 +225,6 @@ unsafe fn verify_full_statement<const BASE_LAYER: bool>(
                 &previous.setup_caps,
                 &current.setup_caps
             ));
-            // assert_eq!(previous.setup_caps, current.setup_caps);
             // check that all challenges are the same
             assert_eq!(previous.memory_challenges, current.memory_challenges);
             assert_eq!(
@@ -306,15 +305,11 @@ unsafe fn verify_full_statement<const BASE_LAYER: bool>(
 
                 assert_eq!(delegation_proof_output.circuit_sequence, 0);
                 assert_eq!(delegation_proof_output.delegation_type, *delegation_type);
+                assert!(MerkleTreeCap::compare(
+                    &delegation_proof_output.setup_caps,
+                    setup_caps
+                ));
 
-                if circuit_sequence == 0 {
-                    // all delegation circuits are the same regardless of the program
-                    // that would try to call them, so we should just compare here once
-                    assert!(MerkleTreeCap::compare(
-                        &delegation_proof_output.setup_caps,
-                        setup_caps
-                    ));
-                }
                 // and commit memory caps
                 transcript.absorb(delegation_proof_output.memory_caps_flattened());
 
