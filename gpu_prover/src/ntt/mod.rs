@@ -38,7 +38,7 @@ cuda_kernel!(
     coset_idx: u32,
 );
 
-b2n_one_stage_kernel!(bitrev_Z_to_natural_coset_evals_1_stage);
+b2n_one_stage_kernel!(bitrev_Z_to_natural_coset_evals_one_stage);
 
 // "v" indicates a vectorized layout of BaseField columns,
 // For the final output, columns represent distinct base field values.
@@ -55,6 +55,7 @@ cuda_kernel!(
     num_Z_cols: u32,
     log_extension_degree: u32,
     coset_idx: u32,
+    grid_offset: u32,
 );
 
 b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block);
@@ -103,7 +104,7 @@ fn bitrev_Z_to_natural_evals(
         let blocks_per_ntt: u32 = n.get_chunks_count(2 * threads);
         let blocks = blocks_per_ntt * num_Z_cols;
         let config = CudaLaunchConfig::basic(blocks, threads, stream);
-        let kernel_function = B2NOneStageFunction(bitrev_Z_to_natural_coset_evals_1_stage);
+        let kernel_function = B2NOneStageFunction(bitrev_Z_to_natural_coset_evals_one_stage);
         let args = B2NOneStageArguments::new(
             inputs_matrix,
             outputs_matrix_mut,
@@ -174,6 +175,7 @@ fn bitrev_Z_to_natural_evals(
                 num_Z_cols,
                 log_extension_degree as u32,
                 coset_idx as u32,
+                0,
             );
             B2NMultiStageFunction(function).launch(&config, &args)
         } else {
@@ -244,6 +246,7 @@ cuda_kernel!(
     stages_this_launch: u32,
     log_n: u32,
     num_Z_cols: u32,
+    grid_offset: u32,
 );
 
 n2b_multi_stage_kernel!(evals_to_Z_nonfinal_7_or_8_stages_block);
@@ -312,23 +315,8 @@ fn natural_evals_to_bitrev_Z(
 
     use crate::ntt::utils::N2B_LAUNCH::*;
     let plan = &STAGE_PLANS_N2B[log_n as usize - 16];
-    let (kern, stages_this_launch) = plan[0].expect("plan must contain at least 1 kernel");
-    assert_eq!(kern, NONFINAL_7_OR_8_BLOCK);
-    let num_chunks = (num_Z_cols + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
-    let grid_dim_x = n / 4096;
-    let block_dim_x = 512;
-    let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, stream);
-    let args = N2BMultiStageArguments::new(
-        inputs_matrix,
-        outputs_matrix_mut,
-        0,
-        stages_this_launch,
-        log_n,
-        num_Z_cols,
-    );
-    N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
-    let mut stage = stages_this_launch;
-    for &kernel in &plan[1..] {
+    let mut stage: u32 = 0;
+    for &kernel in &plan[..] {
         let start_stage = stage;
         let num_chunks = (num_Z_cols + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
         if let Some((kern, stages_this_launch)) = kernel {
@@ -366,14 +354,20 @@ fn natural_evals_to_bitrev_Z(
                         (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512)
                     }
                 };
+            let inputs = if start_stage == 0 {
+                inputs_matrix
+            } else {
+                outputs_matrix_const
+            };
             let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, stream);
             let args = N2BMultiStageArguments::new(
-                outputs_matrix_const,
+                inputs,
                 outputs_matrix_mut,
                 start_stage,
                 stages_this_launch,
                 log_n,
                 num_Z_cols,
+                0,
             );
             N2BMultiStageFunction(function).launch(&config, &args)
         } else {
@@ -509,6 +503,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
         stages_this_launch,
         log_n,
         num_Z_cols,
+        0,
     );
     N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
 
@@ -549,6 +544,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
         num_Z_cols,
         1, // log_extension_degree
         1, // coset_index
+        0,
     );
     B2NMultiStageFunction(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block)
         .launch(&config, &args)?;
