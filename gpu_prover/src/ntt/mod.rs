@@ -506,7 +506,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     );
     N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
 
-    let mut stage = stages_this_launch;
+    let work_packet_start_stage = stages_this_launch;
 
     start_event.record(exec_stream)?;
     aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
@@ -515,10 +515,91 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // with L2 chunking and multistreaming to reduce tail effect,
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
+    let outputs_slice_const =
     let stream_refs = [exec_stream, aux_stream];
-    let mut stream_selector = 0;
-    for row_range in &(0..n).chunks(l2_working_set_e2_elems_per_stream) {
-        for col in 0..num_Z_cols {}
+    let work_packets_per_col = std::max(1, n / l2_working_set_e2_elems_per_stream);
+    let n2b_packet_plan_details: Vec<_> = (&n2b_plan[1..])
+        .iter()
+        .map(|&(kern, stages_this_launch)| {
+            let (function, grid_dim_x, block_dim_x) = match kern {
+                FINAL_7_WARP => (main_domain_evals_to_Z_final_7_stages_warp, n / (4 * 128), 128),
+                FINAL_8_WARP => (main_domain_evals_to_Z_final_8_stages_warp, n / (4 * 256), 128),
+                FINAL_9_TO_12_BLOCK => (main_domain_evals_to_Z_final_9_to_12_stages_block, n / 4096, 512),
+                NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512),
+            };
+            (function, grid_dim_x, block_dim_x, stages_this_launch);
+        })
+        .collect();
+    let b2n_packet_plan_details: Vec<_> = (&b2n_plan[..b2n_plan.len() - 1])
+        .iter()
+        .map(|&(kern, stages_this_launch)| {
+            let (function, grid_dim_x, block_dim_x) = match kern {
+                INITIAL_7_WARP => (
+                    bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
+                    n / (4 * 128),
+                    128,
+                ),
+                INITIAL_8_WARP => (
+                    bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
+                    n / (4 * 256),
+                    128,
+                ),
+                INITIAL_9_TO_12_BLOCK => (
+                    bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
+                    n / 4096,
+                    512,
+                ),
+                NONINITIAL_7_OR_8_BLOCK => (
+                    bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
+                    n / 4096,
+                    512,
+                ),
+            };
+            (function, grid_dim_x, block_dim_x, stages_this_launch);
+        })
+        .collect();
+    let num_work_packets = work_packets_per_col * num_Z_cols;
+    for first_work_packet in (0..work_packets_per_col * num_Z_cols).step_by(2) {
+        let mut start_stage = work_packet_start_stage;
+        // Dispatch middle kernels for two work packets breadth-first (ping-pong)
+        for (function, grid_dim_x, block_dim_x, stages_this_launch) in n2b_plan_details.iter() {
+            for i in (0, 1) {
+                if first_work_packet + i < num_work_packets {
+                    let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, stream_refs[i]);
+                    let args = N2BMultiStageArguments::new(
+                        inputs,
+                        outputs_matrix_mut,
+                        start_stage,
+                        stages_this_launch,
+                        log_n,
+                        1,
+                        0,
+                    );
+                    N2BMultiStageFunction(function).launch(&config, &args)
+                }
+            }
+            start_stage += stages_this_launch;
+        }
+        for (function, grid_dim_x, block_dim_x, stages_this_launch) in b2n_plan_details.iter() {
+            for i in (0, 1) {
+                if first_work_packet + i < num_work_packets {
+                    let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, stream_refs[i]);
+                    let args = B2NMultiStageArguments::new(
+                        inputs,
+                        outputs_matrix_mut,
+                        start_stage,
+                        stages_this_launch,
+                        log_n,
+                        1,
+                        1,
+                        1,
+                        0,
+                    );
+                    B2NMultiStageFunction(function).launch(&config, &args)
+                }
+            }
+            start_stage += stages_this_launch;
+        }
     }
 
     end_event.record(aux_stream)?;
