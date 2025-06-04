@@ -1687,7 +1687,7 @@ pub fn create_mem_load_extend_table<F: PrimeField>(id: u32) -> LookupTable<F, 3>
             assert!(a < 1 << (16 + 1 + 3));
 
             let word = a as u16;
-            let use_high_half = (a >> 16) != 0;
+            let use_high_half = ((a >> 16) & 1) != 0;
             let funct3 = (a >> 17) as u8;
 
             let selected_byte = if use_high_half {
