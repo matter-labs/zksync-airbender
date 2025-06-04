@@ -42,7 +42,11 @@ enum TableType : u16 {
   RangeCheck13,
   ShiftImplementation,
   U16SelectByteAndGetByteSign,
-  DynamicPlaceholder, // 39
+  ExtendLoadedValue,
+  StoreByteSourceContribution,
+  StoreByteExistingContribution,
+  TruncateShift,
+  DynamicPlaceholder,
 };
 
 DEVICE_FORCEINLINE const u16 *u32_as_u16s(const u32 &value) { return reinterpret_cast<const u16 *>(&value); }
@@ -201,9 +205,19 @@ template <unsigned K, unsigned V> struct TableDriver {
 
   DEVICE_FORCEINLINE u32 sra_sign_filler(const bf keys[K], bf *values) const {
     auto setter = [](const u32 index, u32 *result) {
-      const unsigned mask = 0xffffffff << (32 - index);
-      result[0] = mask & 0xffff;
-      result[1] = index >> 16;
+      const bool input_sign = index & 1 != 0;
+      const bool is_sra = index & 2 != 0;
+      const u32 shift_amount = index >> 2;
+      if (input_sign == false || is_sra == false) {
+        // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
+        // in practice, but we have to fill the table)
+        result[0] = 0;
+        result[1] = 0;
+      } else {
+        const unsigned mask = 0xffffffff << (32 - shift_amount);
+        result[0] = mask & 0xffff;
+        result[1] = mask >> 16;
+      }
     };
     return set_values_from_single_key<SRASignFiller>(keys, values, setter);
   }
@@ -320,27 +334,27 @@ template <unsigned K, unsigned V> struct TableDriver {
   }
 
   DEVICE_FORCEINLINE u32 shift_implementation(const bf keys[K], bf *values) const {
+    // take 16 bits of input half-word || shift || is_right
     auto setter = [](const u32 index, u32 *result) {
-      constexpr unsigned LEFT_OR_RIGHT_BIT_INDEX = 0;
-      constexpr unsigned ARITHMETIC_SHIFT_INDEX = 1;
-      constexpr unsigned NUM_BYTE_INDEX_BITS = 2;
-      constexpr unsigned NUM_SHIFT_TYPE_BITS = 2;
-      constexpr unsigned NUM_SHIFT_AMOUNT_BITS = 5;
-      u32 a = index;
-      const u32 byte_index = a & (1u << NUM_BYTE_INDEX_BITS) - 1;
-      a >>= NUM_BYTE_INDEX_BITS;
-      const u32 shift_type_bits = a & (1u << NUM_SHIFT_TYPE_BITS) - 1;
-      a >>= NUM_SHIFT_TYPE_BITS;
-      const u32 shift_amount = a & (1u << NUM_SHIFT_AMOUNT_BITS) - 1;
-      a >>= NUM_SHIFT_AMOUNT_BITS;
-      const u32 input = a << byte_index * 8;
-      const bool is_right_shift = (shift_type_bits & 1u << LEFT_OR_RIGHT_BIT_INDEX) != 0;
-      const bool is_arithmetic_shift = (shift_type_bits & 1u << ARITHMETIC_SHIFT_INDEX) != 0;
-      const u32 result_contribution = is_arithmetic_shift ? (is_right_shift ? static_cast<u32>(static_cast<int32_t>(input) >> shift_amount) : 0)
-                                      : is_right_shift    ? input >> shift_amount
-                                                          : input << shift_amount;
-      result[0] = result_contribution & 0xffff;
-      result[1] = result_contribution >> 16;
+      const u32 a = index;
+      const u32 input_word = a & 0xffff;
+      const u32 shift_amount = a >> 16 & 0b11111;
+      const bool is_right_shift = a >> (16 + 5) != 0;
+      if (is_right_shift) {
+        const u32 input = input_word << 16;
+        const u32 t = input >> shift_amount;
+        const u32 in_place = t >> 16;
+        const u32 overflow = t & 0xffff;
+        result[0] = in_place;
+        result[1] = overflow;
+      } else {
+        const u32 input = input_word;
+        const u32 t = input << shift_amount;
+        const u32 in_place = t & 0xffff;
+        const u32 overflow = t >> 16;
+        result[0] = in_place;
+        result[1] = overflow;
+      }
     };
     return set_values_from_single_key<ShiftImplementation>(keys, values, setter);
   }
@@ -354,6 +368,89 @@ template <unsigned K, unsigned V> struct TableDriver {
       result[1] = sign_bit;
     };
     return set_values_from_single_key<U16SelectByteAndGetByteSign>(keys, values, setter);
+  }
+
+  DEVICE_FORCEINLINE u32 extend_loaded_value(const bf keys[K], bf *values) const {
+    // 16-bit half-word || low/high value bit || funct3
+    auto setter = [](const u32 index, u32 *result) {
+      const u32 word = index & 0xffff;
+      const bool use_high_half = (index & 0x00010000) != 0;
+      // const bool use_high_half = (index >> 16) != 0;
+      const u32 funct3 = index >> 17;
+      const u32 selected_byte = use_high_half ? word >> 8 : word & 0xff;
+      u32 loaded_word = 0;
+      switch (funct3) {
+      case 0b000:
+        // LB
+        // sign-extend selected byte
+        loaded_word = (selected_byte & 0x80) != 0 ? selected_byte | 0xffffff00 : selected_byte;
+        break;
+      case 0b100:
+        // LBU
+        // zero-extend selected byte
+        loaded_word = selected_byte;
+        break;
+      case 0b001:
+        // LH
+        // sign-extend selected word
+        loaded_word = (word & 0x8000) != 0 ? word | 0xffff0000 : word;
+        break;
+      case 0b101:
+        // LHU
+        // zero-extend selected word
+        loaded_word = word;
+      default:
+        // Not important
+        loaded_word = 0;
+      }
+      result[0] = loaded_word & 0xffff;
+      result[1] = loaded_word >> 16;
+    };
+    return set_values_from_single_key<ExtendLoadedValue>(keys, values, setter);
+  }
+
+  DEVICE_FORCEINLINE u32 store_byte_source_contribution(const bf keys[K], bf *values) const {
+    u32 binary_keys[2];
+    keys_into_binary_keys<2>(keys, binary_keys);
+    const u32 index = index_for_binary_keys<1, 0>(binary_keys);
+    if (V != 0) {
+      const u32 a = binary_keys[0];
+      const u32 b = binary_keys[1];
+      const bool bit_0 = b != 0;
+      const u32 byte = a & 0xff;
+      const u32 result = bit_0 ? byte << 8 : byte;
+      values[0] = bf(result);
+    }
+    return get_absolute_index<StoreByteSourceContribution>(index);
+  }
+
+  DEVICE_FORCEINLINE u32 store_byte_existing_contribution(const bf keys[K], bf *values) const {
+    u32 binary_keys[2];
+    keys_into_binary_keys<2>(keys, binary_keys);
+    const u32 index = index_for_binary_keys<1, 0>(binary_keys);
+    if (V != 0) {
+      const u32 a = binary_keys[0];
+      const u32 b = binary_keys[1];
+      const bool bit_0 = b != 0;
+      const u32 result = bit_0 ? a & 0x00ff : a & 0xff00;
+      values[0] = bf(result);
+    }
+    return get_absolute_index<StoreByteExistingContribution>(index);
+  }
+
+  DEVICE_FORCEINLINE u32 truncate_shift(const bf keys[K], bf *values) const {
+    u32 binary_keys[2];
+    keys_into_binary_keys<2>(keys, binary_keys);
+    const u32 index = index_for_binary_keys<1, 0>(binary_keys);
+    if (V != 0) {
+      const u32 a = binary_keys[0];
+      const u32 b = binary_keys[1];
+      const bool is_right_shift = b != 0;
+      const u32 shift_amount = a & 31;
+      const u32 result = is_right_shift ? shift_amount : 32 - shift_amount;
+      values[0] = bf(result);
+    }
+    return get_absolute_index<TruncateShift>(index);
   }
 
   DEVICE_FORCEINLINE u32 get_index_and_set_values(const TableType table_type, const bf keys[K], bf *values) const {
@@ -425,9 +522,15 @@ template <unsigned K, unsigned V> struct TableDriver {
       return shift_implementation(keys, values);
     case U16SelectByteAndGetByteSign:
       return u16_select_byte_and_get_byte_sign(keys, values);
+    case ExtendLoadedValue:
+      return extend_loaded_value(keys, values);
+    case StoreByteSourceContribution:
+      return store_byte_source_contribution(keys, values);
+    case StoreByteExistingContribution:
+      return store_byte_existing_contribution(keys, values);
+    case TruncateShift:
+      return truncate_shift(keys, values);
     default:
-      // printf("[%d] unknown table type %d\n", blockIdx.x * blockDim.x + threadIdx.x, table_type);
-      // return 0;
       __trap();
     }
   }
