@@ -310,7 +310,15 @@ pub fn create_proofs(
                 serialize_to_file(
                     &recursion_proof_metadata,
                     &Path::new(output_dir).join("metadata.json"),
-                )
+                );
+                let program_proof = program_proof_from_proof_list_and_metadata(
+                    &recursion_proof_list,
+                    &recursion_proof_metadata,
+                );
+                serialize_to_file(
+                    &program_proof,
+                    &Path::new(output_dir).join("recursion_program_proof.json"),
+                );
             }
             ProvingLimit::FinalProof => {
                 let program_proof =
