@@ -78,10 +78,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     )],
     prover_context: &P,
     worker: &Worker,
-) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -468,10 +465,7 @@ pub fn trace_execution_for_gpu<
     ),
     HashMap<DelegationCircuitType, Vec<DelegationTraceHost<A>>>,
     Vec<FinalRegisterValue>,
-)
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 

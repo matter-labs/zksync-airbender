@@ -34,7 +34,7 @@ CARGO_TARGET_DIR=target/six cargo objcopy --release --features recursion_step,pa
 #cargo build --release --no-default-features --features=recursion_step,panic_output
 CARGO_TARGET_DIR=target/seven cargo objcopy --release --features recursion_step_no_delegation,panic_output --no-default-features -- -O binary recursion_layer_no_delegation_with_output.bin &
 
-#cargo build --release --no-default-features --features=recursion_step,panic_output
+#cargo build --release --no-default-features --features=final_recursion_step,panic_output
 CARGO_TARGET_DIR=target/eight cargo objcopy --release --features final_recursion_step,panic_output --no-default-features -- -O binary final_recursion_layer_with_output.bin &
 
 # cargo biild --release -Z build-std=core,panic_abort,alloc --features universal_circuit,panic_output --no-default-features

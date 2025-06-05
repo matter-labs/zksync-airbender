@@ -173,10 +173,7 @@ pub fn trace_execution_for_gpu<
     ),
     HashMap<u16, Vec<DelegationWitness>>,
     Vec<FinalRegisterValue>,
-)
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
@@ -235,10 +232,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<C, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
@@ -322,6 +316,9 @@ where
 
     for delegation_type in delegation_types.iter() {
         let els = &delegation_circuits_witness[&delegation_type];
+        if els.is_empty() {
+            continue;
+        }
         let idx = delegation_circuits_precomputations
             .iter()
             .position(|el| el.0 == *delegation_type as u32)
@@ -536,6 +533,10 @@ where
             delegation_type,
             els.len()
         );
+
+        if els.is_empty() {
+            continue;
+        }
 
         let idx = delegation_circuits_precomputations
             .iter()

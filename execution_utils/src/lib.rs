@@ -684,11 +684,6 @@ mod test {
     fn test_prove_final_recursion_over_recursion() {
         let worker = prover::worker::Worker::new_with_num_threads(8);
 
-        let delegation_precomputations =
-            trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                &worker,
-            );
-
         let binary = RECURSION_LAYER_NO_DELEGATION_VERIFIER;
 
         let expected_final_pc = find_binary_exit_point(&binary);
@@ -737,7 +732,7 @@ mod test {
                 &binary,
                 non_determinism_source,
                 &main_circuit_precomputations,
-                &delegation_precomputations,
+                &[],
                 &worker,
             );
 
@@ -773,11 +768,6 @@ mod test {
     #[test]
     fn test_prove_final_recursion_over_final_recursion() {
         let worker = prover::worker::Worker::new_with_num_threads(8);
-
-        let delegation_precomputations =
-            trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                &worker,
-            );
 
         let binary = FINAL_RECURSION_LAYER_VERIFIER;
 
@@ -827,7 +817,7 @@ mod test {
                 &binary,
                 non_determinism_source,
                 &main_circuit_precomputations,
-                &delegation_precomputations,
+                &[],
                 &worker,
             );
 

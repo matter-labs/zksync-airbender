@@ -688,7 +688,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         a @ 0 | a @ 1 | a @ 2 => {
                             let store_length = 1 << a;
 
-                            // #[cfg(feature = "opcode_stats")]
+                            #[cfg(feature = "opcode_stats")]
                             {
                                 match store_length {
                                     1 => {
