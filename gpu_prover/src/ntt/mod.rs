@@ -15,7 +15,7 @@ use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
 use crate::context::OMEGA_LOG_ORDER;
 use crate::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl,
+    DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,
 };
 use crate::field::BaseField;
@@ -518,10 +518,23 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let n2b_packet_plan_details: Vec<_> = (&n2b_plan[1..])
         .iter()
         .map(|&(kern, stages_this_launch)| {
-            let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, u32, u32) = match kern {
-                FINAL_7_WARP => (main_domain_evals_to_Z_final_7_stages_warp, n / (4 * 128), 128),
-                FINAL_8_WARP => (main_domain_evals_to_Z_final_8_stages_warp, n / (4 * 256), 128),
-                FINAL_9_TO_12_BLOCK => (main_domain_evals_to_Z_final_9_to_12_stages_block, n / 4096, 512),
+            let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, u32, u32) = match kern
+            {
+                FINAL_7_WARP => (
+                    main_domain_evals_to_Z_final_7_stages_warp,
+                    n / (4 * 128),
+                    128,
+                ),
+                FINAL_8_WARP => (
+                    main_domain_evals_to_Z_final_8_stages_warp,
+                    n / (4 * 256),
+                    128,
+                ),
+                FINAL_9_TO_12_BLOCK => (
+                    main_domain_evals_to_Z_final_9_to_12_stages_block,
+                    n / 4096,
+                    512,
+                ),
                 NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512),
             };
             (function, grid_dim_x, block_dim_x, stages_this_launch as u32)
@@ -530,7 +543,8 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let b2n_packet_plan_details: Vec<_> = (&b2n_plan[..b2n_plan.len() - 1])
         .iter()
         .map(|&(kern, stages_this_launch)| {
-            let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, u32, u32) = match kern {
+            let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, u32, u32) = match kern
+            {
                 INITIAL_7_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
                     n / (4 * 128),
@@ -572,7 +586,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
         let Z_col = first_work_packet % num_Z_cols as usize;
         let row_packet = first_work_packet / num_Z_cols as usize;
         let input_slice = &outputs_slice_const[Z_col * stride..(Z_col + 2) * stride];
-        let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride]; 
+        let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride];
         let input_matrix = DeviceMatrixChunk::new(input_slice, stride, offset, n as usize);
         let mut output_matrix = DeviceMatrixChunkMut::new(output_slice, stride, offset, n as usize);
         let input_matrix_0 = input_matrix.as_ptr_and_stride();
@@ -580,9 +594,10 @@ pub fn natural_main_evals_to_natural_coset_evals(
         let (input_matrix_1, output_matrix_1) = if first_work_packet + 1 < num_work_packets {
             let Z_col = Z_col + 2;
             let input_slice = &outputs_slice_const[Z_col * stride..(Z_col + 2) * stride];
-            let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride]; 
+            let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride];
             let input_matrix = DeviceMatrixChunk::new(input_slice, stride, offset, n as usize);
-            let mut output_matrix = DeviceMatrixChunkMut::new(output_slice, stride, offset, n as usize);
+            let mut output_matrix =
+                DeviceMatrixChunkMut::new(output_slice, stride, offset, n as usize);
             let input_matrix = input_matrix.as_ptr_and_stride();
             let output_matrix = output_matrix.as_mut_ptr_and_stride();
             (input_matrix, output_matrix)
@@ -590,10 +605,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
             (input_matrix_0, output_matrix_0) // dummy copies, won't be used
         };
         // Dispatch middle kernels for two work packets breadth-first (ping-pong)
-        for &(function, grid_dim_x, block_dim_x, stages_this_launch) in n2b_packet_plan_details.iter() {
+        for &(function, grid_dim_x, block_dim_x, stages_this_launch) in
+            n2b_packet_plan_details.iter()
+        {
             for &i in [0, 1].iter() {
                 if first_work_packet + i < num_work_packets {
-                    let config = CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
+                    let config =
+                        CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = N2BMultiStageArguments::new(
                         input_matrix_0,
                         output_matrix_0,
@@ -608,10 +626,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
             }
             start_stage += stages_this_launch;
         }
-        for &(function, grid_dim_x, block_dim_x, stages_this_launch) in b2n_packet_plan_details.iter() {
+        for &(function, grid_dim_x, block_dim_x, stages_this_launch) in
+            b2n_packet_plan_details.iter()
+        {
             for &i in [0, 1].iter() {
                 if first_work_packet + i < num_work_packets {
-                    let config = CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
+                    let config =
+                        CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = B2NMultiStageArguments::new(
                         input_matrix_0,
                         output_matrix_0,
