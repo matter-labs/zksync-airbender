@@ -1,4 +1,3 @@
-use crate::constraint::Constraint;
 use crate::cs::placeholder::Placeholder;
 use crate::types::Register;
 use crate::{cs::circuit::Circuit, types::Boolean};
@@ -103,74 +102,3 @@ impl<F: PrimeField> AuxDataArr<F> {
         (trapped, mem_dst, rd)
     }
 }
-
-#[derive(Clone, Debug)]
-pub(crate) struct AuxDataArrReduced<F: PrimeField> {
-    exec_flag: Boolean,
-    mem_dst_value: Register<F>,
-    rd: [Constraint<F>; 2],
-}
-
-impl<F: PrimeField> AuxDataArrReduced<F> {
-    pub fn new(exec_flag: Boolean, mem_dst_value: Register<F>, rd: [Constraint<F>; 2]) -> Self {
-        Self {
-            exec_flag,
-            mem_dst_value,
-            rd,
-        }
-    }
-
-    #[track_caller]
-    pub fn choose_from_orthogonal_variants<C: Circuit<F>>(
-        cs: &mut C,
-        variants: &[Self],
-    ) -> (Register<F>, Register<F>) {
-        let (flags, mem_dst_ops, rd_ops): (Vec<_>, Vec<_>, Vec<_>) = {
-            itertools::multiunzip(
-                variants
-                    .iter()
-                    .map(|elem| (elem.exec_flag, elem.mem_dst_value, elem.rd.clone())),
-            )
-        };
-        let mem_dst = Register::choose_from_orthogonal_variants::<C>(cs, &flags, &mem_dst_ops);
-        let rd = Register(std::array::from_fn(|word_idx| {
-            let mut constraints = vec![];
-            for el in rd_ops.iter() {
-                constraints.push(el[word_idx].clone());
-            }
-
-            cs.choose_from_orthogonal_variants_for_linear_terms(&flags, &constraints)
-        }));
-
-        (mem_dst, rd)
-    }
-}
-
-// #[derive(Clone, Copy, Debug)]
-// pub struct AuxData<F: PrimeField> {
-//     exec_flag: Boolean,
-//     updated_csr: RegisterLikeDiff<F>,
-// }
-
-// impl<F: PrimeField> AuxData<F> {
-//     pub fn new(exec_flag: Boolean, updated_csr: RegisterLikeDiff<F>) -> Self {
-//         AuxData {
-//             exec_flag,
-//             updated_csr,
-//         }
-//     }
-
-//     // #[track_caller]
-//     // pub fn choose_from_orthogonal_variants<CS: Circuit<F>>(
-//     //     cs: &mut CS,
-//     //     variants: &[Self],
-//     // ) -> Register<F> {
-//     //     let (exec_flags, updated_csrs): (Vec<_>, Vec<_>) = variants
-//     //         .iter()
-//     //         .map(|e| (e.exec_flag, e.updated_csr))
-//     //         .unzip();
-//     //     let updated_scr =
-//     //         RegisterLikeDiff::choose_from_orthogonal_variants::<CS>(cs, &exec_flags, &updated_csrs);
-//     //     updated_scr
-//     // }
-// }

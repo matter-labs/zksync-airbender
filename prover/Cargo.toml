@@ -50,9 +50,7 @@ cs_debug = ["cs/debug_evaluate_witness"]
 # Print detailed debug logs
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]
-experimental_witness_eval = ["cs/experimental_witness_eval"]
 default = ["prover", "cs_debug", "bincode"]
-# default = ["prover", "cs_debug", "bincode", "experimental_witness_eval"]
 
 # Include test code for test in dependent crates
 test = []

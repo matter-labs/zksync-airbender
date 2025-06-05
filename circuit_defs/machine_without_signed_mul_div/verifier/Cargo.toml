@@ -1,0 +1,38 @@
+[package]
+name = "machine_without_signed_mul_div_verifier"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+field = { workspace = true }
+unroll = { workspace = true }
+verifier_common = { workspace = true , default-features = false}
+
+[features]
+blake2_with_compression = ["verifier_common/blake2_with_compression"]
+modular_ops = ["verifier_common/modular_ops"]
+modular_ext4_ops = ["verifier_common/modular_ext4_ops"]
+verifier_program = ["modular_ops"]
+# verifier_program = ["modular_ops", "modular_ext4_ops"]
+proof_utils = ["verifier_common/proof_utils"]
+
+# If enabled, allows passing custom values into CSR.
+replace_csr = ["verifier_common/replace_csr"]
+
+default = ["blake2_with_compression"]
+
+[dev-dependencies]
+serde = "1"
+serde_json = "*"
+prover = {workspace = true, default-features = true}
+proc-macro2 = { version = "1" }
+syn = { version = "2" }
+quote = { version = "1" }
+verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
+risc_v_simulator = { workspace = true, features = ["delegation"] }

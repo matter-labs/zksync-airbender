@@ -36,7 +36,8 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineNoExceptionHandling {
             Box::new(ConditionalOp::<true>),
             Box::new(ShiftOp::<true, false>),
             Box::new(JumpOp),
-            Box::new(MemoryOp::<true, true>),
+            Box::new(LoadOp::<true, true>),
+            Box::new(StoreOp::<true>),
             Box::new(CsrOp::<false, false, false>),
         ]
     }
@@ -65,13 +66,14 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineNoExceptionHandling {
             BS,
         >>::define_used_tables());
         set.extend(<JumpOp as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
-        set.extend(<MemoryOp<true, true> as MachineOp<
+        set.extend(<LoadOp<true, true> as MachineOp<
             F,
             ST<F>,
             RS<F>,
             DE<F>,
             BS,
         >>::define_used_tables());
+        set.extend(<StoreOp<true> as MachineOp<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
 
         // set.extend(<CsrOp::<false, false> as MachineOp::<F, ST<F>, RS<F>, DE<F>, BS>>::define_used_tables());
 
@@ -98,7 +100,7 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineNoExceptionHandling {
             ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
         >(
             cs,
-            <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
+            // <Self::State as BaseMachineState<F>>::opcodes_are_in_rom(),
             splitting,
             boolean_keys,
         )

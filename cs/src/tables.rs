@@ -657,8 +657,19 @@ impl quote::ToTokens for TableType {
             TableType::U16SelectByteAndGetByteSign => {
                 quote! { TableType::U16SelectByteAndGetByteSign }
             }
-            a @ _ => {
-                todo!("Support {:?}", a);
+            TableType::ConditionalOpUnsignedConditionsResolver => {
+                todo!()
+            }
+            TableType::StoreByteSourceContribution => {
+                quote! { TableType::StoreByteSourceContribution }
+            }
+            TableType::StoreByteExistingContribution => {
+                quote! { TableType::StoreByteExistingContribution }
+            }
+            TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
+            TableType::TruncateShift => quote! { TableType::TruncateShift },
+            TableType::DynamicPlaceholder => {
+                unimplemented!("should not appear in final circuits")
             }
         };
 
@@ -773,6 +784,19 @@ impl TableType {
             TableType::U16SelectByteAndGetByteSign => {
                 LookupWrapper::Dimensional3(create_select_byte_and_get_sign_table::<F>(id))
             }
+            TableType::ExtendLoadedValue => {
+                LookupWrapper::Dimensional3(create_mem_load_extend_table::<F>(id))
+            }
+            TableType::StoreByteSourceContribution => {
+                LookupWrapper::Dimensional3(create_store_byte_source_contribution_table::<F>(id))
+            }
+            TableType::StoreByteExistingContribution => {
+                LookupWrapper::Dimensional3(create_store_byte_existing_contribution_table::<F>(id))
+            }
+            TableType::TruncateShift => {
+                LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
+            }
+
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -1037,79 +1061,6 @@ pub fn create_quick_decoder_decomposition_table_7x3x6<F: PrimeField>(id: u32) ->
     )
 }
 
-// pub fn create_mret_process_low_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_low in 0..=u16::MAX {
-//         // we need to get(!) mpp(11-12), and set mie(3) to previous mpie and set mpie(7) to 1
-//         // hence the splitting:
-//         //      low = [0-2, mie(3), 4-6, mpie(7), 8-10, mpp(11-12), 13-15]
-//         const MIE_BIT: u16 = 1u16 << 3;
-//         const MPIE_BIT: u16 = 1u16 << 7;
-//         const MPP_BITS: u16 = 3u16 << 11;
-//         let current_mpp = (csr_low & !MPP_BITS) >> 11;
-//         let current_mpie = (csr_low & !MPIE_BIT) >> 7;
-//         let mut result = csr_low;
-//         result &= !MIE_BIT; // clear MIE
-//         result |= current_mpie << 3; // set MIE to MPIE
-//         result &= !MPIE_BIT; // clear MPIE
-//         result |= 1 << 7; // set MPIE to 1
-//         result &= !MPP_BITS; // clear MPP
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_low as u64),
-//             F::from_u64_unchecked(current_mpp as u64),
-//             F::from_u64_unchecked(result as u64),
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "MRET process low table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
-
-// pub fn create_mret_clear_high_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_high in 0..=u16::MAX {
-//         // we need to clear mprv(17),
-//         //      high = [16, mprv(17), 18-31]
-//         const MPRV_BIT: u16 = 1u16 << 1;
-//         let mut result = csr_high;
-//         result &= !MPRV_BIT; // clear MIE
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_high as u64),
-//             F::from_u64_unchecked(result as u64),
-//             F::ZERO,
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "MRET clear high table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
-
-// pub fn create_trap_process_low_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-//     let mut keys = Vec::with_capacity(1 << 16);
-//     for csr_low in 0..=u16::MAX {
-//         // on trap the system moves current mie(3) into mpie(1)
-//         // low = [0-2, mie(3), 4-6, mpie(1), 8-15]
-//         const MIE_BIT: u16 = 1u16 << 3;
-//         const MPIE_BIT: u16 = 1u16 << 7;
-//         let current_mie = (csr_low & !MIE_BIT) >> 3;
-//         let _current_mpie = (csr_low & !MPIE_BIT) >> 7;
-//         let mut result = csr_low;
-//         result &= !MPIE_BIT; // clear MPIE
-//         result |= current_mie << 7; // set MPIE to MIE
-//         let row: [F; 3] = [
-//             F::from_u64_unchecked(csr_low as u64),
-//             F::from_u64_unchecked(result as u64),
-//             F::ZERO,
-//         ];
-//         keys.push(row);
-//     }
-
-//     const TABLE_NAME: &'static str = "TRAP process low table";
-//     LookupTable::<F, 3>::finalization_step_creating_table(keys, TABLE_NAME.to_string(), 1, 2, id)
-// }
-
 pub fn create_u16_get_sign_and_high_byte_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let keys = key_for_continuous_log2_range(16);
     const TABLE_NAME: &'static str = "U16 get sign and high byte table";
@@ -1214,7 +1165,7 @@ pub fn create_memory_load_signs_table<F: PrimeField>(id: u32) -> LookupTable<F, 
 }
 
 pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(5);
+    let keys = key_for_continuous_log2_range(1 + 1 + 5);
     const TABLE_NAME: &'static str = "SRA sign bits filler table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -1222,27 +1173,32 @@ pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3>
         1,
         |keys| {
             let a = keys[0].as_u64_reduced();
-            assert!(a < 32, "SRA sign filler table got shift value {}", a);
-            let a = a as u32;
+            let input_sign = a & 1 > 0;
+            let is_sra = (a >> 1) & 1 > 0;
+            let shift_amount = a >> 2;
+            assert!(shift_amount < 32);
 
-            // values below are assuming negative shifted operand. Implementation of the opcode
-            // will easily combine them
-            // if we shift by 0 bits then it's full zeroes,
-            // if we shift by 31 bits then it should be all ones except the bottom one
-
-            if a == 0 {
-                // special case
+            if input_sign == false || is_sra == false {
+                // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
+                // in practice, but we have to fill the table)
                 let result = [F::ZERO; 3];
 
                 (a as usize, result)
             } else {
-                let (mask, _) = u32::MAX.overflowing_shl(32 - a);
+                if a == 0 {
+                    // special case
+                    let result = [F::ZERO; 3];
 
-                let mut result = [F::ZERO; 3];
-                result[0] = F::from_u64_unchecked(mask as u16 as u64);
-                result[1] = F::from_u64_unchecked((mask >> 16) as u16 as u64);
+                    (a as usize, result)
+                } else {
+                    let (mask, _) = u32::MAX.overflowing_shl(32 - (shift_amount as u32));
 
-                (a as usize, result)
+                    let mut result = [F::ZERO; 3];
+                    result[0] = F::from_u64_unchecked(mask as u16 as u64);
+                    result[1] = F::from_u64_unchecked((mask >> 16) as u16 as u64);
+
+                    (a as usize, result)
+                }
             }
         },
         Some(first_key_index_gen_fn::<F, 3>),
@@ -1591,25 +1547,10 @@ pub fn create_formal_width_3_range_check_table_for_single_entry<F: PrimeField, c
     )
 }
 
-pub const LEFT_OR_RIGHT_BIT_INDEX: usize = 0;
-pub const ARITHMETIC_SHIFT_INDEX: usize = 1;
-pub const NUM_BYTE_INDEX_BITS: usize = 2;
-pub const NUM_SHIFT_TYPE_BITS: usize = 2;
-pub const NUM_SHIFT_AMOUNT_BITS: usize = 5;
-
 pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // This table takes single byte + flags (shift right/left and SRA) + two-bit byte index, and then produces
-    // contributions of this byte into two 16-bit words
+    // take 16 bits of input half-word || shift || is_right
 
-    // TODO: condier alternative option to take 16-bit words, that would lead
-    // to table size 16 + 5 + 2 + 1 = 24 bits
-
-    // TODO: consider just reusing funct3 and funct7
-    const TOTAL_INPUT_BIT_SIZE: usize =
-        8 + NUM_SHIFT_AMOUNT_BITS + NUM_SHIFT_TYPE_BITS + NUM_BYTE_INDEX_BITS;
-    let keys = key_for_continuous_log2_range(TOTAL_INPUT_BIT_SIZE);
-
-    assert!(F::CHAR_BITS - 1 >= TOTAL_INPUT_BIT_SIZE);
+    let keys = key_for_continuous_log2_range(16 + 5 + 1);
 
     let table_name = "Shift implementation table".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
@@ -1617,42 +1558,30 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
         table_name,
         1,
         |keys| {
-            let mut a = keys[0].as_u64_reduced();
+            let a = keys[0].as_u64_reduced();
+            let input_word = a as u16;
+            let shift_amount = ((a >> 16) & 0b1_1111) as u32;
+            let is_right_shift = (a >> (16 + 5)) > 0;
 
-            let byte_index = a & ((1 << NUM_BYTE_INDEX_BITS) - 1);
-            a >>= NUM_BYTE_INDEX_BITS;
-            let shift_type_bits = a & ((1 << NUM_SHIFT_TYPE_BITS) - 1);
-            a >>= NUM_SHIFT_TYPE_BITS;
-            let shift_amount = a & ((1 << NUM_SHIFT_AMOUNT_BITS) - 1);
-            a >>= NUM_SHIFT_AMOUNT_BITS;
-            let input = (a as u32) << (byte_index * 8);
-            let is_right_shift = shift_type_bits & (1 << LEFT_OR_RIGHT_BIT_INDEX) != 0;
-            let is_arithmetic_shift = shift_type_bits & (1 << ARITHMETIC_SHIFT_INDEX) != 0;
+            let (in_place, overflow) = if is_right_shift {
+                let input = (input_word as u32) << 16;
+                let t = input >> shift_amount;
+                let in_place = (t >> 16) as u16;
+                let overflow = t as u16;
 
-            let result_contribution = if is_right_shift == false {
-                if is_arithmetic_shift == false {
-                    // SLL
-                    input << shift_amount
-                } else {
-                    // padding, but we should not encounter it in practice
-                    0u32
-                }
+                (in_place, overflow)
             } else {
-                if is_arithmetic_shift == false {
-                    // SRL
-                    input >> shift_amount
-                } else {
-                    // SRA
-                    ((input as i32) >> shift_amount) as u32
-                }
+                let input = input_word as u32;
+                let t = input << shift_amount;
+                let in_place = t as u16;
+                let overflow = (t >> 16) as u16;
+
+                (in_place, overflow)
             };
 
-            let low = result_contribution as u16;
-            let high = (result_contribution >> 16) as u16;
-
             let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(low as u64);
-            result[1] = F::from_u64_unchecked(high as u64);
+            result[0] = F::from_u64_unchecked(in_place as u64);
+            result[1] = F::from_u64_unchecked(overflow as u64);
 
             (a as usize, result)
         },
@@ -1665,7 +1594,7 @@ pub fn create_select_byte_and_get_sign_table<F: PrimeField>(id: u32) -> LookupTa
     // This table takes a word + single bit, and selected a byte + gets sign on the byte
     let keys = key_for_continuous_log2_range(16 + 1);
 
-    let table_name = "Shift implementation table".to_string();
+    let table_name = "Select byte and get sign table".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,
@@ -1692,6 +1621,216 @@ pub fn create_select_byte_and_get_sign_table<F: PrimeField>(id: u32) -> LookupTa
             (a as usize, result)
         },
         Some(first_key_index_gen_fn::<F, 3>),
+        id,
+    )
+}
+
+pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+    let mut keys = Vec::with_capacity(1 << (8 + 1));
+    for first in 0..(1 << 8) {
+        for second in 0..(1 << 1) {
+            let key = [
+                F::from_u64_unchecked(first as u64),
+                F::from_u64_unchecked(second as u64),
+                F::ZERO,
+            ];
+            keys.push(key)
+        }
+    }
+    let table_name = format!("Truncate and adjust shift amount");
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        table_name,
+        3,
+        |keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+            assert!(a < 1 << 8);
+
+            let is_right_shift = b != 0;
+            let shift_amount = a & 0b1_1111;
+            let shift_amount = if is_right_shift {
+                shift_amount
+            } else {
+                32 - shift_amount
+            };
+
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked(shift_amount as u64);
+
+            (((a << 1) | b) as usize, result)
+        },
+        Some(|keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+
+            assert!(a < (1u64 << 8));
+            assert!(b < (1u64 << 1));
+
+            ((a << 1) | b) as usize
+        }),
+        id,
+    )
+}
+
+pub fn create_mem_load_extend_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+    // 16-bit half-word || low/high value bit || funct3
+    let keys = key_for_continuous_log2_range(16 + 1 + 3);
+
+    let table_name = "Extend LOAD value table".to_string();
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        table_name,
+        1,
+        |keys| {
+            let a = keys[0].as_u64_reduced();
+            assert!(a < 1 << (16 + 1 + 3));
+
+            let word = a as u16;
+            let use_high_half = ((a >> 16) & 1) != 0;
+            let funct3 = (a >> 17) as u8;
+
+            let selected_byte = if use_high_half {
+                (word >> 8) as u8
+            } else {
+                word as u8
+            };
+
+            #[allow(non_snake_case)]
+            let loaded_word = match funct3 {
+                _LB @ 0b000 => {
+                    // sign-extend selected byte
+                    let sign = (selected_byte >> 7) != 0;
+                    if sign {
+                        (selected_byte as u32) | 0xffffff00
+                    } else {
+                        selected_byte as u32
+                    }
+                }
+                _LBU @ 0b100 => {
+                    // zero-extend selected byte
+                    selected_byte as u32
+                }
+                _LH @ 0b001 => {
+                    // sign-extend selected word
+                    let sign = (word >> 15) != 0;
+                    if sign {
+                        (word as u32) | 0xffff0000
+                    } else {
+                        word as u32
+                    }
+                }
+                _LHU @ 0b101 => {
+                    // zero-extend selected word
+                    word as u32
+                }
+                _ => {
+                    // Not important
+                    0u32
+                }
+            };
+
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked((loaded_word & 0xffff) as u64);
+            result[1] = F::from_u64_unchecked((loaded_word >> 16) as u64);
+
+            (a as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F, 3>),
+        id,
+    )
+}
+
+pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+    let mut keys = Vec::with_capacity(1 << (16 + 1));
+    for first in 0..(1 << 16) {
+        for second in 0..(1 << 1) {
+            let key = [
+                F::from_u64_unchecked(first as u64),
+                F::from_u64_unchecked(second as u64),
+                F::ZERO,
+            ];
+            keys.push(key)
+        }
+    }
+    let table_name = format!("Store byte source contribution table");
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        table_name,
+        2,
+        |keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+
+            let bit_0 = b != 0;
+            let byte = a as u8;
+            let result_half_word = if bit_0 {
+                (byte as u16) << 8
+            } else {
+                byte as u16
+            };
+
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked(result_half_word as u64);
+
+            (((a << 1) | b) as usize, result)
+        },
+        Some(|keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+
+            assert!(a < (1u64 << 16));
+            assert!(b < (1u64 << 1));
+
+            ((a << 1) | b) as usize
+        }),
+        id,
+    )
+}
+
+pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+    let mut keys = Vec::with_capacity(1 << (16 + 1));
+    for first in 0..(1 << 16) {
+        for second in 0..(1 << 1) {
+            let key = [
+                F::from_u64_unchecked(first as u64),
+                F::from_u64_unchecked(second as u64),
+                F::ZERO,
+            ];
+            keys.push(key)
+        }
+    }
+    let table_name = format!("Store byte existing contribution table");
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        table_name,
+        2,
+        |keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+
+            // we need to cleanup a part of it to prepare for addition
+            let bit_0 = b != 0;
+            let result_half_word = if bit_0 {
+                (a as u16) & 0x00ff
+            } else {
+                (a as u16) & 0xff00
+            };
+
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked(result_half_word as u64);
+
+            (((a << 1) | b) as usize, result)
+        },
+        Some(|keys| {
+            let a = keys[0].as_u64_reduced();
+            let b = keys[1].as_u64_reduced();
+
+            assert!(a < (1u64 << 16));
+            assert!(b < (1u64 << 1));
+
+            ((a << 1) | b) as usize
+        }),
         id,
     )
 }

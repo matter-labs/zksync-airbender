@@ -12,6 +12,7 @@ use std::sync::Arc;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MainCircuitType {
     FinalReducedRiscVMachine,
+    MachineWithoutSignedMulDiv,
     ReducedRiscVMachine,
     RiscVCycles,
 }

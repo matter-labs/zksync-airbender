@@ -50,6 +50,7 @@ pub struct BasicDecodingResultWithoutSigns<F: PrimeField> {
     pub pc_next: Register<F>,
     pub src1: RegisterDecomposition<F>,
     pub src2: RegisterDecomposition<F>,
+    pub rs2_index: Constraint<F>,
     pub imm: Register<F>,
     pub funct3: Num<F>,
     pub funct12: Constraint<F>,
@@ -63,6 +64,9 @@ impl<F: PrimeField> DecoderOutputSource<F, RegisterDecomposition<F>>
     }
     fn funct3(&self) -> Num<F> {
         self.funct3
+    }
+    fn get_rs2_index(&self) -> Constraint<F> {
+        self.rs2_index.clone()
     }
     fn funct12(&self) -> Constraint<F> {
         self.funct12.clone()
@@ -84,6 +88,7 @@ pub struct BasicDecodingResultWithSigns<F: PrimeField> {
     pub src1: RegisterDecompositionWithSign<F>,
     pub src2: RegisterDecompositionWithSign<F>,
     pub imm: Register<F>,
+    pub rs2_index: Constraint<F>,
     pub funct3: Num<F>,
     pub funct12: Constraint<F>,
 }
@@ -97,6 +102,9 @@ impl<F: PrimeField> DecoderOutputSource<F, RegisterDecompositionWithSign<F>>
     fn funct3(&self) -> Num<F> {
         self.funct3
     }
+    fn get_rs2_index(&self) -> Constraint<F> {
+        self.rs2_index.clone()
+    }
     fn funct12(&self) -> Constraint<F> {
         self.funct12.clone()
     }
@@ -104,10 +112,10 @@ impl<F: PrimeField> DecoderOutputSource<F, RegisterDecompositionWithSign<F>>
         self.imm
     }
     fn get_rs1_or_equivalent(&self) -> RegisterDecompositionWithSign<F> {
-        self.src1
+        self.src1.clone()
     }
     fn get_rs2_or_equivalent(&self) -> RegisterDecompositionWithSign<F> {
-        self.src2
+        self.src2.clone()
     }
 }
 
