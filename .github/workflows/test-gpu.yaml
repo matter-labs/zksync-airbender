@@ -47,9 +47,7 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          cp /usr/local/cuda/lib64/libcudart_static.a /usr/local/cuda/lib64/libcudart.a
           CUDAARCHS=80 CARGO_TARGET_DIR=./build \
-          RUSTFLAGS='-C target-feature=+crt-static' \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
