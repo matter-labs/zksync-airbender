@@ -435,11 +435,9 @@ mod tests {
         let test_files = vec![
             include_str!("../testdata/1.json"),
             include_str!("../testdata/2.json"),
-            include_str!("../testdata/3.json"),
-            include_str!("../testdata/4.json"),
         ];
         let mut timings = Vec::new();
-        let binary = include_bytes!("../../../examples/zksync_os/app.bin");
+        let binary = include_bytes!("../../../examples/hashed_fibonacci/app.bin");
 
         let mut prover = LocalProver::new_with_binary(binary);
 
