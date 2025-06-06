@@ -213,7 +213,7 @@ template <unsigned K, unsigned V> struct TableDriver {
         // in practice, but we have to fill the table)
         result[0] = 0;
         result[1] = 0;
-      } else if (index == 0) {
+      } else if (shift_amount == 0) {
         // special case
         result[0] = 0;
         result[1] = 0;

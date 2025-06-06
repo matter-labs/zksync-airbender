@@ -1185,7 +1185,7 @@ pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3>
 
                 (a as usize, result)
             } else {
-                if a == 0 {
+                if shift_amount == 0 {
                     // special case
                     let result = [F::ZERO; 3];
 
