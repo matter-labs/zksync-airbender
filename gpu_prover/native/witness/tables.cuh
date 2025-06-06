@@ -206,11 +206,15 @@ template <unsigned K, unsigned V> struct TableDriver {
   DEVICE_FORCEINLINE u32 sra_sign_filler(const bf keys[K], bf *values) const {
     auto setter = [](const u32 index, u32 *result) {
       const bool input_sign = index & 1 != 0;
-      const bool is_sra = index & 2 != 0;
+      const bool is_sra = index >> 1 & 1 != 0;
       const u32 shift_amount = index >> 2;
       if (input_sign == false || is_sra == false) {
         // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
         // in practice, but we have to fill the table)
+        result[0] = 0;
+        result[1] = 0;
+      } else if (index == 0) {
+        // special case
         result[0] = 0;
         result[1] = 0;
       } else {
