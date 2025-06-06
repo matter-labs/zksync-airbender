@@ -233,7 +233,7 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
                     );
                 }
             } else {
-                // VERY important - we will use the fact that final borrow value is unconstrainted
+                // VERY important - we will use the fact that final borrow value is unconstrained
                 // when we will define lazy init/teardown padding constraint, so we manually right here write it
                 // to the proper value - it must be `1`
                 write_value(

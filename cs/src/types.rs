@@ -1027,6 +1027,7 @@ impl<F: PrimeField> Register<F> {
     }
 }
 
+#[deprecated]
 #[derive(Clone, Debug, Copy)]
 pub struct RegisterDecomposition<F: PrimeField> {
     pub u16_limbs: [Num<F>; 2],
@@ -1178,56 +1179,43 @@ impl<F: PrimeField> RegisterWithSign<F> {
 }
 
 // To be used only for operands coming from decoder
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct RegisterDecompositionWithSign<F: PrimeField> {
     pub u16_limbs: [Num<F>; 2],
-    pub u8_decomposition: [Num<F>; 4],
+    pub low_word_unconstrained_decomposition: (Variable, Constraint<F>),
+    pub high_word_decomposition: (Constraint<F>, Variable),
     pub sign_bit: Boolean,
 }
 
 impl<F: PrimeField> RegisterDecompositionWithSign<F> {
     pub fn parse_reg<CS: Circuit<F>>(cs: &mut CS, reg: Register<F>) -> Self {
-        let low_chunks: [Num<F>; 2] =
-            std::array::from_fn(|_: usize| cs.add_variable_with_range_check(8));
-
-        let outputs = low_chunks.map(|x| x.get_variable());
-        let register_limb = reg.0[0].get_variable();
+        let byte_0 = cs.add_variable();
+        let low_word = reg.0[0].get_variable();
         //setting values for overflow flags
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let low_limb = placer.get_u16(register_limb);
+            let low_limb = placer.get_u16(low_word);
 
-            let byte0 = low_limb.truncate();
-            let byte1 = low_limb.shr(8).truncate();
+            let byte0_val = low_limb.truncate();
 
-            placer.assign_u8(outputs[0], &byte0);
-            placer.assign_u8(outputs[1], &byte1);
+            placer.assign_u8(byte_0, &byte0_val);
         };
         cs.set_values(value_fn);
 
-        cs.add_constraint_allow_explicit_linear(
-            Term::from(low_chunks[1]) * Term::from(1 << 8) + Term::from(low_chunks[0])
-                - Term::from(reg.0[0]),
-        );
+        let mut byte_1 = Term::from(reg.0[0]) - Term::from(byte_0);
+        byte_1.scale(F::from_u64_unchecked(1 << 8).inverse().unwrap());
 
         // for high we get high byte and sign as one lookup, and low - as constraint
-        let [sign, high_byte] = cs.get_variables_from_lookup_constrained(
+        let [sign, byte_3] = cs.get_variables_from_lookup_constrained(
             &[LookupInput::from(reg.0[1].get_variable())],
             TableType::U16GetSignAndHighByte,
         );
         let sign = Boolean::Is(sign);
-
-        let low_byte = cs.add_variable_from_constraint_allow_explicit_linear(
-            Constraint::from(reg.0[1]) - (Term::from(high_byte) * Term::from(1 << 8)),
-        );
+        let byte_2 = Constraint::from(reg.0[1]) - (Term::from(byte_3) * Term::from(1 << 8));
 
         Self {
             u16_limbs: reg.0,
-            u8_decomposition: [
-                low_chunks[0],
-                low_chunks[1],
-                Num::Var(low_byte),
-                Num::Var(high_byte),
-            ],
+            low_word_unconstrained_decomposition: (byte_0, byte_1),
+            high_word_decomposition: (byte_2, byte_3),
             sign_bit: sign,
         }
     }
@@ -1251,7 +1239,7 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
     }
 
     pub fn get_value_signed<C: Circuit<F>>(self, cs: &C) -> Option<i32> {
-        let unsigned = self.get_value_unsigned(cs)?;
+        let unsigned = self.clone().get_value_unsigned(cs)?;
         let sign = cs
             .get_value(self.sign_bit.get_variable().unwrap())?
             .as_boolean();
@@ -1264,13 +1252,6 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
             );
         }
         Some(signed)
-    }
-
-    pub fn into_register_decomposition(self) -> RegisterDecomposition<F> {
-        RegisterDecomposition {
-            u16_limbs: self.u16_limbs,
-            u8_decomposition: self.u8_decomposition,
-        }
     }
 
     pub fn into_register_with_sign(self) -> RegisterWithSign<F> {

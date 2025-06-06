@@ -50,6 +50,10 @@ pub enum TableType {
     RangeCheck13,
     ShiftImplementation,
     U16SelectByteAndGetByteSign,
+    ExtendLoadedValue,
+    StoreByteSourceContribution,
+    StoreByteExistingContribution,
+    TruncateShift,
     DynamicPlaceholder,
 }
 

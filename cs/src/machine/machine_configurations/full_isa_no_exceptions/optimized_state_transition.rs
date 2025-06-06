@@ -11,7 +11,6 @@ pub(crate) fn optimized_base_isa_state_transition<
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
     cs: &mut CS,
-    opcodes_are_in_rom: bool,
     decode_table_splitting: [usize; 2],
     boolean_keys: DecoderOutputExtraKeysHolder,
 ) -> (
@@ -39,19 +38,18 @@ pub(crate) fn optimized_base_isa_state_transition<
     // TODO: because PCs are part of the state and are linked from the previous row, then by recursion they are range checked,
     // and we may consider to remove this extra range check completely
 
-    let (memory_queries, rs2_mem_query, src1, src2, update_rd, raw_decoder_output, other_bits) =
-        optimized_decode_and_read_reg_operands::<
+    // TODO: Reading opcode from ROM here checks that PC % 4 == 0, so we can skip checks for PC % 4 == 0 in jump and branch instructions
+    let (memory_queries, src1, src2, raw_decoder_output, flags_source, opcode_types_bits) =
+        optimized_decode_and_preallocate_mem_queries_for_bytecode_in_rom::<
             F,
             CS,
             ASSUME_TRUSTED_CODE,
             PERFORM_DELEGATION,
             ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
-        >(cs, pc, opcodes_are_in_rom, decode_table_splitting);
+        >(cs, pc, decode_table_splitting, boolean_keys);
 
     // now with PC considered range-checked we can compute next PC without overflows
     let next_pc = calculate_pc_next_no_overflows(cs, pc);
-
-    let flags_source = BasicFlagsSource::new(boolean_keys, other_bits);
 
     let mut opt_ctx = OptimizationContext::<F, CS>::new();
 
@@ -62,6 +60,7 @@ pub(crate) fn optimized_base_isa_state_transition<
         pc_next: next_pc,
         src1,
         src2,
+        rs2_index: raw_decoder_output.rs2.clone(),
         imm: raw_decoder_output.imm,
         funct3: raw_decoder_output.funct3,
         funct12: raw_decoder_output.funct12,
@@ -177,8 +176,14 @@ pub(crate) fn optimized_base_isa_state_transition<
     application_results.push(application_result);
     cs.set_log(&opt_ctx, "JUMP");
 
-    let mut mem_op_queries = vec![];
-    let application_result = MemoryOp::<true, true>::apply_with_mem_access::<
+    let [rs1_query, mut rs2_or_mem_load_query, mut rd_or_mem_store_query] = memory_queries;
+
+    let application_result = LoadOp::<true, true>::spec_apply::<
+        _,
+        _,
+        _,
+        _,
+        _,
         _,
         ASSUME_TRUSTED_CODE,
         OUTPUT_EXACT_EXCEPTIONS,
@@ -187,15 +192,31 @@ pub(crate) fn optimized_base_isa_state_transition<
         &initial_state,
         &decoder_output,
         &flags_source,
+        &mut rs2_or_mem_load_query,
         &mut opt_ctx,
-        &mut mem_op_queries,
     );
     application_results.push(application_result);
-    cs.set_log(&opt_ctx, "MEMORY");
+    cs.set_log(&opt_ctx, "LOAD");
 
-    assert_eq!(mem_op_queries.len(), 2);
-    let mem_load_query = mem_op_queries[0];
-    let mem_store_query = mem_op_queries[1];
+    let application_result = StoreOp::<true>::spec_apply::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        ASSUME_TRUSTED_CODE,
+        OUTPUT_EXACT_EXCEPTIONS,
+    >(
+        cs,
+        &initial_state,
+        &decoder_output,
+        &flags_source,
+        &mut rd_or_mem_store_query,
+        &mut opt_ctx,
+    );
+    application_results.push(application_result);
+    cs.set_log(&opt_ctx, "STORE");
 
     if PERFORM_DELEGATION == false {
         // CSR operation must be hand implemented for most of the machines, even though we can declare support of it in the opcode
@@ -252,16 +273,18 @@ pub(crate) fn optimized_base_isa_state_transition<
 
     assert!(OUTPUT_EXACT_EXCEPTIONS == false);
 
-    let final_state = writeback_no_exception::<F, CS, ASSUME_TRUSTED_CODE, PERFORM_DELEGATION>(
+    let final_state = writeback_no_exception_with_opcodes_in_rom::<
+        F,
+        CS,
+        ASSUME_TRUSTED_CODE,
+        PERFORM_DELEGATION,
+    >(
         cs,
-        opcodes_are_in_rom,
-        flags_source,
+        opcode_types_bits,
         raw_decoder_output.rd,
-        update_rd,
-        rs2_mem_query,
-        mem_load_query,
-        mem_store_query,
-        memory_queries,
+        rs1_query,
+        rs2_or_mem_load_query,
+        rd_or_mem_store_query,
         application_results,
         next_pc,
         &opt_ctx,

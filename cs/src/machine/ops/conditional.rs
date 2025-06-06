@@ -14,7 +14,6 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for ConditionalOp<SUPPORT_SI
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -24,93 +23,43 @@ impl<const SUPPORT_SIGNED: bool> DecodableMachineOp for ConditionalOp<SUPPORT_SI
         let params = match (opcode, func3, func7) {
             (OPERATION_OP_IMM, 0b010, _) if SUPPORT_SIGNED => {
                 // SLTI
-                (
-                    BASE_I_TYPE_AUX_DATA,
-                    InstructionType::IType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::IType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_OP_IMM, 0b011, _) => {
                 // SLTIU
-                (
-                    BASE_I_TYPE_AUX_DATA,
-                    InstructionType::IType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::IType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_OP, 0b010, 0) if SUPPORT_SIGNED => {
                 // SLT
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::RType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_OP, 0b011, 0) => {
                 // SLTU
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::RType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b000, _) => {
                 // BEQ
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b001, _) => {
                 // BNE
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b100, _) if SUPPORT_SIGNED => {
                 // BLT
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b101, _) if SUPPORT_SIGNED => {
                 // BGE
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b110, _) => {
                 // BLTU
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             (OPERATION_BRANCH, 0b111, _) => {
                 // BGEU
-                (
-                    BASE_B_TYPE_AUX_DATA,
-                    InstructionType::BType,
-                    CONDITIONAL_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::BType, CONDITIONAL_COMMON_OP_KEY, &[][..])
             }
             _ => return Err(()),
         };
@@ -233,68 +182,6 @@ impl<
 
         if ASSUME_TRUSTED_CODE == false {
             todo!();
-
-            // // jump destination is always 0 mod 2 as explained above
-            // let [bit_1, _] = opt_ctx.append_lookup_relation(
-            //     cs,
-            //     &[jmp_addr.0[0].get_variable()],
-            //     TableType::JumpCleanupOffset.to_num(),
-            //     exec_flag,
-            // );
-            // let bit_1 = Boolean::Is(bit_1);
-            // let is_misaligned_addr = bit_1;
-
-            // let table_id = if SUPPORT_SIGNED {
-            //     TableType::ConditionalOpAllConditionsResolver
-            // } else {
-            //     TableType::ConditionalOpUnsignedConditionsResolver
-            // };
-
-            // let [should_jump, comparison_value] = opt_ctx
-            //     .append_lookup_relation_from_linear_terms::<1, 2>(
-            //         cs,
-            //         &[key_constraint],
-            //         table_id.to_num(),
-            //         exec_flag,
-            //     );
-
-            // let should_jump = Boolean::Is(should_jump);
-            // let comparison_value = Boolean::Is(comparison_value);
-
-            // //  NOTE: execution flag must never be masked by the "trap", otherwise trap will not happen
-            // let trapped = Boolean::and::<F, CS>(&should_jump, &is_misaligned_addr, cs);
-            // let exec_jump = Boolean::and::<F, CS>(&should_jump, &is_misaligned_addr.toggle(), cs);
-
-            // let pc = Register::choose::<CS>(cs, &exec_jump, &true_jmp_address, &pc_next);
-            // let rd = Register([
-            //     Num::from_boolean_is(comparison_value),
-            //     Num::Constant(F::ZERO),
-            // ]);
-
-            // let trap_reason = Num::Constant(F::from_u64_unchecked(
-            //     TrapReason::InstructionAddressMisaligned as u64,
-            // ));
-
-            // if exec_flag.get_value(cs).unwrap_or(false) {
-            //     println!("CONDITIONAL");
-            //     dbg!(src1.get_register().get_value_unsigned(cs));
-            //     dbg!(src2.get_register().get_value_unsigned(cs));
-            //     dbg!(pc.get_value_unsigned(cs));
-            //     dbg!(jump_offset.get_value_unsigned(cs));
-            //     dbg!(pc_next.get_value_unsigned(cs));
-            //     dbg!(trapped.get_value(cs));
-            //     dbg!(should_jump.get_value(cs));
-            //     dbg!(comparison_value.get_value(cs));
-            //     dbg!(true_jmp_address.get_value_unsigned(cs));
-            // }
-
-            // CommonDiffs {
-            //     exec_flag: exec_flag,
-            //     trapped: Some(trapped),
-            //     trap_reason: Some(trap_reason),
-            //     rd_value: Some(RegisterLikeDiff::Register(rd)),
-            //     new_pc_value: Some(RegisterLikeDiff::Register(pc)),
-            // }
         } else {
             // jump destination is always 0 mod 2 as explained above
             let [bit_1, _] = opt_ctx.append_lookup_relation(
@@ -361,7 +248,7 @@ impl<
                 exec_flag: exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Custom(pc),
             }
         }

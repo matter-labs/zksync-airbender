@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    net::SocketAddr,
     sync::Arc,
 };
 
@@ -27,6 +28,10 @@ struct Cli {
     zksync_os_bin_path: String,
     #[arg(long)]
     output_dir: Option<String>,
+
+    /// If not set: 127.0.0.1:3030
+    #[arg(long)]
+    host_port: Option<String>,
 }
 
 async fn fetch_data_from_json_rpc(
@@ -408,8 +413,12 @@ async fn main() {
 
     let routes = rpc.or(downloads).or(index);
 
-    println!("Server running at http://127.0.0.1:3030");
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    let addr = cli.host_port.unwrap_or("127.0.0.1:3030".to_string());
+    println!("Server running at http://{}", addr);
+
+    warp::serve(routes)
+        .run(addr.parse::<SocketAddr>().unwrap())
+        .await;
 }
 
 #[cfg(test)]

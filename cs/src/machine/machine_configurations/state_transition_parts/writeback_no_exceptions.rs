@@ -1,36 +1,22 @@
 use super::*;
 use crate::machine::machine_configurations::minimal_state::MinimalStateRegistersInMemory;
-use crate::machine::ops::*;
 
-pub(crate) fn writeback_no_exception<
+pub(crate) fn writeback_no_exception_with_opcodes_in_rom<
     F: PrimeField,
     CS: Circuit<F>,
     const ASSUME_TRUSTED_CODE: bool,
     const PERFORM_DELEGATION: bool,
 >(
     cs: &mut CS,
-    opcodes_are_in_rom: bool,
-    flags_source: BasicFlagsSource,
-    rd: Constraint<F>,
-    update_rd: Constraint<F>,
-    rs2_mem_query: RS2ShuffleRamQueryCandidate<F>,
-    mem_load_query: ShuffleRamMemQuery,
-    mem_store_query: ShuffleRamMemQuery,
-    mut memory_queries: Vec<ShuffleRamMemQuery>,
+    opcode_format_bits: [Boolean; NUM_INSTRUCTION_TYPES_IN_DECODE_BITS],
+    rd_constraint: Constraint<F>,
+    rs1_query: ShuffleRamMemQuery,
+    rs2_or_mem_load_query: ShuffleRamMemQuery,
+    rd_or_mem_store_query: ShuffleRamMemQuery,
     application_results: Vec<CommonDiffs<F>>,
     default_next_pc: Register<F>,
     opt_ctx: &OptimizationContext<F, CS>,
 ) -> MinimalStateRegistersInMemory<F> {
-    // merge rs2 access and memory load op query
-    merge_rs2_and_memload_access_optimized(
-        cs,
-        opcodes_are_in_rom,
-        &flags_source,
-        rs2_mem_query,
-        mem_load_query,
-        &mut memory_queries,
-    );
-
     if ASSUME_TRUSTED_CODE {
         // we can NOT have exceptions coming from the reachable code itself
 
@@ -46,44 +32,78 @@ pub(crate) fn writeback_no_exception<
 
             let new_reg_val = CommonDiffs::select_final_rd_value(cs, &application_results);
 
-            let should_update_reg = update_rd;
+            // if we will not update register and do not execute memory store, then
+            // we still want to model it as reading x0 (and writing back hardcoded 0)
 
-            let rd_store_timestamp = if opcodes_are_in_rom {
-                RD_STORE_LOCAL_TIMESTAMP
-            } else {
-                RD_STORE_LOCAL_TIMESTAMP + 1
-            };
-            assert_eq!(rd_store_timestamp, mem_store_query.local_timestamp_in_cycle);
+            let [r_insn, i_insn, _s_insn, b_insn, u_insn, j_insn] = opcode_format_bits;
 
-            let execute_mem_family = flags_source.get_major_flag(MEMORY_COMMON_OP_KEY);
-            // NOTE: here we use operation bound flat not in the "branch" of the operation, but
-            // it works because we immediately predicate it
-            let should_write_mem_if_mem =
-                flags_source.get_minor_flag(MEMORY_COMMON_OP_KEY, MEMORY_WRITE_COMMON_OP_KEY);
-            let should_write_mem = Boolean::and(&execute_mem_family, &should_write_mem_if_mem, cs);
+            // opcode formats are orthogonal flags, so a boolean to update RD is just a linear combination
+            let update_rd = Constraint::from(r_insn.get_variable().unwrap())
+                + Constraint::from(i_insn.get_variable().unwrap())
+                + Constraint::from(j_insn.get_variable().unwrap())
+                + Constraint::from(u_insn.get_variable().unwrap());
 
-            let query = update_register_op_as_shuffle_ram_optimized(
-                cs,
-                rd_store_timestamp,
-                rd,
-                new_reg_val,
-                should_update_reg,
-                mem_store_query,
-                should_write_mem,
+            let rd = cs.add_variable_from_constraint_allow_explicit_linear(rd_constraint.clone());
+            let reg_is_zero = cs.is_zero(Num::Var(rd));
+            // we ALWAYS write to register (with maybe modified value), unless we write to RAM, except for B-format opcodes (
+            // that are modeled as write 0 to x0)
+
+            // Mask to get 0s if we write into x0
+            let reg_write_value_low = cs.add_variable_from_constraint(
+                (Term::from(1) - Term::from(reg_is_zero.get_variable().unwrap()))
+                    * Term::from(new_reg_val.0[0]),
+            );
+            let reg_write_value_high = cs.add_variable_from_constraint(
+                (Term::from(1) - Term::from(reg_is_zero.get_variable().unwrap()))
+                    * Term::from(new_reg_val.0[1]),
             );
 
-            memory_queries.push(query);
+            // now constraint that if we do update register, then address is correct
+            let ShuffleRamQueryType::RegisterOrRam {
+                is_register,
+                address,
+            } = rd_or_mem_store_query.query_type
+            else {
+                unreachable!()
+            };
+            let Boolean::Is(..) = is_register else {
+                panic!("Memory opcode must resolve RD/STORE query `is_register` flag");
+            };
+            // if we write to RD - we should make a constraint over the address, that it comes from opcode
+            cs.add_constraint((rd_constraint.clone() - Term::from(address[0])) * update_rd.clone());
+            cs.add_constraint((Term::from(address[1])) * update_rd.clone());
+            // x0 for BRANCH instructions as it's not even encoded in the opcode
+            cs.add_constraint((Term::from(address[0])) * Term::from(b_insn));
+            cs.add_constraint((Term::from(address[1])) * Term::from(b_insn));
+
+            // and constraint value
+            cs.add_constraint(
+                (Term::from(reg_write_value_low)
+                    - Term::from(rd_or_mem_store_query.write_value[0]))
+                    * update_rd.clone(),
+            );
+            cs.add_constraint(
+                (Term::from(reg_write_value_high)
+                    - Term::from(rd_or_mem_store_query.write_value[1]))
+                    * update_rd.clone(),
+            );
+            // 0 for BRANCH instructions
+            cs.add_constraint(
+                (Term::from(rd_or_mem_store_query.write_value[0])) * Term::from(b_insn),
+            );
+            cs.add_constraint(
+                (Term::from(rd_or_mem_store_query.write_value[1])) * Term::from(b_insn),
+            );
+
+            // push all memory queries
+            cs.add_shuffle_ram_query(rs1_query);
+            cs.add_shuffle_ram_query(rs2_or_mem_load_query);
+            cs.add_shuffle_ram_query(rd_or_mem_store_query);
 
             let new_pc =
                 CommonDiffs::select_final_pc_value(cs, &application_results, default_next_pc);
 
             let final_state = MinimalStateRegistersInMemory { pc: new_pc };
-
-            assert_eq!(memory_queries.len(), 3);
-
-            for mem_query in memory_queries.into_iter() {
-                cs.add_shuffle_ram_query(mem_query);
-            }
 
             cs.set_log(&opt_ctx, "EXECUTOR");
             cs.view_log(if PERFORM_DELEGATION {

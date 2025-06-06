@@ -220,15 +220,6 @@ impl<const TRACE_FOR_TEARDOWNS: bool> RamTracingData<TRACE_FOR_TEARDOWNS> {
 
         read_timestamp
     }
-
-    #[inline(always)]
-    pub(crate) fn rollback_register_use(&mut self, reg_idx: u32, to_timestamp: TimestampScalar) {
-        unsafe {
-            *self
-                .register_last_live_timestamps
-                .get_unchecked_mut(reg_idx as usize) = to_timestamp;
-        }
-    }
 }
 
 pub struct DelegationTracingData<A: GoodAllocator = Global> {

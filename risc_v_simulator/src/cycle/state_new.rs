@@ -193,7 +193,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
     ) -> bool {
         let mut finished_execution = false;
 
-        for _ in 0..num_cycles {
+        for _cycle in 0..num_cycles {
             tracer.at_cycle_start_ext(&*self);
 
             let opcode = self.decoder_step(memory_source, tracer);
@@ -688,7 +688,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         a @ 0 | a @ 1 | a @ 2 => {
                             let store_length = 1 << a;
 
-                            // #[cfg(feature = "opcode_stats")]
+                            #[cfg(feature = "opcode_stats")]
                             {
                                 match store_length {
                                     1 => {

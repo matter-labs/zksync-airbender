@@ -18,7 +18,7 @@ use std::{
 
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use cs::utils::split_timestamp;
-use era_cudart::{
+use gpu_prover::cudart::{
     device::{get_device_count, get_device_properties, set_device},
     result::CudaResult,
 };
@@ -302,12 +302,10 @@ impl GpuThread {
                                 CircuitType::Main(MainCircuitType::ReducedRiscVMachine) => {
                                     gpu_setup_reduced = Some(new_setup)
                                 }
-                                CircuitType::Main(MainCircuitType::FinalReducedRiscVMachine) => {
-                                    panic!("Not supported")
-                                }
                                 CircuitType::Delegation(delegation_circuit_type) => {
                                     delegation_setup.insert(delegation_circuit_type, new_setup);
                                 }
+                                _ => panic!("Not supported"),
                             }
                             println!("[GPU {}] Finished SetSetup.", device_id);
                         }
@@ -690,10 +688,7 @@ pub fn multigpu_prove_image_execution_for_machine_with_gpu_tracers<
     >,
     gpu_threads: &Vec<GpuThread>,
     worker: &Worker,
-) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
     let mut gpu_manager = GpuThreadManager::new(gpu_threads);
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();

@@ -90,17 +90,17 @@ impl Mersenne31Complex {
         )
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_zero_impl(&self) -> bool {
         self.c0.is_zero_impl() && self.c1.is_zero_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_one_impl(&self) -> bool {
         self.c0.is_one_impl() && self.c1.is_zero_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn add_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.add_assign_impl(&other.c0);
         self.c1.add_assign_impl(&other.c1);
@@ -108,7 +108,7 @@ impl Mersenne31Complex {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn sub_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.c0.sub_assign_impl(&other.c0);
         self.c1.sub_assign_impl(&other.c1);
@@ -117,7 +117,7 @@ impl Mersenne31Complex {
     }
 
     #[cfg(not(all(target_arch = "riscv32", feature = "modular_ops")))]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn mul_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
         let mut v0 = self.c0;
         v0.mul_assign_impl(&other.c0);
@@ -141,7 +141,7 @@ impl Mersenne31Complex {
     }
 
     #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn mul_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
         // here our optimization goal is just minimal number of ops,
         // so we go schoolbook
@@ -166,7 +166,7 @@ impl Mersenne31Complex {
     }
 
     #[cfg(not(all(target_arch = "riscv32", feature = "modular_ops")))]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn square_impl(&mut self) -> &mut Self {
         let mut v0 = self.c0;
         v0.sub_assign_impl(&self.c1);
@@ -193,7 +193,7 @@ impl Mersenne31Complex {
     }
 
     #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn square_impl(&mut self) -> &mut Self {
         // here our optimization goal is just minimal number of ops,
         // so we go schoolbook
@@ -217,7 +217,7 @@ impl Mersenne31Complex {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&mut self) -> &mut Self {
         self.c0.negate_impl();
         self.c1.negate_impl();
@@ -225,7 +225,7 @@ impl Mersenne31Complex {
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn double_impl(&mut self) -> &mut Self {
         self.c0.double_impl();
         self.c1.double_impl();
@@ -259,7 +259,7 @@ impl Mersenne31Complex {
 }
 
 impl core::cmp::PartialEq for Mersenne31Complex {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn eq(&self, other: &Self) -> bool {
         self.c0 == other.c0 && self.c1 == other.c1
     }
@@ -268,7 +268,7 @@ impl core::cmp::PartialEq for Mersenne31Complex {
 impl core::cmp::Eq for Mersenne31Complex {}
 
 impl core::default::Default for Mersenne31Complex {
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn default() -> Self {
         Self {
             c0: Mersenne31Field::ZERO,
@@ -299,42 +299,42 @@ impl Field for Mersenne31Complex {
 
     type CharField = Mersenne31Field;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         self.is_zero_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_one(&self) -> bool {
         self.is_one_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.add_assign_impl(other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.sub_assign_impl(other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.mul_assign_impl(other)
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&mut self) -> &mut Self {
         self.square_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&mut self) -> &mut Self {
         self.negate_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&mut self) -> &mut Self {
         self.double_impl()
     }
@@ -343,14 +343,14 @@ impl Field for Mersenne31Complex {
         self.inverse_impl()
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
         self.c0.mul_by_two();
         self.c1.mul_by_two();
         self
     }
 
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
         self.c0.div_by_two();
         self.c1.div_by_two();
@@ -360,7 +360,7 @@ impl Field for Mersenne31Complex {
 
 impl Add for Mersenne31Complex {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn add(self, rhs: Self) -> Self {
         let mut lhs = self;
         lhs.add_assign(&rhs);
@@ -370,7 +370,7 @@ impl Add for Mersenne31Complex {
 
 impl Mul for Mersenne31Complex {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Self) -> Self {
         let mut lhs = self;
         lhs.mul_assign(&rhs);
@@ -380,7 +380,7 @@ impl Mul for Mersenne31Complex {
 
 impl Mul<Mersenne31Field> for Mersenne31Complex {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul(self, rhs: Mersenne31Field) -> Self {
         let mut lhs = self;
         lhs.mul_assign_by_base(&rhs);
@@ -390,7 +390,7 @@ impl Mul<Mersenne31Field> for Mersenne31Complex {
 
 impl Sub for Mersenne31Complex {
     type Output = Self;
-    #[inline]
+    #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         let mut lhs = self;
         lhs.sub_assign(&rhs);
@@ -405,7 +405,7 @@ impl BaseField for Mersenne31Complex {
         c1: Mersenne31Field::ONE,
     };
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_non_residue(elem: &mut Self) {
         // (a + b * i)(2 + i) = (2 * a - b) + (2 * b + a)i
         let (a, b) = (elem.c0, elem.c1);
@@ -463,21 +463,21 @@ impl core::fmt::Display for Mersenne31Complex {
 impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
     const DEGREE: usize = 2;
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.mul_assign(elem);
         self.c1.mul_assign(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn into_coeffs_in_base(self) -> [Mersenne31Field; 2] {
         let Self { c0, c1 } = self;
 
         [c0, c1]
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base_coeffs_array(coefs: &[Mersenne31Field; 2]) -> Self {
         Self {
             c0: coefs[0],
@@ -492,7 +492,7 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_ref(coeffs: &[&Mersenne31Field]) -> Self {
         Self {
             c0: *coeffs[0],
@@ -500,7 +500,7 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Field>>(mut coefs_iter: I) -> Self {
         Self {
             c0: coefs_iter.next().unwrap(),
@@ -513,19 +513,19 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
         unsafe { core::slice::from_raw_parts(self.c0.0 as *const Mersenne31Field, 2) }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.add_assign(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.sub_assign(elem);
         self
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Field) -> Self {
         Self {
             c0: elem,
@@ -533,7 +533,7 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
         }
     }
 
-    #[inline(always)]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Field {
         todo!();
     }

@@ -53,7 +53,7 @@ pub fn basic_invalid_bitmask() -> u64 {
     basic_invalid_bitmask
 }
 
-pub trait RegisterValueSource<F: PrimeField>: 'static + Clone + Copy {
+pub trait RegisterValueSource<F: PrimeField>: 'static + Clone {
     fn get_register(&self) -> Register<F>;
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F>;
     fn get_register_with_decomposition_and_sign(&self) -> Option<RegisterDecompositionWithSign<F>>;
@@ -77,13 +77,13 @@ impl<F: PrimeField> RegisterValueSource<F> for RegisterDecomposition<F> {
 
 impl<F: PrimeField> RegisterValueSource<F> for RegisterDecompositionWithSign<F> {
     fn get_register(&self) -> Register<F> {
-        self.into_register()
+        self.clone().into_register()
     }
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F> {
-        self.into_register_decomposition()
+        todo!();
     }
     fn get_register_with_decomposition_and_sign(&self) -> Option<RegisterDecompositionWithSign<F>> {
-        Some(*self)
+        Some(self.clone())
     }
     fn get_sign_bit(&self) -> Option<Boolean> {
         Some(self.sign_bit)
@@ -95,6 +95,7 @@ pub trait DecoderOutputSource<F: PrimeField, RS: RegisterValueSource<F>>: 'stati
     fn get_rs2_or_equivalent(&self) -> RS;
     fn get_imm(&self) -> Register<F>;
     fn get_pc_next(&self) -> Register<F>;
+    fn get_rs2_index(&self) -> Constraint<F>;
     fn funct3(&self) -> Num<F>;
     fn funct12(&self) -> Constraint<F>;
 }
@@ -148,7 +149,6 @@ pub trait DecodableMachineOp: 'static + Debug {
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -178,27 +178,6 @@ pub trait MachineOp<
         boolean_set: &BS,
         opt_ctx: &mut OptimizationContext<F, CS>,
     ) -> CommonDiffs<F>;
-
-    fn apply_with_mem_access<
-        CS: Circuit<F>,
-        const ASSUME_TRUSTED_CODE: bool,
-        const OUTPUT_EXACT_EXCEPTIONS: bool,
-    >(
-        cs: &mut CS,
-        machine_state: &ST,
-        inputs: &DE,
-        boolean_set: &BS,
-        opt_ctx: &mut OptimizationContext<F, CS>,
-        _memory_queries: &mut Vec<ShuffleRamMemQuery>,
-    ) -> CommonDiffs<F> {
-        Self::apply::<CS, ASSUME_TRUSTED_CODE, OUTPUT_EXACT_EXCEPTIONS>(
-            cs,
-            machine_state,
-            inputs,
-            boolean_set,
-            opt_ctx,
-        )
-    }
 }
 
 pub trait Machine<F: PrimeField>: 'static + Clone + Default {
@@ -224,7 +203,7 @@ pub trait Machine<F: PrimeField>: 'static + Clone + Default {
                 for funct7 in 0..(1u8 << 7) {
                     let mut found = false;
                     'inner: for supported_opcode in all_opcodes.iter() {
-                        if let Ok((_decoder_props, instr_format, major_key, minor_keys)) =
+                        if let Ok((instr_format, major_key, minor_keys)) =
                             supported_opcode.define_decoder_subspace(opcode, funct3, funct7)
                         {
                             // there is some opcode that supports it, so just continue now
@@ -328,7 +307,7 @@ pub trait Machine<F: PrimeField>: 'static + Clone + Default {
                     let concatenated_key =
                         opcode as u32 + ((funct3 as u32) << 7) + ((funct7 as u32) << 10);
                     'inner: for supported_opcode in all_opcodes.iter() {
-                        if let Ok((_decoder_props, instr_format, major_key, minor_keys)) =
+                        if let Ok((instr_format, major_key, minor_keys)) =
                             supported_opcode.define_decoder_subspace(opcode, funct3, funct7)
                         {
                             // there is some opcode that supports it, so just continue now

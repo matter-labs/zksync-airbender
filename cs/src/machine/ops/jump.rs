@@ -15,7 +15,6 @@ impl DecodableMachineOp for JumpOp {
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -26,7 +25,6 @@ impl DecodableMachineOp for JumpOp {
             (OPERATION_JAL, _, _) => {
                 // JAL
                 (
-                    BASE_J_TYPE_AUX_DATA,
                     InstructionType::JType,
                     JUMP_COMMON_OP_KEY,
                     &[JAL_OP_KEY][..],
@@ -34,12 +32,7 @@ impl DecodableMachineOp for JumpOp {
             }
             (OPERATION_JALR, 0b000, _) => {
                 // JALR
-                (
-                    BASE_I_TYPE_AUX_DATA,
-                    InstructionType::IType,
-                    JUMP_COMMON_OP_KEY,
-                    &[][..],
-                )
+                (InstructionType::IType, JUMP_COMMON_OP_KEY, &[][..])
             }
             _ => return Err(()),
         };
@@ -127,7 +120,7 @@ impl<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Custom(dst),
             }
         } else {
@@ -176,7 +169,7 @@ impl<
                 exec_flag,
                 trapped: Some(trapped),
                 trap_reason: Some(trap_reason),
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Custom(dst),
             }
         }

@@ -23,6 +23,27 @@ pub(crate) fn create_main_machine_layout_with_delegation() -> (
     (compiled_machine, ssa)
 }
 
+pub(crate) fn create_machine_without_signed_mul_div_layout_with_delegation() -> (
+    CompiledCircuitArtifact<Mersenne31Field>,
+    Vec<Vec<RawExpression<Mersenne31Field>>>,
+) {
+    let dummy_bytecode = vec![0u32; setups::machine_without_signed_mul_div::MAX_ROM_SIZE / 4];
+
+    let compiled_machine = setups::machine_without_signed_mul_div::get_machine(
+        &dummy_bytecode,
+        setups::machine_without_signed_mul_div::ALLOWED_DELEGATION_CSRS,
+    );
+
+    let machine = setups::machine_without_signed_mul_div::formal_machine_for_compilation();
+    let ssa = dump_ssa_witness_eval_form::<
+        _,
+        _,
+        { setups::machine_without_signed_mul_div::ROM_ADDRESS_SPACE_SECOND_WORD_BITS },
+    >(machine);
+
+    (compiled_machine, ssa)
+}
+
 pub(crate) fn create_reduced_machine_layout_with_delegation() -> (
     CompiledCircuitArtifact<Mersenne31Field>,
     Vec<Vec<RawExpression<Mersenne31Field>>>,

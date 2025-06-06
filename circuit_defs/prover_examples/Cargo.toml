@@ -21,10 +21,9 @@ transpose = "0.2"
 itertools = { workspace = true }
 
 # dependencies for gpu
-gpu_prover = { path = " ../../../../gpu_prover", optional = true }
+gpu_prover = { workspace = true, optional = true }
 nvtx = { version = "1", optional = true}
 cs = { workspace = true, optional = true}
-era_cudart = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_cudart", optional = true }
 
 # For multigpu
 crossbeam = { version = "0.8" , optional = true}
@@ -44,4 +43,4 @@ timing_logs = []
 
 default = ["timing_logs"]
 
-gpu = ["gpu_prover", "nvtx", "cs", "era_cudart", "crossbeam"]
+gpu = ["gpu_prover", "nvtx", "cs", "crossbeam"]

@@ -6,7 +6,7 @@
     pointer. Then it calls _start_rust.
 */
 
-.attribute arch, "rv32im"
+.attribute arch, "rv32i"
 .section .init, "ax"
 .global _start
 
@@ -28,19 +28,8 @@ _abs_start:
     la gp, __global_pointer$
     .option pop
 
-    // we do not want to support this CSR
-    # csrr t2, mhartid
-    # lui t0, %hi(_max_hart_id)
-    # add t0, t0, %lo(_max_hart_id)
-    # bgtu t2, t0, abort
-
-    // Allocate stacks
-    la sp, _stack_start
-    # lui t0, %hi(_hart_stack_size)
-    # add t0, t0, %lo(_hart_stack_size)
-    # mul t0, t2, t0
-
-    # sub sp, sp, t0
+    // Assume single core, and put SP to the very top address of the stack region
+    la sp, _sstack
 
     // Set frame pointer
     add s0, sp, zero
