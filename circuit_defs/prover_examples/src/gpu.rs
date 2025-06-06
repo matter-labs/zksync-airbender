@@ -1,8 +1,8 @@
 use std::{alloc::Global, collections::HashMap, sync::Arc};
 
 use cs::utils::split_timestamp;
-use era_cudart::result::CudaResult;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::witness::trace_delegation::{DelegationCircuitType, DelegationTraceHost};
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{

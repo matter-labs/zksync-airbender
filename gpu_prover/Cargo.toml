@@ -11,22 +11,20 @@ keywords.workspace = true
 categories.workspace = true
 
 [build-dependencies]
-era_cudart_sys = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_cudart_sys" }
 cmake = "0.1"
+era_cudart_sys = "0.154"
 
 [dependencies]
 blake2s_u32 = { workspace = true }
 cs = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
-prover = { workspace = true, features = ["default"] }
-trace_holder = { workspace = true }
-worker = { workspace = true }
-era_cudart = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_cudart" }
-era_cudart_sys = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_cudart_sys" }
 itertools = { workspace = true }
+prover = { workspace = true, features = ["default"] }
+worker = { workspace = true }
+era_cudart = "0.154"
+era_cudart_sys = "0.154"
 nvtx = "1"
-serde = { workspace = true }
 transpose = "0.2"
 
 [features]
@@ -35,13 +33,13 @@ print_gpu_mem_usage = []
 print_gpu_stages_timings = []
 
 [dev-dependencies]
-prover = { workspace = true, features = ["default", "test"] }
-#lib-rv32-asm = { git = "https://github.com/shamatar/lib-rv32.git" }
 execution_utils = { workspace = true }
-trace_and_split = { workspace = true }
-era_criterion_cuda = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", package = "era_criterion_cuda" }
-criterion = "0.5"
+prover = { workspace = true, features = ["default", "test"] }
 rand = { workspace = true, default-features = false }
+trace_and_split = { workspace = true }
+trace_holder = { workspace = true }
+era_criterion_cuda = "0.2"
+criterion = "0.5"
 serial_test = "3"
 
 [[bench]]

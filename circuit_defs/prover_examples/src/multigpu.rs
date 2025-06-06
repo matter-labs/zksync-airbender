@@ -18,7 +18,7 @@ use std::{
 
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use cs::utils::split_timestamp;
-use era_cudart::{
+use gpu_prover::cudart::{
     device::{get_device_count, get_device_properties, set_device},
     result::CudaResult,
 };
