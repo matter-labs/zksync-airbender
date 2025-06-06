@@ -16,7 +16,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     strategy:
       matrix:
-        cuda: [ "12.6.0-devel-ubuntu24.04" ]
+        cuda: [ "12.6.0-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
@@ -37,6 +37,13 @@ jobs:
           wget -q -O - https://sh.rustup.rs | bash -s -- -y --default-toolchain $RUST_TOOLCHAIN --profile minimal
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
           echo "export PATH=\"$HOME/.cargo/bin:\$PATH\"" >> "${HOME}/.bash_profile"
+
+      # we need cmake 3.30 (as 3.24 doesn't properly pass cuda_standard_20)
+      - name: Setup CMAKE
+        run: |
+          curl -LO https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-x86_64.sh && \
+            chmod +x cmake-3.30.2-linux-x86_64.sh && \
+            ./cmake-3.30.2-linux-x86_64.sh --skip-license --prefix=/usr/local
 
       - name: Check CUDA version
         run: |
@@ -66,8 +73,6 @@ jobs:
     strategy:
       matrix:
         package: [ "zksmith" ]
-    #container:
-    #  image: nvidia/cuda:12.6.0-runtime-ubuntu24.04
 
     needs: zksync-airbender-build
     steps:
@@ -84,7 +89,7 @@ jobs:
       - name: Download test binary built with CUDA 12.6
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-12.6.0-devel-ubuntu24.04-${{ matrix.package }}-test-binary
+          name: zksync-airbender-12.6.0-devel-ubuntu22.04-${{ matrix.package }}-test-binary
           path: zksync-airbender-test-binary/12.6/
 
       - name: Run test binary built with CUDA 12.6

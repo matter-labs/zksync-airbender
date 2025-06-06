@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.30)
+# Cmake must be at least 3.30 - the earlier one didn't pass cuda_standard properly.
 project(gpu_prover_native)
 enable_language(CUDA)
 if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL ""))
