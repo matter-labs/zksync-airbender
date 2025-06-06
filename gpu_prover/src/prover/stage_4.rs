@@ -301,6 +301,7 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             log_domain_size,
             log_lde_factor,
             stream,
+            context.get_ntt_aux_stream(),
         )?;
         assert!(log_tree_cap_size >= log_lde_factor);
         let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
