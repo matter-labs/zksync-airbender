@@ -56,7 +56,7 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     let memory_tracer = ();
     let mmu = NoMMU { sapt: 0 };
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 32); // use full RAM
+    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
     memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
     let mut sim = Simulator::new(
@@ -83,7 +83,7 @@ pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C
     let mut memory_tracer = ();
     let mut mmu = NoMMU { sapt: 0 };
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 32); // use full RAM
+    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
     memory.load_image(entry_point, binary.iter().copied());
 
     let mut previous_pc = entry_point;
@@ -119,7 +119,7 @@ pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C
 //     let memory_tracer = ();
 //     let mmu = NoMMU { sapt: 0 };
 
-//     let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 32); // use full RAM
+//     let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
 //     memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
 //     let mut sim = Simulator::new(
@@ -148,7 +148,7 @@ pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
     let mmu = NoMMU { sapt: state.sapt };
     let non_determinism_source = QuasiUARTSource::default();
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 32); // use full RAM
+    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
     memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
     let cycles = config.cycles;
