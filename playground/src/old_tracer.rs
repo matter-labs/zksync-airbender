@@ -61,8 +61,6 @@ pub fn trace_execution_for_gpu<
     HashMap<u16, Vec<DelegationWitness<A>>>,
     Vec<FinalRegisterValue>,
 )
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
 {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;

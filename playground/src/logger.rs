@@ -17,7 +17,7 @@ impl log::Log for ThreadLocalLogger {
         if self.enabled(record.metadata()) {
             println!(
                 "| {:>10.6} | {:^6} | {}",
-                self.timer.elapsed().as_secs_f32(),
+                self.timer.elapsed().as_secs_f64(),
                 self.name,
                 record.args()
             );

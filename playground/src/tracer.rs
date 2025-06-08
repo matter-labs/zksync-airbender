@@ -182,7 +182,7 @@ pub struct DelegationTracingData<A: GoodAllocator = Global> {
 
 // type SwapDelegationWitnessFn<A> = Box<dyn for<'b> Fn(u16, &'b mut DelegationWitness<A>) + 'a>;
 
-pub struct YetAnotherTracer<
+pub struct YetAnotherTracer<'a,
     const RAM_SIZE: usize,
     const LOG_ROM_BOUND: u32,
     S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
@@ -192,7 +192,7 @@ pub struct YetAnotherTracer<
     const TRACE_CYCLES: bool = false,
     const TRACE_DELEGATIONS: bool = false,
 > {
-    pub ram_tracing_data: RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
+    pub ram_tracing_data: &'a mut RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
     pub cycle_data: CycleData<C, A>,
     pub delegation_tracing_data: DelegationTracingData<A>,
     pub swap_delegation_witness_fn: S,
@@ -207,7 +207,7 @@ const DELEGATION_ACCESS_IDX: TimestampScalar = 3;
 const RAM_READ_ACCESS_IDX: TimestampScalar = RS2_ACCESS_IDX;
 const RAM_WRITE_ACCESS_IDX: TimestampScalar = RD_ACCESS_IDX;
 
-impl<
+impl<'a,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
         S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
@@ -217,7 +217,7 @@ impl<
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     >
-    YetAnotherTracer<
+    YetAnotherTracer<'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
         S,
@@ -231,7 +231,7 @@ impl<
     const ROM_MASK: u32 = (1u32 << LOG_ROM_BOUND) - 1;
 
     pub fn new(
-        ram_tracing_data: RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
+        ram_tracing_data: &'a mut RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
         cycle_data: CycleData<C, A>,
         delegation_tracing_data: DelegationTracingData<A>,
         swap_delegation_witness_fn: S,
@@ -246,42 +246,42 @@ impl<
         }
     }
 
-    pub fn prepare_for_next_chunk<const NEXT_TRACE_CYCLES: bool>(
-        self,
-        cycle_data: CycleData<C, A>,
-        timestamp: TimestampScalar,
-    ) -> (
-        YetAnotherTracer<
-            RAM_SIZE,
-            LOG_ROM_BOUND,
-            S,
-            C,
-            A,
-            TRACE_TOUCHED_RAM,
-            NEXT_TRACE_CYCLES,
-            TRACE_DELEGATIONS,
-        >,
-        CycleData<C, A>,
-    ) {
-        let Self {
-            ram_tracing_data,
-            cycle_data: previous_cycle_data,
-            delegation_tracing_data,
-            current_timestamp: _,
-            swap_delegation_witness_fn,
-        } = self;
-        let tracer = YetAnotherTracer::new(
-            ram_tracing_data,
-            cycle_data,
-            delegation_tracing_data,
-            swap_delegation_witness_fn,
-            timestamp,
-        );
-        (tracer, previous_cycle_data)
-    }
+    // pub fn prepare_for_next_chunk<const NEXT_TRACE_CYCLES: bool>(
+    //     self,
+    //     cycle_data: CycleData<C, A>,
+    //     timestamp: TimestampScalar,
+    // ) -> (
+    //     YetAnotherTracer<'a,
+    //         RAM_SIZE,
+    //         LOG_ROM_BOUND,
+    //         S,
+    //         C,
+    //         A,
+    //         TRACE_TOUCHED_RAM,
+    //         NEXT_TRACE_CYCLES,
+    //         TRACE_DELEGATIONS,
+    //     >,
+    //     CycleData<C, A>,
+    // ) {
+    //     let Self {
+    //         ram_tracing_data,
+    //         cycle_data: previous_cycle_data,
+    //         delegation_tracing_data,
+    //         current_timestamp: _,
+    //         swap_delegation_witness_fn,
+    //     } = self;
+    //     let tracer = YetAnotherTracer::new(
+    //         ram_tracing_data,
+    //         cycle_data,
+    //         delegation_tracing_data,
+    //         swap_delegation_witness_fn,
+    //         timestamp,
+    //     );
+    //     (tracer, previous_cycle_data)
+    // }
 }
 
-impl<
+impl<'a,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
         S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
@@ -291,7 +291,7 @@ impl<
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     > Tracer<C>
-    for YetAnotherTracer<
+    for YetAnotherTracer<'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
         S,
