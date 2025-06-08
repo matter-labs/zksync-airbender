@@ -4,7 +4,9 @@ FROM debian:bullseye-slim as builder
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
-    git
+    git \
+    libssl-dev \
+    pkg-config
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2025-05-24
 ENV PATH="/root/.cargo/bin:${PATH}"
