@@ -583,38 +583,29 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let mut start_stage = work_packet_start_stage;
     for first_work_packet in (0..num_work_packets).step_by(2) {
         start_stage = work_packet_start_stage;
-        let Z_col = first_work_packet % num_Z_cols as usize;
-        let row_packet = first_work_packet / num_Z_cols as usize;
-        let input_slice = &outputs_slice_const[Z_col * stride..(Z_col + 2) * stride];
-        let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride];
-        let input_matrix = DeviceMatrixChunk::new(input_slice, stride, offset, n as usize);
-        let mut output_matrix = DeviceMatrixChunkMut::new(output_slice, stride, offset, n as usize);
-        let input_matrix_0 = input_matrix.as_ptr_and_stride();
-        let output_matrix_0 = output_matrix.as_mut_ptr_and_stride();
-        let (input_matrix_1, output_matrix_1) = if first_work_packet + 1 < num_work_packets {
-            let Z_col = Z_col + 2;
+        let mut matrices_both_packets = [None, None];
+        for &i in [0, 1].iter() {
+            let work_packet = first_work_packet + i;
+            let Z_col = work_packet % num_Z_cols as usize;
+            let row_packet = work_packet / num_Z_cols as usize;
+            let work_packet_offset = offset + row_packet * l2_working_set_e2_elems_per_stream as usize;
             let input_slice = &outputs_slice_const[Z_col * stride..(Z_col + 2) * stride];
             let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride];
-            let input_matrix = DeviceMatrixChunk::new(input_slice, stride, offset, n as usize);
-            let mut output_matrix =
-                DeviceMatrixChunkMut::new(output_slice, stride, offset, n as usize);
-            let input_matrix = input_matrix.as_ptr_and_stride();
-            let output_matrix = output_matrix.as_mut_ptr_and_stride();
-            (input_matrix, output_matrix)
-        } else {
-            (input_matrix_0, output_matrix_0) // dummy copies, won't be used
+            let input_matrix = DeviceMatrixChunk::new(input_slice, stride, work_packet_offset, n as usize);
+            let mut output_matrix = DeviceMatrixChunkMut::new(output_slice, stride, work_packet_offset, n as usize);
+            matrices_both_packets[i] = Some((input_matrix.as_ptr_and_stride(), output_matrix.as_mut_ptr_and_stride()));
         };
         // Dispatch middle kernels for two work packets breadth-first (ping-pong)
         for &(function, grid_dim_x, block_dim_x, stages_this_launch) in
             n2b_packet_plan_details.iter()
         {
-            for &i in [0, 1].iter() {
-                if first_work_packet + i < num_work_packets {
+            for (i, matrices) in matrices_both_packets.iter().enumerate() {
+                if let Some((input_matrix, output_matrix)) = matrices {
                     let config =
                         CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = N2BMultiStageArguments::new(
-                        input_matrix_0,
-                        output_matrix_0,
+                        *input_matrix,
+                        *output_matrix,
                         start_stage,
                         stages_this_launch,
                         log_n,
@@ -629,13 +620,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
         for &(function, grid_dim_x, block_dim_x, stages_this_launch) in
             b2n_packet_plan_details.iter()
         {
-            for &i in [0, 1].iter() {
-                if first_work_packet + i < num_work_packets {
+            for (i, matrices) in matrices_both_packets.iter().enumerate() {
+                if let Some((input_matrix, output_matrix)) = matrices {
                     let config =
                         CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = B2NMultiStageArguments::new(
-                        input_matrix_0,
-                        output_matrix_0,
+                        *input_matrix,
+                        *output_matrix,
                         start_stage,
                         stages_this_launch,
                         log_n,
@@ -662,7 +653,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let block_dim_x = 512;
     let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, exec_stream);
     let args = B2NMultiStageArguments::new(
-        inputs_matrix,
+        outputs_matrix_const,
         outputs_matrix_mut,
         start_stage,
         stages_this_launch,
