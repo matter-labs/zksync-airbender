@@ -26,6 +26,7 @@ FILES=(
 
 for FILE in "${FILES[@]}"; do
     docker cp verifiers:/zksync-airbender/tools/verifier/$FILE tools/verifier/
+    md5sum tools/verifier/$FILE
 done
 
 
