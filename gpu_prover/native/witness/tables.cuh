@@ -379,7 +379,6 @@ template <unsigned K, unsigned V> struct TableDriver {
     auto setter = [](const u32 index, u32 *result) {
       const u32 word = index & 0xffff;
       const bool use_high_half = (index & 0x00010000) != 0;
-      // const bool use_high_half = (index >> 16) != 0;
       const u32 funct3 = index >> 17;
       const u32 selected_byte = use_high_half ? word >> 8 : word & 0xff;
       u32 loaded_word = 0;
@@ -403,6 +402,7 @@ template <unsigned K, unsigned V> struct TableDriver {
         // LHU
         // zero-extend selected word
         loaded_word = word;
+        break;
       default:
         // Not important
         loaded_word = 0;
