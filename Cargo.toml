@@ -138,6 +138,7 @@ seq-macro = "0.3"
 super-seq-macro = "0.3"
 arrayvec = { version = "0.7", default-features = false }
 itertools = { version = "0.13" }
+log = "0.4"
 
 [profile.release]
 opt-level = 3

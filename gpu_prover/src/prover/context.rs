@@ -53,12 +53,12 @@ pub trait ProverContext {
     fn get_reserved_mem_high(&self) -> CudaResult<usize>;
     fn reset_used_mem_high(&self) -> CudaResult<()>;
 
-    #[cfg(feature = "print_gpu_mem_usage")]
-    fn print_mem_pool_stats(&self) -> CudaResult<()> {
+    #[cfg(feature = "log_gpu_mem_usage")]
+    fn log_mem_pool_stats(&self, location: &str) -> CudaResult<()> {
         let used_mem_current = self.get_used_mem_current()?;
         let used_mem_high = self.get_used_mem_high()?;
-        println!(
-            "GPU memory usage current/high: {}/{} GB",
+        log::info!(
+            "GPU memory usage {location} current/high: {}/{} GB",
             used_mem_current as f64 / ((1 << 30) as f64),
             used_mem_high as f64 / ((1 << 30) as f64),
         );
@@ -116,7 +116,7 @@ impl<'a> MemPoolProverContext<'a> {
                 size -= 1;
             }
         }
-        println!(
+        log::info!(
             "initialized GPU memory pool for device ID {device_id} with {} GB of usable memory",
             (size << config.allocation_block_log_size) as f32 / 1024.0 / 1024.0 / 1024.0
         );
@@ -160,7 +160,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
             )?);
         }
         ConcurrentStaticHostAllocator::initialize_global(allocations, block_log_size);
-        println!(
+        log::info!(
             "initialized ConcurrentStaticHostAllocator with {host_allocations_count} x {} GB",
             host_allocation_size as f32 / 1024.0 / 1024.0 / 1024.0
         );
@@ -192,7 +192,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         );
         let result: CudaResult<Self::Allocation<T>> = unsafe { std::mem::transmute(result) };
         if result.is_err() {
-            println!(
+            log::error!(
                 "failed to allocate {} bytes from GPU memory pool of device ID {}, currently allocated {} bytes",
                 size * size_of::<T>(),
                 self.device_id,

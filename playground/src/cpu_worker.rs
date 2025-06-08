@@ -67,7 +67,7 @@ pub enum CpuWorkerMode<C: MachineConfig, A: GoodAllocator> {
     },
 }
 
-pub fn get_cpu_worker<C: MachineConfig, A: GoodAllocator + 'static>(
+pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
     worker_id: usize,
     timer: Instant,
     num_main_chunks_upper_bound: usize,

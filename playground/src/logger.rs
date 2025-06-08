@@ -48,4 +48,4 @@ impl log::Log for GlobalLogger {
     fn flush(&self) {}
 }
 
-pub static LOGGER: GlobalLogger = GlobalLogger;
+pub static GLOBAL_LOGGER: GlobalLogger = GlobalLogger;

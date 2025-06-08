@@ -34,7 +34,7 @@ impl<'a, C: ProverContext> MemoryCommitmentJob<'a, C> {
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
-        println!("GPU memory commitment time: {} ms", range.elapsed()?);
+        log::info!("GPU memory commitment time: {:.3} ms", range.elapsed()?);
         let tree_caps = transform_tree_caps(&tree_caps);
         Ok(tree_caps)
     }

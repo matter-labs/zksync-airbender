@@ -23,5 +23,4 @@ gpu_prover = { workspace = true }
 rayon = "1.10.0"
 risc_v_simulator = { workspace = true, features = ["delegation"] }
 crossbeam-channel = "0.5.15"
-crossbeam-queue = "0.3.12"
-log = "0.4"
+log = { workspace = true}
