@@ -18,7 +18,7 @@ tools/verifier/target
 !poseidon2
 !prover
 !risc_v_simulator
-!risc_v_common
+!riscv_common
 !trace_holder
 !transcript
 !verifier

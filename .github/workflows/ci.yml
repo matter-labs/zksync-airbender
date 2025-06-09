@@ -242,6 +242,7 @@ jobs:
         with:
           rustflags: ""
       - name: Setup
+        working-directory: tools/verifier
         run: |
           rustup set profile minimal
           rustup target add riscv32i-unknown-none-elf
