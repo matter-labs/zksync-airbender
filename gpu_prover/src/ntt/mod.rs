@@ -479,7 +479,8 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
 
     let l2_working_set_e2_elems = 1 << 20;
-    let l2_working_set_e2_elems_per_stream = l2_working_set_e2_elems >> 1;
+    // We'd like the L2 to accommodate 2 work packets at once (one per stream)
+    let work_packet_elems = l2_working_set_e2_elems >> 1;
 
     let start_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     let end_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -514,7 +515,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
     let stream_refs = [exec_stream, aux_stream];
-    let work_packets_per_col = std::cmp::max(1, n / l2_working_set_e2_elems_per_stream);
+    let work_packets_per_col = std::cmp::max(1, n / work_packet_elems);
     let n2b_packet_plan_details: Vec<_> = (&n2b_plan[1..])
         .iter()
         .map(|&(kern, stages_this_launch)| {
@@ -522,20 +523,20 @@ pub fn natural_main_evals_to_natural_coset_evals(
             {
                 FINAL_7_WARP => (
                     main_domain_evals_to_Z_final_7_stages_warp,
-                    n / (4 * 128),
+                    work_packet_elems / (4 * 128),
                     128,
                 ),
                 FINAL_8_WARP => (
                     main_domain_evals_to_Z_final_8_stages_warp,
-                    n / (4 * 256),
+                    work_packet_elems / (4 * 256),
                     128,
                 ),
                 FINAL_9_TO_12_BLOCK => (
                     main_domain_evals_to_Z_final_9_to_12_stages_block,
-                    n / 4096,
+                    work_packet_elems / 4096,
                     512,
                 ),
-                NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, n / 4096, 512),
+                NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, work_packet_elems / 4096, 512),
             };
             (function, grid_dim_x, block_dim_x, stages_this_launch as u32)
         })
@@ -547,22 +548,22 @@ pub fn natural_main_evals_to_natural_coset_evals(
             {
                 INITIAL_7_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
-                    n / (4 * 128),
+                    work_packet_elems / (4 * 128),
                     128,
                 ),
                 INITIAL_8_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
-                    n / (4 * 256),
+                    work_packet_elems / (4 * 256),
                     128,
                 ),
                 INITIAL_9_TO_12_BLOCK => (
                     bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
-                    n / 4096,
+                    work_packet_elems / 4096,
                     512,
                 ),
                 NONINITIAL_7_OR_8_BLOCK => (
                     bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
-                    n / 4096,
+                    work_packet_elems / 4096,
                     512,
                 ),
             };
@@ -588,19 +589,26 @@ pub fn natural_main_evals_to_natural_coset_evals(
             let work_packet = first_work_packet + i;
             let Z_col = work_packet % num_Z_cols as usize;
             let row_packet = work_packet / num_Z_cols as usize;
-            let work_packet_offset = offset + row_packet * l2_working_set_e2_elems_per_stream as usize;
-            let input_slice = &outputs_slice_const[Z_col * stride..(Z_col + 2) * stride];
-            let output_slice = &mut outputs_slice_mut[Z_col * stride..(Z_col + 2) * stride];
+            let work_packet_offset = offset + row_packet * work_packet_elems as usize;
+            let bf_col = 2 * Z_col;
+            let input_slice = &outputs_slice_const[bf_col * stride..(bf_col + 2) * stride];
+            let output_slice = &mut outputs_slice_mut[bf_col * stride..(bf_col + 2) * stride];
             let input_matrix = DeviceMatrixChunk::new(input_slice, stride, work_packet_offset, n as usize);
             let mut output_matrix = DeviceMatrixChunkMut::new(output_slice, stride, work_packet_offset, n as usize);
-            matrices_both_packets[i] = Some((input_matrix.as_ptr_and_stride(), output_matrix.as_mut_ptr_and_stride()));
+            matrices_both_packets[i] = Some(
+                (
+                    input_matrix.as_ptr_and_stride(),
+                    output_matrix.as_mut_ptr_and_stride(),
+                    row_packet,
+                )
+            );
         };
         // Dispatch middle kernels for two work packets breadth-first (ping-pong)
         for &(function, grid_dim_x, block_dim_x, stages_this_launch) in
             n2b_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix)) = matrices {
+                if let Some((input_matrix, output_matrix, row_packet)) = matrices {
                     let config =
                         CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = N2BMultiStageArguments::new(
@@ -610,7 +618,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
                         stages_this_launch,
                         log_n,
                         1,
-                        0,
+                        (*row_packet as u32 * work_packet_elems) / block_dim_x,
                     );
                     N2BMultiStageFunction(function).launch(&config, &args)?;
                 }
@@ -621,7 +629,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             b2n_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix)) = matrices {
+                if let Some((input_matrix, output_matrix, row_packet)) = matrices {
                     let config =
                         CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
                     let args = B2NMultiStageArguments::new(
@@ -633,7 +641,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
                         1,
                         1,
                         1,
-                        0,
+                        (*row_packet as u32 * work_packet_elems) / block_dim_x,
                     );
                     B2NMultiStageFunction(function).launch(&config, &args)?;
                 }
