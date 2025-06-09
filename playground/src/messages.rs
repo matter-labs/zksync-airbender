@@ -1,30 +1,23 @@
+use crate::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
+use crate::gpu_worker::MemoryCommitmentResult;
 use fft::GoodAllocator;
-use prover::ShuffleRamSetupAndTeardown;
-use std::alloc::Global;
+use prover::tracers::delegation::DelegationWitness;
+use std::collections::HashMap;
+use trace_and_split::FinalRegisterValue;
 
-pub struct GpuMemoryCommitmentRequest {}
-
-pub struct GpuMemoryCommitmentResponse {}
-
-pub struct GpuProofRequest {}
-
-pub struct GpuProofResponse {}
-
-pub enum GpuTaskRequest {
-    MemoryCommitment(GpuMemoryCommitmentRequest),
-    Proof(GpuProofRequest),
+pub enum WorkerResult<A: GoodAllocator> {
+    SetupAndTeardownChunk(SetupAndTeardownChunk<A>),
+    RAMTracingResult {
+        chunks_traced_count: usize,
+        final_register_values: [FinalRegisterValue; 32],
+    },
+    CyclesChunk(CyclesChunk<A>),
+    CyclesTracingResult {
+        chunks_traced_count: usize,
+    },
+    DelegationWitness(DelegationWitness<A>),
+    DelegationTracingResult {
+        delegation_chunks_counts: HashMap<u16, usize>,
+    },
+    MemoryCommitment(MemoryCommitmentResult<A>),
 }
-
-pub enum GpuTaskResponse {
-    MemoryCommitment(GpuMemoryCommitmentResponse),
-    Proof(GpuProofResponse),
-}
-
-pub struct GenerateMainTrace<A: GoodAllocator = Global> {
-    chunk_index: u32,
-    inits_and_teardowns: Option<ShuffleRamSetupAndTeardown<A>>,
-}
-
-pub struct GenerateDelegationTraces {}
-
-pub struct Yield;

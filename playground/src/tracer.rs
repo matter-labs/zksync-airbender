@@ -3,7 +3,7 @@ use fft::GoodAllocator;
 use prover::definitions::LazyInitAndTeardown;
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::{
-    CycleData, RegIndexOrMemWordIndex, EMPTY_SINGLE_CYCLE_TRACING_DATA,
+    RegIndexOrMemWordIndex, SingleCycleTracingData, EMPTY_SINGLE_CYCLE_TRACING_DATA,
 };
 use risc_v_simulator::abstractions::memory::{AccessType, MemorySource};
 use risc_v_simulator::abstractions::tracer::{
@@ -11,7 +11,7 @@ use risc_v_simulator::abstractions::tracer::{
 };
 use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use risc_v_simulator::cycle::status_registers::TrapReason;
-use risc_v_simulator::cycle::{IMStandardIsaConfig, MachineConfig};
+use risc_v_simulator::cycle::MachineConfig;
 use std::alloc::Global;
 use std::collections::HashMap;
 // NOTE: this tracer ALLOWS for delegations to initialize memory, so we should use enough cycles
@@ -175,6 +175,22 @@ pub fn create_setup_and_teardown_chunker<'a>(
     }
 }
 
+pub struct CycleTracingData<A: GoodAllocator = Global> {
+    pub per_cycle_data: Vec<SingleCycleTracingData, A>,
+}
+
+impl<A: GoodAllocator> CycleTracingData<A> {
+    pub fn with_cycles_capacity(capacity: usize) -> Self {
+        Self {
+            per_cycle_data: Vec::with_capacity_in(capacity, A::default()),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.per_cycle_data.clear();
+    }
+}
+
 #[derive(Default)]
 pub struct DelegationTracingData<A: GoodAllocator = Global> {
     pub witnesses: HashMap<u16, DelegationWitness<A>>,
@@ -182,18 +198,18 @@ pub struct DelegationTracingData<A: GoodAllocator = Global> {
 
 // type SwapDelegationWitnessFn<A> = Box<dyn for<'b> Fn(u16, &'b mut DelegationWitness<A>) + 'a>;
 
-pub struct YetAnotherTracer<'a,
+pub struct YetAnotherTracer<
+    'a,
     const RAM_SIZE: usize,
     const LOG_ROM_BOUND: u32,
     S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
-    C: MachineConfig = IMStandardIsaConfig,
     A: GoodAllocator = Global,
     const TRACE_TOUCHED_RAM: bool = false,
     const TRACE_CYCLES: bool = false,
     const TRACE_DELEGATIONS: bool = false,
 > {
     pub ram_tracing_data: &'a mut RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
-    pub cycle_data: CycleData<C, A>,
+    pub cycle_tracing_data: CycleTracingData<A>,
     pub delegation_tracing_data: DelegationTracingData<A>,
     pub swap_delegation_witness_fn: S,
     pub current_timestamp: TimestampScalar,
@@ -207,21 +223,21 @@ const DELEGATION_ACCESS_IDX: TimestampScalar = 3;
 const RAM_READ_ACCESS_IDX: TimestampScalar = RS2_ACCESS_IDX;
 const RAM_WRITE_ACCESS_IDX: TimestampScalar = RD_ACCESS_IDX;
 
-impl<'a,
+impl<
+        'a,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
         S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
-        C: MachineConfig,
         A: GoodAllocator,
         const TRACE_TOUCHED_RAM: bool,
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     >
-    YetAnotherTracer<'a,
+    YetAnotherTracer<
+        'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
         S,
-        C,
         A,
         TRACE_TOUCHED_RAM,
         TRACE_CYCLES,
@@ -232,70 +248,37 @@ impl<'a,
 
     pub fn new(
         ram_tracing_data: &'a mut RamTracingData<RAM_SIZE, TRACE_TOUCHED_RAM>,
-        cycle_data: CycleData<C, A>,
+        cycle_tracing_data: CycleTracingData<A>,
         delegation_tracing_data: DelegationTracingData<A>,
         swap_delegation_witness_fn: S,
         initial_timestamp: TimestampScalar,
     ) -> Self {
         Self {
             ram_tracing_data,
-            cycle_data,
+            cycle_tracing_data,
             delegation_tracing_data,
             swap_delegation_witness_fn,
             current_timestamp: initial_timestamp,
         }
     }
-
-    // pub fn prepare_for_next_chunk<const NEXT_TRACE_CYCLES: bool>(
-    //     self,
-    //     cycle_data: CycleData<C, A>,
-    //     timestamp: TimestampScalar,
-    // ) -> (
-    //     YetAnotherTracer<'a,
-    //         RAM_SIZE,
-    //         LOG_ROM_BOUND,
-    //         S,
-    //         C,
-    //         A,
-    //         TRACE_TOUCHED_RAM,
-    //         NEXT_TRACE_CYCLES,
-    //         TRACE_DELEGATIONS,
-    //     >,
-    //     CycleData<C, A>,
-    // ) {
-    //     let Self {
-    //         ram_tracing_data,
-    //         cycle_data: previous_cycle_data,
-    //         delegation_tracing_data,
-    //         current_timestamp: _,
-    //         swap_delegation_witness_fn,
-    //     } = self;
-    //     let tracer = YetAnotherTracer::new(
-    //         ram_tracing_data,
-    //         cycle_data,
-    //         delegation_tracing_data,
-    //         swap_delegation_witness_fn,
-    //         timestamp,
-    //     );
-    //     (tracer, previous_cycle_data)
-    // }
 }
 
-impl<'a,
+impl<
+        'a,
+        C: MachineConfig,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
         S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
-        C: MachineConfig,
         A: GoodAllocator,
         const TRACE_TOUCHED_RAM: bool,
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     > Tracer<C>
-    for YetAnotherTracer<'a,
+    for YetAnotherTracer<
+        'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
         S,
-        C,
         A,
         TRACE_TOUCHED_RAM,
         TRACE_CYCLES,
@@ -308,16 +291,13 @@ impl<'a,
         if !TRACE_CYCLES {
             return;
         }
+        let mut element = EMPTY_SINGLE_CYCLE_TRACING_DATA;
+        element.pc = current_state.pc;
         unsafe {
-            self.cycle_data
+            self.cycle_tracing_data
                 .per_cycle_data
-                .push_within_capacity(EMPTY_SINGLE_CYCLE_TRACING_DATA)
+                .push_within_capacity(element)
                 .unwrap_unchecked();
-            self.cycle_data
-                .per_cycle_data
-                .last_mut()
-                .unwrap_unchecked()
-                .pc = current_state.pc;
         }
     }
 
@@ -332,16 +312,13 @@ impl<'a,
         if !TRACE_CYCLES {
             return;
         }
+        let mut element = EMPTY_SINGLE_CYCLE_TRACING_DATA;
+        element.pc = current_state.pc;
         unsafe {
-            self.cycle_data
+            self.cycle_tracing_data
                 .per_cycle_data
-                .push_within_capacity(EMPTY_SINGLE_CYCLE_TRACING_DATA)
+                .push_within_capacity(element)
                 .unwrap_unchecked();
-            self.cycle_data
-                .per_cycle_data
-                .last_mut()
-                .unwrap_unchecked()
-                .pc = current_state.pc;
         }
     }
 
@@ -369,7 +346,11 @@ impl<'a,
             return;
         }
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+            let dst = self
+                .cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked();
             dst.rs1_read_value = read_value;
             dst.rs1_read_timestamp = TimestampData::from_scalar(read_timestamp);
             dst.rs1_reg_idx = reg_idx as u16;
@@ -392,7 +373,11 @@ impl<'a,
             return;
         }
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+            let dst = self
+                .cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked();
             dst.rs2_or_mem_word_read_value = read_value;
             dst.rs2_or_mem_word_address = RegIndexOrMemWordIndex::register(reg_idx as u8);
             dst.rs2_or_mem_read_timestamp = TimestampData::from_scalar(read_timestamp);
@@ -415,7 +400,11 @@ impl<'a,
             return;
         }
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+            let dst = self
+                .cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked();
 
             let mut written_value = written_value;
             if reg_idx == 0 {
@@ -439,8 +428,11 @@ impl<'a,
             return;
         }
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
-            dst.non_determinism_read = read_value;
+            self.cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked()
+                .non_determinism_read = read_value;
         }
     }
 
@@ -474,7 +466,11 @@ impl<'a,
             return;
         }
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+            let dst = self
+                .cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked();
             // record
             dst.rs2_or_mem_word_read_value = read_value;
             dst.rs2_or_mem_word_address = RegIndexOrMemWordIndex::memory(address);
@@ -505,7 +501,11 @@ impl<'a,
         }
         // record
         unsafe {
-            let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+            let dst = self
+                .cycle_tracing_data
+                .per_cycle_data
+                .last_mut()
+                .unwrap_unchecked();
             dst.rd_or_mem_word_read_value = read_value;
             dst.rd_or_mem_word_write_value = written_value;
             dst.rd_or_mem_word_address = RegIndexOrMemWordIndex::memory(phys_address as u32);
@@ -542,7 +542,11 @@ impl<'a,
         if TRACE_CYCLES {
             // mark as delegation
             unsafe {
-                let dst = self.cycle_data.per_cycle_data.last_mut().unwrap_unchecked();
+                let dst = self
+                    .cycle_tracing_data
+                    .per_cycle_data
+                    .last_mut()
+                    .unwrap_unchecked();
                 dst.delegation_request = delegation_type;
             }
         }
@@ -557,46 +561,44 @@ impl<'a,
                 .or_insert_with(|| (self.swap_delegation_witness_fn)(delegation_type, None));
             debug_assert_eq!(current_tracer.base_register_index, base_register);
 
-            unsafe {
-                // trace register part
-                let mut register_index = base_register;
-                for dst in register_accesses.iter_mut() {
-                    let read_timestamp = self
-                        .ram_tracing_data
-                        .mark_register_use(register_index, write_timestamp);
-                    dst.timestamp = TimestampData::from_scalar(read_timestamp);
+            // trace register part
+            let mut register_index = base_register;
+            for dst in register_accesses.iter_mut() {
+                let read_timestamp = self
+                    .ram_tracing_data
+                    .mark_register_use(register_index, write_timestamp);
+                dst.timestamp = TimestampData::from_scalar(read_timestamp);
 
-                    register_index += 1;
-                }
+                register_index += 1;
+            }
 
-                // formal reads and writes
-                for (phys_address, dst) in indirect_read_addresses
-                    .iter()
-                    .zip(indirect_reads.iter_mut())
-                {
-                    let phys_address = *phys_address;
-                    let phys_word_idx = phys_address / 4;
+            // formal reads and writes
+            for (phys_address, dst) in indirect_read_addresses
+                .iter()
+                .zip(indirect_reads.iter_mut())
+            {
+                let phys_address = *phys_address;
+                let phys_word_idx = phys_address / 4;
 
-                    let read_timestamp = self
-                        .ram_tracing_data
-                        .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                let read_timestamp = self
+                    .ram_tracing_data
+                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
 
-                    dst.timestamp = TimestampData::from_scalar(read_timestamp);
-                }
+                dst.timestamp = TimestampData::from_scalar(read_timestamp);
+            }
 
-                for (phys_address, dst) in indirect_write_addresses
-                    .iter()
-                    .zip(indirect_writes.iter_mut())
-                {
-                    let phys_address = *phys_address;
-                    let phys_word_idx = phys_address / 4;
+            for (phys_address, dst) in indirect_write_addresses
+                .iter()
+                .zip(indirect_writes.iter_mut())
+            {
+                let phys_address = *phys_address;
+                let phys_word_idx = phys_address / 4;
 
-                    let read_timestamp = self
-                        .ram_tracing_data
-                        .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                let read_timestamp = self
+                    .ram_tracing_data
+                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
 
-                    dst.timestamp = TimestampData::from_scalar(read_timestamp);
-                }
+                dst.timestamp = TimestampData::from_scalar(read_timestamp);
             }
 
             current_tracer
@@ -674,7 +676,7 @@ impl<const RAM_SIZE: usize, const LOG_ROM_BOUND: u32>
     pub fn new() -> Self {
         assert!(RAM_SIZE >= Self::ROM_BOUND as usize);
         assert_eq!(RAM_SIZE % 4, 0);
-        Self(unsafe { Box::new_zeroed_slice((RAM_SIZE / 4)).assume_init() })
+        Self(unsafe { Box::new_zeroed_slice(RAM_SIZE / 4).assume_init() })
     }
 
     pub fn populate(&mut self, address: u32, value: u32) {
