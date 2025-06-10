@@ -1,4 +1,4 @@
-use super::context::ProverContext;
+use super::context::{DeviceProperties, ProverContext};
 use super::BF;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
 use crate::device_structures::{ DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut };
@@ -42,15 +42,14 @@ impl<C: ProverContext> TraceHolder<BF, C> {
     }
 
     pub fn extend_and_commit(&mut self, source_coset_index: usize, context: &C) -> CudaResult<()> {
-        let stream = context.get_exec_stream();
-        let aux_stream = context.get_ntt_aux_stream();
         extend_trace(
             &mut self.ldes,
             source_coset_index,
             self.log_domain_size,
             self.log_lde_factor,
-            stream,
-            aux_stream,
+            context.get_exec_stream(),
+            context.get_ntt_aux_stream(),
+            context.get_device_properties(),
         )?;
         populate_trees_from_trace_ldes::<C>(
             &self.ldes,
@@ -60,7 +59,7 @@ impl<C: ProverContext> TraceHolder<BF, C> {
             self.log_rows_per_leaf,
             self.log_tree_cap_size,
             self.columns_count,
-            stream,
+            context.get_exec_stream(),
         )
     }
 
@@ -290,6 +289,7 @@ pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
     log_lde_factor: u32,
     stream: &CudaStream,
     aux_stream: &CudaStream,
+    device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     assert_eq!(log_lde_factor, 1);
     let lde_factor = 1 << log_lde_factor;
@@ -313,6 +313,7 @@ pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
             num_bf_cols,
             stream,
             aux_stream,
+            device_properties,
         )?;
     } else {
         assert_eq!(source_coset_index, 1);
@@ -323,7 +324,6 @@ pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
         let src_evals_matrix = DeviceMatrix::new(src_evals, domain_size);
         let const_dst_matrix = DeviceMatrix::new(const_dst_evals, domain_size);
         let mut dst_matrix = DeviceMatrixMut::new(dst_evals, domain_size);
-        // let dst_matrix_ref = &mut dst_matrix;
         natural_composition_coset_evals_to_bitrev_Z(
             &src_evals_matrix,
             &mut dst_matrix,

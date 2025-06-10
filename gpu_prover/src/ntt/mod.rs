@@ -13,12 +13,13 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
+use crate::prover::context::DeviceProperties;
 use crate::context::OMEGA_LOG_ORDER;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,
 };
-use crate::field::BaseField;
+use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::{
     get_main_to_coset_launch_chain, COMPLEX_COLS_PER_BLOCK, STAGE_PLANS_B2N, STAGE_PLANS_N2B,
 };
@@ -26,11 +27,14 @@ use crate::utils::GetChunksCount;
 
 use itertools::Itertools;
 
+type BF = BaseField;
+type E2 = Ext2Field;
+
 cuda_kernel!(
     B2NOneStage,
     b2n_one_stage_kernel,
-    inputs_matrix: PtrAndStride<BaseField>,
-    outputs_matrix: MutPtrAndStride<BaseField>,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
     start_stage: u32,
     log_n: u32,
     blocks_per_ntt: u32,
@@ -40,15 +44,15 @@ cuda_kernel!(
 
 b2n_one_stage_kernel!(bitrev_Z_to_natural_coset_evals_one_stage);
 
-// "v" indicates a vectorized layout of BaseField columns,
+// "v" indicates a vectorized layout of BF columns,
 // For the final output, columns represent distinct base field values.
 // For intermediate outputs, each pair of columns represents the c0s and c1s
 // of a single column of complex values.
 cuda_kernel!(
     B2NMultiStage,
     b2n_multi_stage_kernel,
-    inputs_matrix: PtrAndStride<BaseField>,
-    outputs_matrix: MutPtrAndStride<BaseField>,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
     start_stage: u32,
     stages_this_launch: u32,
     log_n: u32,
@@ -65,8 +69,8 @@ b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_b
 
 #[allow(clippy::too_many_arguments)]
 fn bitrev_Z_to_natural_evals(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     log_extension_degree: usize,
@@ -189,8 +193,8 @@ fn bitrev_Z_to_natural_evals(
 
 #[allow(clippy::too_many_arguments)]
 pub fn bitrev_Z_to_natural_trace_coset_evals(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     stream: &CudaStream,
@@ -208,8 +212,8 @@ pub fn bitrev_Z_to_natural_trace_coset_evals(
 
 #[allow(clippy::too_many_arguments)]
 pub fn bitrev_Z_to_natural_composition_main_evals(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     stream: &CudaStream,
@@ -228,8 +232,8 @@ pub fn bitrev_Z_to_natural_composition_main_evals(
 cuda_kernel!(
     N2BOneStageKernel,
     one_stage_kernel,
-    inputs_matrix: PtrAndStride<BaseField>,
-    outputs_matrix: MutPtrAndStride<BaseField>,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
     start_stage: u32,
     log_n: u32,
     blocks_per_ntt: u32,
@@ -241,8 +245,8 @@ one_stage_kernel!(evals_to_Z_one_stage);
 cuda_kernel!(
     N2BMultiStage,
     n2b_multi_stage_kernel,
-    inputs_matrix: PtrAndStride<BaseField>,
-    outputs_matrix: MutPtrAndStride<BaseField>,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
     start_stage: u32,
     stages_this_launch: u32,
     log_n: u32,
@@ -260,8 +264,8 @@ n2b_multi_stage_kernel!(coset_evals_to_Z_final_9_to_12_stages_block);
 
 #[allow(clippy::too_many_arguments)]
 fn natural_evals_to_bitrev_Z(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     evals_are_coset: bool,
@@ -379,8 +383,8 @@ fn natural_evals_to_bitrev_Z(
 
 #[allow(clippy::too_many_arguments)]
 pub fn natural_trace_main_evals_to_bitrev_Z(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     stream: &CudaStream,
@@ -397,8 +401,8 @@ pub fn natural_trace_main_evals_to_bitrev_Z(
 
 #[allow(clippy::too_many_arguments)]
 pub fn natural_composition_coset_evals_to_bitrev_Z(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     stream: &CudaStream,
@@ -425,15 +429,15 @@ pub fn natural_composition_coset_evals_to_bitrev_Z(
 
 #[allow(clippy::too_many_arguments)]
 pub fn natural_main_evals_to_natural_coset_evals(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BaseField> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BaseField> + ?Sized),
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     num_bf_cols: usize,
     exec_stream: &CudaStream,
     aux_stream: &CudaStream,
+    device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
-    // Sizes < 2^16 are typically for testing only. Fall back to simple path.
-    if log_n < 16 {
+    let mut fallback = || -> CudaResult<()> {
         let const_outputs_slice = unsafe {
             DeviceSlice::from_raw_parts(
                 outputs_matrix.slice().as_ptr(),
@@ -453,13 +457,37 @@ pub fn natural_main_evals_to_natural_coset_evals(
             num_bf_cols,
             exec_stream,
         )?;
-        return bitrev_Z_to_natural_trace_coset_evals(
+        bitrev_Z_to_natural_trace_coset_evals(
             &const_outputs_matrix,
             outputs_matrix,
             log_n as usize,
             num_bf_cols,
             exec_stream,
-        );
+        )
+    };
+
+    // n < 2^16 is for testing only and uses simple kernels
+    if log_n < 16 {
+        return fallback();
+    }
+
+    // quick-and-dirty heuristic:
+    // Use chunked L2 persistence iff we estimate it can saturate the SMs.
+    let l2_bytes_with_safety_margin =
+        device_properties.l2_cache_size_bytes >> 1;
+    let l2_working_set_e2_elems =
+        l2_bytes_with_safety_margin / std::mem::size_of::<E2>();
+    // intent is "prev_power_of_two()" but there's no canned method afaik
+    let l2_working_set_e2_elems = l2_working_set_e2_elems.next_power_of_two() >> 1;
+    // Big kernels typically use 4096 elems per block, and 2 blocks can fit on each SM
+    let working_set_block_count = l2_working_set_e2_elems / 4096;
+    let full_wave_block_count = 2 * device_properties.sm_count;
+    // Assume the chunking approach can saturate if it can put 1.5 full waves in flight
+    let l2_working_set_can_saturate =
+        working_set_block_count >= (full_wave_block_count * 3 / 2);
+
+    if !l2_working_set_can_saturate {
+        return fallback();
     }
 
     assert!(log_n >= 1);
@@ -485,9 +513,12 @@ pub fn natural_main_evals_to_natural_coset_evals(
     use crate::ntt::utils::N2B_LAUNCH::*;
     let (n2b_plan, b2n_plan) = get_main_to_coset_launch_chain(log_n as usize);
 
-    let l2_working_set_e2_elems = 1 << 21;
+    // let l2_working_set_e2_elems = 1 << 23;
     // We'd like the L2 to accommodate 2 work packets at once (one per stream)
-    let work_packet_elems = l2_working_set_e2_elems >> 1;
+    let work_packet_elems = (l2_working_set_e2_elems >> 1) as u32;
+
+    println!("work_packet_elems {}", work_packet_elems);
+
     // make sure data chunks that will be assigned to middle kernels are
     // independently contiguous
     let second_kernel_exchg_region_size = 1 << (log_n - n2b_plan[0].1);

@@ -23,6 +23,7 @@ use crate::ntt::{
     natural_composition_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
     natural_trace_main_evals_to_bitrev_Z,
 };
+use crate::prover::context::DeviceProperties;
 
 type BF = BaseField;
 type E2 = Ext2Field;
@@ -612,6 +613,7 @@ fn run_bitrev_Z_to_natural_composition_main_evals(log_n_range: Range<usize>, num
 
 fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
     let ctx = Context::create(12).unwrap();
+    let device_properties = DeviceProperties::new().unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     // let num_Z_cols = (num_bf_cols + 1) / 2;
     assert_eq!(num_bf_cols % 2, 0);
@@ -673,6 +675,7 @@ fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_
             num_bf_cols,
             &exec_stream,
             &aux_stream,
+            &device_properties,
         )
         .unwrap();
         memory_copy_async(
@@ -721,6 +724,7 @@ fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_
                 );
             }
         }
+        // DO NOT DELETE (useful for debugging n2b phase if needed)
         // let num_Z_cols = num_bf_cols / 2;
         // for ntt in 0..num_Z_cols {
         //     let start = 2 * ntt * stride + OFFSET;
