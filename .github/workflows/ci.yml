@@ -361,6 +361,38 @@ jobs:
         run: ./cli verify --proof recursion_proofs/reduced_proof_0.json
   
 
+  # Test incremental proofs.
+  oh_bender:
+    name: oh_bender_incremental_proofs
+    runs-on: [matterlabs-ci-runner-c3d]
+    needs: [build_cli_no_verifiers_512, build_verifier]
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli_512
+      - uses: actions/download-artifact@v4
+        with:
+          name: verifier
+
+      - name: Display structure of downloaded files
+        run: ls -R
+      - name: Set permissions
+        run: chmod +x ./cli
+
+      - name: Create output
+        run: mkdir output
+
+
+      - name: Create basic fibonacci proof
+        run: ./cli prove --bin examples/basic_fibonacci/app.bin  --until final-recursion --output-dir output
+      - name: Flatten 2 basic fibonacci proofs
+        run: ./cli flatten-two --first-metadata  output/metadata.json --second-metadata output/metadata.json --output-file output/proof_merged_flatten.json
+      - name: Run
+        run: ./cli run --bin app.bin --input-file  output/proof_merged_flatten.json --cycles 10000000 --machine reduced --expected-results 890242439,3543186763,4251668155,4029038820,912219460,64639318,3267867168,290530290
+
+  
   full_recursion:
     name: full_recursion
     runs-on: [matterlabs-ci-runner-c3d]
