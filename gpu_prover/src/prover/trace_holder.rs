@@ -1,10 +1,10 @@
 use super::context::{DeviceProperties, ProverContext};
 use super::BF;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
-use crate::device_structures::{ DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut };
+use crate::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::ntt::{
-    bitrev_Z_to_natural_composition_main_evals,
-    natural_composition_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
+    bitrev_Z_to_natural_composition_main_evals, natural_composition_coset_evals_to_bitrev_Z,
+    natural_main_evals_to_natural_coset_evals,
 };
 use crate::ops_cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops_simple::{neg, set_to_zero};

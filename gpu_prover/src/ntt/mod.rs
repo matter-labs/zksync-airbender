@@ -13,7 +13,6 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
-use crate::prover::context::DeviceProperties;
 use crate::context::OMEGA_LOG_ORDER;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -23,6 +22,7 @@ use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::{
     get_main_to_coset_launch_chain, COMPLEX_COLS_PER_BLOCK, STAGE_PLANS_B2N, STAGE_PLANS_N2B,
 };
+use crate::prover::context::DeviceProperties;
 use crate::utils::GetChunksCount;
 
 use itertools::Itertools;
@@ -355,7 +355,11 @@ fn natural_evals_to_bitrev_Z(
                     n / vals_per_block,
                     512,
                 ),
-                NONFINAL_7_OR_8_BLOCK => (evals_to_Z_nonfinal_7_or_8_stages_block, n / vals_per_block, 512),
+                NONFINAL_7_OR_8_BLOCK => (
+                    evals_to_Z_nonfinal_7_or_8_stages_block,
+                    n / vals_per_block,
+                    512,
+                ),
             };
             let inputs = if start_stage == 0 {
                 inputs_matrix
@@ -473,18 +477,15 @@ pub fn natural_main_evals_to_natural_coset_evals(
 
     // quick-and-dirty heuristic:
     // Use chunked L2 persistence iff we estimate it can saturate the SMs.
-    let l2_bytes_with_safety_margin =
-        device_properties.l2_cache_size_bytes >> 1;
-    let l2_working_set_e2_elems =
-        l2_bytes_with_safety_margin / std::mem::size_of::<E2>();
+    let l2_bytes_with_safety_margin = device_properties.l2_cache_size_bytes >> 1;
+    let l2_working_set_e2_elems = l2_bytes_with_safety_margin / std::mem::size_of::<E2>();
     // intent is "prev_power_of_two()" but there's no canned method afaik
     let l2_working_set_e2_elems = l2_working_set_e2_elems.next_power_of_two() >> 1;
     // Big kernels typically use 4096 elems per block, and 2 blocks can fit on each SM
     let working_set_block_count = l2_working_set_e2_elems / 4096;
     let full_wave_block_count = 2 * device_properties.sm_count;
     // Assume the chunking approach can saturate if it can put 1.5 full waves in flight
-    let l2_working_set_can_saturate =
-        working_set_block_count >= (full_wave_block_count * 3 / 2);
+    let l2_working_set_can_saturate = working_set_block_count >= (full_wave_block_count * 3 / 2);
 
     if !l2_working_set_can_saturate {
         return fallback();
@@ -580,7 +581,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
                     512,
                 ),
             };
-            (function, grid_dim_x, block_dim_x, stages_this_launch, vals_per_block)
+            (
+                function,
+                grid_dim_x,
+                block_dim_x,
+                stages_this_launch,
+                vals_per_block,
+            )
         })
         .collect_vec();
     let b2n_packet_plan_details: Vec<_> = (&b2n_plan[..b2n_plan.len() - 1])
@@ -609,7 +616,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
                     512,
                 ),
             };
-            (function, grid_dim_x, block_dim_x, stages_this_launch, vals_per_block)
+            (
+                function,
+                grid_dim_x,
+                block_dim_x,
+                stages_this_launch,
+                vals_per_block,
+            )
         })
         .collect();
     let stride = outputs_matrix.stride();
@@ -636,8 +649,10 @@ pub fn natural_main_evals_to_natural_coset_evals(
                 let bf_col = 2 * Z_col;
                 let input_slice = &outputs_slice_const[bf_col * stride..(bf_col + 2) * stride];
                 let output_slice = &mut outputs_slice_mut[bf_col * stride..(bf_col + 2) * stride];
-                println!("Z_col {} row_packet {} work_packet_offset {}",
-                    Z_col, row_packet, work_packet_offset);
+                println!(
+                    "Z_col {} row_packet {} work_packet_offset {}",
+                    Z_col, row_packet, work_packet_offset
+                );
                 let input_matrix = DeviceMatrixChunk::new(
                     input_slice,
                     stride,
@@ -658,7 +673,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             }
         }
         // Dispatch middle kernels for two work packets breadth-first (ping-pong)
-        for &(function, grid_dim_x, block_dim_x, stages_this_launch, vals_per_block) in
+        for &(function, grid_dim_x, block_dim_x, stages_this_launch, _vals_per_block) in
             n2b_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
@@ -680,7 +695,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             start_stage += stages_this_launch;
         }
         start_stage = 0;
-        for &(function, grid_dim_x, block_dim_x, stages_this_launch, vals_per_block) in
+        for &(function, grid_dim_x, block_dim_x, stages_this_launch, _vals_per_block) in
             b2n_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
@@ -706,7 +721,11 @@ pub fn natural_main_evals_to_natural_coset_evals(
     }
     println!("Chunk launch logic took {:?}", instant.elapsed());
 
-    println!("n2b_plan.len() {} b2n_plan.len() {}", n2b_plan.len(), b2n_plan.len());
+    println!(
+        "n2b_plan.len() {} b2n_plan.len() {}",
+        n2b_plan.len(),
+        b2n_plan.len()
+    );
 
     end_event.record(aux_stream)?;
     exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
