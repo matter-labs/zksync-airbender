@@ -31,7 +31,7 @@ pub fn adjust_to_zero_c0_var_length<const N: usize, A: Allocator + Clone>(
     assert!(columns_range.end <= trace_columns.width());
     let trace_len = trace_columns.len();
     // assert no u64 overflow
-    assert!(worker.num_cores * trace_len < (1 << 32));
+    assert!((worker.num_cores as u64) * (trace_len as u64) < (1u64 << 32));
     let num_chunks = worker.get_geometry(trace_len - 1).len();
     let mut per_thread_accumulators = vec![vec![0u64; columns_range.len()]; num_chunks];
 

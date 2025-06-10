@@ -1,0 +1,32 @@
+name: Check verifiers
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  check_verifiers:
+    runs-on: [ matterlabs-ci-runner-highmem ]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Build fresh verifiers
+        run: |
+          tools/reproduce/reproduce.sh
+
+      - name: Fail if any files were modified
+        run: |
+          git status --porcelain
+          git diff --name-only
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh ?:"
+            git diff --name-only
+            exit 1
+          fi

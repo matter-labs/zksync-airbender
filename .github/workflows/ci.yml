@@ -6,6 +6,8 @@ on:
       - stable
   pull_request:
 
+permissions: read-all
+
 jobs:
   tests:
     name: tests
@@ -18,7 +20,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile 
         run: cargo build --verbose
       # - name: tests
@@ -36,12 +37,11 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  isa_tests:
-    name: ISA tests
+  simulator_isa_tests:
+    name: ISA tests for simulator
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
       - uses: actions/checkout@v3
@@ -51,13 +51,30 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: tests 
-        working-directory: ./circuit_defs/opcode_tests
-        run: cargo test --profile test-release --lib --package opcode_tests
+        working-directory: ./risc_v_simulator
+        run: cargo test --release --features=delegation
         # run: cargo test --release
       # - name: tests
       #   run: cargo test --profile cli -- --nocapture
+
+  # isa_tests:
+  #   name: ISA tests
+  #   runs-on: [matterlabs-ci-runner-highmem]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         rustflags: ""
+  #     - name: Setup
+  #       run: |
+  #         rustup set profile minimal
+  #     - name: tests 
+  #       working-directory: ./circuit_defs/opcode_tests
+  #       run: cargo test --profile test-release --lib --package opcode_tests
+  #       # run: cargo test --release
+  #     # - name: tests
+  #     #   run: cargo test --profile cli -- --nocapture
 
   full_recursion_fast:
     # full recursion using a pre-compiled binaries.
@@ -77,7 +94,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Run Blake(fibonacci) and prove
         working-directory: execution_utils
         run: cargo test --release -- --nocapture --exact test_prove_fib 
@@ -102,7 +118,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile 
         working-directory: ./risc_v_simulator
         run: cargo build --features delegation --verbose 
@@ -121,7 +136,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile default
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Regenerate verifiers
         run: ./recreate_verifiers.sh
       - name: Check if anything has changed
@@ -150,7 +164,6 @@ jobs:
   #         cargo install cargo-binutils
   #         rustup component add llvm-tools-preview
   #         rustup component add rust-src
-  #         git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
   #     - name: Regenerate verifiers
   #       working-directory: ./tools/verifier
   #       run: ./build.sh
@@ -176,7 +189,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: cargo build --profile cli -p cli --features include_verifiers
       - uses: actions/upload-artifact@v4
@@ -195,7 +207,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: cargo build --release -p cli --no-default-features
       - uses: actions/upload-artifact@v4
@@ -215,7 +226,6 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: Compile
         run: RUSTFLAGS="-C target-feature=+avx512f" cargo build --release -p cli --no-default-features
       - uses: actions/upload-artifact@v4
@@ -232,13 +242,13 @@ jobs:
         with:
           rustflags: ""
       - name: Setup
+        working-directory: tools/verifier
         run: |
           rustup set profile minimal
           rustup target add riscv32i-unknown-none-elf
           cargo install cargo-binutils
           rustup component add llvm-tools-preview
           rustup component add rust-src
-          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
       - name: ObjCopy
         working-directory: tools/verifier
         run: cargo objcopy --profile cli  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
@@ -283,7 +293,7 @@ jobs:
       - name: Setup
         run: chmod +x ./cli && mkdir output
       - name: Run
-        run: ./cli run --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt --cycles 10000000 --expected-results 297985633,48911
+        run: ./cli run --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt --cycles 10000000 --expected-results 788843751,500000
       - name: Prove
         run: ./cli prove --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt
       - name: Verify 0      

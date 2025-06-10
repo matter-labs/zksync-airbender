@@ -18,12 +18,15 @@ serde_json = "*"
 
 [dev-dependencies]
 prover_examples = { path = "../circuit_defs/prover_examples" }
+bincode = { version = "1.3" }
 # full_statement_verifier = { workspace = true }
 # full_statement_verifier = { path = "../full_statement_verifier" }
 
 [features]
-debug = ["prover_examples/precheck_satisfied"]
+# Will evaluate quotient on main domain for debug
 debug_satisfiable = ["prover_examples/debug_satisfiable"]
+# Will perform satisfiability tests on witness
+precheck_satisfied = ["prover_examples/precheck_satisfied"]
 extended_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
 default = []

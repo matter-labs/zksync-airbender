@@ -197,6 +197,7 @@ pub enum BatchedMemoryAccessType {
 pub struct RegisterAccessRequest {
     pub register_index: u32,
     pub register_write: bool,
+    pub indirects_alignment_log2: u32,
     pub indirect_accesses: Vec<bool>,
 }
 
@@ -226,6 +227,7 @@ pub enum IndirectAccessType {
 pub struct RegisterAndIndirectAccesses {
     pub register_index: u32,
     pub register_access: RegisterAccessType,
+    pub indirects_alignment_log2: u32,
     pub indirect_accesses: Vec<IndirectAccessType>,
 }
 

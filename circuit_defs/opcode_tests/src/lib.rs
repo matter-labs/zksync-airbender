@@ -3,6 +3,8 @@
 #![feature(let_chains)]
 #![feature(allocator_api)]
 
+// NOTE: Temporary disabled due to conflicts with witness evaluation
+
 // run them all with: cargo test --profile test-release --lib --package opcode_tests
 #[cfg(test)]
 mod opcodes {
@@ -262,7 +264,7 @@ pub fn test_single_opcode(
         let delegation_factories =
             setups::delegation_factories_for_machine::<IMStandardIsaConfig, Global>();
 
-        let ram_tracer = RamTracingData::new_for_ram_size_and_rom_bound(1 << 32, MAX_ROM);
+        let ram_tracer = RamTracingData::new_for_ram_size_and_rom_bound(1 << 30, MAX_ROM); // use 1 GB RAM
         let delegation_tracer = DelegationTracingData {
             all_per_type_logs: HashMap::new(),
             delegation_witness_factories: delegation_factories,

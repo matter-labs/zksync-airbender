@@ -6,6 +6,7 @@ mod tracker;
 use allocation_data::StaticAllocationData;
 use era_cudart::result::CudaResult;
 use era_cudart_sys::CudaError;
+use itertools::Itertools;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::mem::forget;
@@ -21,20 +22,27 @@ pub trait StaticAllocationBackend: Sized {
 }
 
 pub struct InnerStaticAllocator<B: StaticAllocationBackend> {
-    _backend: B,
+    _backends: Vec<B>,
     tracker: StaticAllocationsTracker,
     log_chunk_size: u32,
 }
 
 impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
-    pub(crate) fn new(mut backend: B, log_chunk_size: u32) -> Self {
-        let ptr = backend.as_non_null();
-        let len = backend.len();
-        assert_ne!(len, 0);
-        assert!(len.trailing_zeros() >= log_chunk_size);
-        let tracker = StaticAllocationsTracker::new(ptr, len);
+    pub(crate) fn new(backends: impl IntoIterator<Item = B>, log_chunk_size: u32) -> Self {
+        let mut backends: Vec<B> = backends.into_iter().collect();
+        let ptrs_and_lens = backends
+            .iter_mut()
+            .map(|backend| {
+                let ptr = backend.as_non_null();
+                let len = backend.len();
+                assert_ne!(len, 0);
+                assert!(len.trailing_zeros() >= log_chunk_size);
+                (ptr, len)
+            })
+            .collect_vec();
+        let tracker = StaticAllocationsTracker::new(&ptrs_and_lens);
         Self {
-            _backend: backend,
+            _backends: backends,
             tracker,
             log_chunk_size,
         }
@@ -137,8 +145,8 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         }
     }
 
-    pub fn new(backend: B, log_chunk_size: u32) -> Self {
-        let allocator = InnerStaticAllocator::new(backend, log_chunk_size);
+    pub fn new(backends: impl IntoIterator<Item = B>, log_chunk_size: u32) -> Self {
+        let allocator = InnerStaticAllocator::new(backends, log_chunk_size);
         let inner = W::new(allocator);
         Self::from_inner(inner, log_chunk_size)
     }

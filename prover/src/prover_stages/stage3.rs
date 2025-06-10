@@ -888,8 +888,8 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                                                 add_quotient_term_contribution_in_ext2(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
                                             }
 
-                                            // We only derive with non-trivial addition if it's not-first access
-                                            if indirect_access_idx > 0 {
+                                            // We only derive with non-trivial addition if it's not-first access, or unaligned access
+                                            if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0{
                                                 let carry_bit = *memory_trace_view_row.get_unchecked(address_derivation_carry_bit.start());
                                                 let mut term_contribution = tau_in_domain_by_half;
                                                 term_contribution.mul_assign_by_base(&carry_bit);
@@ -928,8 +928,8 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                                                 add_quotient_term_contribution_in_ext2(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
                                             }
 
-                                            // We only derive with non-trivial addition if it's not-first access
-                                            if indirect_access_idx > 0 {
+                                            // We only derive with non-trivial addition if it's not-first access, or unaligned access
+                                            if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
                                                 let carry_bit = *memory_trace_view_row.get_unchecked(address_derivation_carry_bit.start());
                                                 let mut term_contribution = tau_in_domain_by_half;
                                                 term_contribution.mul_assign_by_base(&carry_bit);
@@ -2485,12 +2485,22 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                                     let carry_bit_column = indirect_access_columns.get_address_derivation_carry_bit_column();
                                     let offset = indirect_access_columns.get_offset();
                                     assert!(offset < 1<<16, "offset {} is too large and not supported", offset);
+                                    // we expect offset == 0 for the first indirect access and offset > 0 for others
+                                    assert_eq!(indirect_access_idx == 0, offset == 0);
                                     // address contribution is literal constant common, but a little convoluated
 
-                                    let address_contribution = if indirect_access_idx == 0 {
+                                    // let will multiply offset by inverse of tau in domain by half to make our live simpler below
+                                    let mut offset_adjusted = tau_in_domain_by_half_inv;
+                                    offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset));
+
+                                    let address_contribution = if indirect_access_idx == 0 || carry_bit_column.num_elements() == 0 {
+                                        let mem_offset_low = register_read_value_low;
+                                        let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
+                                        mem_offset_low.add_assign_base(&offset_adjusted);
+
                                         let mut address_contribution = memory_argument_challenges.memory_argument_linearization_challenges
                                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                        address_contribution.mul_assign_by_base(&register_read_value_low);
+                                        address_contribution.mul_assign_by_base(&mem_offset_low);
 
                                         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
                                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
@@ -2499,10 +2509,6 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                                         address_contribution
                                     } else {
-                                        // let will multiply offset by inverse of tau in domain by half to make our live simpler below
-                                        let mut offset_adjusted = tau_in_domain_by_half_inv;
-                                        offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset));
-
                                         // we compute an absolute address as read value + offset, so low part is register_low + offset - 2^16 * carry_bit
                                         let carry_bit = *memory_trace_view_row
                                             .get_unchecked(carry_bit_column.start());

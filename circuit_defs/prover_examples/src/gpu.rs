@@ -1,8 +1,8 @@
 use std::{alloc::Global, collections::HashMap, sync::Arc};
 
 use cs::utils::split_timestamp;
-use era_cudart::result::CudaResult;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::witness::trace_delegation::{DelegationCircuitType, DelegationTraceHost};
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{
@@ -47,11 +47,17 @@ use trace_and_split::{
 
 use crate::{NUM_QUERIES, POW_BITS};
 
+pub fn initialize_host_allocator_if_needed() {
+    if !MemPoolProverContext::is_host_allocator_initialized() {
+        // allocate 8 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
+        MemPoolProverContext::initialize_host_allocator(8, 1 << 8, 22).unwrap();
+    }
+}
+
 pub fn create_default_prover_context<'a>() -> MemPoolProverContext<'a> {
+    initialize_host_allocator_if_needed();
     let mut prover_context_config = ProverContextConfig::default();
-    // allocate 1k 4 MB chunks (so around 4GB of host ram).
     prover_context_config.allocation_block_log_size = 22;
-    prover_context_config.host_allocated_blocks = 512;
 
     let prover_context = MemPoolProverContext::new(&prover_context_config).unwrap();
     prover_context
@@ -72,10 +78,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     )],
     prover_context: &P,
     worker: &Worker,
-) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)>
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -462,10 +465,7 @@ pub fn trace_execution_for_gpu<
     ),
     HashMap<DelegationCircuitType, Vec<DelegationTraceHost<A>>>,
     Vec<FinalRegisterValue>,
-)
-where
-    [(); { C::SUPPORT_LOAD_LESS_THAN_WORD } as usize]:,
-{
+) {
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 

@@ -48,7 +48,7 @@ pub struct CommonDiffs<F: PrimeField> {
     pub exec_flag: Boolean,
     pub trapped: Option<Boolean>,
     pub trap_reason: Option<Num<F>>,
-    pub rd_value: Option<[Constraint<F>; 2]>,
+    pub rd_value: Vec<([Constraint<F>; 2], Boolean)>,
     pub new_pc_value: NextPcValue<F>,
 }
 
@@ -59,10 +59,10 @@ impl<F: PrimeField> CommonDiffs<F> {
             let mut flags = vec![];
             let mut variants = vec![];
             for el in sources.iter() {
-                if let Some(rd_candidate) = el.rd_value.as_ref() {
+                for (rd_candidate, flag) in el.rd_value.iter() {
                     let limb_constraint = rd_candidate[word_idx].clone();
                     assert!(limb_constraint.degree() <= 1);
-                    flags.push(el.exec_flag);
+                    flags.push(*flag);
                     variants.push(limb_constraint);
                 }
             }

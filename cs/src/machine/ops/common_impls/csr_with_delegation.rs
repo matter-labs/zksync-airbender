@@ -71,16 +71,14 @@ pub fn apply_csr_with_delegation<
             };
             cs.add_delegation_request(delegation_request);
 
-            let returned_value_low = cs.add_variable_from_constraint(
-                (Term::from(1) - Term::from(is_for_delegation)) * Term::from(external_oracle.0[0]),
-            );
-            let returned_value_high = cs.add_variable_from_constraint(
-                (Term::from(1) - Term::from(is_for_delegation)) * Term::from(external_oracle.0[1]),
-            );
+            // if we do DO delegate, then we require that oracle is 0 - and prover can still satisfy it
+            // even though `is_delegate` is not strictly boolean
+            cs.add_constraint(Term::from(is_for_delegation) * Term::from(external_oracle.0[0]));
+            cs.add_constraint(Term::from(is_for_delegation) * Term::from(external_oracle.0[1]));
 
             let returned_value = [
-                Constraint::<F>::from(returned_value_low),
-                Constraint::<F>::from(returned_value_high),
+                Constraint::<F>::from(external_oracle.0[0]),
+                Constraint::<F>::from(external_oracle.0[1]),
             ];
 
             if exec_flag.get_value(cs).unwrap_or(false) {
@@ -99,7 +97,7 @@ pub fn apply_csr_with_delegation<
                 exec_flag,
                 trapped: None,
                 trap_reason: None,
-                rd_value: Some(returned_value),
+                rd_value: vec![(returned_value, exec_flag)],
                 new_pc_value: NextPcValue::Default,
             }
         } else {

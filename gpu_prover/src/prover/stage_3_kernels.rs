@@ -1220,7 +1220,7 @@ impl Metadata {
                     } else {
                         alpha_offset += 4;
                     }
-                    if j > 0 {
+                    if j > 0 && indirect_access.address_derivation_carry_bit_num_elements > 0 {
                         alpha_offset += 1; // address_derivation_carry_bit constraint
                     }
                     flat_indirect_idx += 1;
@@ -1609,12 +1609,14 @@ impl Metadata {
             helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
             helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
             helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
-            for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
+            for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
                 let indirect_access =
                     &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
                 flat_indirect_idx += 1;
                 let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
                 alpha_offset += 1;
+                // we expect offset == 0 for the first indirect access and offset > 0 for others
+                assert_eq!(j == 0, indirect_access.offset == 0);
                 let offset = BF::from_u64_unchecked(indirect_access.offset as u64);
                 let mut constant = *mc
                     .address_low_challenge
@@ -1825,20 +1827,11 @@ pub fn compute_stage_3_composition_quotient_on_coset(
     assert!(num_stage_2_bf_cols <= e4_cols_offset);
     assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
     assert_eq!(setup_cols.rows(), n);
-    assert_eq!(
-        setup_cols.cols().next_multiple_of(2),
-        num_setup_cols.next_multiple_of(2)
-    );
+    assert_eq!(setup_cols.cols(), num_setup_cols);
     assert_eq!(witness_cols.rows(), n);
-    assert_eq!(
-        witness_cols.cols().next_multiple_of(2),
-        num_witness_cols.next_multiple_of(2),
-    );
+    assert_eq!(witness_cols.cols(), num_witness_cols,);
     assert_eq!(memory_cols.rows(), n);
-    assert_eq!(
-        memory_cols.cols().next_multiple_of(2),
-        num_memory_cols.next_multiple_of(2),
-    );
+    assert_eq!(memory_cols.cols(), num_memory_cols,);
     assert_eq!(quotient.rows(), n);
     assert_eq!(quotient.cols(), 4);
     let ProverCachedData {

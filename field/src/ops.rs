@@ -2,13 +2,13 @@
 // Platform-specific implementation for extension (if any) will be in the separate files
 
 #[cfg(all(not(target_arch = "riscv32"), feature = "use_division"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
     reduce_with_division_ct(value)
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "use_division"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
     core::intrinsics::const_eval_select(
         (value,),
@@ -18,7 +18,7 @@ pub(crate) const fn reduce_with_division(value: u32) -> u32 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn reduce_with_division_ct(value: u32) -> u32 {
     value % crate::Mersenne31Field::ORDER
 }
@@ -28,7 +28,7 @@ const fn reduce_with_division_ct(value: u32) -> u32 {
     feature = "use_division",
     not(feature = "modular_ops")
 ))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn reduce_with_division_rt_riscv(value: u32) -> u32 {
     // LLVM is a clever beast that does transform operation `a % MODULUS` into multiplication
     // for the fixed modulus. We want to inhibit such behavior, and will need assembly tricks for it
@@ -52,7 +52,7 @@ fn reduce_with_division_rt_riscv(value: u32) -> u32 {
     feature = "use_division",
     feature = "modular_ops"
 ))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn reduce_with_division_rt_riscv(value: u32) -> u32 {
     // here we add with 0 to get reduction
     add_mod(value, 0)
@@ -64,7 +64,7 @@ fn reduce_with_division_rt_riscv(value: u32) -> u32 {
 // generic implementation
 
 #[cfg(not(target_arch = "riscv32"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn add_mod(a: u32, b: u32) -> u32 {
     let mut sum = a.wrapping_add(b);
     let msb = sum & (1 << 31);
@@ -75,7 +75,7 @@ pub(crate) const fn add_mod(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(not(target_arch = "riscv32"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
     let mut sum = a.wrapping_sub(b);
     let msb = sum & (1 << 31);
@@ -86,7 +86,7 @@ pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(not(target_arch = "riscv32"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn mul_mod(a: u32, b: u32) -> u32 {
     let product = (a as u64) * (b as u64);
     let product_low = (product as u32) & ((1 << 31) - 1);
@@ -95,7 +95,7 @@ pub(crate) const fn mul_mod(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(not(target_arch = "riscv32"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 /// a * b + c
 pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
     // we can "save" on reduction, by using a fact that for N bit integer one can do multiplication + 2 additions
@@ -108,7 +108,7 @@ pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
     let t = mul_mod(a, b);
     add_mod(c, t)
@@ -117,13 +117,13 @@ pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
 // risc-v target specific implementation
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn add_mod(a: u32, b: u32) -> u32 {
     core::intrinsics::const_eval_select((a, b), add_mod_ct, add_mod_rt_riscv)
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn add_mod_ct(a: u32, b: u32) -> u32 {
     reduce_with_division_ct(a.wrapping_add(b))
 }
@@ -133,13 +133,13 @@ const fn add_mod_ct(a: u32, b: u32) -> u32 {
     feature = "use_division",
     not(feature = "modular_ops")
 ))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn add_mod_rt_riscv(a: u32, b: u32) -> u32 {
     reduce_with_division_rt_riscv(a.wrapping_add(b))
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn add_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {
@@ -156,13 +156,13 @@ fn add_mod_rt_riscv(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
     core::intrinsics::const_eval_select((a, b), sub_mod_ct, sub_mod_rt_riscv)
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn sub_mod_ct(a: u32, b: u32) -> u32 {
     reduce_with_division_ct(
         crate::Mersenne31Field::ORDER
@@ -176,7 +176,7 @@ const fn sub_mod_ct(a: u32, b: u32) -> u32 {
     feature = "use_division",
     not(feature = "modular_ops")
 ))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
     reduce_with_division_rt_riscv(
         crate::Mersenne31Field::ORDER
@@ -186,7 +186,7 @@ fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {
@@ -203,13 +203,13 @@ fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn mul_mod(a: u32, b: u32) -> u32 {
     core::intrinsics::const_eval_select((a, b), mul_mod_ct, mul_mod_rt_riscv)
 }
 
 #[cfg(target_arch = "riscv32")]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn mul_mod_ct(a: u32, b: u32) -> u32 {
     let product = (a as u64) * (b as u64);
     let product_low = (product as u32) & ((1 << 31) - 1);
@@ -222,7 +222,7 @@ const fn mul_mod_ct(a: u32, b: u32) -> u32 {
     feature = "use_division",
     not(feature = "modular_ops")
 ))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let product = (a as u64) * (b as u64);
     let product_low = (product as u32) & ((1 << 31) - 1);
@@ -231,7 +231,7 @@ fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
-#[inline(always)]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {

@@ -19,6 +19,7 @@ use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
 use prover::*;
 use risc_v_simulator::cycle::IMStandardIsaConfig;
+use risc_v_simulator::cycle::IMWithoutSignedMulDivIsaConfig;
 use risc_v_simulator::cycle::IWithoutByteAccessIsaConfig;
 use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
@@ -27,6 +28,7 @@ use worker::Worker;
 pub use bigint_with_control;
 pub use blake2_with_compression;
 pub use final_reduced_risc_v_machine;
+pub use machine_without_signed_mul_div;
 pub use prover;
 pub use reduced_risc_v_machine;
 pub use risc_v_cycles;
@@ -47,6 +49,10 @@ pub fn is_reduced_machine_configuration<C: MachineConfig>() -> bool {
         == std::any::TypeId::of::<IWithoutByteAccessIsaConfigWithDelegation>()
 }
 
+pub fn is_machine_without_signed_mul_div_configuration<C: MachineConfig>() -> bool {
+    std::any::TypeId::of::<C>() == std::any::TypeId::of::<IMWithoutSignedMulDivIsaConfig>()
+}
+
 pub fn is_final_reduced_machine_configuration<C: MachineConfig>() -> bool {
     std::any::TypeId::of::<C>() == std::any::TypeId::of::<IWithoutByteAccessIsaConfig>()
 }
@@ -58,6 +64,8 @@ pub fn num_cycles_for_machine<C: MachineConfig>() -> usize {
         reduced_risc_v_machine::NUM_CYCLES
     } else if is_final_reduced_machine_configuration::<C>() {
         final_reduced_risc_v_machine::NUM_CYCLES
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
+        machine_without_signed_mul_div::NUM_CYCLES
     } else {
         panic!("unknown machine configuration {:?}", C::default())
     }
@@ -70,6 +78,8 @@ pub fn trace_len_for_machine<C: MachineConfig>() -> usize {
         reduced_risc_v_machine::DOMAIN_SIZE
     } else if is_final_reduced_machine_configuration::<C>() {
         final_reduced_risc_v_machine::DOMAIN_SIZE
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
+        machine_without_signed_mul_div::DOMAIN_SIZE
     } else {
         panic!("unknown machine configuration {:?}", C::default())
     }
@@ -82,6 +92,8 @@ pub fn lde_factor_for_machine<C: MachineConfig>() -> usize {
         reduced_risc_v_machine::LDE_FACTOR
     } else if is_final_reduced_machine_configuration::<C>() {
         final_reduced_risc_v_machine::LDE_FACTOR
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
+        machine_without_signed_mul_div::LDE_FACTOR
     } else {
         panic!("unknown machine configuration {:?}", C::default())
     }
@@ -89,7 +101,9 @@ pub fn lde_factor_for_machine<C: MachineConfig>() -> usize {
 
 pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
 ) -> HashMap<u16, Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>> {
-    if is_default_machine_configuration::<C>() {
+    if is_default_machine_configuration::<C>()
+        || is_machine_without_signed_mul_div_configuration::<C>()
+    {
         // blake and bigint
         HashMap::from_iter(
             [
@@ -168,6 +182,8 @@ pub fn get_delegation_compiled_circuits_for_machine_type<C: MachineConfig>(
         get_delegation_compiled_circuits_for_reduced_machine()
     } else if is_final_reduced_machine_configuration::<C>() {
         vec![]
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
+        get_delegation_compiled_circuits_for_machine_without_signed_mul_div_configuration()
     } else {
         panic!("unknown machine configuration {:?}", C::default())
     }
@@ -242,6 +258,32 @@ pub fn all_delegation_circuits_precomputations<A: GoodAllocator, B: GoodAllocato
         //     get_poseidon2_compress_with_witness_circuit_setup(worker),
         // ),
     ]
+}
+
+pub fn get_delegation_compiled_circuits_for_machine_without_signed_mul_div_configuration(
+) -> Vec<(u32, DelegationProcessorDescription)> {
+    let mut machines = vec![];
+    machines.push((
+        blake2_with_compression::DELEGATION_TYPE_ID as u32,
+        blake2_with_compression::get_delegation_circuit(),
+    ));
+    machines.push((
+        bigint_with_control::DELEGATION_TYPE_ID,
+        bigint_with_control::get_delegation_circuit(),
+    ));
+
+    assert_eq!(
+        machines.len(),
+        IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS.len()
+    );
+    for i in 0..machines.len() {
+        assert_eq!(
+            machines[i].0,
+            IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS[i]
+        );
+    }
+
+    machines
 }
 
 pub mod all_parameters {

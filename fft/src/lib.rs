@@ -58,6 +58,10 @@ unsafe fn prefetch_next_line(ptr: *const Mersenne31Field) {
     _mm_prefetch(ptr as *const i8, _MM_HINT_ET0);
 }
 
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[inline(always)]
+unsafe fn prefetch_next_line(ptr: *const Mersenne31Field) {}
+
 use std::time::Instant;
 pub struct Timer {
     starting_time: Instant,

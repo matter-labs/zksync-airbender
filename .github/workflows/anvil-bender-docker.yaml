@@ -1,0 +1,42 @@
+name: Anvil Bender - Build docker image
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag of a built image to deploy (latest by default)"
+        type: string
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-images:
+    name: Anvil Bender - Build and Push Docker Image
+    runs-on: [ matterlabs-ci-runner-high-performance ]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          submodules: "recursive"
+
+      - name: setup-env
+        run: |
+          echo ZKSYNC_HOME=$(pwd) >> $GITHUB_ENV
+          echo CI=1 >> $GITHUB_ENV
+          echo $(pwd)/bin >> $GITHUB_PATH
+          echo CI=1 >> .env
+          echo IN_DOCKER=1 >> .env
+
+
+      - name: build docker
+        run: |
+          docker build -f docker/anvil-bender/Dockerfile -t matterlabs/ohbender:${{ inputs.image_tag }} .
+        
+
+      - name: update-image
+        run: |
+          docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_TOKEN }}
+          gcloud auth configure-docker us-docker.pkg.dev -q
+          docker push matterlabs/ohbender:${{ inputs.image_tag }}

@@ -7,10 +7,12 @@ pub mod constants;
 pub mod csr;
 pub mod jump;
 pub mod lui_auipc;
-pub mod memory;
+// pub mod memory;
+pub mod load;
 pub mod mop;
 pub mod mul_div;
 pub mod shift;
+pub mod store;
 
 pub mod common_impls;
 
@@ -25,10 +27,12 @@ pub use self::constants::*;
 pub use self::csr::*;
 pub use self::jump::*;
 pub use self::lui_auipc::*;
-pub use self::memory::*;
+// pub use self::memory::*;
+pub use self::load::*;
 pub use self::mop::*;
 pub use self::mul_div::*;
 pub use self::shift::*;
+pub use self::store::*;
 
 pub use self::common_impls::*;
 

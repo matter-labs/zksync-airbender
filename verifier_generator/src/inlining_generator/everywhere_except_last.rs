@@ -1472,7 +1472,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                         }
 
                         // carry bit is boolean
-                        if idx > 0 {
+                        if idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
                             let carry_bit_expr = read_value_expr(
                                 ColumnAddress::MemorySubtree(address_derivation_carry_bit.start()),
                                 idents,
@@ -1542,25 +1542,29 @@ pub(crate) fn transform_delegation_ram_conventions(
 
                         // carry bit is boolean
                         if idx > 0 {
-                            let carry_bit_expr = read_value_expr(
-                                ColumnAddress::MemorySubtree(address_derivation_carry_bit.start()),
-                                idents,
-                                false,
-                            );
+                            if address_derivation_carry_bit.num_elements() > 0 {
+                                let carry_bit_expr = read_value_expr(
+                                    ColumnAddress::MemorySubtree(
+                                        address_derivation_carry_bit.start(),
+                                    ),
+                                    idents,
+                                    false,
+                                );
 
-                            let t = quote! {
-                                let #individual_term_ident = {
-                                    let carry_bit = #carry_bit_expr;
+                                let t = quote! {
+                                    let #individual_term_ident = {
+                                        let carry_bit = #carry_bit_expr;
 
-                                    let mut #individual_term_ident = carry_bit;
-                                    #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-                                    #individual_term_ident.mul_assign(&carry_bit);
+                                        let mut #individual_term_ident = carry_bit;
+                                        #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
+                                        #individual_term_ident.mul_assign(&carry_bit);
 
-                                    #individual_term_ident
+                                        #individual_term_ident
+                                    };
                                 };
-                            };
 
-                            streams.push(t);
+                                streams.push(t);
+                            }
                         }
                     }
                 }
