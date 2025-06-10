@@ -22,110 +22,110 @@ pub(crate) enum B2N_LAUNCH {
 // I'd rather use a hashmap containing vectors of different sizes instead of a list of fixed-size lists,
 // but Rust didn't let me declare hashmaps or vectors const.
 #[allow(non_camel_case_types)]
-pub(crate) type N2B_Plan = [Option<(N2B_LAUNCH, u32)>; 3];
+pub(crate) type N2B_Plan = [Option<(N2B_LAUNCH, u32, u32)>; 3];
 
 pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 9] = [
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_8_WARP, 8)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
         None,
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 9)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 9, 4096)),
         None,
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 10)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 10, 4096)),
         None,
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 11)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 11, 4096)),
         None,
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 12)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 12, 4096)),
         None,
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7)),
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7)),
-        Some((N2B_LAUNCH::FINAL_7_WARP, 7)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((N2B_LAUNCH::FINAL_7_WARP, 7, 4 * 128)),
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7)),
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7)),
-        Some((N2B_LAUNCH::FINAL_8_WARP, 8)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7)),
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_8_WARP, 8)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
     ],
     [
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8)),
-        Some((N2B_LAUNCH::FINAL_8_WARP, 8)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
     ],
 ];
 
 #[allow(non_camel_case_types)]
-pub(crate) type B2N_Plan = [Option<(B2N_LAUNCH, u32)>; 3];
+pub(crate) type B2N_Plan = [Option<(B2N_LAUNCH, u32, u32)>; 3];
 
 pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
     [
-        Some((B2N_LAUNCH::INITIAL_8_WARP, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         None,
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 9)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 9, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         None,
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 10)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 10, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         None,
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 11)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 11, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         None,
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 12)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 12, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         None,
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_7_WARP, 7)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7)),
+        Some((B2N_LAUNCH::INITIAL_7_WARP, 7, 4 * 128)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7, 4096)),
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_8_WARP, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7)),
+        Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7, 4096)),
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_8_WARP, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7)),
+        Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 7, 4096)),
     ],
     [
-        Some((B2N_LAUNCH::INITIAL_8_WARP, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
-        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8)),
+        Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
     ],
 ];
 
 pub(crate) fn get_main_to_coset_launch_chain(
     log_n: usize,
-) -> (Vec<(N2B_LAUNCH, u32)>, Vec<(B2N_LAUNCH, u32)>) {
+) -> (Vec<(N2B_LAUNCH, u32, u32)>, Vec<(B2N_LAUNCH, u32, u32)>) {
     assert!(log_n >= 16);
     let n2b_plan = &STAGE_PLANS_N2B[log_n - 16];
     let b2n_plan = &STAGE_PLANS_B2N[log_n - 16];

@@ -594,10 +594,6 @@ fn run_bitrev_Z_to_natural_composition_main_evals(log_n_range: Range<usize>, num
             fft_natural_to_bitreversed(&mut cpu_ref, E2::ONE, E2::ONE, &twiddles);
             bitreverse_enumeration_inplace(&mut cpu_ref);
             for idx in 0..n {
-                println!(
-                    "log_n {} eval {} cpu_ref {}",
-                    log_n, evals[idx], cpu_ref[idx]
-                );
                 assert_eq!(
                     evals[idx], cpu_ref[idx],
                     "2^{} ntt {} idx {}",
@@ -725,6 +721,36 @@ fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_
                 );
             }
         }
+        // let num_Z_cols = num_bf_cols / 2;
+        // for ntt in 0..num_Z_cols {
+        //     let start = 2 * ntt * stride + OFFSET;
+        //     let range = start..start + n as usize;
+        //     let gpu_c0s = &dst_host[range.clone()];
+        //     let src_c0s = &src_host[range];
+        //     let start = (2 * ntt + 1) * stride + OFFSET;
+        //     let range = start..start + n as usize;
+        //     let gpu_c1s = &dst_host[range.clone()];
+        //     let src_c1s = &src_host[range];
+        //     let mut cpu_ref: Vec<E2> = src_c0s
+        //         .iter()
+        //         .zip(src_c1s.iter())
+        //         .map(|(c0, c1)| E2::from_coeffs_in_base(&[*c0, *c1]))
+        //         .collect();
+        //     ifft_natural_to_natural::<BF, E2, E2>(&mut cpu_ref, E2::ONE, inv_twiddles);
+        //     // fft_natural_to_bitreversed(&mut cpu_ref, tau_inv_pow_H_over_2, tau, fwd_twiddles);
+        //     bitreverse_enumeration_inplace(&mut cpu_ref);
+        //     for i in 0..n {
+        //         let gpu_eval = E2::from_coeffs_in_base(&[gpu_c0s[i], gpu_c1s[i]]);
+        //         assert_eq!(
+        //             cpu_ref[i],
+        //             gpu_eval,
+        //             "2^{} ntt {} i {}",
+        //             log_n,
+        //             ntt,
+        //             i,
+        //         );
+        //     }
+        // }
     }
     ctx.destroy().unwrap();
 }
@@ -756,7 +782,7 @@ fn test_bitrev_Z_to_natural_trace_coset_evals() {
 #[serial]
 #[ignore]
 fn test_bitrev_Z_to_natural_trace_coset_evals_large() {
-    run_bitrev_Z_to_natural_trace_coset_evals(17..22, 2);
+    run_bitrev_Z_to_natural_trace_coset_evals(22..23, 8);
 }
 
 #[test]
@@ -789,19 +815,18 @@ fn test_bitrev_Z_to_natural_composition_main_evals_large() {
     run_bitrev_Z_to_natural_composition_main_evals(17..22, 4);
 }
 
-#[test]
-#[serial]
-fn test_natural_main_evals_to_natural_coset_evals() {
-    run_natural_main_evals_to_natural_coset_evals(
-        1..16,
-        // 1..17,
-        2 * REAL_COLS_PER_BLOCK as usize + 4,
-    );
-}
-
 // #[test]
 // #[serial]
-// #[ignore]
-// fn test_natural_main_evals_to_natural_coset_evals_large() {
-//     run_natural_main_evals_to_natural_coset_evals(17..22, 4);
+// fn test_natural_main_evals_to_natural_coset_evals() {
+//     run_natural_main_evals_to_natural_coset_evals(
+//         1..16,
+//         2 * REAL_COLS_PER_BLOCK as usize + 4,
+//     );
 // }
+
+#[test]
+#[serial]
+#[ignore]
+fn test_natural_main_evals_to_natural_coset_evals_large() {
+    run_natural_main_evals_to_natural_coset_evals(22..23, 8);
+}
