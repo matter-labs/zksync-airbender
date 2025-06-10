@@ -17,6 +17,7 @@ tools/verifier/target
 !non_determinism_source
 !poseidon2
 !prover
+!reduced_keccak
 !risc_v_simulator
 !riscv_common
 !trace_holder
