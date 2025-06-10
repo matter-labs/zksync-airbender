@@ -163,6 +163,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "reduced_keccak"
+version = "0.1.0"
+
+[[package]]
 name = "reduced_risc_v_machine_verifier"
 version = "0.1.0"
 dependencies = [
@@ -314,6 +318,7 @@ name = "zksync_os_verifier"
 version = "0.1.0"
 dependencies = [
  "full_statement_verifier",
+ "reduced_keccak",
  "riscv_common",
  "verifier",
 ]

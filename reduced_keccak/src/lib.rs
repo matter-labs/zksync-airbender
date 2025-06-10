@@ -1,4 +1,9 @@
-// Keccak -256 implementation for RV32, using u32 words.
+#![no_std]
+
+// Keccak-256 implementation for RV32, using u32 words.
+// This is a special implementation that can be run on our reduced machine
+// therefore it can run as part of recursion flow.
+// WARNING: this api is little-endian based (both inputs and outputs).
 
 /// Keccak parameters for Keccak-256
 const LANES: usize = 25; // 5×5 lanes
@@ -214,3 +219,57 @@ const ROUND_CONSTANTS: [u64; 24] = [
     0x0000000080000001,
     0x8000000080008008,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reverse_endianness(input: &[u32; 8]) -> [u32; 8] {
+        let mut result = [0u32; 8];
+        for i in 0..8 {
+            result[i] = input[i].swap_bytes();
+        }
+        result
+    }
+
+    #[test]
+    fn test_keccak256_words() {
+        // Test vector 1: Empty input
+        let input = [];
+        let expected: [u32; 8] = [
+            0xc5d2_4601,
+            0x86f7_233c,
+            0x927e_7db2,
+            0xdcc7_03c0,
+            0xe500_b653,
+            0xca82_273b,
+            0x7bfa_d804,
+            0x5d85_a470,
+        ];
+
+        assert_eq!(reverse_endianness(&keccak256_words(&input)), expected);
+
+        // Test vector 2: "16777216" - in little endian, so 0x00000001
+        let input = [16777216];
+        let expected = [
+            0x51f81bcd, 0xfc324a0d, 0xff2b5bec, 0x9d92e21c, 0xbebc4d5e, 0x29d3a3d3, 0x0de3e03f,
+            0xbeab8d7f,
+        ];
+
+        assert_eq!(
+            reverse_endianness(&keccak256_words(&input)),
+            expected,
+            "Assertion failed! Expected: {:x?}, Got: {:x?}",
+            expected,
+            reverse_endianness(&keccak256_words(&input))
+        );
+
+        // Test vector 3: "1, 2, 3" - in little endian, so 0x01000000 02000000 03000000
+        let input = [1, 2, 3];
+        let expected = [
+            0x9186e459, 0xff7edfa5, 0xacc87375, 0x3676278c, 0xc4c65f18, 0x3513b583, 0x46230c03,
+            0x1fd46cad,
+        ];
+        assert_eq!(reverse_endianness(&keccak256_words(&input)), expected);
+    }
+}

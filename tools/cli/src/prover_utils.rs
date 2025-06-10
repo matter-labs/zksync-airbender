@@ -50,6 +50,8 @@ pub enum VerifierCircuitsIdentifiers {
     RecursionLayer = 1,
     FinalLayer = 2,
     RiscV = 3,
+    /// Combine 2 proofs (from recursion layers) into one.
+    // This is used in OhBender to combine previous block proof with current one.
     CombinedRecursionLayers = 4,
 }
 
