@@ -22,5 +22,6 @@ itertools = "0.14.0"
 gpu_prover = { workspace = true }
 rayon = "1.10.0"
 risc_v_simulator = { workspace = true, features = ["delegation"] }
+crossbeam = "0.8.4"
 crossbeam-channel = "0.5.15"
 log = { workspace = true}

@@ -13,6 +13,7 @@ use risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
 use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::delegations::DelegationsCSRProcessor;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::time::Instant;
@@ -380,9 +381,14 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     let mut ram_tracing_data = RamTracingData::<RAM_SIZE, false>::new();
     let cycle_tracing_data = CycleTracingData::with_cycles_capacity(0);
     let delegation_tracing_data = DelegationTracingData::default();
+    let delegation_chunks_counts = RefCell::new(HashMap::new());
     let delegation_swap_fn = |delegation_id, witness| {
         if let Some(witness) = witness {
             log::info!("full delegation {delegation_id} witness produced");
+            *delegation_chunks_counts
+                .borrow_mut()
+                .entry(delegation_id)
+                .or_default() += 1;
             let result = WorkerResult::DelegationWitness(witness);
             results.send(result).unwrap();
         }
@@ -434,14 +440,21 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
         tracer.current_timestamp = new_timestamp;
     }
     assert!(end_reached, "end of the execution was never reached");
-    for (delegation_id, witness) in tracer.delegation_tracing_data.witnesses.drain() {
+    let mut witnesses = tracer.delegation_tracing_data.witnesses;
+    let mut delegation_chunks_counts = delegation_chunks_counts.into_inner();
+    for (delegation_id, witness) in witnesses.drain() {
         witness.assert_consistency();
         log::info!(
             "delegation {delegation_id} witness with {} delegations produced",
             witness.write_timestamp.len()
         );
+        *delegation_chunks_counts.entry(delegation_id).or_default() += 1;
         let result = WorkerResult::DelegationWitness(witness);
         results.send(result).unwrap();
     }
+    let result = WorkerResult::DelegationTracingResult {
+        delegation_chunks_counts,
+    };
+    results.send(result).unwrap();
     log::info!("tracing delegations finished");
 }

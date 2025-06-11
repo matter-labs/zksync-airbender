@@ -16,6 +16,7 @@ use std::ops::DerefMut;
 
 static DEFAULT_STREAM: CudaStream = CudaStream::DEFAULT;
 
+#[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
     pub powers_of_w_coarse_log_count: u32,
     pub allocation_block_log_size: u32,

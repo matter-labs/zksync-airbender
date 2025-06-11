@@ -7,7 +7,8 @@ use field::Mersenne31Field;
 use gpu_prover::cudart::device::set_device;
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
-use gpu_prover::prover::memory::commit_memory;
+use gpu_prover::prover::memory::{commit_memory, MemoryCommitmentJob};
+use gpu_prover::prover::proof::ProofJob;
 use gpu_prover::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use gpu_prover::witness::CircuitType;
 use prover::merkle_trees::MerkleTreeCapVarLength;
@@ -33,6 +34,11 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
+pub enum GpuWorkRequest<A: GoodAllocator> {
+    MemoryCommitment(MemoryCommitmentRequest<A>),
+    Proof(ProofRequest<A>),
+}
+
 pub struct ProofRequest<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub circuit: Arc<CompiledCircuitArtifact<BF>>,
@@ -48,180 +54,136 @@ pub struct ProofResult<A: GoodAllocator> {
     pub proof: Proof,
 }
 
-pub enum GpuWorkBatch<A: GoodAllocator> {
-    MemoryCommitment {
-        timer: Instant,
-        requests: Receiver<MemoryCommitmentRequest<A>>,
-        results: Sender<WorkerResult<A>>,
-    },
-    Proof {
-        timer: Instant,
-        requests: Receiver<ProofRequest<A>>,
-        results: Sender<WorkerResult<A>>,
-    },
-}
-
-#[allow(dead_code)]
-struct GpuWorker<C: ProverContext> {
-    device_id: i32,
-    context: C,
-}
-
-impl<C: ProverContext> GpuWorker<C> {
-    fn new(device_id: i32, prover_context_config: ProverContextConfig) -> CudaResult<Self> {
-        LOCAL_LOGGER.with_borrow_mut(|l| {
-            l.name = format!("GPU[{device_id}]");
-        });
-        set_device(device_id)?;
-        let context = C::new(&prover_context_config)?;
-        Ok(GpuWorker { device_id, context })
-    }
-
-    fn process_memory_commitment_batch(
-        &self,
-        timer: Instant,
-        requests: Receiver<MemoryCommitmentRequest<C::HostAllocator>>,
-        results: Sender<WorkerResult<C::HostAllocator>>,
-    ) -> CudaResult<()> {
-        LOCAL_LOGGER.with_borrow_mut(|l| {
-            l.timer = timer;
-        });
-        log::info!("started processing memory commitment batch");
-        let context = &self.context;
-        let mut current_transfer = None;
-        let mut current_job = None;
-        for request in requests.iter().map(|r| Some(r)).chain([None, None]) {
-            let mut transfer = if let Some(request) = request {
-                log::info!(
-                    "transferring trace for memory commitment for circuit type: {:?}, index: {}",
-                    request.circuit_type,
-                    request.index
-                );
-                let mut transfer = TracingDataTransfer::new(
-                    request.circuit_type,
-                    request.tracing_data.clone(),
-                    context,
-                )?;
-                transfer.schedule_transfer(context)?;
-                Some((request, transfer))
-            } else {
-                None
-            };
-            mem::swap(&mut current_transfer, &mut transfer);
-            let mut job = if let Some((request, transfer)) = transfer {
-                log::info!(
-                    "producing commitment for circuit type: {:?}, index: {}",
-                    request.circuit_type,
-                    request.index
-                );
-                let job = commit_memory(
-                    transfer,
-                    &request.circuit,
-                    request.log_lde_factor,
-                    request.log_tree_cap_size,
-                    context,
-                )?;
-                Some((request, job))
-            } else {
-                None
-            };
-            mem::swap(&mut current_job, &mut job);
-            if let Some((request, job)) = job {
-                let MemoryCommitmentRequest {
-                    circuit_type,
-                    index,
-                    tracing_data,
-                    ..
-                } = request;
-                let merkle_tree_caps = job.finish()?;
-                log::info!(
-                    "produced memory commitment for circuit type: {:?}, index: {}",
-                    circuit_type,
-                    index
-                );
-                let result = MemoryCommitmentResult {
-                    index,
-                    tracing_data,
-                    merkle_tree_caps,
-                };
-                results
-                    .send(WorkerResult::MemoryCommitment(result))
-                    .unwrap()
-            }
-        }
-        assert!(current_transfer.is_none());
-        assert!(current_job.is_none());
-        log::info!("finished processing memory commitment batch");
-        Ok(())
-    }
-
-    fn process_proof_batch(
-        &self,
-        _timer: Instant,
-        _requests: Receiver<ProofRequest<C::HostAllocator>>,
-        _results: Sender<WorkerResult<C::HostAllocator>>,
-    ) -> CudaResult<()> {
-        todo!()
-        // LOCAL_LOGGER.with_borrow_mut(|l| {
-        //     l.timer = timer;
-        // });
-        // log::info!("started processing proof batch");
-        // for request in requests {
-        //     let ProofRequest {
-        //         circuit_type,
-        //         circuit,
-        //         log_lde_factor,
-        //         log_tree_cap_size,
-        //         index,
-        //         tracing_data,
-        //     } = request;
-        //
-        //     // Process the proof request
-        // }
-        // log::info!("finished processing proof batch");
-        // Ok(())
-    }
-
-    fn process_batches(
-        &mut self,
-        batches: Receiver<GpuWorkBatch<C::HostAllocator>>,
-    ) -> CudaResult<()> {
-        for batch in batches {
-            match batch {
-                GpuWorkBatch::MemoryCommitment {
-                    timer,
-                    requests,
-                    results,
-                } => {
-                    self.process_memory_commitment_batch(timer, requests, results)?;
-                }
-                GpuWorkBatch::Proof {
-                    timer,
-                    requests,
-                    results,
-                } => {
-                    self.process_proof_batch(timer, requests, results)?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
 pub fn get_gpu_worker_func<C: ProverContext>(
     device_id: i32,
-    timer: Instant,
     prover_context_config: ProverContextConfig,
-    batches: Receiver<GpuWorkBatch<C::HostAllocator>>,
     is_initialized: Sender<()>,
+    timer_reset: Receiver<Instant>,
+    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator>>>,
+    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        LOCAL_LOGGER.with_borrow_mut(|l| {
-            l.timer = timer;
-        });
-        let mut worker = GpuWorker::<C>::new(device_id, prover_context_config).unwrap();
-        is_initialized.send(()).unwrap();
-        worker.process_batches(batches).unwrap();
-        log::info!("GPU worker finished processing batches");
+        gpu_worker::<C>(
+            device_id,
+            prover_context_config,
+            is_initialized,
+            timer_reset,
+            requests,
+            results,
+        )
+        .unwrap()
     }
+}
+
+enum JobType<'a, C: ProverContext> {
+    MemoryCommitment(MemoryCommitmentJob<'a, C>),
+    Proof(ProofJob<'a, C>),
+}
+
+fn gpu_worker<C: ProverContext>(
+    device_id: i32,
+    prover_context_config: ProverContextConfig,
+    is_initialized: Sender<()>,
+    timer_reset: Receiver<Instant>,
+    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator>>>,
+    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
+) -> CudaResult<()> {
+    LOCAL_LOGGER.with_borrow_mut(|l| {
+        l.name = format!("GPU[{device_id}]");
+    });
+    set_device(device_id)?;
+    let context = C::new(&prover_context_config)?;
+    log::info!("GPU worker initialized");
+    is_initialized.send(()).unwrap();
+    drop(is_initialized);
+    let timer = timer_reset.recv().unwrap();
+    drop(timer_reset);
+    LOCAL_LOGGER.with_borrow_mut(|l| {
+        l.timer = timer;
+    });
+    log::info!("timer reset");
+    let mut current_transfer = None;
+    let mut current_job = None;
+    for request in requests {
+        let mut transfer = if let Some(request) = request {
+            let (circuit_type, index, data) = match &request {
+                GpuWorkRequest::MemoryCommitment(request) => (
+                    request.circuit_type,
+                    request.index,
+                    request.tracing_data.clone(),
+                ),
+                GpuWorkRequest::Proof(_) => todo!(),
+            };
+            log::info!(
+                "transferring trace for circuit type: {:?}, index: {}",
+                circuit_type,
+                index
+            );
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, &context)?;
+            transfer.schedule_transfer(&context)?;
+            Some((request, transfer))
+        } else {
+            None
+        };
+        mem::swap(&mut current_transfer, &mut transfer);
+        let mut job = if let Some((request, transfer)) = transfer {
+            let job = match &request {
+                GpuWorkRequest::MemoryCommitment(request) => {
+                    log::info!(
+                        "producing memory commitment for circuit type: {:?}, index: {}",
+                        request.circuit_type,
+                        request.index
+                    );
+                    let job = commit_memory(
+                        transfer,
+                        &request.circuit,
+                        request.log_lde_factor,
+                        request.log_tree_cap_size,
+                        &context,
+                    )?;
+                    JobType::MemoryCommitment(job)
+                }
+                GpuWorkRequest::Proof(_) => todo!(),
+            };
+            Some((request, job))
+        } else {
+            None
+        };
+        mem::swap(&mut current_job, &mut job);
+        let result = if let Some((request, job)) = job {
+            match request {
+                GpuWorkRequest::MemoryCommitment(request) => {
+                    let MemoryCommitmentRequest {
+                        circuit_type,
+                        index,
+                        tracing_data,
+                        ..
+                    } = request;
+                    let merkle_tree_caps = match job {
+                        JobType::MemoryCommitment(job) => job.finish()?,
+                        JobType::Proof(_) => unreachable!(),
+                    };
+                    log::info!(
+                        "produced memory commitment for circuit type: {:?}, index: {}",
+                        circuit_type,
+                        index
+                    );
+                    let result = MemoryCommitmentResult {
+                        index,
+                        tracing_data,
+                        merkle_tree_caps,
+                    };
+                    Some(WorkerResult::MemoryCommitment(result))
+                }
+                GpuWorkRequest::Proof(_) => todo!(),
+            }
+        } else {
+            None
+        };
+        results.send(result).unwrap()
+    }
+    assert!(current_transfer.is_none());
+    assert!(current_job.is_none());
+    log::info!("GPU worker finished");
+    Ok(())
 }
