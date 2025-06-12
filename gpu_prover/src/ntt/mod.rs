@@ -457,14 +457,14 @@ pub fn natural_main_evals_to_natural_coset_evals(
         natural_trace_main_evals_to_bitrev_Z(
             inputs_matrix,
             outputs_matrix,
-            log_n as usize,
+            log_n,
             num_bf_cols,
             exec_stream,
         )?;
         bitrev_Z_to_natural_trace_coset_evals(
             &const_outputs_matrix,
             outputs_matrix,
-            log_n as usize,
+            log_n,
             num_bf_cols,
             exec_stream,
         )
@@ -495,13 +495,11 @@ pub fn natural_main_evals_to_natural_coset_evals(
     assert!(log_n <= OMEGA_LOG_ORDER as usize);
     assert_eq!(num_bf_cols % 2, 0);
     let n = 1 << log_n;
-    let num_Z_cols = (num_bf_cols / 2) as u32;
+    let num_Z_cols = num_bf_cols / 2;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(inputs_matrix.cols(), num_bf_cols);
     assert_eq!(outputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.cols(), num_bf_cols);
-    let log_n = log_n as u32;
-    let n = n as u32;
 
     let inputs_matrix = inputs_matrix.as_ptr_and_stride();
     let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
@@ -516,9 +514,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
 
     // let l2_working_set_e2_elems = 1 << 23;
     // We'd like the L2 to accommodate 2 work packets at once (one per stream)
-    let work_packet_elems = (l2_working_set_e2_elems >> 1) as u32;
+    let work_packet_elems = l2_working_set_e2_elems >> 1;
 
     println!("work_packet_elems {}", work_packet_elems);
+
+    // If the L2 work packet can fit at least 1 full column, we'll include
+    // the first n2b and last b2n launches in the persistence chain.
+    let work_packet_has_full_cols = work_packet_elems >= n;
 
     // make sure data chunks that will be assigned to middle kernels are
     // independently contiguous
@@ -527,23 +529,31 @@ pub fn natural_main_evals_to_natural_coset_evals(
     let second_to_last_kernel_exchg_region_size = 1 << (log_n - b2n_plan[b2n_plan.len() - 1].1);
     assert!(work_packet_elems >= second_to_last_kernel_exchg_region_size);
 
-    // Run first n2b kernel over the entire input.
-    let (kern, stages_first_launch, vals_per_block) = n2b_plan[0];
-    assert_eq!(kern, NONFINAL_7_OR_8_BLOCK);
-    let num_chunks = (num_Z_cols + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
-    let grid_dim_x = n / vals_per_block;
-    let block_dim_x = 512;
-    let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, exec_stream);
-    let args = N2BMultiStageArguments::new(
-        inputs_matrix,
-        outputs_matrix_mut,
-        0,
-        stages_first_launch,
-        log_n,
-        num_Z_cols,
-        0,
-    );
-    N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
+    let mut persistence_chain_start_stage = 0;
+
+    if !work_packet_has_full_cols {
+        // Run first n2b kernel over the entire input.
+        let (kern, stages_first_launch, vals_per_block) = n2b_plan[0];
+        assert_eq!(kern, NONFINAL_7_OR_8_BLOCK);
+        let grid_dim_x = n / vals_per_block;
+        let grid_dim_y = (num_Z_cols as u32 + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
+        let block_dim_x = 512;
+        let config = CudaLaunchConfig::basic((grid_dim_x, grid_dim_y), block_dim_x, exec_stream);
+        let args = N2BMultiStageArguments::new(
+            inputs_matrix,
+            outputs_matrix_mut,
+            0,
+            stages_first_launch,
+            log_n as u32,
+            num_Z_cols as u32,
+            0,
+        );
+        N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
+        persistence_chain_start_stage += stages_first_launch;
+    }
+
+    let Z_cols_per_packet = std::cmp::min(1, work_packet_elems / n) as usize;
+    let rows_per_packet = std::cmp::min(n, work_packet_elems);
 
     start_event.record(exec_stream)?;
     aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
@@ -554,30 +564,30 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
     let stream_refs = [exec_stream, aux_stream];
-    let work_packets_per_col = std::cmp::max(1, n / work_packet_elems);
-    let n2b_packet_plan_details: Vec<_> = (&n2b_plan[1..])
+    let chain_start = if work_packet_has_full_cols { 0 } else { 1 };
+    let n2b_packet_plan_details: Vec<_> = (&n2b_plan[chain_start..])
         .iter()
         .map(|&(kern, stages_this_launch, vals_per_block)| {
             let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, u32, u32) = match kern
             {
                 FINAL_7_WARP => (
                     main_domain_evals_to_Z_final_7_stages_warp,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     128,
                 ),
                 FINAL_8_WARP => (
                     main_domain_evals_to_Z_final_8_stages_warp,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     128,
                 ),
                 FINAL_9_TO_12_BLOCK => (
                     main_domain_evals_to_Z_final_9_to_12_stages_block,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     512,
                 ),
                 NONFINAL_7_OR_8_BLOCK => (
                     evals_to_Z_nonfinal_7_or_8_stages_block,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     512,
                 ),
             };
@@ -590,29 +600,30 @@ pub fn natural_main_evals_to_natural_coset_evals(
             )
         })
         .collect_vec();
-    let b2n_packet_plan_details: Vec<_> = (&b2n_plan[..b2n_plan.len() - 1])
+    let chain_lim = if work_packet_has_full_cols { b2n_plan.len() } else { b2n_plan.len() - 1 }; 
+    let b2n_packet_plan_details: Vec<_> = (&b2n_plan[..chain_lim])
         .iter()
         .map(|&(kern, stages_this_launch, vals_per_block)| {
             let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, u32, u32) = match kern
             {
                 INITIAL_7_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     128,
                 ),
                 INITIAL_8_WARP => (
                     bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     128,
                 ),
                 INITIAL_9_TO_12_BLOCK => (
                     bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     512,
                 ),
                 NONINITIAL_7_OR_8_BLOCK => (
                     bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
-                    work_packet_elems / vals_per_block,
+                    rows_per_packet / vals_per_block,
                     512,
                 ),
             };
@@ -634,21 +645,28 @@ pub fn natural_main_evals_to_natural_coset_evals(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    let num_work_packets = (work_packets_per_col * num_Z_cols) as usize;
-    let work_packet_start_stage = stages_first_launch;
-    let mut start_stage = work_packet_start_stage;
+    let work_packets_per_col = std::cmp::max(1, n / work_packet_elems);
+    let cols_per_work_packet = std::cmp::max(1, n / work_packet_elems);
+    let num_work_packets = if work_packet_has_full_cols {
+        num_Z_cols.div_ceil(cols_per_work_packet) as usize
+    } else {
+        (work_packets_per_col * num_Z_cols) as usize
+    };
+    let mut start_stage = persistence_chain_start_stage;
     for first_work_packet in (0..num_work_packets).step_by(2) {
-        start_stage = work_packet_start_stage;
+        start_stage = persistence_chain_start_stage;
         let mut matrices_both_packets = [None, None];
         for &i in [0, 1].iter() {
             let work_packet = first_work_packet + i;
             if work_packet < num_work_packets {
-                let Z_col = work_packet % num_Z_cols as usize;
+                let Z_col = (work_packet * Z_cols_per_packet) % num_Z_cols as usize;
+                let Z_cols_this_packet = std::cmp::min(Z_cols_per_packet, num_Z_cols - Z_col);
                 let row_packet = work_packet / num_Z_cols as usize;
                 let work_packet_offset = offset + row_packet * work_packet_elems as usize;
-                let bf_col = 2 * Z_col;
-                let input_slice = &outputs_slice_const[bf_col * stride..(bf_col + 2) * stride];
-                let output_slice = &mut outputs_slice_mut[bf_col * stride..(bf_col + 2) * stride];
+                let bf_start_col = 2 * Z_col;
+                let bf_lim_col = bf_start_col + 2 * Z_cols_this_packet;
+                let input_slice = &outputs_slice_const[bf_start_col * stride..bf_lim_col * stride];
+                let output_slice = &mut outputs_slice_mut[bf_start_col * stride..bf_lim_col * stride];
                 println!(
                     "Z_col {} row_packet {} work_packet_offset {}",
                     Z_col, row_packet, work_packet_offset
@@ -669,24 +687,26 @@ pub fn natural_main_evals_to_natural_coset_evals(
                     input_matrix.as_ptr_and_stride(),
                     output_matrix.as_mut_ptr_and_stride(),
                     row_packet,
+                    Z_cols_this_packet,
                 ));
             }
         }
-        // Dispatch middle kernels for two work packets breadth-first (ping-pong)
+        // Dispatch chained kernels for two work packets breadth-first (ping-pong)
         for &(function, grid_dim_x, block_dim_x, stages_this_launch, _vals_per_block) in
             n2b_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix, row_packet)) = matrices {
+                if let Some((input_matrix, output_matrix, row_packet, Z_cols_this_packet)) = matrices {
+                    let grid_dim_y = Z_cols_this_packet.div_ceil(COMPLEX_COLS_PER_BLOCK);
                     let config =
-                        CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
+                        CudaLaunchConfig::basic((grid_dim_x, grid_dim_y), block_dim_x, stream_refs[i]);
                     let args = N2BMultiStageArguments::new(
                         *input_matrix,
                         *output_matrix,
                         start_stage,
                         stages_this_launch,
                         log_n,
-                        1,
+                        Z_cols_this_packet,
                         *row_packet as u32 * grid_dim_x,
                     );
                     N2BMultiStageFunction(function).launch(&config, &args)?;
@@ -699,16 +719,17 @@ pub fn natural_main_evals_to_natural_coset_evals(
             b2n_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix, row_packet)) = matrices {
+                if let Some((input_matrix, output_matrix, row_packet, Z_cols_this_packet)) = matrices {
+                    let grid_dim_y = Z_cols_this_packet.div_ceil(COMPLEX_COLS_PER_BLOCK);
                     let config =
-                        CudaLaunchConfig::basic((grid_dim_x, 1), block_dim_x, stream_refs[i]);
+                        CudaLaunchConfig::basic((grid_dim_x, grid_dim_y), block_dim_x, stream_refs[i]);
                     let args = B2NMultiStageArguments::new(
                         *input_matrix,
                         *output_matrix,
                         start_stage,
                         stages_this_launch,
                         log_n,
-                        1,
+                        Z_cols_this_packet,
                         1,
                         1,
                         *row_packet as u32 * grid_dim_x,
@@ -730,26 +751,28 @@ pub fn natural_main_evals_to_natural_coset_evals(
     end_event.record(aux_stream)?;
     exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
 
-    // Run final b2n kernel over the entire output.
-    let (kern, stages_last_launch, vals_per_block) = b2n_plan[b2n_plan.len() - 1];
-    assert_eq!(kern, NONINITIAL_7_OR_8_BLOCK);
-    let num_chunks = (num_Z_cols + COMPLEX_COLS_PER_BLOCK - 1) / COMPLEX_COLS_PER_BLOCK;
-    let grid_dim_x = n / vals_per_block;
-    let block_dim_x = 512;
-    let config = CudaLaunchConfig::basic((grid_dim_x, num_chunks), block_dim_x, exec_stream);
-    let args = B2NMultiStageArguments::new(
-        outputs_matrix_const,
-        outputs_matrix_mut,
-        start_stage,
-        stages_last_launch,
-        log_n,
-        num_Z_cols,
-        1, // log_extension_degree
-        1, // coset_index
-        0,
-    );
-    B2NMultiStageFunction(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block)
-        .launch(&config, &args)?;
+    if !work_packet_has_full_cols {
+        // Run final b2n kernel over the entire output.
+        let (kern, stages_last_launch, vals_per_block) = b2n_plan[b2n_plan.len() - 1];
+        assert_eq!(kern, NONINITIAL_7_OR_8_BLOCK);
+        let grid_dim_x = n / vals_per_block;
+        let grid_dim_y = num_Z_cols.div_ceil(COMPLEX_COLS_PER_BLOCK);
+        let block_dim_x = 512;
+        let config = CudaLaunchConfig::basic((grid_dim_x, grid_dim_y), block_dim_x, exec_stream);
+        let args = B2NMultiStageArguments::new(
+            outputs_matrix_const,
+            outputs_matrix_mut,
+            start_stage,
+            stages_last_launch,
+            log_n,
+            num_Z_cols,
+            1, // log_extension_degree
+            1, // coset_index
+            0,
+        );
+        B2NMultiStageFunction(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block)
+            .launch(&config, &args)?;
+    }
 
     Ok(())
 }
