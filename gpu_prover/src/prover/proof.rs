@@ -152,12 +152,12 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
 }
 
 pub fn prove<'a, C: ProverContext>(
-    circuit: &'a CompiledCircuitArtifact<BF>,
+    circuit: Arc<CompiledCircuitArtifact<BF>>,
     external_values: ExternalValues,
     setup: &mut SetupPrecomputations<C>,
     tracing_data_transfer: TracingDataTransfer<'a, C>,
-    twiddles: &'a Twiddles<Mersenne31Complex, impl GoodAllocator>,
-    lde_precomputations: &'a LdePrecomputations<impl GoodAllocator>,
+    twiddles: &Twiddles<Mersenne31Complex, impl GoodAllocator>,
+    lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     circuit_sequence: usize,
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
@@ -179,7 +179,7 @@ where
     assert!(circuit_sequence <= u16::MAX as usize);
     let delegation_processing_type = delegation_processing_type.unwrap_or_default();
     let cached_data_values = ProverCachedData::new(
-        circuit,
+        &circuit,
         &external_values,
         trace_len,
         circuit_sequence,
@@ -201,7 +201,7 @@ where
     setup_range.end(stream)?;
 
     let mut stage_1_output = StageOneOutput::allocate_trace_holders(
-        circuit,
+        &circuit,
         log_lde_factor,
         log_tree_cap_size,
         context,
@@ -210,7 +210,7 @@ where
     context.log_mem_pool_stats("after stage_1.allocate_trace_holders")?;
 
     let mut stage_2_output = StageTwoOutput::allocate_trace_evaluations(
-        circuit,
+        &circuit,
         log_lde_factor,
         log_tree_cap_size,
         context,
@@ -222,7 +222,7 @@ where
     let witness_generation_range = device_tracing::Range::new("witness_generation")?;
     witness_generation_range.start(stream)?;
     stage_1_output.generate_witness(
-        circuit,
+        &circuit,
         setup,
         tracing_data_transfer,
         circuit_sequence,
@@ -235,7 +235,7 @@ where
     // stage 1
     let stage_1_range = device_tracing::Range::new("stage_1")?;
     stage_1_range.start(stream)?;
-    stage_1_output.commit_witness(circuit, context)?;
+    stage_1_output.commit_witness(&circuit, context)?;
     stage_1_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
     context.log_mem_pool_stats("after stage_1")?;
@@ -244,7 +244,7 @@ where
 
     // seed
     let seed = initialize_seed::<C>(
-        circuit,
+        &circuit,
         external_values.clone(),
         circuit_sequence,
         delegation_processing_type,
@@ -259,7 +259,7 @@ where
     stage_2_range.start(stream)?;
     stage_2_output.generate(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
         setup,
         &mut stage_1_output,
@@ -274,10 +274,10 @@ where
     stage_3_range.start(stream)?;
     let stage_3_output = StageThreeOutput::new(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
-        lde_precomputations,
-        twiddles,
+        &lde_precomputations,
+        &twiddles,
         external_values.clone(),
         setup,
         &stage_1_output,
@@ -295,9 +295,9 @@ where
     stage_4_range.start(stream)?;
     let stage_4_output = StageFourOutput::new(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
-        twiddles,
+        &twiddles,
         &setup,
         &stage_1_output,
         &stage_2_output,
@@ -321,8 +321,8 @@ where
         log_lde_factor,
         &optimal_folding,
         num_queries,
-        lde_precomputations,
-        twiddles,
+        &lde_precomputations,
+        &twiddles,
         context,
     )?;
     stage_5_range.end(stream)?;
@@ -429,7 +429,7 @@ where
 }
 
 fn initialize_seed<'a, C: ProverContext>(
-    circuit: &'a CompiledCircuitArtifact<Mersenne31Field>,
+    circuit: &Arc<CompiledCircuitArtifact<Mersenne31Field>>,
     external_values: ExternalValues,
     circuit_sequence: usize,
     delegation_processing_type: u16,
@@ -447,6 +447,7 @@ where
     let witness_tree_caps = stage_1_output.witness_holder.get_tree_caps();
     let memory_tree_caps = stage_1_output.memory_holder.get_tree_caps();
     let public_inputs = stage_1_output.get_public_inputs();
+    let circuit_clone = circuit.clone();
     let seed_fn = move || {
         let mut input = vec![];
         input.push(circuit_sequence as u32);
@@ -459,7 +460,7 @@ where
         {
             input.extend_from_slice(&delegation_argument_challenges.flatten());
         }
-        if circuit
+        if circuit_clone
             .memory_layout
             .shuffle_ram_inits_and_teardowns
             .is_some()

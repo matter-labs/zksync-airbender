@@ -13,7 +13,6 @@ impl log::Log for ThreadLocalLogger {
     }
 
     fn log(&self, record: &Record) {
-        assert_eq!(record.level(), Level::Info);
         if self.enabled(record.metadata()) {
             println!(
                 "| {:>10.6} | {:^6} | {}",

@@ -51,7 +51,7 @@ impl<M: MachineConfig, A: GoodAllocator> From<CycleData<M, A>> for MainTraceHost
     }
 }
 
-pub(crate) struct ShuffleRamSetupAndTeardownDevice<C: ProverContext> {
+pub struct ShuffleRamSetupAndTeardownDevice<C: ProverContext> {
     pub lazy_init_data: C::Allocation<LazyInitAndTeardown>,
 }
 

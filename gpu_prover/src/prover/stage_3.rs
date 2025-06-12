@@ -35,10 +35,10 @@ pub(crate) struct StageThreeOutput<'a, C: ProverContext> {
 impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
     pub fn new(
         seed: Arc<Mutex<Seed>>,
-        circuit: &'a CompiledCircuitArtifact<BF>,
+        circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        twiddles: &'a Twiddles<E2, impl GoodAllocator>,
+        twiddles: &Twiddles<E2, impl GoodAllocator>,
         external_values: ExternalValues,
         setup: &SetupPrecomputations<C>,
         stage_1_output: &StageOneOutput<C>,
@@ -99,6 +99,9 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         let cached_data_clone = cached_data.clone();
         let public_inputs = stage_1_output.get_public_inputs();
         let external_values_clone = external_values.clone();
+        let circuit_clone = circuit.clone();
+        let twiddles_omega = twiddles.omega;
+        let twiddles_omega_inv = twiddles.omega_inv;
         let get_challenges_and_helpers_fn = move || {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -138,11 +141,11 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
                 &alpha_powers,
                 &beta_powers,
                 tau,
-                twiddles.omega,
-                twiddles.omega_inv,
+                twiddles_omega,
+                twiddles_omega_inv,
                 &lookup_challenges_clone.as_ref().unwrap().lock().unwrap(),
                 &cached_data_clone,
-                circuit,
+                &circuit_clone,
                 &external_values_clone,
                 &public_inputs.lock().unwrap(),
                 grand_product_accumulator,
@@ -186,7 +189,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
             twiddles.omega_inv,
             &LookupChallenges::default(),
             cached_data,
-            circuit,
+            &circuit,
             &external_values,
             &vec![BF::ZERO; circuit.public_inputs.len()],
             E4::ZERO,
@@ -223,7 +226,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         );
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
-            circuit,
+            &circuit,
             metadata,
             &d_setup_cols,
             &d_witness_cols,

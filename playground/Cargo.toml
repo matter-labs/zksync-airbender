@@ -25,3 +25,4 @@ risc_v_simulator = { workspace = true, features = ["delegation"] }
 crossbeam = "0.8.4"
 crossbeam-channel = "0.5.15"
 log = { workspace = true}
+transpose = "0.2"

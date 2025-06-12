@@ -1,5 +1,5 @@
 use crate::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
-use crate::gpu_worker::MemoryCommitmentResult;
+use crate::gpu_worker::{MemoryCommitmentResult, ProofResult};
 use fft::GoodAllocator;
 use prover::tracers::delegation::DelegationWitness;
 use std::collections::HashMap;
@@ -20,4 +20,5 @@ pub enum WorkerResult<A: GoodAllocator> {
         delegation_chunks_counts: HashMap<u16, usize>,
     },
     MemoryCommitment(MemoryCommitmentResult<A>),
+    Proof(ProofResult<A>),
 }

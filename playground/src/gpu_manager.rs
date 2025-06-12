@@ -2,7 +2,7 @@ use crate::gpu_worker::{get_gpu_worker_func, GpuWorkRequest};
 use crate::logger::LOCAL_LOGGER;
 use crate::messages::WorkerResult;
 use crossbeam_channel::internal::SelectHandle;
-use crossbeam_channel::{bounded, Receiver, RecvError, Select, Sender};
+use crossbeam_channel::{bounded, Receiver, Select, Sender};
 use fft::GoodAllocator;
 use gpu_prover::cudart::device::{get_device_count, get_device_properties, set_device};
 use gpu_prover::cudart::result::CudaResult;
@@ -12,28 +12,32 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CStr;
 use std::time::Instant;
 
-pub struct GpuWorkBatch<A: GoodAllocator> {
-    pub id: usize,
-    pub receiver: Receiver<GpuWorkRequest<A>>,
-    pub sender: Sender<WorkerResult<A>>,
+pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator> {
+    pub receiver: Receiver<GpuWorkRequest<A, B>>,
+    pub sender: Sender<WorkerResult<B>>,
 }
 
 pub fn get_gpu_manager_func<C: ProverContext>(
+    timer: Instant,
     is_initialized: Sender<()>,
     timer_reset: Receiver<Instant>,
-    batches: Receiver<GpuWorkBatch<C::HostAllocator>>,
+    batches: Receiver<GpuWorkBatch<impl GoodAllocator + 'static, C::HostAllocator>>,
 ) -> impl FnOnce(&rayon::Scope) {
-    move |_| rayon::scope(|s| gpu_manager::<C>(is_initialized, timer_reset, batches, s).unwrap())
+    move |_| {
+        rayon::scope(|s| gpu_manager::<C>(timer, is_initialized, timer_reset, batches, s).unwrap())
+    }
 }
 
 fn gpu_manager<C: ProverContext>(
+    timer: Instant,
     is_initialized: Sender<()>,
     timer_reset: Receiver<Instant>,
-    batches_receiver: Receiver<GpuWorkBatch<C::HostAllocator>>,
+    batches_receiver: Receiver<GpuWorkBatch<impl GoodAllocator + 'static, C::HostAllocator>>,
     scope: &rayon::Scope<'_>,
 ) -> CudaResult<()> {
     LOCAL_LOGGER.with_borrow_mut(|l| {
         l.name = "GPU[M]".to_string();
+        l.timer = timer;
     });
     C::initialize_host_allocator(8, 1 << 8, 22)?;
     let device_count = get_device_count()? as usize;
@@ -65,6 +69,7 @@ fn gpu_manager<C: ProverContext>(
         worker_receivers.push(result_receiver);
         worker_queues.push(VecDeque::from([None, None]));
         let gpu_worker_func = get_gpu_worker_func::<C>(
+            timer,
             device_id,
             prover_context_config,
             worker_initialized_sender.clone(),
@@ -90,6 +95,7 @@ fn gpu_manager<C: ProverContext>(
         worker_timer_reset_sender.send(timer).unwrap();
     }
     drop(worker_timer_reset_sender);
+    let mut next_batch_id = 0;
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
     let mut batch_senders = HashMap::new();
@@ -113,10 +119,11 @@ fn gpu_manager<C: ProverContext>(
                 match op.recv(batches_receiver.as_ref().unwrap()) {
                     Ok(batch) => {
                         let GpuWorkBatch {
-                            id,
                             receiver: requests,
                             sender: results,
                         } = batch;
+                        let id = next_batch_id;
+                        next_batch_id += 1;
                         log::info!("received work batch {}", id);
                         batch_receivers.insert(id, requests);
                         batch_senders.insert(id, results);
@@ -147,7 +154,9 @@ fn gpu_manager<C: ProverContext>(
                 let batch_id: Option<usize> = worker_queues[worker_id].pop_front().unwrap();
                 if let Some(result) = result {
                     let batch_id = batch_id.unwrap();
-                    log::info!("received work result from worker {worker_id} fo work batch id {batch_id}", );
+                    log::info!(
+                        "received work result from worker {worker_id} fo work batch id {batch_id}",
+                    );
                     batch_senders[&batch_id].send(result).unwrap();
                 }
             }
