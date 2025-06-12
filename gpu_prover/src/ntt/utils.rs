@@ -22,7 +22,7 @@ pub(crate) enum B2N_LAUNCH {
 // I'd rather use a hashmap containing vectors of different sizes instead of a list of fixed-size lists,
 // but Rust didn't let me declare hashmaps or vectors const.
 #[allow(non_camel_case_types)]
-pub(crate) type N2B_Plan = [Option<(N2B_LAUNCH, u32, u32)>; 3];
+pub(crate) type N2B_Plan = [Option<(N2B_LAUNCH, usize, usize)>; 3];
 
 pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 9] = [
     [
@@ -73,7 +73,7 @@ pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 9] = [
 ];
 
 #[allow(non_camel_case_types)]
-pub(crate) type B2N_Plan = [Option<(B2N_LAUNCH, u32, u32)>; 3];
+pub(crate) type B2N_Plan = [Option<(B2N_LAUNCH, usize, usize)>; 3];
 
 pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
     [
@@ -125,7 +125,10 @@ pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
 
 pub(crate) fn get_main_to_coset_launch_chain(
     log_n: usize,
-) -> (Vec<(N2B_LAUNCH, u32, u32)>, Vec<(B2N_LAUNCH, u32, u32)>) {
+) -> (
+    Vec<(N2B_LAUNCH, usize, usize)>,
+    Vec<(B2N_LAUNCH, usize, usize)>,
+) {
     assert!(log_n >= 16);
     let n2b_plan = &STAGE_PLANS_N2B[log_n - 16];
     let b2n_plan = &STAGE_PLANS_B2N[log_n - 16];
@@ -142,5 +145,5 @@ pub(crate) fn get_main_to_coset_launch_chain(
 // may be less than these values, because smaller batches improve the
 // chance data values persist in L2.
 // In practice, it's a tradeoff and batch size should be tuned.
-pub const REAL_COLS_PER_BLOCK: u32 = 8;
-pub const COMPLEX_COLS_PER_BLOCK: u32 = 4;
+pub const REAL_COLS_PER_BLOCK: usize = 8;
+pub const COMPLEX_COLS_PER_BLOCK: usize = 4;
