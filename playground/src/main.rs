@@ -202,8 +202,8 @@ fn main_in_scope(scope: &rayon::Scope) {
     let mut delegation_proofs = HashMap::new();
     let mut setup_and_teardown_chunks = HashMap::new();
     let mut cycles_chunks = HashMap::new();
-    let mut delegation_memory_commitments_sender = Some(gpu_work_requests_sender.clone());
-    let proving = false;
+    let mut delegation_work_sender = Some(gpu_work_requests_sender.clone());
+    let proving = true;
     let send_main_work_request =
         move |circuit_sequence: usize,
               setup_and_teardown_chunk: Option<ShuffleRamSetupAndTeardown<_>>,
@@ -307,7 +307,7 @@ fn main_in_scope(scope: &rayon::Scope) {
                 };
                 let request = GpuWorkRequest::MemoryCommitment(memory_commitment_request);
                 log::info!("sending memory commitment request for delegation id {id}");
-                delegation_memory_commitments_sender
+                delegation_work_sender
                     .as_ref()
                     .unwrap()
                     .send(request)
@@ -321,7 +321,7 @@ fn main_in_scope(scope: &rayon::Scope) {
                 }
                 final_delegation_chunks_counts = Some(delegation_chunks_counts);
                 log::info!("sent all delegation memory commitment requests");
-                delegation_memory_commitments_sender = None;
+                delegation_work_sender = None;
             }
             WorkerResult::MemoryCommitment(commitment) => {
                 let MemoryCommitmentResult {
@@ -493,13 +493,20 @@ fn main_in_scope(scope: &rayon::Scope) {
     let final_main_chunks_count = final_main_chunks_count.unwrap();
     assert_ne!(final_main_chunks_count, 0);
     let _final_register_values = final_register_values.as_ref().unwrap();
-    assert_eq!(main_memory_commitments.len(), final_main_chunks_count);
-    for (id, count) in final_delegation_chunks_counts.unwrap() {
-        assert_eq!(count, delegation_memory_commitments.get(&id).unwrap().len());
+    if proving {
+        assert_eq!(main_proofs.len(), final_main_chunks_count);
+        for (id, count) in final_delegation_chunks_counts.unwrap() {
+            assert_eq!(count, delegation_proofs.get(&id).unwrap().len());
+        }
     }
-    assert_eq!(main_memory_commitments.len(), final_main_chunks_count);
+    else {
+        assert_eq!(main_memory_commitments.len(), final_main_chunks_count);
+        for (id, count) in final_delegation_chunks_counts.unwrap() {
+            assert_eq!(count, delegation_memory_commitments.get(&id).unwrap().len());
+        }
+    }
     assert!(send_main_work_request.is_none());
-    assert!(delegation_memory_commitments_sender.is_none());
+    assert!(delegation_work_sender.is_none());
     assert!(setup_and_teardown_chunks.is_empty());
     assert!(cycles_chunks.is_empty());
     drop(gpu_work_batches_sender);

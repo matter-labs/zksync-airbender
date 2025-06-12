@@ -17,6 +17,7 @@ use std::{
 };
 
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
+use cs::one_row_compiler::CompiledCircuitArtifact;
 use cs::utils::split_timestamp;
 use gpu_prover::cudart::{
     device::{get_device_count, get_device_properties, set_device},
@@ -509,7 +510,7 @@ impl GpuThread {
                 aux_boundary_values,
             };
             let job = gpu_prover::prover::proof::prove(
-                &precomputations.compiled_circuit,
+                Arc::new(precomputations.compiled_circuit.clone()),
                 external_values,
                 gpu_setup_main,
                 transfer,
@@ -557,7 +558,7 @@ impl GpuThread {
             let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
             transfer.schedule_transfer(prover_context)?;
             let job = gpu_prover::prover::proof::prove(
-                &prec.compiled_circuit.compiled_circuit,
+                Arc::new(prec.compiled_circuit.compiled_circuit.clone()),
                 external_values,
                 gpu_setup_delegation,
                 transfer,
