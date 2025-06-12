@@ -124,12 +124,12 @@ fn gpu_manager<C: ProverContext>(
                         } = batch;
                         let id = next_batch_id;
                         next_batch_id += 1;
-                        log::info!("received work batch {}", id);
+                        log::info!("received new batch with id {}", id);
                         batch_receivers.insert(id, requests);
                         batch_senders.insert(id, results);
                     }
                     Err(_) => {
-                        log::info!("work batches channel closed");
+                        log::info!("batches channel closed");
                         batches_receiver = None;
                     }
                 };
@@ -138,11 +138,11 @@ fn gpu_manager<C: ProverContext>(
                 let batch_id = batch_receiver_indexes[&index];
                 match op.recv(&batch_receivers[&batch_id]) {
                     Ok(request) => {
-                        log::info!("received work batch id {batch_id} request");
+                        log::info!("received work request for batch id {batch_id}");
                         work_queue.push_back((batch_id, request));
                     }
                     Err(_) => {
-                        log::info!("work batch id {batch_id} request channel closed");
+                        log::info!("batch request channel with id {batch_id} closed");
                         batch_receivers.remove(&batch_id);
                         batches_to_flush.insert(batch_id);
                     }
@@ -155,7 +155,7 @@ fn gpu_manager<C: ProverContext>(
                 if let Some(result) = result {
                     let batch_id = batch_id.unwrap();
                     log::info!(
-                        "received work result from worker {worker_id} fo work batch id {batch_id}",
+                        "received work result from worker id {worker_id} fo batch id {batch_id}",
                     );
                     batch_senders[&batch_id].send(result).unwrap();
                 }
@@ -175,11 +175,20 @@ fn gpu_manager<C: ProverContext>(
                     let op_index = op.index();
                     let worker_id = worker_senders_indexes[&op_index];
                     let (batch_id, request) = work_queue.pop_front().unwrap();
-                    log::info!("sending work request to worker {worker_id}");
+                    log::info!("sending work request from batch id {batch_id} to worker id {worker_id}");
                     op.send(&worker_senders[worker_id], Some(request)).unwrap();
                     worker_queues[worker_id].push_back(Some(batch_id));
                 }
                 Err(_) => break,
+            }
+        }
+        if work_queue.is_empty() {
+            for (worker_id, queue) in worker_queues.iter_mut().enumerate() {
+                if queue.len() == 2 && queue[0].is_none() && queue[1].is_some() {
+                    log::info!("advancing queue for worker id {worker_id}");
+                    worker_senders[worker_id].send(None).unwrap();
+                    queue.push_back(None);
+                }
             }
         }
         if !batches_to_flush.is_empty() {
@@ -191,7 +200,7 @@ fn gpu_manager<C: ProverContext>(
                 {
                     batches_to_flush.remove(&batch_id);
                     batch_senders.remove(&batch_id);
-                    log::info!("batch {batch_id} flushed");
+                    log::info!("batch id {batch_id} flushed");
                 }
             }
         }
@@ -202,7 +211,7 @@ fn gpu_manager<C: ProverContext>(
                         .iter()
                         .any(|q| q.is_some_and(|x| batches_to_flush.contains(&x)))
                 {
-                    log::info!("flushing worker {i}");
+                    log::info!("flushing worker id {i}");
                     sender.send(None).unwrap();
                     worker_queues[i].push_back(None);
                 }

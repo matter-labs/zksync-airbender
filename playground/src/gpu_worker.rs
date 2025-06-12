@@ -3,6 +3,7 @@ use crate::messages::WorkerResult;
 use crate::precomputations::CircuitPrecomputationsHost;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
+use field::Mersenne31Field;
 use gpu_prover::cudart::device::set_device;
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
@@ -17,8 +18,13 @@ use prover::definitions::{
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Proof;
+use std::cell::RefCell;
 use std::mem;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
+
+type BF = Mersenne31Field;
 
 const NUM_QUERIES: usize = 53;
 const POW_BITS: u32 = 28;
@@ -89,6 +95,12 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
     OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32
 }
 
+#[derive(Clone)]
+struct SetupHolder<'a, C: ProverContext> {
+    pub setup: Rc<RefCell<SetupPrecomputations<'a, C>>>,
+    pub trace: Arc<Vec<BF, C::HostAllocator>>,
+}
+
 fn gpu_worker<C: ProverContext>(
     timer: Instant,
     device_id: i32,
@@ -113,6 +125,7 @@ fn gpu_worker<C: ProverContext>(
         l.timer = timer;
     });
     log::info!("timer reset");
+    let mut current_setup: Option<SetupHolder<C>> = None;
     let mut current_transfer = None;
     let mut current_job = None;
     for request in requests {
@@ -126,24 +139,40 @@ fn gpu_worker<C: ProverContext>(
                 ),
                 GpuWorkRequest::Proof(request) => {
                     let precomputations = &request.precomputations;
-                    let lde_factor = precomputations.lde_precomputations.lde_factor;
-                    assert!(lde_factor.is_power_of_two());
-                    let log_lde_factor = lde_factor.trailing_zeros();
-                    let domain_size = precomputations.lde_precomputations.domain_size;
-                    assert!(domain_size.is_power_of_two());
-                    let log_domain_size = domain_size.trailing_zeros();
-                    let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-                    let mut setup = SetupPrecomputations::new(
-                        &precomputations.compiled_circuit,
-                        log_lde_factor,
-                        log_tree_cap_size,
-                        &context,
-                    )?;
-                    log::info!(
-                        "transferring setup for circuit type: {:?}",
-                        request.circuit_type,
-                    );
-                    setup.schedule_transfer(precomputations.setup.clone(), &context)?;
+                    let setup = if let Some(holder) = &current_setup
+                        && Arc::ptr_eq(&holder.trace, &precomputations.setup)
+                    {
+                        log::info!(
+                            "reusing setup for circuit type: {:?}",
+                            request.circuit_type,
+                        );
+                        holder.setup.clone()
+                    } else {
+                        let lde_factor = precomputations.lde_precomputations.lde_factor;
+                        assert!(lde_factor.is_power_of_two());
+                        let log_lde_factor = lde_factor.trailing_zeros();
+                        let domain_size = precomputations.lde_precomputations.domain_size;
+                        assert!(domain_size.is_power_of_two());
+                        let log_domain_size = domain_size.trailing_zeros();
+                        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+                        let mut setup = SetupPrecomputations::new(
+                            &precomputations.compiled_circuit,
+                            log_lde_factor,
+                            log_tree_cap_size,
+                            &context,
+                        )?;
+                        log::info!(
+                            "transferring setup for circuit type: {:?}",
+                            request.circuit_type,
+                        );
+                        setup.schedule_transfer(precomputations.setup.clone(), &context)?;
+                        let setup = Rc::new(RefCell::new(setup));
+                        current_setup = Some(SetupHolder {
+                            setup: setup.clone(),
+                            trace: precomputations.setup.clone(),
+                        });
+                        setup
+                    };
                     (
                         request.circuit_type,
                         request.circuit_sequence,
@@ -234,7 +263,7 @@ fn gpu_worker<C: ProverContext>(
                         challenges: request.external_challenges,
                         aux_boundary_values,
                     };
-                    let mut setup = setup.unwrap();
+                    let setup = setup.unwrap();
                     let delegation_processing_type = match request.circuit_type {
                         CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
@@ -242,7 +271,7 @@ fn gpu_worker<C: ProverContext>(
                     let job = prove(
                         precomputations.compiled_circuit.clone(),
                         external_values,
-                        &mut setup,
+                        &mut setup.borrow_mut(),
                         transfer,
                         &precomputations.twiddles,
                         &precomputations.lde_precomputations,

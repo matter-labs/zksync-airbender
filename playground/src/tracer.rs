@@ -617,6 +617,10 @@ impl<
 
             current_tracer.assert_consistency();
             // swap if needed
+            if current_tracer.num_requests < current_tracer.write_timestamp.len() {
+                dbg!(current_tracer.num_requests);
+                dbg!(current_tracer.write_timestamp.len());
+            }
             let should_replace = current_tracer.at_capacity();
             if should_replace {
                 let witness = self

@@ -2,6 +2,7 @@
 #![feature(vec_push_within_capacity)]
 #![feature(new_zeroed_alloc)]
 #![feature(iter_array_chunks)]
+#![feature(let_chains)]
 
 pub mod cpu_worker;
 pub mod gpu_worker;
@@ -88,7 +89,7 @@ fn main_in_scope(scope: &rayon::Scope) {
     log::info!("got delegation circuits precomputations");
     let delegation_factories = setups::delegation_factories_for_machine::<C, _>();
     log::info!("got delegation factories");
-    let non_determinism_source = Arc::new(QuasiUARTSource::new_with_reads(vec![1 << 22, 0]));
+    let non_determinism_source = Arc::new(QuasiUARTSource::new_with_reads(vec![0, 1 << 19]));
     let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let trace_len = setups::trace_len_for_machine::<C>();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -251,7 +252,7 @@ fn main_in_scope(scope: &rayon::Scope) {
             gpu_work_requests_sender.send(request).unwrap();
         };
     let mut send_main_work_request = Some(send_main_work_request);
-    let mut main_memory_commitment_requests_count = 0;
+    let mut main_work_requests_count = 0;
     for result in worker_results_receiver {
         match result {
             WorkerResult::SetupAndTeardownChunk(chunk) => {
@@ -263,7 +264,7 @@ fn main_in_scope(scope: &rayon::Scope) {
                 if let Some(cycles_chunk) = cycles_chunks.remove(&index) {
                     let send = send_main_work_request.as_ref().unwrap();
                     send(index, setup_and_teardown_chunk, cycles_chunk);
-                    main_memory_commitment_requests_count += 1;
+                    main_work_requests_count += 1;
                 } else {
                     setup_and_teardown_chunks.insert(index, setup_and_teardown_chunk);
                 }
@@ -283,7 +284,7 @@ fn main_in_scope(scope: &rayon::Scope) {
                 if let Some(setup_and_teardown_chunk) = setup_and_teardown_chunks.remove(&index) {
                     let send = send_main_work_request.as_ref().unwrap();
                     send(index, setup_and_teardown_chunk, data);
-                    main_memory_commitment_requests_count += 1;
+                    main_work_requests_count += 1;
                 } else {
                     cycles_chunks.insert(index, data);
                 }
@@ -299,14 +300,32 @@ fn main_in_scope(scope: &rayon::Scope) {
                 let id = witness.delegation_type;
                 log::info!("received delegation witnesses for delegation id {id}");
                 let tracing_data = TracingDataHost::Delegation(witness.into());
-                let memory_commitment_request = MemoryCommitmentRequest {
-                    circuit_type: CircuitType::from_delegation_type(id),
-                    circuit_sequence: 0,
-                    precomputations: delegation_circuits_precomputations[&id].clone(),
-                    tracing_data,
+                let request = if proving {
+                    log::info!("sending delegation proof request for delegation id {id}");
+                    let proof_request = ProofRequest {
+                        circuit_type: CircuitType::from_delegation_type(id),
+                        circuit_sequence: 0,
+                        precomputations: delegation_circuits_precomputations[&id].clone(),
+                        tracing_data,
+                        external_challenges: ExternalChallenges {
+                            memory_argument: Default::default(),
+                            delegation_argument: Some(ExternalDelegationArgumentChallenges{
+                                delegation_argument_linearization_challenges: Default::default(),
+                                delegation_argument_gamma: Mersenne31Quartic::from_array_of_base([Mersenne31Field::ONE; 4]),
+                            }),
+                        },
+                    };
+                    GpuWorkRequest::Proof(proof_request)
+                } else {
+                    log::info!("sending delegation memory commitment request for delegation id {id}");
+                    let memory_commitment_request = MemoryCommitmentRequest {
+                        circuit_type: CircuitType::from_delegation_type(id),
+                        circuit_sequence: 0,
+                        precomputations: delegation_circuits_precomputations[&id].clone(),
+                        tracing_data,
+                    };
+                    GpuWorkRequest::MemoryCommitment(memory_commitment_request)
                 };
-                let request = GpuWorkRequest::MemoryCommitment(memory_commitment_request);
-                log::info!("sending memory commitment request for delegation id {id}");
                 delegation_work_sender
                     .as_ref()
                     .unwrap()
@@ -358,8 +377,12 @@ fn main_in_scope(scope: &rayon::Scope) {
                         main_memory_commitments.push((circuit_sequence, merkle_tree_caps));
                     }
                     TracingDataHost::Delegation(witness) => {
+                        log::info!(
+                            "received memory commitment for delegation circuit type: {:?}",
+                            circuit_type
+                        );
                         let DelegationTraceHost {
-                            num_requests: _,
+                            num_requests,
                             num_register_accesses_per_delegation,
                             num_indirect_reads_per_delegation,
                             num_indirect_writes_per_delegation,
@@ -371,22 +394,26 @@ fn main_in_scope(scope: &rayon::Scope) {
                             indirect_reads,
                             indirect_writes,
                         } = witness;
-                        log::info!(
-                            "received memory commitment for delegation circuit type: {:?}",
-                            circuit_type
-                        );
+                        let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
+                        write_timestamp.clear();
+                        let mut register_accesses = Arc::into_inner(register_accesses).unwrap();
+                        register_accesses.clear();
+                        let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
+                        indirect_reads.clear();
+                        let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
+                        indirect_writes.clear();
                         let witness = DelegationWitness {
-                            num_requests: 0,
+                            num_requests,
                             num_register_accesses_per_delegation,
                             num_indirect_reads_per_delegation,
                             num_indirect_writes_per_delegation,
                             base_register_index,
                             delegation_type,
                             indirect_accesses_properties,
-                            write_timestamp: Arc::into_inner(write_timestamp).unwrap(),
-                            register_accesses: Arc::into_inner(register_accesses).unwrap(),
-                            indirect_reads: Arc::into_inner(indirect_reads).unwrap(),
-                            indirect_writes: Arc::into_inner(indirect_writes).unwrap(),
+                            write_timestamp,
+                            register_accesses,
+                            indirect_reads,
+                            indirect_writes,
                         };
                         log::info!("returning free delegation tracing data");
                         free_delegation_witness_senders
@@ -436,8 +463,12 @@ fn main_in_scope(scope: &rayon::Scope) {
                         main_proofs.push((circuit_sequence, proof));
                     }
                     TracingDataHost::Delegation(witness) => {
+                        log::info!(
+                            "received memory commitment for delegation circuit type: {:?}",
+                            circuit_type
+                        );
                         let DelegationTraceHost {
-                            num_requests: _,
+                            num_requests,
                             num_register_accesses_per_delegation,
                             num_indirect_reads_per_delegation,
                             num_indirect_writes_per_delegation,
@@ -449,22 +480,26 @@ fn main_in_scope(scope: &rayon::Scope) {
                             indirect_reads,
                             indirect_writes,
                         } = witness;
-                        log::info!(
-                            "received proof for delegation circuit type: {:?}",
-                            circuit_type
-                        );
+                        let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
+                        write_timestamp.clear();
+                        let mut register_accesses = Arc::into_inner(register_accesses).unwrap();
+                        register_accesses.clear();
+                        let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
+                        indirect_reads.clear();
+                        let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
+                        indirect_writes.clear();
                         let witness = DelegationWitness {
-                            num_requests: 0,
+                            num_requests,
                             num_register_accesses_per_delegation,
                             num_indirect_reads_per_delegation,
                             num_indirect_writes_per_delegation,
                             base_register_index,
                             delegation_type,
                             indirect_accesses_properties,
-                            write_timestamp: Arc::into_inner(write_timestamp).unwrap(),
-                            register_accesses: Arc::into_inner(register_accesses).unwrap(),
-                            indirect_reads: Arc::into_inner(indirect_reads).unwrap(),
-                            indirect_writes: Arc::into_inner(indirect_writes).unwrap(),
+                            write_timestamp,
+                            register_accesses,
+                            indirect_reads,
+                            indirect_writes,
                         };
                         log::info!("returning free delegation tracing data");
                         free_delegation_witness_senders
@@ -484,7 +519,7 @@ fn main_in_scope(scope: &rayon::Scope) {
             continue;
         }
         if let Some(count) = final_main_chunks_count {
-            if main_memory_commitment_requests_count == count {
+            if main_work_requests_count == count {
                 log::info!("sent all main memory commitment requests");
                 send_main_work_request = None;
             }
