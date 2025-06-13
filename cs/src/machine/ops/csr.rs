@@ -26,7 +26,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -37,7 +36,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b001, _) => {
                 // CSRRW
                 (
-                    BASE_CSR_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRW_OP_KEY][..],
@@ -46,7 +44,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b101, _) if SUPPORT_CSR_IMMEDIATES => {
                 // CSRRWI
                 (
-                    BASE_CSRI_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRW_OP_KEY][..],
@@ -55,7 +52,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b011, _) if SUPPORT_CSRRC => {
                 // CSRRC
                 (
-                    BASE_CSR_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRC_OP_KEY][..],
@@ -64,7 +60,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b111, _) if SUPPORT_CSRRC && SUPPORT_CSR_IMMEDIATES => {
                 // CSRRCI
                 (
-                    BASE_CSRI_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRC_OP_KEY][..],
@@ -73,7 +68,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b010, _) if SUPPORT_CSRRS => {
                 // CSRRS
                 (
-                    BASE_CSR_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRS_OP_KEY][..],
@@ -82,7 +76,6 @@ impl<const SUPPORT_CSRRC: bool, const SUPPORT_CSRRS: bool, const SUPPORT_CSR_IMM
             (OPERATION_SYSTEM, 0b110, _) if SUPPORT_CSRRS && SUPPORT_CSR_IMMEDIATES => {
                 // CSRRSI
                 (
-                    BASE_CSRI_TYPE_AUX_DATA,
                     InstructionType::IType,
                     CSR_COMMON_OP_KEY,
                     &[CSSRS_OP_KEY][..],

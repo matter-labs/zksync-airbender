@@ -76,9 +76,9 @@ where
     assert!(compiled_machine.witness_layout.width_3_lookups.len() * trace_len <= capacity);
 
     let mut memory = VectorMemoryImplWithRom::new_for_byte_size(
-        1 << 32,
+        1 << 30,
         1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS),
-    ); // use full RAM
+    ); // use 1 GB RAM
     for (idx, insn) in binary.iter().enumerate() {
         memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
     }
@@ -376,7 +376,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
     let mut state = RiscV32StateForUnrolledProver::<C>::initial(initial_pc);
 
     let bookkeeping_aux_data =
-        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
+        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 30, rom_address_space_bound); // use 1 GB RAM
     let delegation_tracer = DelegationTracingData {
         all_per_type_logs: HashMap::new(),
         delegation_witness_factories: delegation_factories,

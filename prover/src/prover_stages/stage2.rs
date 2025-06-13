@@ -188,11 +188,11 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                     for i in 0..chunk_size {
                         let absolute_table_idx = chunk_start + i;
 
-                        let (column, row) = lookup_index_into_encoding_tuple(
+                        let (column, row_idx) = lookup_index_into_encoding_tuple(
                             absolute_table_idx,
                             lookup_encoding_capacity,
                         );
-                        let row = setup_trace.get_row(row as usize);
+                        let row = setup_trace.get_row(row_idx as usize);
                         let src = row.get_unchecked(
                             compiled_circuit
                                 .setup_layout

@@ -29,7 +29,7 @@ pub fn mem_read<M: MemorySource, C: MachineConfig>(
             }
             _ => {
                 panic!(
-                    "Unaligned access for {} bytes at address 0x{:08x}",
+                    "Unsupported access for {} bytes at address 0x{:08x}",
                     num_bytes, phys_address
                 );
             }
@@ -49,8 +49,8 @@ pub fn mem_read<M: MemorySource, C: MachineConfig>(
             (0, 4) => aligned_value,
             _ => {
                 panic!(
-                    "Unaligned access for {} bytes at address 0x{:08x}",
-                    4, phys_address
+                    "Unsupported access for {} bytes at address 0x{:08x}",
+                    num_bytes, phys_address
                 );
             }
         };
@@ -108,7 +108,7 @@ pub fn mem_write<M: MemorySource, C: MachineConfig>(
             }
             _ => {
                 panic!(
-                    "Unaligned access for {} bytes at address 0x{:08x}",
+                    "Unsupported access for {} bytes at address 0x{:08x}",
                     num_bytes, phys_address
                 );
             }
@@ -124,8 +124,8 @@ pub fn mem_write<M: MemorySource, C: MachineConfig>(
             }
             _ => {
                 panic!(
-                    "Unaligned access for {} bytes at address 0x{:08x}",
-                    4, phys_address
+                    "Unsupported access for {} bytes at address 0x{:08x}",
+                    num_bytes, phys_address
                 );
             }
         }

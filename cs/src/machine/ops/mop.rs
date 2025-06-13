@@ -21,7 +21,6 @@ impl DecodableMachineOp for MopOp {
         func7: u8,
     ) -> Result<
         (
-            InstructionOperandSelectionData,
             InstructionType,
             DecoderMajorInstructionFamilyKey,
             &'static [DecoderInstructionVariantsKey],
@@ -31,30 +30,15 @@ impl DecodableMachineOp for MopOp {
         let params = match (opcode, func3, func7) {
             (OPERATION_SYSTEM, 0b100, 0b1000001) => {
                 // ADD
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    MOP_OP_KEY,
-                    &[ADDMOD_OP_KEY][..],
-                )
+                (InstructionType::RType, MOP_OP_KEY, &[ADDMOD_OP_KEY][..])
             }
             (OPERATION_SYSTEM, 0b100, 0b1000011) => {
                 // Sub
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    MOP_OP_KEY,
-                    &[SUBMOD_OP_KEY][..],
-                )
+                (InstructionType::RType, MOP_OP_KEY, &[SUBMOD_OP_KEY][..])
             }
             (OPERATION_SYSTEM, 0b100, 0b1000101) => {
                 // MUL
-                (
-                    BASE_R_TYPE_AUX_DATA,
-                    InstructionType::RType,
-                    MOP_OP_KEY,
-                    &[MULMOD_OP_KEY][..],
-                )
+                (InstructionType::RType, MOP_OP_KEY, &[MULMOD_OP_KEY][..])
             }
             _ => return Err(()),
         };
@@ -241,7 +225,7 @@ impl<
             exec_flag,
             trapped: None,
             trap_reason: None,
-            rd_value: Some(returned_value),
+            rd_value: vec![(returned_value, exec_flag)],
             new_pc_value: NextPcValue::Default,
         }
     }

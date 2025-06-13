@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.28)
+# Cmake must be at least 3.28 - the earlier one didn't pass cuda_standard properly.
 project(gpu_prover_native)
 enable_language(CUDA)
 if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL ""))
@@ -42,6 +43,7 @@ add_library(gpu_prover_native STATIC
         witness/circuits/bigint_with_control.cu
         witness/circuits/blake2_with_compression.cu
         witness/circuits/final_reduced_risc_v_machine.cu
+        witness/circuits/machine_without_signed_mul_div.cu
         witness/circuits/reduced_risc_v_machine.cu
         witness/circuits/risc_v_cycles.cu
         witness/circuits/template_delegation.cuh

@@ -67,6 +67,34 @@ impl MachineConfig for IMStandardIsaConfig {
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
+pub struct IMWithoutSignedMulDivIsaConfig;
+
+impl MachineConfig for IMWithoutSignedMulDivIsaConfig {
+    const SUPPORT_MUL: bool = true;
+    const SUPPORT_DIV: bool = true;
+    const SUPPORT_SIGNED_MUL: bool = false;
+    const SUPPORT_SIGNED_DIV: bool = false;
+    const SUPPORT_SIGNED_LOAD: bool = true;
+    const SUPPORT_LOAD_LESS_THAN_WORD: bool = true;
+    const SUPPORT_SRA: bool = true;
+    const SUPPORT_ROT: bool = false;
+    const SUPPORT_MOPS: bool = false;
+    const HANDLE_EXCEPTIONS: bool = false;
+    const SUPPORT_STANDARD_CSRS: bool = false;
+    const SUPPORT_ONLY_CSRRW: bool = true;
+    #[cfg(not(feature = "delegation"))]
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
+    #[cfg(feature = "delegation")]
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
+        &[
+            crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+            crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
+        ];
+}
+
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct IWithoutByteAccessIsaConfigWithDelegation;
 
 impl MachineConfig for IWithoutByteAccessIsaConfigWithDelegation {

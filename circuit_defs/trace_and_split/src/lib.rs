@@ -60,7 +60,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
     assert!(trace_size.is_power_of_two());
     let rom_address_space_bound = 1usize << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
 
-    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, rom_address_space_bound); // use full RAM
+    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 30, rom_address_space_bound); // use 1 GB RAM
     for (idx, insn) in binary.iter().enumerate() {
         memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
     }
@@ -72,7 +72,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
     let mut state = RiscV32StateForUnrolledProver::<C>::initial(ENTRY_POINT);
 
     let bookkeeping_aux_data =
-        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 32, rom_address_space_bound);
+        RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 30, rom_address_space_bound); // use 1 GB RAM
     let delegation_tracer = DelegationTracingData {
         all_per_type_logs: HashMap::new(),
         delegation_witness_factories: delegation_factories,
@@ -254,7 +254,7 @@ pub fn run_till_end_for_machine_config_without_tracing<
     assert!(trace_size.is_power_of_two());
     let rom_address_space_bound = 1usize << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
 
-    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, rom_address_space_bound); // use full RAM
+    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 30, rom_address_space_bound); // use 1 GB RAM
     for (idx, insn) in binary.iter().enumerate() {
         memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
     }

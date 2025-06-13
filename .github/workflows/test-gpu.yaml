@@ -1,0 +1,99 @@
+name: Test on GPU
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  zksync-airbender-build:
+    runs-on: [ ubuntu-latest ]
+    strategy:
+      matrix:
+        cuda: [ "12.6.0-devel-ubuntu22.04" ]
+        package: [ "zksmith" ]
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}
+    env:
+      RUST_TOOLCHAIN: nightly-2025-03-15
+    steps:
+      - name: Prepare environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt update && apt install -y cmake git jq libssl-dev pkg-config wget curl
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Setup rustup
+        run: |
+          wget -q -O - https://sh.rustup.rs | bash -s -- -y --default-toolchain $RUST_TOOLCHAIN --profile minimal
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          echo "export PATH=\"$HOME/.cargo/bin:\$PATH\"" >> "${HOME}/.bash_profile"
+
+      # we need cmake 3.30 (as 3.24 doesn't properly pass cuda_standard_20)
+      - name: Setup CMAKE
+        run: |
+          curl -LO https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-x86_64.sh && \
+            chmod +x cmake-3.30.2-linux-x86_64.sh && \
+            ./cmake-3.30.2-linux-x86_64.sh --skip-license --prefix=/usr/local
+
+      - name: Check CUDA version
+        run: |
+          nvcc --version
+
+
+      - name: Build tests and copy binary to a separate dir
+        shell: bash
+        run: |
+          mkdir artifacts
+          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
+          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
+          | jq -r 'select(.executable != null) | .executable' \
+          | while read binary; do
+            cp "$binary" artifacts/${{ matrix.package }}
+          done
+
+      - name: Upload test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          path: artifacts/${{ matrix.package }}
+          if-no-files-found: error
+
+  zksync-airbender-test:
+    runs-on: [ matterlabs-ci-gpu-runner ]
+    strategy:
+      matrix:
+        package: [ "zksmith" ]
+
+    needs: zksync-airbender-build
+    steps:
+      - name: Prepare environment
+        run: |
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      #- name: Check Nvidia driver version
+      #  run: |
+      #    nvidia-smi
+
+      - name: Download test binary built with CUDA 12.6
+        uses: actions/download-artifact@v4
+        with:
+          name: zksync-airbender-12.6.0-devel-ubuntu22.04-${{ matrix.package }}-test-binary
+          path: zksync-airbender-test-binary/12.6/
+
+      - name: Run test binary built with CUDA 12.6
+        id: test_cuda_12_6
+        run: |
+          chmod +x zksync-airbender-test-binary/12.6/${{ matrix.package }}
+          zksync-airbender-test-binary/12.6/${{ matrix.package }} --nocapture

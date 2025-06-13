@@ -225,17 +225,11 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
         // dump tables
         let all_generic_tables = table_driver.dump_tables();
+        assert_eq!(all_generic_tables.len(), table_driver.total_tables_len);
 
-        let reference_range_check_16_table =
-            TableType::RangeCheckLarge.generate_table::<Mersenne31Field>();
-        let mut range_check_16_table = table_driver.get_table(TableType::RangeCheckLarge);
-        if range_check_16_table.is_initialized() == false {
-            // we do not keep it in a common width-3 storage
-            range_check_16_table = &reference_range_check_16_table;
-        }
-        let mut range_check_16_table_content = Vec::with_capacity(range_check_16_table.get_size());
-        range_check_16_table.dump_limited_columns::<1>(&mut range_check_16_table_content);
-        assert_eq!(range_check_16_table_content.len(), 1 << 16);
+        let range_check_16_table: Vec<_> = (0..(1 << 16))
+            .map(|el| Mersenne31Field(el as u32))
+            .collect();
 
         let timestamp_range_check_table: Vec<_> = (0..(1 << TIMESTAMP_COLUMNS_NUM_BITS))
             .map(|el| Mersenne31Field(el as u32))
@@ -250,8 +244,8 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
             setup_layout.generic_lookup_setup_columns.num_elements()
         );
 
-        let range_check_16_table_content_len = range_check_16_table_content.len();
-        let range_check_16_table_content_ref = &range_check_16_table_content;
+        let range_check_16_table_content_len = range_check_16_table.len();
+        let range_check_16_table_content_ref = &range_check_16_table;
 
         let timestamp_range_check_table_content_len = timestamp_range_check_table.len();
         let timestamp_range_check_table_content_ref = &timestamp_range_check_table;
@@ -274,7 +268,7 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
                         if absolute_row_idx < range_check_16_table_content_len {
                             trace_view_row[setup_layout.range_check_16_setup_column.start()] =
-                                range_check_16_table_content_ref[absolute_row_idx][0];
+                                range_check_16_table_content_ref[absolute_row_idx];
                         }
 
                         if absolute_row_idx < timestamp_range_check_table_content_len {

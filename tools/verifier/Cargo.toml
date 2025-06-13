@@ -13,6 +13,7 @@ categories = ["cryptography"]
 verifier = { path = "../../verifier", features = ["verifier_program", "blake2_with_compression"], optional = true }
 full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false}
 riscv_common = { path = "../../riscv_common"}
+reduced_keccak = { path = "../../reduced_keccak", optional = true }
 
 [workspace]
 
@@ -30,8 +31,8 @@ base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifi
 recursion_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 recursion_step_no_delegation = ["full_statement_verifier/verifier_program"]
 final_recursion_step = ["full_statement_verifier/verifier_program"]
-universal_circuit = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-universal_circuit_no_delegation = ["full_statement_verifier/verifier_program"]
+universal_circuit = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression", "reduced_keccak"]
+universal_circuit_no_delegation = ["full_statement_verifier/verifier_program", "reduced_keccak"]
 
 verifier_tests = ["verifier"]
 default = ["universal_circuit"]
