@@ -63,7 +63,7 @@ pub trait ProverContext {
     fn get_device_id(&self) -> i32;
     fn switch_to_device(&self) -> CudaResult<()>;
     fn get_exec_stream(&self) -> &CudaStream;
-    fn get_ntt_aux_stream(&self) -> &CudaStream;
+    fn get_aux_stream(&self) -> &CudaStream;
     fn get_h2d_stream(&self) -> &CudaStream;
     fn alloc<T: Sync>(&self, size: usize) -> CudaResult<Self::Allocation<T>>;
     fn free<T: Sync>(&self, allocation: Self::Allocation<T>) -> CudaResult<()>;
@@ -90,7 +90,7 @@ pub trait ProverContext {
 pub struct MemPoolProverContext<'a> {
     _inner: Context,
     pub(crate) exec_stream: CudaStream,
-    pub(crate) ntt_aux_stream: CudaStream,
+    pub(crate) aux_stream: CudaStream,
     pub(crate) h2d_stream: CudaStream,
     pub(crate) mem_pool: CudaOwnedMemPool,
     pub(crate) device_id: i32,
@@ -103,7 +103,7 @@ impl<'a> MemPoolProverContext<'a> {
         assert!(ConcurrentStaticHostAllocator::is_initialized_global());
         let inner = Context::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
-        let ntt_aux_stream = CudaStream::create()?;
+        let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
         let device_id = get_device()?;
         let mem_pool = CudaOwnedMemPool::create_for_device(device_id)?;
@@ -150,7 +150,7 @@ impl<'a> MemPoolProverContext<'a> {
         let context = Self {
             _inner: inner,
             exec_stream,
-            ntt_aux_stream,
+            aux_stream,
             h2d_stream,
             mem_pool,
             device_id,
@@ -206,8 +206,8 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         &self.exec_stream
     }
 
-    fn get_ntt_aux_stream(&self) -> &CudaStream {
-        &self.ntt_aux_stream
+    fn get_aux_stream(&self) -> &CudaStream {
+        &self.aux_stream
     }
 
     fn get_h2d_stream(&self) -> &CudaStream {

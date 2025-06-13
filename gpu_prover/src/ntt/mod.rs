@@ -565,7 +565,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // with L2 chunking and multistreaming to reduce tail effect,
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
-    let instant = std::time::Instant::now();
+    // let instant = std::time::Instant::now();
     let rows_per_packet = std::cmp::min(n, work_packet_elems);
     let stream_refs = [exec_stream, aux_stream];
     let chain_start = if work_packet_has_full_cols { 0 } else { 1 };
@@ -772,7 +772,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             start_stage += stages_this_launch;
         }
     }
-    println!("Chunk launch logic took {:?}", instant.elapsed());
+    // println!("Chunk launch logic took {:?}", instant.elapsed());
 
     end_event.record(aux_stream)?;
     exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;

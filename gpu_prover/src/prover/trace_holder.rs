@@ -8,10 +8,11 @@ use crate::ntt::{
 };
 use crate::ops_cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops_simple::{neg, set_to_zero};
+use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-use era_cudart::stream::CudaStream;
+use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 use fft::GoodAllocator;
 use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
@@ -48,7 +49,7 @@ impl<C: ProverContext> TraceHolder<BF, C> {
             self.log_domain_size,
             self.log_lde_factor,
             context.get_exec_stream(),
-            context.get_ntt_aux_stream(),
+            context.get_aux_stream(),
             context.get_device_properties(),
         )?;
         populate_trees_from_trace_ldes::<C>(
@@ -250,7 +251,13 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     let reduce_temp_storage_bytes =
         get_reduce_temp_storage_bytes::<BF>(ReduceOperation::Sum, (domain_size - 1) as i32)?;
     let mut reduce_temp_storage = context.alloc(reduce_temp_storage_bytes)?;
-    let stream = context.get_exec_stream();
+    let exec_stream = context.get_exec_stream();
+    let aux_stream = context.get_exec_stream();
+    let stream_refs = [exec_stream, aux_stream];
+    let start_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    let end_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    start_event.record(exec_stream)?;
+    aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
     for (i, col) in evaluations
         .chunks(domain_size)
         .take(columns_count)
@@ -261,9 +268,11 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
             &mut reduce_temp_storage,
             &col[..domain_size - 1],
             &mut reduce_result[i],
-            stream,
+            stream_refs[i & 1],
         )?;
     }
+    end_event.record(aux_stream)?;
+    exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
     context.free(reduce_temp_storage)?;
     neg(
         &DeviceMatrix::new(&reduce_result, 1),
@@ -273,11 +282,11 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
             domain_size - 1,
             1,
         ),
-        stream,
+        exec_stream,
     )?;
     context.free(reduce_result)?;
     if padded_to_even {
-        set_to_zero(&mut evaluations[columns_count << log_domain_size..], stream)?;
+        set_to_zero(&mut evaluations[columns_count << log_domain_size..], exec_stream)?;
     }
     Ok(())
 }

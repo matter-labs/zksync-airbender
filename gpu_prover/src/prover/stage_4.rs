@@ -301,7 +301,7 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             log_domain_size,
             log_lde_factor,
             context.get_exec_stream(),
-            context.get_ntt_aux_stream(),
+            context.get_aux_stream(),
             context.get_device_properties(),
         )?;
         assert!(log_tree_cap_size >= log_lde_factor);
