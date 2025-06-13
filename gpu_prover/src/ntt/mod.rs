@@ -505,7 +505,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     assert_eq!(outputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.cols(), num_bf_cols);
 
-    let inputs_matrix = inputs_matrix.as_ptr_and_stride();
+    let inputs_matrix_arg = inputs_matrix.as_ptr_and_stride();
     let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
 
@@ -548,7 +548,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             exec_stream,
         );
         let args = N2BMultiStageArguments::new(
-            inputs_matrix,
+            inputs_matrix_arg,
             outputs_matrix_mut,
             0,
             stages_first_launch as u32,
@@ -560,9 +560,6 @@ pub fn natural_main_evals_to_natural_coset_evals(
         persistence_chain_start_stage += stages_first_launch;
     }
 
-    let Z_cols_per_packet = std::cmp::min(1, work_packet_elems / n);
-    let rows_per_packet = std::cmp::min(n, work_packet_elems);
-
     start_event.record(exec_stream)?;
     aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
 
@@ -571,6 +568,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // with L2 chunking and multistreaming to reduce tail effect,
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
+    let rows_per_packet = std::cmp::min(n, work_packet_elems);
     let stream_refs = [exec_stream, aux_stream];
     let chain_start = if work_packet_has_full_cols { 0 } else { 1 };
     let n2b_packet_plan_details: Vec<_> = (&n2b_plan[chain_start..])
@@ -650,6 +648,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
         .collect();
     let stride = outputs_matrix.stride();
     let offset = outputs_matrix.offset();
+    let inputs_slice = inputs_matrix.slice();
     let outputs_slice_const = unsafe {
         DeviceSlice::from_raw_parts(
             outputs_matrix.slice().as_ptr(),
@@ -657,11 +656,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    let work_packets_per_col = std::cmp::max(1, n / work_packet_elems);
-    let cols_per_work_packet = std::cmp::max(1, n / work_packet_elems);
+    let Z_cols_per_packet = std::cmp::max(1, work_packet_elems / n);
     let num_work_packets = if work_packet_has_full_cols {
-        num_Z_cols.div_ceil(cols_per_work_packet)
+        assert!(work_packet_elems >= n);
+        num_Z_cols.div_ceil(Z_cols_per_packet)
     } else {
+        assert!(n > work_packet_elems);
+        let work_packets_per_col = n / work_packet_elems;
         work_packets_per_col * num_Z_cols
     };
     let mut start_stage = persistence_chain_start_stage;
@@ -671,26 +672,33 @@ pub fn natural_main_evals_to_natural_coset_evals(
         for &i in [0, 1].iter() {
             let work_packet = first_work_packet + i;
             if work_packet < num_work_packets {
+                if work_packet_has_full_cols {
+                    assert!(work_packet * Z_cols_per_packet < num_Z_cols);
+                }
                 let Z_col = (work_packet * Z_cols_per_packet) % num_Z_cols;
                 let Z_cols_this_packet = std::cmp::min(Z_cols_per_packet, num_Z_cols - Z_col);
                 let row_packet = work_packet / num_Z_cols;
-                let work_packet_offset = offset + row_packet * work_packet_elems;
                 let bf_start_col = 2 * Z_col;
                 let bf_lim_col = bf_start_col + 2 * Z_cols_this_packet;
-                let input_slice = &outputs_slice_const[bf_start_col * stride..bf_lim_col * stride];
-                let output_slice =
+                let input_slice = &inputs_slice[bf_start_col * stride..bf_lim_col * stride];
+                let output_slice_const =
+                    &outputs_slice_const[bf_start_col * stride..bf_lim_col * stride];
+                let output_slice_mut =
                     &mut outputs_slice_mut[bf_start_col * stride..bf_lim_col * stride];
                 println!(
-                    "Z_col {} row_packet {} work_packet_offset {}",
-                    Z_col, row_packet, work_packet_offset
+                    "Z_col {} row_packet {} Z_cols_this_packet {}",
+                    Z_col, row_packet, Z_cols_this_packet,
                 );
                 let input_matrix =
-                    DeviceMatrixChunk::new(input_slice, stride, offset, work_packet_elems);
-                let mut output_matrix =
-                    DeviceMatrixChunkMut::new(output_slice, stride, offset, work_packet_elems);
+                    DeviceMatrixChunk::new(input_slice, stride, offset, rows_per_packet);
+                let output_matrix_const =
+                    DeviceMatrixChunk::new(output_slice_const, stride, offset, rows_per_packet);
+                let mut output_matrix_mut =
+                    DeviceMatrixChunkMut::new(output_slice_mut, stride, offset, rows_per_packet);
                 matrices_both_packets[i] = Some((
                     input_matrix.as_ptr_and_stride(),
-                    output_matrix.as_mut_ptr_and_stride(),
+                    output_matrix_const.as_ptr_and_stride(),
+                    output_matrix_mut.as_mut_ptr_and_stride(),
                     row_packet,
                     Z_cols_this_packet,
                 ));
@@ -701,8 +709,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
             n2b_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix, row_packet, Z_cols_this_packet)) =
-                    matrices
+                if let Some((
+                    input_matrix,
+                    output_matrix_const,
+                    output_matrix_mut,
+                    row_packet,
+                    Z_cols_this_packet,
+                )) = matrices
                 {
                     let grid_dim_y = Z_cols_this_packet.div_ceil(COMPLEX_COLS_PER_BLOCK);
                     let config = CudaLaunchConfig::basic(
@@ -710,9 +723,14 @@ pub fn natural_main_evals_to_natural_coset_evals(
                         block_dim_x as u32,
                         stream_refs[i],
                     );
+                    let input = if start_stage == 0 {
+                        *input_matrix
+                    } else {
+                        *output_matrix_const
+                    };
                     let args = N2BMultiStageArguments::new(
-                        *input_matrix,
-                        *output_matrix,
+                        input,
+                        *output_matrix_mut,
                         start_stage as u32,
                         stages_this_launch as u32,
                         log_n as u32,
@@ -729,8 +747,13 @@ pub fn natural_main_evals_to_natural_coset_evals(
             b2n_packet_plan_details.iter()
         {
             for (i, matrices) in matrices_both_packets.iter().enumerate() {
-                if let Some((input_matrix, output_matrix, row_packet, Z_cols_this_packet)) =
-                    matrices
+                if let Some((
+                    _input_matrix,
+                    output_matrix_const,
+                    output_matrix_mut,
+                    row_packet,
+                    Z_cols_this_packet,
+                )) = matrices
                 {
                     let grid_dim_y = Z_cols_this_packet.div_ceil(COMPLEX_COLS_PER_BLOCK);
                     let config = CudaLaunchConfig::basic(
@@ -739,8 +762,8 @@ pub fn natural_main_evals_to_natural_coset_evals(
                         stream_refs[i],
                     );
                     let args = B2NMultiStageArguments::new(
-                        *input_matrix,
-                        *output_matrix,
+                        *output_matrix_const,
+                        *output_matrix_mut,
                         start_stage as u32,
                         stages_this_launch as u32,
                         log_n as u32,

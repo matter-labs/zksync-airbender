@@ -819,18 +819,15 @@ fn test_bitrev_Z_to_natural_composition_main_evals_large() {
     run_bitrev_Z_to_natural_composition_main_evals(17..22, 4);
 }
 
-// #[test]
-// #[serial]
-// fn test_natural_main_evals_to_natural_coset_evals() {
-//     run_natural_main_evals_to_natural_coset_evals(
-//         1..16,
-//         2 * REAL_COLS_PER_BLOCK as usize + 4,
-//     );
-// }
+#[test]
+#[serial]
+fn test_natural_main_evals_to_natural_coset_evals() {
+    run_natural_main_evals_to_natural_coset_evals(1..17, 2 * REAL_COLS_PER_BLOCK as usize + 4);
+}
 
 #[test]
 #[serial]
 #[ignore]
 fn test_natural_main_evals_to_natural_coset_evals_large() {
-    run_natural_main_evals_to_natural_coset_evals(22..23, 8);
+    run_natural_main_evals_to_natural_coset_evals(17..23, 8);
 }
