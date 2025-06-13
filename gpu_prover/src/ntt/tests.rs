@@ -786,7 +786,7 @@ fn test_bitrev_Z_to_natural_trace_coset_evals() {
 #[serial]
 #[ignore]
 fn test_bitrev_Z_to_natural_trace_coset_evals_large() {
-    run_bitrev_Z_to_natural_trace_coset_evals(22..23, 8);
+    run_bitrev_Z_to_natural_trace_coset_evals(17..23, 8);
 }
 
 #[test]
@@ -803,7 +803,7 @@ fn test_natural_composition_coset_evals_to_bitrev_Z() {
 #[serial]
 #[ignore]
 fn test_natural_composition_coset_evals_to_bitrev_Z_large() {
-    run_natural_evals_to_bitrev_Z(17..22, 4, EvalsAre::CompositionCoset);
+    run_natural_evals_to_bitrev_Z(17..23, 4, EvalsAre::CompositionCoset);
 }
 
 #[test]
@@ -816,7 +816,7 @@ fn test_bitrev_Z_to_natural_composition_main_evals() {
 #[serial]
 #[ignore]
 fn test_bitrev_Z_to_natural_composition_main_evals_large() {
-    run_bitrev_Z_to_natural_composition_main_evals(17..22, 4);
+    run_bitrev_Z_to_natural_composition_main_evals(17..23, 4);
 }
 
 #[test]

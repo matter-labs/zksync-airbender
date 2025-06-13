@@ -474,8 +474,6 @@ pub fn natural_main_evals_to_natural_coset_evals(
         )
     };
 
-    // return fallback();
-
     // n < 2^16 is for testing only and uses simple kernels
     if log_n < 16 {
         return fallback();
@@ -522,8 +520,6 @@ pub fn natural_main_evals_to_natural_coset_evals(
     // We'd like the L2 to accommodate 2 work packets at once (one per stream)
     let work_packet_elems = l2_working_set_e2_elems >> 1;
 
-    println!("work_packet_elems {}", work_packet_elems);
-
     // If the L2 work packet can fit at least 1 full column, we'll include
     // the first n2b and last b2n launches in the persistence chain.
     let work_packet_has_full_cols = work_packet_elems >= n;
@@ -565,11 +561,11 @@ pub fn natural_main_evals_to_natural_coset_evals(
     start_event.record(exec_stream)?;
     aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
 
-    let instant = std::time::Instant::now();
     // Run noninitial kernels of n2b and nonfinal kernels of b2n
     // with L2 chunking and multistreaming to reduce tail effect,
     // inspired by GTC S62401 "How To Write A CUDA Program: The Ninja Edition"
     // https://www.nvidia.com/en-us/on-demand/session/gtc24-s62401/
+    let instant = std::time::Instant::now();
     let rows_per_packet = std::cmp::min(n, work_packet_elems);
     let stream_refs = [exec_stream, aux_stream];
     let chain_start = if work_packet_has_full_cols { 0 } else { 1 };
@@ -687,10 +683,6 @@ pub fn natural_main_evals_to_natural_coset_evals(
                     &outputs_slice_const[bf_start_col * stride..bf_lim_col * stride];
                 let output_slice_mut =
                     &mut outputs_slice_mut[bf_start_col * stride..bf_lim_col * stride];
-                println!(
-                    "Z_col {} row_packet {} Z_cols_this_packet {}",
-                    Z_col, row_packet, Z_cols_this_packet,
-                );
                 let input_matrix =
                     DeviceMatrixChunk::new(input_slice, stride, offset, rows_per_packet);
                 let output_matrix_const =
@@ -781,12 +773,6 @@ pub fn natural_main_evals_to_natural_coset_evals(
         }
     }
     println!("Chunk launch logic took {:?}", instant.elapsed());
-
-    println!(
-        "n2b_plan.len() {} b2n_plan.len() {}",
-        n2b_plan.len(),
-        b2n_plan.len()
-    );
 
     end_event.record(aux_stream)?;
     exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
