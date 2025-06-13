@@ -474,6 +474,8 @@ pub fn natural_main_evals_to_natural_coset_evals(
         )
     };
 
+    // return fallback();
+
     // n < 2^16 is for testing only and uses simple kernels
     if log_n < 16 {
         return fallback();

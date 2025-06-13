@@ -828,6 +828,13 @@ fn test_natural_main_evals_to_natural_coset_evals() {
 #[test]
 #[serial]
 #[ignore]
-fn test_natural_main_evals_to_natural_coset_evals_large() {
-    run_natural_main_evals_to_natural_coset_evals(17..23, 8);
+fn test_natural_main_evals_to_natural_coset_evals_large_even_num_Z_cols() {
+    run_natural_main_evals_to_natural_coset_evals(16..23, 8);
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn test_natural_main_evals_to_natural_coset_evals_large_odd_num_Z_cols() {
+    run_natural_main_evals_to_natural_coset_evals(16..23, 10);
 }
