@@ -3,7 +3,7 @@ use super::*;
 pub fn get_final_reduced_riscv_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
     bytecode: &[u32],
     worker: &Worker,
-) -> MainCircuitPrecomputations<IWithoutByteAccessIsaConfig, A> {
+) -> MainCircuitPrecomputations<IWithoutByteAccessIsaConfig, A, B> {
     let delegation_csrs = IWithoutByteAccessIsaConfig::ALLOWED_DELEGATION_CSRS;
     let machine: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field> =
         ::final_reduced_risc_v_machine::get_machine(bytecode, delegation_csrs);

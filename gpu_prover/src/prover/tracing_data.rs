@@ -6,9 +6,9 @@ use crate::witness::trace_main::{
     MainTraceDevice, MainTraceHost, ShuffleRamSetupAndTeardownDevice,
     ShuffleRamSetupAndTeardownHost,
 };
-use crate::witness::CircuitType;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
+use crate::circuit_type::CircuitType;
 
 pub enum TracingDataDevice<C: ProverContext> {
     Main {

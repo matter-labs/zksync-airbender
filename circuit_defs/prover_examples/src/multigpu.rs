@@ -17,7 +17,6 @@ use std::{
 };
 
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
-use cs::one_row_compiler::CompiledCircuitArtifact;
 use cs::utils::split_timestamp;
 use gpu_prover::cudart::{
     device::{get_device_count, get_device_properties, set_device},
@@ -25,6 +24,7 @@ use gpu_prover::cudart::{
 };
 use gpu_prover::{
     allocator::host::ConcurrentStaticHostAllocator,
+    circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType},
     prover::{
         context::MemPoolProverContext,
         memory::commit_memory,
@@ -32,12 +32,10 @@ use gpu_prover::{
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
     witness::{
-        trace_delegation::{DelegationCircuitType, DelegationTraceHost},
+        trace_delegation::DelegationTraceHost,
         trace_main::{
-            get_aux_arguments_boundary_values, MainCircuitType, MainTraceHost,
-            ShuffleRamSetupAndTeardownHost,
+            get_aux_arguments_boundary_values, MainTraceHost, ShuffleRamSetupAndTeardownHost,
         },
-        CircuitType,
     },
 };
 use prover::{
@@ -229,7 +227,7 @@ impl GpuThread {
             let mut gpu_setup_reduced = None;
 
             let mut delegation_setup: HashMap<
-                gpu_prover::witness::trace_delegation::DelegationCircuitType,
+                DelegationCircuitType,
                 SetupPrecomputations<'_, MemPoolProverContext<'_>>,
                 RandomState,
             > = HashMap::default();

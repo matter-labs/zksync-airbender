@@ -1,54 +1,101 @@
 use crate::gpu_worker::{get_gpu_worker_func, GpuWorkRequest};
-use crate::logger::LOCAL_LOGGER;
 use crate::messages::WorkerResult;
 use crossbeam_channel::internal::SelectHandle;
-use crossbeam_channel::{bounded, Receiver, Select, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use fft::GoodAllocator;
 use gpu_prover::cudart::device::{get_device_count, get_device_properties, set_device};
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
 use itertools::Itertools;
+use log::info;
+use std::alloc::Global;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CStr;
-use std::time::Instant;
+use std::sync::OnceLock;
 
-pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator> {
+pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
     pub receiver: Receiver<GpuWorkRequest<A, B>>,
-    pub sender: Sender<WorkerResult<B>>,
+    pub sender: Sender<WorkerResult<A>>,
 }
 
-pub fn get_gpu_manager_func<C: ProverContext>(
-    timer: Instant,
-    is_initialized: Sender<()>,
-    timer_reset: Receiver<Instant>,
-    batches: Receiver<GpuWorkBatch<impl GoodAllocator + 'static, C::HostAllocator>>,
-) -> impl FnOnce(&rayon::Scope) {
-    move |_| {
-        rayon::scope(|s| gpu_manager::<C>(timer, is_initialized, timer_reset, batches, s).unwrap())
+pub struct GpuManager<C: ProverContext, A: GoodAllocator + 'static = Global> {
+    is_initialized_receiver: Receiver<usize>,
+    workers_count: OnceLock<usize>,
+    batches_sender: Sender<GpuWorkBatch<C::HostAllocator, A>>,
+}
+
+impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
+    pub fn new(
+        host_allocations_count: usize,
+        log_host_allocation_size: usize,
+        scope: &rayon::Scope,
+    ) -> Self {
+        let (is_initialized_sender, is_initialized_receiver) = bounded(1);
+        let (batches_sender, batches_receiver) = unbounded();
+        info!("GPU MANAGER spawning");
+        scope.spawn(move |scope| {
+            let result = gpu_manager::<C>(
+                host_allocations_count,
+                log_host_allocation_size,
+                is_initialized_sender,
+                batches_receiver,
+                scope,
+            );
+            if let Err(e) = result {
+                panic!("GPU MANAGER encountered an error: {e}");
+            }
+        });
+        Self {
+            is_initialized_receiver,
+            workers_count: OnceLock::new(),
+            batches_sender,
+        }
+    }
+
+    pub fn send_batch(&self, batch: GpuWorkBatch<C::HostAllocator, A>) {
+        self.batches_sender.send(batch).unwrap()
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.workers_count.get().is_some()
+    }
+
+    pub fn wait_for_initialization(&self) {
+        if self.workers_count.get().is_some() {
+            return;
+        }
+        let count = self.is_initialized_receiver.recv().unwrap();
+        self.workers_count.set(count).unwrap();
+    }
+
+    pub fn get_workers_count(&self) -> usize {
+        self.wait_for_initialization();
+        *self.workers_count.get().unwrap()
     }
 }
 
 fn gpu_manager<C: ProverContext>(
-    timer: Instant,
-    is_initialized: Sender<()>,
-    timer_reset: Receiver<Instant>,
-    batches_receiver: Receiver<GpuWorkBatch<impl GoodAllocator + 'static, C::HostAllocator>>,
+    host_allocations_count: usize,
+    log_host_allocation_size: usize,
+    is_initialized: Sender<usize>,
+    batches_receiver: Receiver<GpuWorkBatch<C::HostAllocator, impl GoodAllocator + 'static>>,
     scope: &rayon::Scope<'_>,
 ) -> CudaResult<()> {
-    LOCAL_LOGGER.with_borrow_mut(|l| {
-        l.name = "GPU[M]".to_string();
-        l.timer = timer;
-    });
-    C::initialize_host_allocator(8, 1 << 8, 22)?;
+    assert!(log_host_allocation_size >= 22);
+    info!("GPU MANAGER initializing host allocator with {host_allocations_count} allocations of size 2^{log_host_allocation_size} bytes each");
+    C::initialize_host_allocator(
+        host_allocations_count,
+        1 << (log_host_allocation_size - 22),
+        22,
+    )?;
     let device_count = get_device_count()? as usize;
-    log::info!("found {} CUDA capable devices", device_count);
+    info!("GPU MANAGER found {} CUDA capable devices", device_count);
     let prover_context_config = {
         let mut c = ProverContextConfig::default();
         c.allocation_block_log_size = 22;
         c
     };
     let (worker_initialized_sender, worker_initialized_receiver) = bounded(device_count);
-    let (worker_timer_reset_sender, worker_timer_reset_receiver) = bounded(device_count);
     let mut worker_senders = Vec::with_capacity(device_count);
     let mut worker_receivers = Vec::with_capacity(device_count);
     let mut worker_queues = Vec::with_capacity(device_count);
@@ -56,8 +103,8 @@ fn gpu_manager<C: ProverContext>(
         set_device(device_id)?;
         let props = get_device_properties(device_id)?;
         let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
-        log::info!(
-            "Device {}: {} ({} SMs, {} GB memory)",
+        info!(
+            "GPU MANAGER Device {}: {} ({} SMs, {} GB memory)",
             device_id,
             name,
             props.multiProcessorCount,
@@ -69,32 +116,20 @@ fn gpu_manager<C: ProverContext>(
         worker_receivers.push(result_receiver);
         worker_queues.push(VecDeque::from([None, None]));
         let gpu_worker_func = get_gpu_worker_func::<C>(
-            timer,
             device_id,
             prover_context_config,
             worker_initialized_sender.clone(),
-            worker_timer_reset_receiver.clone(),
             request_receiver,
             result_sender,
         );
-        log::info!("spawning GPU worker {device_id}");
+        info!("GPU MANAGER spawning GPU worker {device_id}");
         scope.spawn(move |_| gpu_worker_func());
     }
     drop(worker_initialized_sender);
     assert_eq!(worker_initialized_receiver.iter().count(), device_count);
-    log::info!("all GPU workers initialized");
-    is_initialized.send(()).unwrap();
+    info!("GPU MANAGER all GPU workers initialized");
+    is_initialized.send(device_count).unwrap();
     drop(is_initialized);
-    let timer = timer_reset.recv().unwrap();
-    drop(timer_reset);
-    LOCAL_LOGGER.with_borrow_mut(|l| {
-        l.timer = timer;
-    });
-    log::info!("timer reset");
-    for _ in 0..device_count {
-        worker_timer_reset_sender.send(timer).unwrap();
-    }
-    drop(worker_timer_reset_sender);
     let mut next_batch_id = 0;
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
@@ -124,12 +159,12 @@ fn gpu_manager<C: ProverContext>(
                         } = batch;
                         let id = next_batch_id;
                         next_batch_id += 1;
-                        log::info!("received new batch with id {}", id);
+                        info!("GPU MANAGER received new batch with id {}", id);
                         batch_receivers.insert(id, requests);
                         batch_senders.insert(id, results);
                     }
                     Err(_) => {
-                        log::info!("batches channel closed");
+                        info!("GPU MANAGER batches channel closed");
                         batches_receiver = None;
                     }
                 };
@@ -138,11 +173,11 @@ fn gpu_manager<C: ProverContext>(
                 let batch_id = batch_receiver_indexes[&index];
                 match op.recv(&batch_receivers[&batch_id]) {
                     Ok(request) => {
-                        log::info!("received work request for batch id {batch_id}");
+                        info!("GPU MANAGER received work request for batch id {batch_id}");
                         work_queue.push_back((batch_id, request));
                     }
                     Err(_) => {
-                        log::info!("batch request channel with id {batch_id} closed");
+                        info!("GPU MANAGER batch request channel with id {batch_id} closed");
                         batch_receivers.remove(&batch_id);
                         batches_to_flush.insert(batch_id);
                     }
@@ -154,8 +189,8 @@ fn gpu_manager<C: ProverContext>(
                 let batch_id: Option<usize> = worker_queues[worker_id].pop_front().unwrap();
                 if let Some(result) = result {
                     let batch_id = batch_id.unwrap();
-                    log::info!(
-                        "received work result from worker id {worker_id} fo batch id {batch_id}",
+                    info!(
+                        "GPU MANAGER received work result from worker id {worker_id} fo batch id {batch_id}",
                     );
                     batch_senders[&batch_id].send(result).unwrap();
                 }
@@ -175,7 +210,7 @@ fn gpu_manager<C: ProverContext>(
                     let op_index = op.index();
                     let worker_id = worker_senders_indexes[&op_index];
                     let (batch_id, request) = work_queue.pop_front().unwrap();
-                    log::info!("sending work request from batch id {batch_id} to worker id {worker_id}");
+                    info!("GPU MANAGER sending work request from batch id {batch_id} to worker id {worker_id}");
                     op.send(&worker_senders[worker_id], Some(request)).unwrap();
                     worker_queues[worker_id].push_back(Some(batch_id));
                 }
@@ -185,7 +220,7 @@ fn gpu_manager<C: ProverContext>(
         if work_queue.is_empty() {
             for (worker_id, queue) in worker_queues.iter_mut().enumerate() {
                 if queue.len() == 2 && queue[0].is_none() && queue[1].is_some() {
-                    log::info!("advancing queue for worker id {worker_id}");
+                    info!("GPU MANAGER advancing queue for worker id {worker_id}");
                     worker_senders[worker_id].send(None).unwrap();
                     queue.push_back(None);
                 }
@@ -200,7 +235,7 @@ fn gpu_manager<C: ProverContext>(
                 {
                     batches_to_flush.remove(&batch_id);
                     batch_senders.remove(&batch_id);
-                    log::info!("batch id {batch_id} flushed");
+                    info!("GPU MANAGER batch id {batch_id} flushed");
                 }
             }
         }
@@ -211,7 +246,7 @@ fn gpu_manager<C: ProverContext>(
                         .iter()
                         .any(|q| q.is_some_and(|x| batches_to_flush.contains(&x)))
                 {
-                    log::info!("flushing worker id {i}");
+                    info!("GPU MANAGER flushing worker id {i}");
                     sender.send(None).unwrap();
                     worker_queues[i].push_back(None);
                 }
@@ -221,6 +256,6 @@ fn gpu_manager<C: ProverContext>(
             break;
         }
     }
-    log::info!("GPU manager finished");
+    info!("GPU MANAGER finished");
     Ok(())
 }

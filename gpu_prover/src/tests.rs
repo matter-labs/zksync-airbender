@@ -1,9 +1,10 @@
+use crate::circuit_type::CircuitType;
+use crate::circuit_type::MainCircuitType;
 use crate::prover::context::{MemPoolProverContext, ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::{get_aux_arguments_boundary_values, MainCircuitType};
-use crate::witness::CircuitType;
+use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use cs::definitions::split_timestamp;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::device::{get_device_count, get_device_properties, set_device};

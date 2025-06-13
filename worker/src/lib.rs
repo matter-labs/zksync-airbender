@@ -6,7 +6,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 // We allocate a pool of (ideally) high-performance cores only!
 pub struct Worker {
-    pool: ThreadPool,
+    pub pool: ThreadPool,
     pub num_cores: usize,
 }
 

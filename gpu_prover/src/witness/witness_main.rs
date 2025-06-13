@@ -1,5 +1,6 @@
-use super::trace_main::{MainCircuitType, MainTraceDevice, MainTraceRaw};
+use super::trace_main::{MainTraceDevice, MainTraceRaw};
 use super::BF;
+use crate::circuit_type::MainCircuitType;
 use crate::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };

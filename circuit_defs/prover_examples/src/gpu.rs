@@ -3,7 +3,7 @@ use std::{alloc::Global, collections::HashMap, sync::Arc};
 use cs::utils::split_timestamp;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_prover::cudart::result::CudaResult;
-use gpu_prover::witness::trace_delegation::{DelegationCircuitType, DelegationTraceHost};
+use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{
     prover::{
@@ -12,12 +12,10 @@ use gpu_prover::{
         setup::SetupPrecomputations,
         tracing_data::{TracingDataHost, TracingDataTransfer},
     },
-    witness::{
-        trace_main::{get_aux_arguments_boundary_values, MainCircuitType},
-        CircuitType,
-    },
+    witness::trace_main::get_aux_arguments_boundary_values,
 };
 use itertools::Itertools;
+use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use prover::{
     definitions::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
@@ -256,7 +254,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     };
 
     // now prove one by one
-    let main_compiled_circuit = Arc::new (risc_v_circuit_precomputations.compiled_circuit.clone());
+    let main_compiled_circuit = Arc::new(risc_v_circuit_precomputations.compiled_circuit.clone());
     let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
         let gpu_proof = {

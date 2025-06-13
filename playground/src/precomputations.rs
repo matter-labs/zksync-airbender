@@ -1,3 +1,4 @@
+use std::alloc::Global;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use fft::{GoodAllocator, LdePrecomputations, Twiddles};
 use field::{Mersenne31Complex, Mersenne31Field};
@@ -9,17 +10,17 @@ use trace_holder::RowMajorTrace;
 type BF = Mersenne31Field;
 
 #[derive(Clone)]
-pub struct CircuitPrecomputationsHost<A: GoodAllocator, B: GoodAllocator> {
+pub struct CircuitPrecomputationsHost<A: GoodAllocator, B: GoodAllocator = Global> {
     pub compiled_circuit: Arc<CompiledCircuitArtifact<BF>>,
-    pub twiddles: Arc<Twiddles<Mersenne31Complex, A>>,
-    pub lde_precomputations: Arc<LdePrecomputations<A>>,
-    pub setup: Arc<Vec<BF, B>>,
+    pub twiddles: Arc<Twiddles<Mersenne31Complex, B>>,
+    pub lde_precomputations: Arc<LdePrecomputations<B>>,
+    pub setup: Arc<Vec<BF, A>>,
 }
 
-fn get_setup_from_row_major_trace<const N: usize, A: GoodAllocator, B: GoodAllocator>(trace: &RowMajorTrace<BF, N, A>) -> Arc<Vec<BF, B>>
+fn get_setup_from_row_major_trace<const N: usize, A: GoodAllocator, B: GoodAllocator>(trace: &RowMajorTrace<BF, N, B>) -> Arc<Vec<BF, A>>
 {
     let mut setup_evaluations =
-        Vec::with_capacity_in(trace.as_slice().len(), B::default());
+        Vec::with_capacity_in(trace.as_slice().len(), A::default());
     unsafe { setup_evaluations.set_len(trace.as_slice().len()) };
     transpose::transpose(
         trace.as_slice(),
@@ -32,9 +33,9 @@ fn get_setup_from_row_major_trace<const N: usize, A: GoodAllocator, B: GoodAlloc
 }
 
 impl<C: MachineConfig, A: GoodAllocator, B: GoodAllocator>
-    From<MainCircuitPrecomputations<C, A, B>> for CircuitPrecomputationsHost<A, B>
+    From<MainCircuitPrecomputations<C, B, A>> for CircuitPrecomputationsHost<A, B>
 {
-    fn from(precomputations: MainCircuitPrecomputations<C, A, B>) -> Self {
+    fn from(precomputations: MainCircuitPrecomputations<C, B, A>) -> Self {
         let MainCircuitPrecomputations {
             compiled_circuit,
             twiddles,
@@ -52,9 +53,9 @@ impl<C: MachineConfig, A: GoodAllocator, B: GoodAllocator>
 }
 
 impl<A: GoodAllocator, B: GoodAllocator>
-From<DelegationCircuitPrecomputations<A, B>> for CircuitPrecomputationsHost<A, B>
+From<DelegationCircuitPrecomputations<B, A>> for CircuitPrecomputationsHost<A, B>
 {
-    fn from(precomputations: DelegationCircuitPrecomputations<A, B>) -> Self {
+    fn from(precomputations: DelegationCircuitPrecomputations<B, A>) -> Self {
         let DelegationCircuitPrecomputations {
             compiled_circuit,
             twiddles,

@@ -1,9 +1,9 @@
-use crate::logger::LOCAL_LOGGER;
 use crate::messages::WorkerResult;
 use crate::precomputations::CircuitPrecomputationsHost;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
+use gpu_prover::circuit_type::CircuitType;
 use gpu_prover::cudart::device::set_device;
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
@@ -12,28 +12,28 @@ use gpu_prover::prover::proof::{prove, ProofJob};
 use gpu_prover::prover::setup::SetupPrecomputations;
 use gpu_prover::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use gpu_prover::witness::trace_main::get_aux_arguments_boundary_values;
-use gpu_prover::witness::CircuitType;
+use log::info;
 use prover::definitions::{
     AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Proof;
+use std::alloc::Global;
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
 
 type BF = Mersenne31Field;
 
 const NUM_QUERIES: usize = 53;
 const POW_BITS: u32 = 28;
 
-pub struct MemoryCommitmentRequest<A: GoodAllocator, B: GoodAllocator> {
+pub struct MemoryCommitmentRequest<A: GoodAllocator, B: GoodAllocator = Global> {
     pub circuit_type: CircuitType,
     pub circuit_sequence: usize,
     pub precomputations: CircuitPrecomputationsHost<A, B>,
-    pub tracing_data: TracingDataHost<B>,
+    pub tracing_data: TracingDataHost<A>,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -43,11 +43,11 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
-pub struct ProofRequest<A: GoodAllocator, B: GoodAllocator> {
+pub struct ProofRequest<A: GoodAllocator, B: GoodAllocator = Global> {
     pub circuit_type: CircuitType,
     pub circuit_sequence: usize,
     pub precomputations: CircuitPrecomputationsHost<A, B>,
-    pub tracing_data: TracingDataHost<B>,
+    pub tracing_data: TracingDataHost<A>,
     pub external_challenges: ExternalChallenges,
 }
 
@@ -58,31 +58,29 @@ pub struct ProofResult<A: GoodAllocator> {
     pub proof: Proof,
 }
 
-pub enum GpuWorkRequest<A: GoodAllocator, B: GoodAllocator> {
+pub enum GpuWorkRequest<A: GoodAllocator, B: GoodAllocator = Global> {
     MemoryCommitment(MemoryCommitmentRequest<A, B>),
     Proof(ProofRequest<A, B>),
 }
 
 pub fn get_gpu_worker_func<C: ProverContext>(
-    timer: Instant,
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    timer_reset: Receiver<Instant>,
-    requests: Receiver<Option<GpuWorkRequest<impl GoodAllocator + 'static, C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator + 'static>>>,
     results: Sender<Option<WorkerResult<C::HostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        gpu_worker::<C>(
-            timer,
+        let result = gpu_worker::<C>(
             device_id,
             prover_context_config,
             is_initialized,
-            timer_reset,
             requests,
             results,
-        )
-        .unwrap()
+        );
+        if let Err(e) = result {
+            panic!("GPU[{device_id}] worker encountered an error: {e}");
+        }
     }
 }
 
@@ -102,29 +100,17 @@ struct SetupHolder<'a, C: ProverContext> {
 }
 
 fn gpu_worker<C: ProverContext>(
-    timer: Instant,
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    timer_reset: Receiver<Instant>,
-    requests: Receiver<Option<GpuWorkRequest<impl GoodAllocator, C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator>>>,
     results: Sender<Option<WorkerResult<C::HostAllocator>>>,
 ) -> CudaResult<()> {
-    LOCAL_LOGGER.with_borrow_mut(|l| {
-        l.name = format!("GPU[{device_id}]");
-        l.timer = timer;
-    });
     set_device(device_id)?;
     let context = C::new(&prover_context_config)?;
-    log::info!("GPU worker initialized");
+    info!("GPU[{device_id}] worker initialized");
     is_initialized.send(()).unwrap();
     drop(is_initialized);
-    let timer = timer_reset.recv().unwrap();
-    drop(timer_reset);
-    LOCAL_LOGGER.with_borrow_mut(|l| {
-        l.timer = timer;
-    });
-    log::info!("timer reset");
     let mut current_setup: Option<SetupHolder<C>> = None;
     let mut current_transfer = None;
     let mut current_job = None;
@@ -142,8 +128,8 @@ fn gpu_worker<C: ProverContext>(
                     let setup = if let Some(holder) = &current_setup
                         && Arc::ptr_eq(&holder.trace, &precomputations.setup)
                     {
-                        log::info!(
-                            "reusing setup for circuit type: {:?}",
+                        info!(
+                            "GPU[{device_id}] reusing setup for circuit type: {:?}",
                             request.circuit_type,
                         );
                         holder.setup.clone()
@@ -161,8 +147,8 @@ fn gpu_worker<C: ProverContext>(
                             log_tree_cap_size,
                             &context,
                         )?;
-                        log::info!(
-                            "transferring setup for circuit type: {:?}",
+                        info!(
+                            "GPU[{device_id}] transferring setup for circuit type: {:?}",
                             request.circuit_type,
                         );
                         setup.schedule_transfer(precomputations.setup.clone(), &context)?;
@@ -182,13 +168,13 @@ fn gpu_worker<C: ProverContext>(
                 }
             };
             match circuit_type {
-                CircuitType::Main(main) => log::info!(
-                    "transferring trace for main circuit type: {:?} circuit sequence: {}",
+                CircuitType::Main(main) => info!(
+                    "GPU[{device_id}] transferring trace for main circuit type: {:?} circuit sequence: {}",
                     main,
                     circuit_sequence
                 ),
-                CircuitType::Delegation(delegation) => log::info!(
-                    "transferring trace for delegation circuit type: {:?}",
+                CircuitType::Delegation(delegation) => info!(
+                    "GPU[{device_id}] transferring trace for delegation circuit type: {:?}",
                     delegation,
                 ),
             }
@@ -203,12 +189,12 @@ fn gpu_worker<C: ProverContext>(
             let job = match &request {
                 GpuWorkRequest::MemoryCommitment(request) => {
                     match request.circuit_type {
-                        CircuitType::Main(main) => log::info!(
-                            "producing memory commitment for main circuit type: {:?} circuit sequence: {}",
+                        CircuitType::Main(main) => info!(
+                            "GPU[{device_id}] producing memory commitment for main circuit type: {:?} circuit sequence: {}",
                             main,
                             request.circuit_sequence
                         ),
-                        CircuitType::Delegation(delegation) => log::info!(
+                        CircuitType::Delegation(delegation) => info!(
                             "producing memory commitment for delegation circuit type: {:?}",
                             delegation,
                         ),
@@ -232,13 +218,13 @@ fn gpu_worker<C: ProverContext>(
                 }
                 GpuWorkRequest::Proof(request) => {
                     match request.circuit_type {
-                        CircuitType::Main(main) => log::info!(
-                            "producing proof for main circuit type: {:?} circuit sequence: {}",
+                        CircuitType::Main(main) => info!(
+                            "GPU[{device_id}] producing proof for main circuit type: {:?} circuit sequence: {}",
                             main,
                             request.circuit_sequence
                         ),
-                        CircuitType::Delegation(delegation) => log::info!(
-                            "producing proof for delegation circuit type: {:?}",
+                        CircuitType::Delegation(delegation) => info!(
+                            "GPU[{device_id}] producing proof for delegation circuit type: {:?}",
                             delegation,
                         ),
                     }
@@ -305,13 +291,13 @@ fn gpu_worker<C: ProverContext>(
                         JobType::Proof(_) => unreachable!(),
                     };
                     match request.circuit_type {
-                        CircuitType::Main(main) => log::info!(
-                            "produced memory commitment for main circuit type: {:?} circuit sequence: {}",
+                        CircuitType::Main(main) => info!(
+                            "GPU[{device_id}] produced memory commitment for main circuit type: {:?} circuit sequence: {}",
                             main,
                             request.circuit_sequence
                         ),
-                        CircuitType::Delegation(delegation) => log::info!(
-                            "produced memory commitment for delegation circuit type: {:?}",
+                        CircuitType::Delegation(delegation) => info!(
+                            "GPU[{device_id}] produced memory commitment for delegation circuit type: {:?}",
                             delegation,
                         ),
                     }
@@ -335,13 +321,13 @@ fn gpu_worker<C: ProverContext>(
                         JobType::Proof(job) => job.finish()?,
                     };
                     match request.circuit_type {
-                        CircuitType::Main(main) => log::info!(
-                            "produced proof for main circuit type: {:?} circuit sequence: {}",
+                        CircuitType::Main(main) => info!(
+                            "GPU[{device_id}] produced proof for main circuit type: {:?} circuit sequence: {}",
                             main,
                             request.circuit_sequence
                         ),
-                        CircuitType::Delegation(delegation) => log::info!(
-                            "produced proof for delegation circuit type: {:?}",
+                        CircuitType::Delegation(delegation) => info!(
+                            "GPU[{device_id}] produced proof for delegation circuit type: {:?}",
                             delegation,
                         ),
                     }
@@ -361,6 +347,6 @@ fn gpu_worker<C: ProverContext>(
     }
     assert!(current_transfer.is_none());
     assert!(current_job.is_none());
-    log::info!("GPU worker finished");
+    info!("GPU[{device_id}] worker finished");
     Ok(())
 }

@@ -4,10 +4,12 @@
 #![feature(btree_cursors)]
 #![feature(pointer_is_aligned_to)]
 #![feature(array_chunks)]
+#![feature(adt_const_params)]
 
 pub mod allocator;
 pub mod barycentric;
 pub mod blake2s;
+pub mod circuit_type;
 pub mod context;
 pub mod device_structures;
 pub mod field;
