@@ -250,7 +250,9 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     let mut reduce_result = context.alloc(columns_count)?;
     let reduce_temp_storage_bytes =
         get_reduce_temp_storage_bytes::<BF>(ReduceOperation::Sum, (domain_size - 1) as i32)?;
-    let mut reduce_temp_storage = context.alloc(reduce_temp_storage_bytes)?;
+    let mut reduce_temp_storage_0 = context.alloc(reduce_temp_storage_bytes)?;
+    let mut reduce_temp_storage_1 = context.alloc(reduce_temp_storage_bytes)?;
+    let reduce_temp_storage_refs = [&mut reduce_temp_storage_0, &mut reduce_temp_storage_1];
     let exec_stream = context.get_exec_stream();
     let aux_stream = context.get_aux_stream();
     let stream_refs = [exec_stream, aux_stream];
@@ -265,7 +267,7 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     {
         reduce(
             ReduceOperation::Sum,
-            &mut reduce_temp_storage,
+            reduce_temp_storage_refs[i & 1],
             &col[..domain_size - 1],
             &mut reduce_result[i],
             stream_refs[i & 1],
@@ -273,7 +275,8 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     }
     end_event.record(aux_stream)?;
     exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
-    context.free(reduce_temp_storage)?;
+    context.free(reduce_temp_storage_0)?;
+    context.free(reduce_temp_storage_1)?;
     neg(
         &DeviceMatrix::new(&reduce_result, 1),
         &mut DeviceMatrixChunkMut::new(
@@ -286,7 +289,10 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     )?;
     context.free(reduce_result)?;
     if padded_to_even {
-        set_to_zero(&mut evaluations[columns_count << log_domain_size..], exec_stream)?;
+        set_to_zero(
+            &mut evaluations[columns_count << log_domain_size..],
+            exec_stream,
+        )?;
     }
     Ok(())
 }
