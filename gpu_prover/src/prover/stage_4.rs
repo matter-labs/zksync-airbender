@@ -300,7 +300,9 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             COSET_INDEX,
             log_domain_size,
             log_lde_factor,
-            stream,
+            context.get_exec_stream(),
+            context.get_aux_stream(),
+            context.get_device_properties(),
         )?;
         assert!(log_tree_cap_size >= log_lde_factor);
         let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;

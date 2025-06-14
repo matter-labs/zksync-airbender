@@ -5,7 +5,8 @@ namespace ntt {
 template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset>
 DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                      vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                     const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
+                                                     const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                     const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -15,9 +16,10 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
-  const unsigned gmem_offset = VALS_PER_BLOCK * blockIdx.x + VALS_PER_WARP * warp_id;
+  const unsigned gmem_offset = VALS_PER_BLOCK * effective_block_idx_x + VALS_PER_WARP * warp_id;
   gmem_in.add_row(gmem_offset);
   gmem_in.add_col(COL_PAIRS_PER_BLOCK * blockIdx.y);
   gmem_out.add_row(gmem_offset);
@@ -94,33 +96,36 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
 extern "C" __launch_bounds__(128, 8) __global__
     void main_domain_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
                                                     const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                    const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_warp<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                                    const unsigned num_Z_cols, const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 extern "C" __launch_bounds__(128, 8) __global__
     void main_domain_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
                                                     const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                    const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_warp<2, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                                    const unsigned num_Z_cols, const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<2, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 extern "C" __launch_bounds__(128, 8) __global__
     void coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_warp<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                              const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 extern "C" __launch_bounds__(128, 8) __global__
     void coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_warp<2, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                              const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<2, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset>
 DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                      const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
+                                                      const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                      const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -131,9 +136,10 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
-  const unsigned gmem_block_offset = VALS_PER_BLOCK * blockIdx.x;
+  const unsigned gmem_block_offset = VALS_PER_BLOCK * effective_block_idx_x;
   const unsigned gmem_offset = gmem_block_offset + VALS_PER_WARP * warp_id;
   // annoyingly scrambled, but should be coalesced overall
   const unsigned gmem_in_thread_offset = 16 * warp_id + VALS_PER_WARP * (lane_id >> 4) + 2 * (lane_id & 7) + ((lane_id >> 3) & 1);
@@ -155,7 +161,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
     }
 
     const unsigned stages_to_skip = MAX_STAGES_THIS_LAUNCH - stages_this_launch;
-    unsigned exchg_region_offset = blockIdx.x;
+    unsigned exchg_region_offset = effective_block_idx_x;
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
       if (i >= stages_to_skip) {
 #pragma unroll
@@ -303,22 +309,25 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 extern "C" __launch_bounds__(512, 2) __global__
     void main_domain_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                            vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                           const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_block<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                                           const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                           const unsigned grid_offset) {
+  evals_to_Z_final_stages_block<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 extern "C" __launch_bounds__(512, 2) __global__
     void coset_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                      vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                     const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols) {
-  evals_to_Z_final_stages_block<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols);
+                                                     const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                     const unsigned grid_offset) {
+  evals_to_Z_final_stages_block<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 // This kernel basically reverses the pattern of the b2n_noninitial_stages_block kernel.
 template <unsigned LOG_VALS_PER_THREAD>
 DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                          vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                         const bool skip_last_stage, const unsigned log_n, const unsigned num_Z_cols) {
+                                                         const bool skip_last_stage, const unsigned log_n, const unsigned num_Z_cols,
+                                                         const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -332,15 +341,16 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
   const unsigned log_tile_stride = log_n - start_stage - MAX_STAGES_THIS_LAUNCH;
   const unsigned tile_stride = 1u << log_tile_stride;
   const unsigned log_blocks_per_region = log_tile_stride - 4; // tile size is always 16
   const unsigned block_bfly_region_size = TILES_PER_BLOCK * tile_stride;
-  const unsigned block_bfly_region = blockIdx.x >> log_blocks_per_region;
+  const unsigned block_bfly_region = effective_block_idx_x >> log_blocks_per_region;
   const unsigned block_bfly_region_start = block_bfly_region * block_bfly_region_size;
-  const unsigned block_start_in_bfly_region = 16 * (blockIdx.x & ((1u << log_blocks_per_region) - 1));
+  const unsigned block_start_in_bfly_region = 16 * (effective_block_idx_x & ((1u << log_blocks_per_region) - 1));
   // annoyingly scrambled, but should be coalesced overall
   const unsigned gmem_in_thread_offset = tile_stride * warp_id + tile_stride * WARPS_PER_BLOCK * (lane_id >> 4) + 2 * (lane_id & 7) + ((lane_id >> 3) & 1);
   const unsigned gmem_in_offset = block_bfly_region_start + block_start_in_bfly_region + gmem_in_thread_offset;
@@ -481,9 +491,9 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
 extern "C" __launch_bounds__(512, 2) __global__
     void evals_to_Z_nonfinal_7_or_8_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                 const unsigned num_Z_cols) {
-  evals_to_Z_nonfinal_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols);
+                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                 const unsigned grid_offset) {
+  evals_to_Z_nonfinal_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols, grid_offset);
 }
 
 // Simple, non-optimized kernel used for log_n < 16, to unblock debugging small proofs.

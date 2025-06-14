@@ -1,6 +1,6 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::context::Context;
-use era_cudart::device::{get_device, set_device};
+use era_cudart::device::{device_get_attribute, get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags, HostAllocation};
 use era_cudart::memory_pools::{
     AttributeHandler, CudaMemPoolAttributeU64, CudaOwnedMemPool, DevicePoolAllocation,
@@ -8,13 +8,32 @@ use era_cudart::memory_pools::{
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSliceMut, DeviceSlice};
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::CudaError;
+use era_cudart_sys::{CudaDeviceAttr, CudaError};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 
 static DEFAULT_STREAM: CudaStream = CudaStream::DEFAULT;
+
+pub struct DeviceProperties {
+    pub l2_cache_size_bytes: usize,
+    pub sm_count: usize,
+}
+
+impl DeviceProperties {
+    pub fn new() -> CudaResult<Self> {
+        let device_id = get_device()?;
+        let l2_cache_size_bytes =
+            device_get_attribute(CudaDeviceAttr::L2CacheSize, device_id)? as usize;
+        let sm_count =
+            device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
+        Ok(Self {
+            l2_cache_size_bytes,
+            sm_count,
+        })
+    }
+}
 
 pub struct ProverContextConfig {
     pub powers_of_w_coarse_log_count: u32,
@@ -44,6 +63,7 @@ pub trait ProverContext {
     fn get_device_id(&self) -> i32;
     fn switch_to_device(&self) -> CudaResult<()>;
     fn get_exec_stream(&self) -> &CudaStream;
+    fn get_aux_stream(&self) -> &CudaStream;
     fn get_h2d_stream(&self) -> &CudaStream;
     fn alloc<T: Sync>(&self, size: usize) -> CudaResult<Self::Allocation<T>>;
     fn free<T: Sync>(&self, allocation: Self::Allocation<T>) -> CudaResult<()>;
@@ -52,6 +72,7 @@ pub trait ProverContext {
     fn get_reserved_mem_current(&self) -> CudaResult<usize>;
     fn get_reserved_mem_high(&self) -> CudaResult<usize>;
     fn reset_used_mem_high(&self) -> CudaResult<()>;
+    fn get_device_properties(&self) -> &DeviceProperties;
 
     #[cfg(feature = "print_gpu_mem_usage")]
     fn print_mem_pool_stats(&self) -> CudaResult<()> {
@@ -69,17 +90,20 @@ pub trait ProverContext {
 pub struct MemPoolProverContext<'a> {
     _inner: Context,
     pub(crate) exec_stream: CudaStream,
+    pub(crate) aux_stream: CudaStream,
     pub(crate) h2d_stream: CudaStream,
     pub(crate) mem_pool: CudaOwnedMemPool,
     pub(crate) device_id: i32,
+    pub(crate) device_properties: DeviceProperties,
     _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> MemPoolProverContext<'a> {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         assert!(ConcurrentStaticHostAllocator::is_initialized_global());
-        let inner = Context::create(12)?;
+        let inner = Context::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
+        let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
         let device_id = get_device()?;
         let mem_pool = CudaOwnedMemPool::create_for_device(device_id)?;
@@ -122,12 +146,15 @@ impl<'a> MemPoolProverContext<'a> {
         );
         mem_pool.set_attribute(CudaMemPoolAttributeU64::AttrUsedMemHigh, 0)?;
         DEFAULT_STREAM.synchronize()?;
+        let device_properties = DeviceProperties::new()?;
         let context = Self {
             _inner: inner,
             exec_stream,
+            aux_stream,
             h2d_stream,
             mem_pool,
             device_id,
+            device_properties,
             _phantom: PhantomData,
         };
         Ok(context)
@@ -177,6 +204,10 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
 
     fn get_exec_stream(&self) -> &CudaStream {
         &self.exec_stream
+    }
+
+    fn get_aux_stream(&self) -> &CudaStream {
+        &self.aux_stream
     }
 
     fn get_h2d_stream(&self) -> &CudaStream {
@@ -233,5 +264,9 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
     fn reset_used_mem_high(&self) -> CudaResult<()> {
         self.mem_pool
             .set_attribute(CudaMemPoolAttributeU64::AttrUsedMemHigh, 0)
+    }
+
+    fn get_device_properties(&self) -> &DeviceProperties {
+        &self.device_properties
     }
 }
