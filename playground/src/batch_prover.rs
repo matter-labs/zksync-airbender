@@ -91,7 +91,6 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             .map(|b| Self::get_num_cycles(b.circuit_type))
             .max()
             .unwrap();
-        dbg!(max_num_cycles);
         fn delegation_witness_size(witness: DelegationWitness) -> usize {
             witness.write_timestamp.capacity() * size_of::<TimestampData>()
                 + witness.register_accesses.capacity()
@@ -106,26 +105,20 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             .unique_by(|(t, _)| *t)
             .map(|(_, factory)| delegation_witness_size(factory()))
             .sum::<usize>();
-        dbg!(combined_bytes_for_delegation_traces);
         let setups_and_teardowns_bytes_needed =
             (max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2)
                 * max_num_cycles
                 * size_of::<LazyInitAndTeardown>();
-        dbg!(setups_and_teardowns_bytes_needed);
         let cycles_tracing_data_bytes_needed =
             (max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2)
                 * max_num_cycles
                 * size_of::<SingleCycleTracingData>();
-        dbg!(cycles_tracing_data_bytes_needed);
         let delegation_tracing_data_bytes_needed =
             (max_concurrent_batches + device_count * 2) * combined_bytes_for_delegation_traces;
-        dbg!(delegation_tracing_data_bytes_needed);
         let total_bytes_needed = setups_and_teardowns_bytes_needed
             + cycles_tracing_data_bytes_needed
             + delegation_tracing_data_bytes_needed;
-        dbg!(total_bytes_needed);
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
-        dbg!(total_gb_needed);
         let host_allocations_count = total_gb_needed + device_count;
         info!("GPU_MANAGER initializing host allocator with {host_allocations_count} allocations of size 1 GB each");
         MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
@@ -555,6 +548,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             setup_and_teardown,
                             trace,
                         } => {
+                            let circuit_type = circuit_type.as_main().unwrap();
                             info!("BATCH[{batch_id}] BATCH_PROVER received proof for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
                             if let Some(setup_and_teardown) = setup_and_teardown {
                                 let mut lazy_init_data =
