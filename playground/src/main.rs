@@ -30,8 +30,8 @@ fn main() {
         .format_target(false)
         .filter_level(LevelFilter::Info)
         .init();
-    rayon::scope(|scope|{
-        let mut prover = GpuBatchProver::new(16, 30, scope);
+    rayon::scope(|scope| {
+        let mut prover = GpuBatchProver::new(12, 30, 2, scope);
         let mut binary = vec![];
         std::fs::File::open("examples/hashed_fibonacci/app.bin")
             .unwrap()
@@ -39,18 +39,23 @@ fn main() {
             .unwrap();
         let bytecode = get_padded_binary(&binary);
         info!("loaded binary");
-        prover.add_binary("fibonacci", MainCircuitType::RiscVCycles, bytecode);
+        let app_name = "hashed_fibonacci";
+        prover.add_binary(app_name, MainCircuitType::RiscVCycles, bytecode);
         let prover = Arc::new(prover);
-        let non_determinism = QuasiUARTSource::new_with_reads(vec![1 << 21, 0]);
+        let non_determinism = QuasiUARTSource::new_with_reads(vec![0, 1 << 17]);
         let pc = prover.clone();
+        let ndc = non_determinism.clone();
         scope.spawn(move |_| {
-            pc.get_results(false, "fibonacci", 64, non_determinism, None);
+            let result = pc.commit_memory(0, &app_name, 64, ndc);
+            info!("Result: {:?}", result.0);
         });
         let pc = prover.clone();
-        let non_determinism = QuasiUARTSource::new_with_reads(vec![1 << 21, 0]);
+        let ndc = non_determinism.clone();
+        // let non_determinism = QuasiUARTSource::new_with_reads(vec![1 << 24, 0]);
         scope.spawn(move |_| {
-            pc.get_results(false, "fibonacci", 64, non_determinism, None);
+            let result = pc.commit_memory(1, &app_name, 64, ndc);
+            info!("Result: {:?}", result.0);
         });
-        // prover.get_results(false, "fibonacci", 64, non_determinism, None);
+        // prover.get_results(false, 0, "fibonacci", 64, non_determinism, None);
     });
 }

@@ -4,7 +4,6 @@
 #![feature(btree_cursors)]
 #![feature(pointer_is_aligned_to)]
 #![feature(array_chunks)]
-#![feature(adt_const_params)]
 
 pub mod allocator;
 pub mod barycentric;

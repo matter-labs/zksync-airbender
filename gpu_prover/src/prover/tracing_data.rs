@@ -1,3 +1,4 @@
+use crate::circuit_type::CircuitType;
 use crate::ops_simple::set_to_zero;
 use crate::prover::context::ProverContext;
 use crate::prover::transfer::Transfer;
@@ -8,7 +9,6 @@ use crate::witness::trace_main::{
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
-use crate::circuit_type::CircuitType;
 
 pub enum TracingDataDevice<C: ProverContext> {
     Main {

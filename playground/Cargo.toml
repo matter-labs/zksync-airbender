@@ -24,6 +24,6 @@ rayon = "1"
 risc_v_simulator = { workspace = true, features = ["delegation"] }
 crossbeam = "0.8"
 crossbeam-channel = "0.5"
-log = { workspace = true}
+log = { workspace = true }
 env_logger = "0.11"
 transpose = "0.2"

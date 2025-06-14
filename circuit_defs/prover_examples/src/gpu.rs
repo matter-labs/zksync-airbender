@@ -2,6 +2,7 @@ use std::{alloc::Global, collections::HashMap, sync::Arc};
 
 use cs::utils::split_timestamp;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
@@ -15,7 +16,6 @@ use gpu_prover::{
     witness::trace_main::get_aux_arguments_boundary_values,
 };
 use itertools::Itertools;
-use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use prover::{
     definitions::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
