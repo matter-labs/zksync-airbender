@@ -9,20 +9,27 @@ use crate::messages::WorkerResult;
 use crate::precomputations::CircuitPrecomputationsHost;
 use crate::tracer::CycleTracingData;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use cs::definitions::TimestampData;
 use fft::GoodAllocator;
 use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
+use gpu_prover::cudart::device::get_device_count;
 use gpu_prover::prover::context::MemPoolProverContext;
+use gpu_prover::prover::context::ProverContext;
 use gpu_prover::prover::tracing_data::TracingDataHost;
 use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::MainTraceHost;
 use itertools::Itertools;
 use log::info;
-use prover::definitions::ExternalChallenges;
+use prover::definitions::{ExternalChallenges, LazyInitAndTeardown};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Proof;
 use prover::tracers::delegation::DelegationWitness;
+use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
 use prover::ShuffleRamSetupAndTeardown;
+use risc_v_simulator::abstractions::tracer::{
+    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
+};
 use risc_v_simulator::cycle::{
     IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
     IWithoutByteAccessIsaConfigWithDelegation,
@@ -54,27 +61,135 @@ pub struct GpuBatchProver<'a, K: Debug + Eq + Hash> {
     binaries: HashMap<K, Binary>,
     delegation_circuits_precomputations:
         HashMap<DelegationCircuitType, CircuitPrecomputationsHost<A>>,
-    max_concurrent_batches: usize,
+    free_setup_and_teardowns_sender: Sender<ShuffleRamSetupAndTeardown<A>>,
+    free_setup_and_teardowns_receiver: Receiver<ShuffleRamSetupAndTeardown<A>>,
+    free_cycle_tracing_data_sender: Sender<CycleTracingData<A>>,
+    free_cycle_tracing_data_receiver: Receiver<CycleTracingData<A>>,
     free_delegation_witness_senders: HashMap<DelegationCircuitType, Sender<DelegationWitness<A>>>,
     free_delegation_witness_receivers:
         HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
 }
 
-impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
+#[derive(Clone)]
+pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash> {
+    pub key: K,
+    pub circuit_type: MainCircuitType,
+    pub bytecode: Arc<Box<[u32]>>,
+}
+
+impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
     pub fn new(
-        host_allocations_count: usize,
-        log_host_allocation_size: usize,
         max_concurrent_batches: usize,
+        binaries: &[ExecutableBinary<K>],
         scope: &rayon::Scope,
     ) -> Self {
         assert_ne!(max_concurrent_batches, 0);
-        let gpu_manager = GpuManager::new(host_allocations_count, log_host_allocation_size, scope);
-        gpu_manager.wait_for_initialization();
+        assert!(!binaries.is_empty());
+        let device_count = get_device_count().unwrap() as usize;
+        let max_num_cycles = binaries
+            .iter()
+            .map(|b| Self::get_num_cycles(b.circuit_type))
+            .max()
+            .unwrap();
+        dbg!(max_num_cycles);
+        fn delegation_witness_size(witness: DelegationWitness) -> usize {
+            witness.write_timestamp.capacity() * size_of::<TimestampData>()
+                + witness.register_accesses.capacity()
+                    * size_of::<RegisterOrIndirectReadWriteData>()
+                + witness.indirect_reads.capacity() * size_of::<RegisterOrIndirectReadData>()
+                + witness.indirect_writes.capacity() * size_of::<RegisterOrIndirectReadWriteData>()
+        }
+        let combined_bytes_for_delegation_traces = binaries
+            .iter()
+            .map(|b| Self::get_delegation_factories(b.circuit_type).into_iter())
+            .flatten()
+            .unique_by(|(t, _)| *t)
+            .map(|(_, factory)| delegation_witness_size(factory()))
+            .sum::<usize>();
+        dbg!(combined_bytes_for_delegation_traces);
+        let setups_and_teardowns_bytes_needed =
+            (max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2)
+                * max_num_cycles
+                * size_of::<LazyInitAndTeardown>();
+        dbg!(setups_and_teardowns_bytes_needed);
+        let cycles_tracing_data_bytes_needed =
+            (max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2)
+                * max_num_cycles
+                * size_of::<SingleCycleTracingData>();
+        dbg!(cycles_tracing_data_bytes_needed);
+        let delegation_tracing_data_bytes_needed =
+            (max_concurrent_batches + device_count * 2) * combined_bytes_for_delegation_traces;
+        dbg!(delegation_tracing_data_bytes_needed);
+        let total_bytes_needed = setups_and_teardowns_bytes_needed
+            + cycles_tracing_data_bytes_needed
+            + delegation_tracing_data_bytes_needed;
+        dbg!(total_bytes_needed);
+        let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
+        dbg!(total_gb_needed);
+        let host_allocations_count = total_gb_needed + device_count;
+        info!("GPU_MANAGER initializing host allocator with {host_allocations_count} allocations of size 1 GB each");
+        MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
+            .unwrap();
+        let gpu_manager = GpuManager::new(scope);
+        let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
+        for _ in 0..(max_concurrent_batches + device_count * 2) {
+            let lazy_init_data = Vec::with_capacity_in(max_num_cycles, A::default());
+            let message = ShuffleRamSetupAndTeardown { lazy_init_data };
+            free_setup_and_teardowns_sender.send(message).unwrap();
+        }
+        let (free_cycle_tracing_data_sender, free_cycle_tracing_data_receiver) = unbounded();
+        for _ in 0..(CYCLES_TRACING_WORKERS_COUNT + device_count * 2) {
+            let message = CycleTracingData::with_cycles_capacity(max_num_cycles);
+            free_cycle_tracing_data_sender.send(message).unwrap();
+        }
+        let mut free_delegation_witness_senders = HashMap::new();
+        let mut free_delegation_witness_receivers = HashMap::new();
+        for (circuit_type, factory) in binaries
+            .iter()
+            .map(|b| Self::get_delegation_factories(b.circuit_type).into_iter())
+            .flatten()
+            .unique_by(|(t, _)| *t)
+        {
+            let (sender, receiver) = unbounded();
+            for _ in 0..(max_concurrent_batches + device_count * 2) {
+                sender.send(factory()).unwrap();
+            }
+            free_delegation_witness_senders.insert(circuit_type, sender);
+            free_delegation_witness_receivers.insert(circuit_type, receiver);
+        }
         let worker = Worker::new();
         info!(
             "BATCH_PROVER thread pool for {} logical cores created",
             worker.num_cores
         );
+        let binaries = binaries
+            .iter()
+            .cloned()
+            .map(|b| {
+                let ExecutableBinary {
+                    key,
+                    circuit_type,
+                    bytecode,
+                } = b;
+                info!(
+                    "BATCH_PROVER producing precomputations for main circuit {:?} with binary {:?}",
+                    circuit_type, key
+                );
+                let precomputations = Self::get_precomputations(circuit_type, &bytecode, &worker);
+                info!(
+                    "BATCH_PROVER produced precomputations for main circuit {:?} with binary {:?}",
+                    circuit_type, key
+                );
+                (
+                    key,
+                    Binary {
+                        circuit_type,
+                        bytecode,
+                        precomputations,
+                    },
+                )
+            })
+            .collect();
         info!("BATCH_PROVER producing precomputations for all delegation circuits");
         let delegation_circuits_precomputations =
             setups::all_delegation_circuits_precomputations(&worker)
@@ -85,51 +200,14 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
         Self {
             gpu_manager,
             worker,
-            binaries: HashMap::new(),
+            binaries,
             delegation_circuits_precomputations,
-            max_concurrent_batches,
-            free_delegation_witness_senders: HashMap::new(),
-            free_delegation_witness_receivers: HashMap::new(),
-        }
-    }
-
-    pub fn add_binary(
-        &mut self,
-        key: K,
-        circuit_type: MainCircuitType,
-        bytecode: impl Into<Box<[u32]>>,
-    ) {
-        let bytecode = Arc::new(bytecode.into());
-        info!(
-            "BATCH_PROVER producing precomputations for main circuit {:?}",
-            circuit_type
-        );
-        let precomputations = Self::get_precomputations(circuit_type, &bytecode, &self.worker);
-        info!(
-            "BATCH_PROVER produced precomputations for main circuit {:?}",
-            circuit_type
-        );
-        let binary = Binary {
-            circuit_type,
-            bytecode,
-            precomputations,
-        };
-        info!(
-            "BATCH_PROVER adding binary for circuit {:?} with key {:?}",
-            circuit_type, &key
-        );
-        self.binaries.insert(key, binary);
-        for (&id, factory) in &Self::get_delegation_factories(circuit_type) {
-            if self.free_delegation_witness_senders.contains_key(&id) {
-                continue;
-            }
-            let (sender, receiver) = unbounded();
-            let gpu_workers_count = self.gpu_manager.get_workers_count();
-            for _ in 0..(self.max_concurrent_batches + gpu_workers_count * 2) {
-                sender.send(factory()).unwrap();
-            }
-            self.free_delegation_witness_senders.insert(id, sender);
-            self.free_delegation_witness_receivers.insert(id, receiver);
+            free_setup_and_teardowns_sender,
+            free_setup_and_teardowns_receiver,
+            free_cycle_tracing_data_sender,
+            free_cycle_tracing_data_receiver,
+            free_delegation_witness_senders,
+            free_delegation_witness_receivers,
         }
     }
 
@@ -165,27 +243,12 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
         let trace_len = binary.precomputations.compiled_circuit.trace_len;
         assert!(trace_len.is_power_of_two());
         let cycles_per_circuit = trace_len - 1;
-        let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
-        let gpu_workers_count = self.gpu_manager.get_workers_count();
-        for _ in 0..(1 + gpu_workers_count * 2) {
-            let mut lazy_init_data = Vec::with_capacity_in(cycles_per_circuit, A::default());
-            unsafe {
-                lazy_init_data.set_len(cycles_per_circuit);
-            }
-            let message = ShuffleRamSetupAndTeardown { lazy_init_data };
-            free_setup_and_teardowns_sender.send(message).unwrap();
-        }
-        let (free_cycle_tracing_data_sender, free_cycle_tracing_data_receiver) = unbounded();
-        for _ in 0..(CYCLES_TRACING_WORKERS_COUNT + gpu_workers_count * 2) {
-            let message = CycleTracingData::with_cycles_capacity(cycles_per_circuit);
-            free_cycle_tracing_data_sender.send(message).unwrap();
-        }
         let (work_results_sender, worker_results_receiver) = unbounded();
         info!("BATCH[{batch_id}] BATCH_PROVER spawning CPU workers");
         let non_determinism_source = Arc::new(non_determinism_source);
         let mut cpu_worker_id = 0;
         let ram_tracing_mode = CpuWorkerMode::TraceTouchedRam {
-            free_setup_and_teardowns: free_setup_and_teardowns_receiver.clone(),
+            free_setup_and_teardowns: self.free_setup_and_teardowns_receiver.clone(),
         };
         self.spawn_cpu_worker(
             binary.circuit_type,
@@ -202,7 +265,7 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
             let ram_tracing_mode = CpuWorkerMode::TraceCycles {
                 split_count: CYCLES_TRACING_WORKERS_COUNT,
                 split_index,
-                free_cycle_tracing_data: free_cycle_tracing_data_receiver.clone(),
+                free_cycle_tracing_data: self.free_cycle_tracing_data_receiver.clone(),
             };
             self.spawn_cpu_worker(
                 binary.circuit_type,
@@ -412,7 +475,7 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
                                 let setup_and_teardown =
                                     ShuffleRamSetupAndTeardown { lazy_init_data };
                                 info!("BATCH[{batch_id}] BATCH_PROVER returning free setup and teardown");
-                                free_setup_and_teardowns_sender
+                                self.free_setup_and_teardowns_sender
                                     .send(setup_and_teardown)
                                     .unwrap();
                             }
@@ -422,7 +485,7 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             info!(
                                 "BATCH[{batch_id}] BATCH_PROVER returning free cycle tracing data"
                             );
-                            free_cycle_tracing_data_sender
+                            self.free_cycle_tracing_data_sender
                                 .send(cycle_tracing_data)
                                 .unwrap();
                             main_memory_commitments.push((circuit_sequence, merkle_tree_caps));
@@ -494,12 +557,13 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
                         } => {
                             info!("BATCH[{batch_id}] BATCH_PROVER received proof for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
                             if let Some(setup_and_teardown) = setup_and_teardown {
-                                let lazy_init_data =
+                                let mut lazy_init_data =
                                     Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
+                                lazy_init_data.clear();
                                 let setup_and_teardown =
                                     ShuffleRamSetupAndTeardown { lazy_init_data };
                                 info!("BATCH[{batch_id}] BATCH_PROVER returning free setup and teardown");
-                                free_setup_and_teardowns_sender
+                                self.free_setup_and_teardowns_sender
                                     .send(setup_and_teardown)
                                     .unwrap();
                             }
@@ -509,7 +573,7 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             info!(
                                 "BATCH[{batch_id}] BATCH_PROVER returning free cycle tracing data"
                             );
-                            free_cycle_tracing_data_sender
+                            self.free_cycle_tracing_data_sender
                                 .send(cycle_tracing_data)
                                 .unwrap();
                             main_proofs.push((circuit_sequence, proof));
@@ -770,6 +834,21 @@ impl<K: Debug + Eq + Hash> GpuBatchProver<'_, K> {
             .into_iter()
             .map(|(id, factory)| (DelegationCircuitType::from(id), factory))
             .collect()
+    }
+
+    fn get_num_cycles(circuit_type: MainCircuitType) -> usize {
+        match circuit_type {
+            MainCircuitType::FinalReducedRiscVMachine => {
+                setups::num_cycles_for_machine::<IWithoutByteAccessIsaConfig>()
+            }
+            MainCircuitType::MachineWithoutSignedMulDiv => {
+                setups::num_cycles_for_machine::<IMWithoutSignedMulDivIsaConfig>()
+            }
+            MainCircuitType::ReducedRiscVMachine => {
+                setups::num_cycles_for_machine::<IWithoutByteAccessIsaConfigWithDelegation>()
+            }
+            MainCircuitType::RiscVCycles => setups::num_cycles_for_machine::<IMStandardIsaConfig>(),
+        }
     }
 
     fn spawn_cpu_worker(

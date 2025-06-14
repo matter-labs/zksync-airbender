@@ -7,10 +7,11 @@ use gpu_prover::cudart::device::{get_device_count, get_device_properties, set_de
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
 use itertools::Itertools;
-use log::info;
+use log::{error, info};
 use std::alloc::Global;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CStr;
+use std::process::exit;
 use std::sync::OnceLock;
 
 pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
@@ -26,24 +27,15 @@ pub struct GpuManager<C: ProverContext, A: GoodAllocator + 'static = Global> {
 }
 
 impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
-    pub fn new(
-        host_allocations_count: usize,
-        log_host_allocation_size: usize,
-        scope: &rayon::Scope,
-    ) -> Self {
+    pub fn new(scope: &rayon::Scope) -> Self {
         let (is_initialized_sender, is_initialized_receiver) = bounded(1);
         let (batches_sender, batches_receiver) = unbounded();
         info!("GPU_MANAGER spawning");
         scope.spawn(move |scope| {
-            let result = gpu_manager::<C>(
-                host_allocations_count,
-                log_host_allocation_size,
-                is_initialized_sender,
-                batches_receiver,
-                scope,
-            );
+            let result = gpu_manager::<C>(is_initialized_sender, batches_receiver, scope);
             if let Err(e) = result {
-                panic!("GPU_MANAGER encountered an error: {e}");
+                error!("GPU_MANAGER encountered an error: {e}");
+                exit(1);
             }
         });
         Self {
@@ -76,19 +68,10 @@ impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
 }
 
 fn gpu_manager<C: ProverContext>(
-    host_allocations_count: usize,
-    log_host_allocation_size: usize,
     is_initialized: Sender<usize>,
     batches_receiver: Receiver<GpuWorkBatch<C::HostAllocator, impl GoodAllocator + 'static>>,
     scope: &rayon::Scope<'_>,
 ) -> CudaResult<()> {
-    assert!(log_host_allocation_size >= 22);
-    info!("GPU_MANAGER initializing host allocator with {host_allocations_count} allocations of size 2^{log_host_allocation_size} bytes each");
-    C::initialize_host_allocator(
-        host_allocations_count,
-        1 << (log_host_allocation_size - 22),
-        22,
-    )?;
     let device_count = get_device_count()? as usize;
     info!("GPU_MANAGER found {} CUDA capable devices", device_count);
     let prover_context_config = {

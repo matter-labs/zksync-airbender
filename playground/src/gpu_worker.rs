@@ -12,7 +12,7 @@ use gpu_prover::prover::proof::{prove, ProofJob};
 use gpu_prover::prover::setup::SetupPrecomputations;
 use gpu_prover::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use gpu_prover::witness::trace_main::get_aux_arguments_boundary_values;
-use log::info;
+use log::{error, info};
 use prover::definitions::{
     AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
 };
@@ -21,6 +21,7 @@ use prover::prover_stages::Proof;
 use std::alloc::Global;
 use std::cell::RefCell;
 use std::mem;
+use std::process::exit;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -120,7 +121,8 @@ pub fn get_gpu_worker_func<C: ProverContext>(
             results,
         );
         if let Err(e) = result {
-            panic!("GPU_WORKER[{device_id}] worker encountered an error: {e}");
+            error!("GPU_WORKER[{device_id}] worker encountered an error: {e}");
+            exit(1);
         }
     }
 }
@@ -173,7 +175,7 @@ fn gpu_worker<C: ProverContext>(
                         && Arc::ptr_eq(&holder.trace, &precomputations.setup)
                     {
                         info!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}]  proof request reusing setup for circuit {:?}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] proof request reusing setup for circuit {:?}",
                             request.circuit_type,
                         );
                         holder.setup.clone()

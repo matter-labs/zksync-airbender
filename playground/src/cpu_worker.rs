@@ -232,6 +232,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     let now = Instant::now();
     for index in next_chunk_index_with_no_setup_and_teardown..chunks_traced_count {
         let mut setup_and_teardown = free_setup_and_teardowns.recv().unwrap();
+        unsafe { setup_and_teardown.lazy_init_data.set_len(cycles_per_chunk) };
         chunker.populate_next_chunk(&mut setup_and_teardown.lazy_init_data);
         let chunk = Some(setup_and_teardown);
         let chunk = SetupAndTeardownChunk { index, chunk };
