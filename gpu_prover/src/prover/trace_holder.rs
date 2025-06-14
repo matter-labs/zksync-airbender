@@ -252,7 +252,7 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         get_reduce_temp_storage_bytes::<BF>(ReduceOperation::Sum, (domain_size - 1) as i32)?;
     let mut reduce_temp_storage = context.alloc(reduce_temp_storage_bytes)?;
     let exec_stream = context.get_exec_stream();
-    let aux_stream = context.get_exec_stream();
+    let aux_stream = context.get_aux_stream();
     let stream_refs = [exec_stream, aux_stream];
     let start_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     let end_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -314,7 +314,6 @@ pub(crate) fn extend_trace<L: DerefMut<Target = DeviceSlice<BF>>>(
         let dst_evals = &mut dst_evals[0];
         let src_evals_matrix = DeviceMatrix::new(src_evals, domain_size);
         let mut dst_matrix = DeviceMatrixMut::new(dst_evals, domain_size);
-        // let dst_matrix_ref = &mut dst_matrix;
         natural_main_evals_to_natural_coset_evals(
             &src_evals_matrix,
             &mut dst_matrix,
