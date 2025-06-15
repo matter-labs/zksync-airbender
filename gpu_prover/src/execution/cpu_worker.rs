@@ -1,20 +1,21 @@
-use crate::messages::WorkerResult;
-use crate::tracer::{
+use super::messages::WorkerResult;
+use super::tracer::{
     create_setup_and_teardown_chunker, BoxedMemoryImplWithRom, CycleTracingData,
-    DelegationTracingData, RamTracingData, YetAnotherTracer,
+    DelegationTracingData, ExecutionTracer, RamTracingData,
 };
+use crate::circuit_type::DelegationCircuitType;
 use crossbeam_channel::{Receiver, Sender};
+use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::timestamp_from_chunk_cycle_and_sequence;
 use fft::GoodAllocator;
-use gpu_prover::circuit_type::DelegationCircuitType;
 use itertools::Itertools;
 use log::info;
+use prover::risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
+use prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
+use prover::risc_v_simulator::cycle::MachineConfig;
+use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
 use prover::tracers::delegation::DelegationWitness;
 use prover::ShuffleRamSetupAndTeardown;
-use risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
-use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
-use risc_v_simulator::cycle::MachineConfig;
-use risc_v_simulator::delegations::DelegationsCSRProcessor;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -67,6 +68,7 @@ pub enum CpuWorkerMode<A: GoodAllocator> {
 }
 
 pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
+    wait_group: WaitGroup,
     batch_id: u64,
     worker_id: usize,
     num_main_chunks_upper_bound: usize,
@@ -75,44 +77,47 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
     mode: CpuWorkerMode<A>,
     results: Sender<WorkerResult<A>>,
 ) -> impl FnOnce() + Send + 'static {
-    move || match mode {
-        CpuWorkerMode::TraceTouchedRam {
-            free_setup_and_teardowns,
-        } => trace_touched_ram::<C, A>(
-            batch_id,
-            worker_id,
-            num_main_chunks_upper_bound,
-            binary,
-            non_determinism,
-            free_setup_and_teardowns,
-            results,
-        ),
-        CpuWorkerMode::TraceCycles {
-            split_count,
-            split_index,
-            free_cycle_tracing_data,
-        } => trace_cycles::<C, A>(
-            batch_id,
-            worker_id,
-            num_main_chunks_upper_bound,
-            binary,
-            non_determinism,
-            split_count,
-            split_index,
-            free_cycle_tracing_data,
-            results,
-        ),
-        CpuWorkerMode::TraceDelegations {
-            free_delegation_witnesses,
-        } => trace_delegations::<C, A>(
-            batch_id,
-            worker_id,
-            num_main_chunks_upper_bound,
-            binary,
-            non_determinism,
-            free_delegation_witnesses,
-            results,
-        ),
+    move || {
+        match mode {
+            CpuWorkerMode::TraceTouchedRam {
+                free_setup_and_teardowns,
+            } => trace_touched_ram::<C, A>(
+                batch_id,
+                worker_id,
+                num_main_chunks_upper_bound,
+                binary,
+                non_determinism,
+                free_setup_and_teardowns,
+                results,
+            ),
+            CpuWorkerMode::TraceCycles {
+                split_count,
+                split_index,
+                free_cycle_tracing_data,
+            } => trace_cycles::<C, A>(
+                batch_id,
+                worker_id,
+                num_main_chunks_upper_bound,
+                binary,
+                non_determinism,
+                split_count,
+                split_index,
+                free_cycle_tracing_data,
+                results,
+            ),
+            CpuWorkerMode::TraceDelegations {
+                free_delegation_witnesses,
+            } => trace_delegations::<C, A>(
+                batch_id,
+                worker_id,
+                num_main_chunks_upper_bound,
+                binary,
+                non_determinism,
+                free_delegation_witnesses,
+                results,
+            ),
+        };
+        drop(wait_group);
     }
 }
 
@@ -142,7 +147,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     let delegation_tracing_data = DelegationTracingData::default();
     let delegation_swap_fn = |_, _| unreachable!();
     let initial_timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
-    let mut tracer = YetAnotherTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, true, false, false>::new(
+    let mut tracer = ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, true, false, false>::new(
         &mut ram_tracing_data,
         cycle_tracing_data,
         delegation_tracing_data,
@@ -301,7 +306,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] tracing cycles for chunk {chunk_index}"
             );
             let mut tracer =
-                YetAnotherTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, true, false>::new(
+                ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, true, false>::new(
                     &mut ram_tracing_data,
                     cycle_tracing_data,
                     delegation_tracing_data,
@@ -330,7 +335,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
             info!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] fast-forwarding chunk {chunk_index}");
             let cycle_tracing_data = CycleTracingData::with_cycles_capacity(0);
             let mut tracer =
-                YetAnotherTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, false>::new(
+                ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, false>::new(
                     &mut ram_tracing_data,
                     cycle_tracing_data,
                     delegation_tracing_data,
@@ -419,7 +424,7 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
             .unwrap()
     };
     let initial_timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
-    let mut tracer = YetAnotherTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, true>::new(
+    let mut tracer = ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, true>::new(
         &mut ram_tracing_data,
         cycle_tracing_data,
         delegation_tracing_data,

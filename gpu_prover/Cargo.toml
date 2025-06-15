@@ -21,10 +21,15 @@ fft = { workspace = true }
 field = { workspace = true }
 itertools = { workspace = true }
 prover = { workspace = true, features = ["default"] }
+trace_and_split = { workspace = true }
 worker = { workspace = true }
 log = { workspace = true }
 era_cudart = "0.154"
 era_cudart_sys = "0.154"
+crossbeam-channel = "0.5"
+crossbeam-queue = "0.3"
+crossbeam-utils = "0.8"
+num_cpus = "1"
 nvtx = "1"
 transpose = "0.2"
 

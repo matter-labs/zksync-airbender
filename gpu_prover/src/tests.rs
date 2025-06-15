@@ -226,7 +226,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             &inits_and_teardowns[circuit_sequence - num_paddings]
         };
 
-        let gpu_caps = {
+        let (gpu_caps, _) = {
             let lde_factor = setups::lde_factor_for_machine::<C>();
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
@@ -288,7 +288,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         let prec = &delegation_circuits_precomputations[idx].1;
         let mut per_tree_set = vec![];
         for el in els.iter() {
-            let gpu_caps = {
+            let (gpu_caps, _) = {
                 let circuit = &prec.compiled_circuit.compiled_circuit;
                 let trace_len = circuit.trace_len;
                 let lde_factor = prec.lde_factor;
@@ -437,7 +437,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             worker,
         );
 
-        let gpu_proof = {
+        let (gpu_proof, _) = {
             let circuit = &risc_v_circuit_precomputations.compiled_circuit;
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
@@ -589,7 +589,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 worker,
             );
 
-            let gpu_proof = {
+            let (gpu_proof, _) = {
                 let lde_factor = prec.lde_factor;
                 let log_lde_factor = lde_factor.trailing_zeros();
                 let trace_len = gpu_circuit.trace_len;

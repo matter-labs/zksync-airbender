@@ -1,39 +1,40 @@
-use crate::cpu_worker::{
+use super::cpu_worker::{
     get_cpu_worker_func, CpuWorkerMode, CyclesChunk, NonDeterminism, SetupAndTeardownChunk,
 };
-use crate::gpu_manager::{GpuManager, GpuWorkBatch};
-use crate::gpu_worker::{
+use super::gpu_manager::{GpuManager, GpuWorkBatch};
+use super::gpu_worker::{
     GpuWorkRequest, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
 };
-use crate::messages::WorkerResult;
-use crate::precomputations::CircuitPrecomputationsHost;
-use crate::tracer::CycleTracingData;
+use super::messages::WorkerResult;
+use super::precomputations::CircuitPrecomputationsHost;
+use super::tracer::CycleTracingData;
+use crate::allocator::host::ConcurrentStaticHostAllocator;
+use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
+use crate::cudart::device::get_device_count;
+use crate::prover::context::MemPoolProverContext;
+use crate::prover::context::ProverContext;
+use crate::prover::tracing_data::TracingDataHost;
+use crate::witness::trace_delegation::DelegationTraceHost;
+use crate::witness::trace_main::MainTraceHost;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::TimestampData;
 use fft::GoodAllocator;
-use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
-use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
-use gpu_prover::cudart::device::get_device_count;
-use gpu_prover::prover::context::MemPoolProverContext;
-use gpu_prover::prover::context::ProverContext;
-use gpu_prover::prover::tracing_data::TracingDataHost;
-use gpu_prover::witness::trace_delegation::DelegationTraceHost;
-use gpu_prover::witness::trace_main::MainTraceHost;
 use itertools::Itertools;
 use log::info;
 use prover::definitions::{ExternalChallenges, LazyInitAndTeardown};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Proof;
-use prover::tracers::delegation::DelegationWitness;
-use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
-use prover::ShuffleRamSetupAndTeardown;
-use risc_v_simulator::abstractions::tracer::{
+use prover::risc_v_simulator::abstractions::tracer::{
     RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
 };
-use risc_v_simulator::cycle::{
+use prover::risc_v_simulator::cycle::{
     IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
     IWithoutByteAccessIsaConfigWithDelegation,
 };
+use prover::tracers::delegation::DelegationWitness;
+use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
+use prover::ShuffleRamSetupAndTeardown;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -49,16 +50,24 @@ type A = ConcurrentStaticHostAllocator;
 const CPU_WORKERS_COUNT: usize = 6;
 const CYCLES_TRACING_WORKERS_COUNT: usize = CPU_WORKERS_COUNT - 2;
 
-struct Binary {
+#[derive(Clone)]
+pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash, B: Into<Box<[u32]>>> {
+    pub key: K,
+    pub circuit_type: MainCircuitType,
+    pub bytecode: B,
+}
+
+struct BinaryHolder {
     circuit_type: MainCircuitType,
     bytecode: Arc<Box<[u32]>>,
     precomputations: CircuitPrecomputationsHost<A>,
 }
 
-pub struct GpuBatchProver<'a, K: Debug + Eq + Hash> {
+pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
     gpu_manager: GpuManager<MemPoolProverContext<'a>>,
     worker: Worker,
-    binaries: HashMap<K, Binary>,
+    wait_group: Option<WaitGroup>,
+    binaries: HashMap<K, BinaryHolder>,
     delegation_circuits_precomputations:
         HashMap<DelegationCircuitType, CircuitPrecomputationsHost<A>>,
     free_setup_and_teardowns_sender: Sender<ShuffleRamSetupAndTeardown<A>>,
@@ -70,18 +79,10 @@ pub struct GpuBatchProver<'a, K: Debug + Eq + Hash> {
         HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
 }
 
-#[derive(Clone)]
-pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash> {
-    pub key: K,
-    pub circuit_type: MainCircuitType,
-    pub bytecode: Arc<Box<[u32]>>,
-}
-
-impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
+impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
     pub fn new(
         max_concurrent_batches: usize,
-        binaries: &[ExecutableBinary<K>],
-        scope: &rayon::Scope,
+        binaries: Vec<ExecutableBinary<K, impl Into<Box<[u32]>>>>,
     ) -> Self {
         assert_ne!(max_concurrent_batches, 0);
         assert!(!binaries.is_empty());
@@ -120,10 +121,10 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             + delegation_tracing_data_bytes_needed;
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
         let host_allocations_count = total_gb_needed + device_count;
-        info!("GPU_MANAGER initializing host allocator with {host_allocations_count} allocations of size 1 GB each");
+        info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
         MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
             .unwrap();
-        let gpu_manager = GpuManager::new(scope);
+        let gpu_manager = GpuManager::new();
         let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
         for _ in 0..(max_concurrent_batches + device_count * 2) {
             let lazy_init_data = Vec::with_capacity_in(max_num_cycles, A::default());
@@ -152,30 +153,31 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
         }
         let worker = Worker::new();
         info!(
-            "BATCH_PROVER thread pool for {} logical cores created",
+            "PROVER thread pool for {} logical cores created",
             worker.num_cores
         );
+        let wait_group = Some(WaitGroup::new());
         let binaries = binaries
-            .iter()
-            .cloned()
+            .into_iter()
             .map(|b| {
                 let ExecutableBinary {
                     key,
                     circuit_type,
                     bytecode,
                 } = b;
+                let bytecode = Arc::new(bytecode.into());
                 info!(
-                    "BATCH_PROVER producing precomputations for main circuit {:?} with binary {:?}",
+                    "PROVER producing precomputations for main circuit {:?} with binary {:?}",
                     circuit_type, key
                 );
                 let precomputations = Self::get_precomputations(circuit_type, &bytecode, &worker);
                 info!(
-                    "BATCH_PROVER produced precomputations for main circuit {:?} with binary {:?}",
+                    "PROVER produced precomputations for main circuit {:?} with binary {:?}",
                     circuit_type, key
                 );
                 (
                     key,
-                    Binary {
+                    BinaryHolder {
                         circuit_type,
                         bytecode,
                         precomputations,
@@ -183,16 +185,17 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                 )
             })
             .collect();
-        info!("BATCH_PROVER producing precomputations for all delegation circuits");
+        info!("PROVER producing precomputations for all delegation circuits");
         let delegation_circuits_precomputations =
             setups::all_delegation_circuits_precomputations(&worker)
                 .into_iter()
                 .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
                 .collect();
-        info!("BATCH_PROVER produced precomputations for all delegation circuits");
+        info!("PROVER produced precomputations for all delegation circuits");
         Self {
             gpu_manager,
             worker,
+            wait_group,
             binaries,
             delegation_circuits_precomputations,
             free_setup_and_teardowns_sender,
@@ -222,13 +225,13 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
         if proving {
             assert!(external_challenges.is_some());
             info!(
-                "BATCH[{batch_id}] BATCH_PROVER starting proving batch for binary with key {:?}",
+                "BATCH[{batch_id}] PROVER starting proving batch for binary with key {:?}",
                 &binary_key
             );
         } else {
             assert!(external_challenges.is_none());
             info!(
-                "BATCH[{batch_id}] BATCH_PROVER starting memory commitment batch for binary with key {:?}",
+                "BATCH[{batch_id}] PROVER starting memory commitment batch for binary with key {:?}",
                 &binary_key
             );
         }
@@ -237,7 +240,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
         assert!(trace_len.is_power_of_two());
         let cycles_per_circuit = trace_len - 1;
         let (work_results_sender, worker_results_receiver) = unbounded();
-        info!("BATCH[{batch_id}] BATCH_PROVER spawning CPU workers");
+        info!("BATCH[{batch_id}] PROVER spawning CPU workers");
         let non_determinism_source = Arc::new(non_determinism_source);
         let mut cpu_worker_id = 0;
         let ram_tracing_mode = CpuWorkerMode::TraceTouchedRam {
@@ -285,14 +288,14 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             delegation_mode,
             work_results_sender.clone(),
         );
-        info!("BATCH[{batch_id}] BATCH_PROVER CPU workers spawned");
+        info!("BATCH[{batch_id}] PROVER CPU workers spawned");
         let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
         let gpu_work_batch = GpuWorkBatch {
             batch_id,
             receiver: gpu_work_requests_receiver,
             sender: work_results_sender.clone(),
         };
-        info!("BATCH[{batch_id}] BATCH_PROVER sending work batch to GPU manager");
+        info!("BATCH[{batch_id}] PROVER sending work batch to GPU manager");
         self.gpu_manager.send_batch(gpu_work_batch);
         drop(work_results_sender);
         let mut final_main_chunks_count = None;
@@ -342,9 +345,9 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                     GpuWorkRequest::MemoryCommitment(memory_commitment_request)
                 };
                 if proving {
-                    info!("BATCH[{batch_id}] BATCH_PROVER sending main circuit proof request for chunk {circuit_sequence} to GPU manager");
+                    info!("BATCH[{batch_id}] PROVER sending main circuit proof request for chunk {circuit_sequence} to GPU manager");
                 } else {
-                    info!("BATCH[{batch_id}] BATCH_PROVER sending main circuit memory commitment request for chunk {circuit_sequence} to GPU manager");
+                    info!("BATCH[{batch_id}] PROVER sending main circuit memory commitment request for chunk {circuit_sequence} to GPU manager");
                 }
                 gpu_work_requests_sender.send(request).unwrap();
             };
@@ -357,9 +360,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                         index,
                         chunk: setup_and_teardown_chunk,
                     } = chunk;
-                    info!(
-                        "BATCH[{batch_id}] BATCH_PROVER received setup and teardown chunk {index}"
-                    );
+                    info!("BATCH[{batch_id}] PROVER received setup and teardown chunk {index}");
                     if let Some(cycles_chunk) = cycles_chunks.remove(&index) {
                         let send = send_main_work_request.as_ref().unwrap();
                         send(index, setup_and_teardown_chunk, cycles_chunk);
@@ -372,14 +373,14 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                     chunks_traced_count,
                     final_register_values: values,
                 } => {
-                    info!("BATCH[{batch_id}] BATCH_PROVER received RAM tracing result with final register values and {chunks_traced_count} chunk(s) traced");
+                    info!("BATCH[{batch_id}] PROVER received RAM tracing result with final register values and {chunks_traced_count} chunk(s) traced");
                     let previous_count = final_main_chunks_count.replace(chunks_traced_count);
                     assert!(previous_count.is_none_or(|v| v == chunks_traced_count));
                     final_register_values = Some(values);
                 }
                 WorkerResult::CyclesChunk(chunk) => {
                     let CyclesChunk { index, data } = chunk;
-                    info!("BATCH[{batch_id}] BATCH_PROVER received cycles chunk {index}");
+                    info!("BATCH[{batch_id}] PROVER received cycles chunk {index}");
                     if let Some(setup_and_teardown_chunk) = setup_and_teardown_chunks.remove(&index)
                     {
                         let send = send_main_work_request.as_ref().unwrap();
@@ -392,7 +393,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                 WorkerResult::CyclesTracingResult {
                     chunks_traced_count,
                 } => {
-                    info!("BATCH[{batch_id}] BATCH_PROVER received cycles tracing result with {chunks_traced_count} chunk(s) traced");
+                    info!("BATCH[{batch_id}] PROVER received cycles tracing result with {chunks_traced_count} chunk(s) traced");
                     let previous_count = final_main_chunks_count.replace(chunks_traced_count);
                     assert!(previous_count.is_none_or(|count| count == chunks_traced_count));
                 }
@@ -400,7 +401,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                     let id = witness.delegation_type;
                     let delegation_circuit_type = DelegationCircuitType::from(id);
                     let circuit_type = CircuitType::Delegation(delegation_circuit_type);
-                    info!("BATCH[{batch_id}] BATCH_PROVER received delegation witnesses for delegation {:?}", delegation_circuit_type);
+                    info!("BATCH[{batch_id}] PROVER received delegation witnesses for delegation {:?}", delegation_circuit_type);
                     let precomputations =
                         self.delegation_circuits_precomputations[&delegation_circuit_type].clone();
                     let tracing_data = TracingDataHost::Delegation(witness.into());
@@ -413,7 +414,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             tracing_data,
                             external_challenges: external_challenges.unwrap(),
                         };
-                        info!("BATCH[{batch_id}] BATCH_PROVER sending delegation proof request for delegation {:?}", delegation_circuit_type);
+                        info!("BATCH[{batch_id}] PROVER sending delegation proof request for delegation {:?}", delegation_circuit_type);
                         GpuWorkRequest::Proof(proof_request)
                     } else {
                         let memory_commitment_request = MemoryCommitmentRequest {
@@ -423,7 +424,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             precomputations,
                             tracing_data,
                         };
-                        info!("BATCH[{batch_id}] BATCH_PROVER sending delegation memory commitment request for delegation {:?}", delegation_circuit_type);
+                        info!("BATCH[{batch_id}] PROVER sending delegation memory commitment request for delegation {:?}", delegation_circuit_type);
                         GpuWorkRequest::MemoryCommitment(memory_commitment_request)
                     };
                     delegation_work_sender
@@ -437,12 +438,14 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                 } => {
                     for (id, count) in delegation_chunks_counts.iter() {
                         let delegation_circuit_type = DelegationCircuitType::from(*id);
-                        info!("BATCH[{batch_id}] BATCH_PROVER received delegation tracing result for delegation {:?} with {count} delegation chunk(s) produced", delegation_circuit_type);
+                        info!("BATCH[{batch_id}] PROVER received delegation tracing result for delegation {:?} with {count} delegation chunk(s) produced", delegation_circuit_type);
                     }
                     assert!(final_delegation_chunks_counts
                         .replace(delegation_chunks_counts)
                         .is_none());
-                    info!("BATCH[{batch_id}] BATCH_PROVER sent all delegation memory commitment requests");
+                    info!(
+                        "BATCH[{batch_id}] PROVER sent all delegation memory commitment requests"
+                    );
                     delegation_work_sender = None;
                 }
                 WorkerResult::MemoryCommitment(commitment) => {
@@ -461,13 +464,13 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             trace,
                         } => {
                             let circuit_type = circuit_type.as_main().unwrap();
-                            info!("BATCH[{batch_id}] BATCH_PROVER received memory commitment for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
+                            info!("BATCH[{batch_id}] PROVER received memory commitment for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
                             if let Some(setup_and_teardown) = setup_and_teardown {
                                 let lazy_init_data =
                                     Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
                                 let setup_and_teardown =
                                     ShuffleRamSetupAndTeardown { lazy_init_data };
-                                info!("BATCH[{batch_id}] BATCH_PROVER returning free setup and teardown");
+                                info!("BATCH[{batch_id}] PROVER returning free setup and teardown");
                                 self.free_setup_and_teardowns_sender
                                     .send(setup_and_teardown)
                                     .unwrap();
@@ -475,9 +478,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
                             per_cycle_data.clear();
                             let cycle_tracing_data = CycleTracingData { per_cycle_data };
-                            info!(
-                                "BATCH[{batch_id}] BATCH_PROVER returning free cycle tracing data"
-                            );
+                            info!("BATCH[{batch_id}] PROVER returning free cycle tracing data");
                             self.free_cycle_tracing_data_sender
                                 .send(cycle_tracing_data)
                                 .unwrap();
@@ -485,7 +486,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                         }
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
-                            info!("BATCH[{batch_id}] BATCH_PROVER received memory commitment for delegation circuit type: {:?}", circuit_type);
+                            info!("BATCH[{batch_id}] PROVER received memory commitment for delegation circuit type: {:?}", circuit_type);
                             let DelegationTraceHost {
                                 num_requests,
                                 num_register_accesses_per_delegation,
@@ -520,7 +521,9 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                                 indirect_reads,
                                 indirect_writes,
                             };
-                            info!("BATCH[{batch_id}] BATCH_PROVER returning free delegation tracing data");
+                            info!(
+                                "BATCH[{batch_id}] PROVER returning free delegation tracing data"
+                            );
                             self.free_delegation_witness_senders
                                 .get(&DelegationCircuitType::from(delegation_type))
                                 .unwrap()
@@ -549,14 +552,14 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             trace,
                         } => {
                             let circuit_type = circuit_type.as_main().unwrap();
-                            info!("BATCH[{batch_id}] BATCH_PROVER received proof for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
+                            info!("BATCH[{batch_id}] PROVER received proof for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
                             if let Some(setup_and_teardown) = setup_and_teardown {
                                 let mut lazy_init_data =
                                     Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
                                 lazy_init_data.clear();
                                 let setup_and_teardown =
                                     ShuffleRamSetupAndTeardown { lazy_init_data };
-                                info!("BATCH[{batch_id}] BATCH_PROVER returning free setup and teardown");
+                                info!("BATCH[{batch_id}] PROVER returning free setup and teardown");
                                 self.free_setup_and_teardowns_sender
                                     .send(setup_and_teardown)
                                     .unwrap();
@@ -564,9 +567,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                             let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
                             per_cycle_data.clear();
                             let cycle_tracing_data = CycleTracingData { per_cycle_data };
-                            info!(
-                                "BATCH[{batch_id}] BATCH_PROVER returning free cycle tracing data"
-                            );
+                            info!("BATCH[{batch_id}] PROVER returning free cycle tracing data");
                             self.free_cycle_tracing_data_sender
                                 .send(cycle_tracing_data)
                                 .unwrap();
@@ -574,7 +575,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                         }
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
-                            info!("BATCH[{batch_id}] BATCH_PROVER received proof for delegation circuit: {:?}", circuit_type);
+                            info!("BATCH[{batch_id}] PROVER received proof for delegation circuit: {:?}", circuit_type);
                             let DelegationTraceHost {
                                 num_requests,
                                 num_register_accesses_per_delegation,
@@ -609,7 +610,9 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                                 indirect_reads,
                                 indirect_writes,
                             };
-                            info!("BATCH[{batch_id}] BATCH_PROVER returning free delegation tracing data");
+                            info!(
+                                "BATCH[{batch_id}] PROVER returning free delegation tracing data"
+                            );
                             self.free_delegation_witness_senders
                                 .get(&DelegationCircuitType::from(delegation_type))
                                 .unwrap()
@@ -626,7 +629,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             if send_main_work_request.is_some() {
                 if let Some(count) = final_main_chunks_count {
                     if main_work_requests_count == count {
-                        info!("BATCH[{batch_id}] BATCH_PROVER sent all main memory commitment requests");
+                        info!("BATCH[{batch_id}] PROVER sent all main memory commitment requests");
                         send_main_work_request = None;
                     }
                 }
@@ -655,7 +658,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             }
         }
         info!(
-            "BATCH[{batch_id}] BATCH_PROVER finished processing for binary with key {:?}",
+            "BATCH[{batch_id}] PROVER finished processing for binary with key {:?}",
             &binary_key
         );
         let main_memory_commitments = main_memory_commitments
@@ -856,9 +859,11 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
         mode: CpuWorkerMode<A>,
         results: Sender<WorkerResult<A>>,
     ) {
+        let wait_group = self.wait_group.as_ref().unwrap().clone();
         match circuit_type {
             MainCircuitType::FinalReducedRiscVMachine => {
                 let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
+                    wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
@@ -871,6 +876,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             }
             MainCircuitType::MachineWithoutSignedMulDiv => {
                 let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
+                    wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
@@ -883,6 +889,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             }
             MainCircuitType::ReducedRiscVMachine => {
                 let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfigWithDelegation, _>(
+                    wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
@@ -895,6 +902,7 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
             }
             MainCircuitType::RiscVCycles => {
                 let func = get_cpu_worker_func::<IMStandardIsaConfig, _>(
+                    wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
@@ -906,5 +914,13 @@ impl<K: Clone + Debug + Eq + Hash> GpuBatchProver<'_, K> {
                 self.worker.pool.spawn(func);
             }
         }
+    }
+}
+
+impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<'a, K> {
+    fn drop(&mut self) {
+        info!("PROVER waiting for all threads to finish");
+        self.wait_group.take().unwrap().wait();
+        info!("PROVER all threads finished");
     }
 }

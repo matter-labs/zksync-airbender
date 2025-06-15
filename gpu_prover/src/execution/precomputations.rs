@@ -2,11 +2,11 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use fft::{GoodAllocator, LdePrecomputations, Twiddles};
 use field::{Mersenne31Complex, Mersenne31Field};
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength, MerkleTreeConstructor};
-use risc_v_simulator::cycle::MachineConfig;
+use prover::risc_v_simulator::cycle::MachineConfig;
+use prover::trace_holder::RowMajorTrace;
 use std::alloc::Global;
 use std::sync::Arc;
 use trace_and_split::setups::{DelegationCircuitPrecomputations, MainCircuitPrecomputations};
-use trace_holder::RowMajorTrace;
 
 type BF = Mersenne31Field;
 

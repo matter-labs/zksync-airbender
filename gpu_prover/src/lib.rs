@@ -4,6 +4,10 @@
 #![feature(btree_cursors)]
 #![feature(pointer_is_aligned_to)]
 #![feature(array_chunks)]
+#![feature(new_zeroed_alloc)]
+#![feature(vec_push_within_capacity)]
+#![feature(iter_array_chunks)]
+#![feature(let_chains)]
 
 pub mod allocator;
 pub mod barycentric;
@@ -11,6 +15,7 @@ pub mod blake2s;
 pub mod circuit_type;
 pub mod context;
 pub mod device_structures;
+pub mod execution;
 pub mod field;
 pub mod field_bench;
 pub mod ntt;

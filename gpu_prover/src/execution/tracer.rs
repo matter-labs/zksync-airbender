@@ -1,23 +1,23 @@
 use cs::definitions::{TimestampData, TimestampScalar, TIMESTAMP_STEP};
 use fft::GoodAllocator;
 use prover::definitions::LazyInitAndTeardown;
+use prover::risc_v_simulator::abstractions::memory::{AccessType, MemorySource};
+use prover::risc_v_simulator::abstractions::tracer::{
+    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData, Tracer,
+};
+use prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
+use prover::risc_v_simulator::cycle::status_registers::TrapReason;
+use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::{
     RegIndexOrMemWordIndex, SingleCycleTracingData, EMPTY_SINGLE_CYCLE_TRACING_DATA,
 };
-use risc_v_simulator::abstractions::memory::{AccessType, MemorySource};
-use risc_v_simulator::abstractions::tracer::{
-    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData, Tracer,
-};
-use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
-use risc_v_simulator::cycle::status_registers::TrapReason;
-use risc_v_simulator::cycle::MachineConfig;
 use std::alloc::Global;
 use std::collections::HashMap;
 // NOTE: this tracer ALLOWS for delegations to initialize memory, so we should use enough cycles
 // to eventually perform all the inits
 
-const PAGE_WORDS_LOG_SIZE: usize = 10; // 4 KiB page size, 4 bytes per word
+const PAGE_WORDS_LOG_SIZE: usize = 10; // 4 KiB page size, 1K x 4 bytes per word
 const PAGE_WORDS_SIZE: usize = 1 << PAGE_WORDS_LOG_SIZE;
 
 #[derive(Clone, Debug)]
@@ -114,15 +114,10 @@ impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
         self.touched_ram_cells_count.div_ceil(self.chunk_size)
     }
 
-    pub fn get_remaining_chunks_count(&self) -> usize {
-        let total_chunks = self.get_chunks_count();
-        total_chunks - self.next_chunk_index
-    }
-
     pub fn populate_next_chunk(&mut self, chunk: &mut [LazyInitAndTeardown]) {
         let chunks_count = self.get_chunks_count();
         assert!(self.next_chunk_index < chunks_count);
-        assert_eq!(self.chunk_size as usize, chunk.len());
+        assert_eq!(self.chunk_size, chunk.len());
         let dst = if self.next_chunk_index == 0 {
             let padding_size = chunks_count * self.chunk_size - self.touched_ram_cells_count;
             let (padding, dst) = chunk.split_at_mut(padding_size);
@@ -185,10 +180,6 @@ impl<A: GoodAllocator> CycleTracingData<A> {
             per_cycle_data: Vec::with_capacity_in(capacity, A::default()),
         }
     }
-
-    pub fn clear(&mut self) {
-        self.per_cycle_data.clear();
-    }
 }
 
 #[derive(Default)]
@@ -198,7 +189,7 @@ pub struct DelegationTracingData<A: GoodAllocator = Global> {
 
 // type SwapDelegationWitnessFn<A> = Box<dyn for<'b> Fn(u16, &'b mut DelegationWitness<A>) + 'a>;
 
-pub struct YetAnotherTracer<
+pub struct ExecutionTracer<
     'a,
     const RAM_SIZE: usize,
     const LOG_ROM_BOUND: u32,
@@ -233,7 +224,7 @@ impl<
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     >
-    YetAnotherTracer<
+    ExecutionTracer<
         'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
@@ -274,7 +265,7 @@ impl<
         const TRACE_CYCLES: bool,
         const TRACE_DELEGATIONS: bool,
     > Tracer<C>
-    for YetAnotherTracer<
+    for ExecutionTracer<
         'a,
         RAM_SIZE,
         LOG_ROM_BOUND,
@@ -287,7 +278,10 @@ impl<
 {
     #[allow(deprecated)]
     #[inline(always)]
-    fn at_cycle_start(&mut self, current_state: &risc_v_simulator::cycle::state::RiscV32State<C>) {
+    fn at_cycle_start(
+        &mut self,
+        current_state: &prover::risc_v_simulator::cycle::state::RiscV32State<C>,
+    ) {
         if !TRACE_CYCLES {
             return;
         }
@@ -303,7 +297,10 @@ impl<
 
     #[allow(deprecated)]
     #[inline(always)]
-    fn at_cycle_end(&mut self, _current_state: &risc_v_simulator::cycle::state::RiscV32State<C>) {
+    fn at_cycle_end(
+        &mut self,
+        _current_state: &prover::risc_v_simulator::cycle::state::RiscV32State<C>,
+    ) {
         self.current_timestamp += TIMESTAMP_STEP;
     }
 
@@ -460,7 +457,7 @@ impl<
         let phys_word_idx = address / 4;
         let read_timestamp = self
             .ram_tracing_data
-            .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+            .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
         if !TRACE_CYCLES {
             return;
@@ -494,7 +491,7 @@ impl<
         let phys_word_idx = phys_address / 4;
         let read_timestamp = self
             .ram_tracing_data
-            .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+            .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
         if !TRACE_CYCLES {
             return;
@@ -508,7 +505,7 @@ impl<
                 .unwrap_unchecked();
             dst.rd_or_mem_word_read_value = read_value;
             dst.rd_or_mem_word_write_value = written_value;
-            dst.rd_or_mem_word_address = RegIndexOrMemWordIndex::memory(phys_address as u32);
+            dst.rd_or_mem_word_address = RegIndexOrMemWordIndex::memory(phys_address);
             dst.rd_or_mem_read_timestamp = TimestampData::from_scalar(read_timestamp);
         }
     }
@@ -582,7 +579,7 @@ impl<
 
                 let read_timestamp = self
                     .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
                 dst.timestamp = TimestampData::from_scalar(read_timestamp);
             }
@@ -596,7 +593,7 @@ impl<
 
                 let read_timestamp = self
                     .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
                 dst.timestamp = TimestampData::from_scalar(read_timestamp);
             }
@@ -649,7 +646,7 @@ impl<
 
                 let _read_timestamp = self
                     .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
             }
 
             for phys_address in indirect_write_addresses.iter() {
@@ -658,7 +655,7 @@ impl<
 
                 let _read_timestamp = self
                     .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx as u32, write_timestamp);
+                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
             }
         }
     }

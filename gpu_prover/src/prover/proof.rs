@@ -56,7 +56,7 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
         self.is_finished_event.query()
     }
 
-    pub fn finish(self) -> CudaResult<Proof> {
+    pub fn finish(self) -> CudaResult<(Proof, f32)> {
         let Self {
             ranges,
             is_finished_event,
@@ -86,16 +86,16 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
 
         #[cfg(feature = "log_gpu_stages_timings")]
         {
-            log::info!("GPU setup time: {:.3} ms", ranges[0].elapsed()?);
-            log::info!("GPU stage 1 time: {:.3} ms", ranges[1].elapsed()?);
-            log::info!("GPU stage 2 time: {:.3} ms", ranges[2].elapsed()?);
-            log::info!("GPU stage 3 time: {:.3} ms", ranges[3].elapsed()?);
-            log::info!("GPU stage 4 time: {:.3} ms", ranges[4].elapsed()?);
-            log::info!("GPU stage 5 time: {:.3} ms", ranges[5].elapsed()?);
-            log::info!("GPU pow time: {:.3} ms", ranges[6].elapsed()?);
-            log::info!("GPU queries time: {:.3} ms", ranges[7].elapsed()?);
+            log::debug!("GPU setup time: {:.3} ms", ranges[0].elapsed()?);
+            log::debug!("GPU stage 1 time: {:.3} ms", ranges[1].elapsed()?);
+            log::debug!("GPU stage 2 time: {:.3} ms", ranges[2].elapsed()?);
+            log::debug!("GPU stage 3 time: {:.3} ms", ranges[3].elapsed()?);
+            log::debug!("GPU stage 4 time: {:.3} ms", ranges[4].elapsed()?);
+            log::debug!("GPU stage 5 time: {:.3} ms", ranges[5].elapsed()?);
+            log::debug!("GPU pow time: {:.3} ms", ranges[6].elapsed()?);
+            log::debug!("GPU queries time: {:.3} ms", ranges[7].elapsed()?);
         }
-        log::info!("GPU proof time: {:.3} ms", ranges[8].elapsed()?);
+        let proof_time_ms = ranges[8].elapsed()?;
 
         let public_inputs = public_inputs.lock().unwrap().clone();
         let witness_tree_caps = transform_tree_caps(&witness_tree_caps);
@@ -147,7 +147,7 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
             circuit_sequence,
             delegation_type,
         };
-        Ok(proof)
+        Ok((proof, proof_time_ms))
     }
 }
 

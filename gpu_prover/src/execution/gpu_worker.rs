@@ -1,17 +1,17 @@
-use crate::messages::WorkerResult;
-use crate::precomputations::CircuitPrecomputationsHost;
+use super::messages::WorkerResult;
+use super::precomputations::CircuitPrecomputationsHost;
+use crate::circuit_type::CircuitType;
+use crate::cudart::device::set_device;
+use crate::cudart::result::CudaResult;
+use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
+use crate::prover::proof::{prove, ProofJob};
+use crate::prover::setup::SetupPrecomputations;
+use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
+use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
-use gpu_prover::circuit_type::CircuitType;
-use gpu_prover::cudart::device::set_device;
-use gpu_prover::cudart::result::CudaResult;
-use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
-use gpu_prover::prover::memory::{commit_memory, MemoryCommitmentJob};
-use gpu_prover::prover::proof::{prove, ProofJob};
-use gpu_prover::prover::setup::SetupPrecomputations;
-use gpu_prover::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use gpu_prover::witness::trace_main::get_aux_arguments_boundary_values;
 use log::{error, info};
 use prover::definitions::{
     AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
@@ -75,34 +75,6 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
             GpuWorkRequest::Proof(request) => request.batch_id,
         }
     }
-
-    pub fn circuit_type(&self) -> CircuitType {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.circuit_type,
-            GpuWorkRequest::Proof(request) => request.circuit_type,
-        }
-    }
-
-    pub fn circuit_sequence(&self) -> usize {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.circuit_sequence,
-            GpuWorkRequest::Proof(request) => request.circuit_sequence,
-        }
-    }
-
-    pub fn tracing_data(&self) -> &TracingDataHost<A> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.tracing_data,
-            GpuWorkRequest::Proof(request) => &request.tracing_data,
-        }
-    }
-
-    pub fn precomputations(&self) -> &CircuitPrecomputationsHost<A, B> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.precomputations,
-            GpuWorkRequest::Proof(request) => &request.precomputations,
-        }
-    }
 }
 
 pub fn get_gpu_worker_func<C: ProverContext>(
@@ -152,7 +124,10 @@ fn gpu_worker<C: ProverContext>(
     info!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
     let context = C::new(&prover_context_config)?;
-    info!("GPU_WORKER[{device_id}] initialized");
+    info!(
+        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
+        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
+    );
     is_initialized.send(()).unwrap();
     drop(is_initialized);
     let mut current_setup: Option<SetupHolder<C>> = None;
@@ -336,19 +311,21 @@ fn gpu_worker<C: ProverContext>(
                         tracing_data,
                         ..
                     } = request;
-                    let merkle_tree_caps = match job {
+                    let (merkle_tree_caps, commitment_time_ms) = match job {
                         JobType::MemoryCommitment(job) => job.finish()?,
                         JobType::Proof(_) => unreachable!(),
                     };
                     match request.circuit_type {
                         CircuitType::Main(main) => info!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for main circuit {:?} chunk {}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for main circuit {:?} chunk {} in {:.3} ms",
                             main,
-                            request.circuit_sequence
+                            request.circuit_sequence,
+                            commitment_time_ms
                         ),
                         CircuitType::Delegation(delegation) => info!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for delegation circuit {:?}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for delegation circuit {:?} in {:.3} ms",
                             delegation,
+                            commitment_time_ms
                         ),
                     }
                     let result = MemoryCommitmentResult {
@@ -368,19 +345,21 @@ fn gpu_worker<C: ProverContext>(
                         tracing_data,
                         ..
                     } = request;
-                    let proof = match job {
+                    let (proof, proof_time_ms) = match job {
                         JobType::MemoryCommitment(_) => unreachable!(),
                         JobType::Proof(job) => job.finish()?,
                     };
                     match request.circuit_type {
                         CircuitType::Main(main) => info!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for main circuit {:?} chunk {}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for main circuit {:?} chunk {} in {:.3} ms",
                             main,
-                            request.circuit_sequence
+                            request.circuit_sequence,
+                            proof_time_ms,
                         ),
                         CircuitType::Delegation(delegation) => info!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for delegation circuit {:?}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for delegation circuit {:?} in {:.3} ms",
                             delegation,
+                            proof_time_ms,
                         ),
                     }
                     let result = ProofResult {

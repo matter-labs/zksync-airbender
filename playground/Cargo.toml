@@ -21,7 +21,6 @@ worker = { workspace = true }
 itertools = "0.14"
 gpu_prover = { workspace = true }
 rayon = "1"
-risc_v_simulator = { workspace = true, features = ["delegation"] }
 crossbeam = "0.8"
 crossbeam-channel = "0.5"
 log = { workspace = true }

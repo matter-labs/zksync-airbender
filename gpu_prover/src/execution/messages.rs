@@ -1,5 +1,5 @@
-use crate::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
-use crate::gpu_worker::{MemoryCommitmentResult, ProofResult};
+use super::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
+use super::gpu_worker::{MemoryCommitmentResult, ProofResult};
 use fft::GoodAllocator;
 use prover::tracers::delegation::DelegationWitness;
 use std::collections::HashMap;

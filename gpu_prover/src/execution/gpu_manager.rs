@@ -1,18 +1,20 @@
-use crate::gpu_worker::{get_gpu_worker_func, GpuWorkRequest};
-use crate::messages::WorkerResult;
+use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest};
+use super::messages::WorkerResult;
+use crate::cudart::device::{get_device_count, get_device_properties, set_device};
+use crate::cudart::result::CudaResult;
+use crate::prover::context::{ProverContext, ProverContextConfig};
 use crossbeam_channel::internal::SelectHandle;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
+use crossbeam_utils::sync::WaitGroup;
+use crossbeam_utils::thread::{scope, Scope};
 use fft::GoodAllocator;
-use gpu_prover::cudart::device::{get_device_count, get_device_properties, set_device};
-use gpu_prover::cudart::result::CudaResult;
-use gpu_prover::prover::context::{ProverContext, ProverContextConfig};
 use itertools::Itertools;
 use log::{error, info};
 use std::alloc::Global;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CStr;
 use std::process::exit;
-use std::sync::OnceLock;
+use std::thread;
 
 pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
     pub batch_id: u64,
@@ -21,59 +23,49 @@ pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
 }
 
 pub struct GpuManager<C: ProverContext, A: GoodAllocator + 'static = Global> {
-    is_initialized_receiver: Receiver<usize>,
-    workers_count: OnceLock<usize>,
-    batches_sender: Sender<GpuWorkBatch<C::HostAllocator, A>>,
+    wait_group: Option<WaitGroup>,
+    batches_sender: Option<Sender<GpuWorkBatch<C::HostAllocator, A>>>,
 }
 
 impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
-    pub fn new(scope: &rayon::Scope) -> Self {
-        let (is_initialized_sender, is_initialized_receiver) = bounded(1);
+    pub fn new() -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         info!("GPU_MANAGER spawning");
-        scope.spawn(move |scope| {
-            let result = gpu_manager::<C>(is_initialized_sender, batches_receiver, scope);
+        let wait_group = WaitGroup::new();
+        let wait_group_clone = wait_group.clone();
+        thread::spawn(move || {
+            let result = scope(|s| gpu_manager::<C>(batches_receiver, s)).unwrap();
             if let Err(e) = result {
                 error!("GPU_MANAGER encountered an error: {e}");
                 exit(1);
             }
+            drop(wait_group_clone);
         });
         Self {
-            is_initialized_receiver,
-            workers_count: OnceLock::new(),
-            batches_sender,
+            wait_group: Some(wait_group),
+            batches_sender: Some(batches_sender),
         }
     }
 
     pub fn send_batch(&self, batch: GpuWorkBatch<C::HostAllocator, A>) {
-        self.batches_sender.send(batch).unwrap()
-    }
-
-    pub fn is_initialized(&self) -> bool {
-        self.workers_count.get().is_some()
-    }
-
-    pub fn wait_for_initialization(&self) {
-        if self.workers_count.get().is_some() {
-            return;
-        }
-        let count = self.is_initialized_receiver.recv().unwrap();
-        self.workers_count.set(count).unwrap();
-    }
-
-    pub fn get_workers_count(&self) -> usize {
-        self.wait_for_initialization();
-        *self.workers_count.get().unwrap()
+        self.batches_sender.as_ref().unwrap().send(batch).unwrap()
     }
 }
 
+impl<C: ProverContext, A: GoodAllocator + 'static> Drop for GpuManager<C, A> {
+    fn drop(&mut self) {
+        drop(self.batches_sender.take().unwrap());
+        info!("GPU_MANAGER waiting for all threads to finish");
+        self.wait_group.take().unwrap().wait();
+        info!("GPU_MANAGER all threads finished");
+    }
+}
 fn gpu_manager<C: ProverContext>(
-    is_initialized: Sender<usize>,
     batches_receiver: Receiver<GpuWorkBatch<C::HostAllocator, impl GoodAllocator + 'static>>,
-    scope: &rayon::Scope<'_>,
+    scope: &Scope,
 ) -> CudaResult<()> {
     let device_count = get_device_count()? as usize;
-    info!("GPU_MANAGER found {} CUDA capable devices", device_count);
+    info!("GPU_MANAGER found {} CUDA capable device(s)", device_count);
     let prover_context_config = {
         let mut c = ProverContextConfig::default();
         c.allocation_block_log_size = 22;
@@ -112,8 +104,6 @@ fn gpu_manager<C: ProverContext>(
     drop(worker_initialized_sender);
     assert_eq!(worker_initialized_receiver.iter().count(), device_count);
     info!("GPU_MANAGER all GPU workers initialized");
-    is_initialized.send(device_count).unwrap();
-    drop(is_initialized);
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
     let mut batch_senders = HashMap::new();
@@ -141,7 +131,7 @@ fn gpu_manager<C: ProverContext>(
                             receiver: requests,
                             sender: results,
                         } = batch;
-                        info!("GPU_MANAGER received new batch with id {batch_id}");
+                        info!("[{batch_id}] GPU_MANAGER received new batch");
                         batch_receivers.insert(batch_id, requests);
                         batch_senders.insert(batch_id, results);
                     }

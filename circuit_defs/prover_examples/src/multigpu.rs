@@ -403,7 +403,7 @@ impl GpuThread {
         compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
         prover_context: &MemPoolProverContext<'_>,
     ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
-        let gpu_caps = {
+        let (gpu_caps, _) = {
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
             let log_tree_cap_size =
@@ -435,7 +435,7 @@ impl GpuThread {
         compiled_circuit: &cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
         prover_context: &MemPoolProverContext<'_>,
     ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
-        let gpu_caps = {
+        let (gpu_caps, _) = {
             let trace_len = compiled_circuit.trace_len;
 
             let log_lde_factor = lde_factor.trailing_zeros();
@@ -496,7 +496,7 @@ impl GpuThread {
         prover_context: &MemPoolProverContext<'a>,
         gpu_setup_main: &mut SetupPrecomputations<'a, MemPoolProverContext<'a>>,
     ) -> CudaResult<Proof> {
-        let gpu_proof = {
+        let (gpu_proof, _) = {
             let data = TracingDataHost::Main {
                 setup_and_teardown,
                 trace: witness_chunk.into(),
@@ -550,7 +550,7 @@ impl GpuThread {
             .unwrap();
         let prec = &delegation_circuits_precomputations[idx].1;
 
-        let gpu_proof = {
+        let (gpu_proof, _) = {
             let data = TracingDataHost::Delegation(witness_chunk);
             let circuit_type = CircuitType::Delegation(delegation_type);
             let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;

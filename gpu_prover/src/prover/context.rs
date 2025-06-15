@@ -11,6 +11,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaError;
 use fft::GoodAllocator;
 use field::Mersenne31Field;
+use log::error;
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 
@@ -51,6 +52,7 @@ pub trait ProverContext {
     fn get_h2d_stream(&self) -> &CudaStream;
     fn alloc<T: Sync>(&self, size: usize) -> CudaResult<Self::Allocation<T>>;
     fn free<T: Sync>(&self, allocation: Self::Allocation<T>) -> CudaResult<()>;
+    fn get_mem_size(&self) -> usize;
     fn get_used_mem_current(&self) -> CudaResult<usize>;
     fn get_used_mem_high(&self) -> CudaResult<usize>;
     fn get_reserved_mem_current(&self) -> CudaResult<usize>;
@@ -61,7 +63,7 @@ pub trait ProverContext {
     fn log_mem_pool_stats(&self, location: &str) -> CudaResult<()> {
         let used_mem_current = self.get_used_mem_current()?;
         let used_mem_high = self.get_used_mem_high()?;
-        log::info!(
+        log::debug!(
             "GPU memory usage {location} current/high: {}/{} GB",
             used_mem_current as f64 / ((1 << 30) as f64),
             used_mem_high as f64 / ((1 << 30) as f64),
@@ -75,6 +77,7 @@ pub struct MemPoolProverContext<'a> {
     pub(crate) exec_stream: CudaStream,
     pub(crate) h2d_stream: CudaStream,
     pub(crate) mem_pool: CudaOwnedMemPool,
+    pub(crate) mem_size: usize,
     pub(crate) device_id: i32,
     _phantom: PhantomData<&'a ()>,
 }
@@ -105,10 +108,6 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
             )?);
         }
         ConcurrentStaticHostAllocator::initialize_global(allocations, block_log_size);
-        log::info!(
-            "initialized ConcurrentStaticHostAllocator with {host_allocations_count} x {} GB",
-            host_allocation_size as f32 / 1024.0 / 1024.0 / 1024.0
-        );
         Ok(())
     }
 
@@ -152,10 +151,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
                 size -= 1;
             }
         }
-        log::info!(
-            "initialized GPU memory pool for device ID {device_id} with {} GB of usable memory",
-            (size << config.allocation_block_log_size) as f32 / 1024.0 / 1024.0 / 1024.0
-        );
+        let mem_size = size << config.allocation_block_log_size;
         mem_pool.set_attribute(CudaMemPoolAttributeU64::AttrUsedMemHigh, 0)?;
         DEFAULT_STREAM.synchronize()?;
         let context = Self {
@@ -163,6 +159,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
             exec_stream,
             h2d_stream,
             mem_pool,
+            mem_size,
             device_id,
             _phantom: PhantomData,
         };
@@ -194,7 +191,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
         );
         let result: CudaResult<Self::Allocation<T>> = unsafe { std::mem::transmute(result) };
         if result.is_err() {
-            log::error!(
+            error!(
                 "failed to allocate {} bytes from GPU memory pool of device ID {}, currently allocated {} bytes",
                 size * size_of::<T>(),
                 self.device_id,
@@ -206,6 +203,10 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
 
     fn free<T: Sync>(&self, allocation: Self::Allocation<T>) -> CudaResult<()> {
         allocation.free_async(&self.exec_stream)
+    }
+
+    fn get_mem_size(&self) -> usize {
+        self.mem_size
     }
 
     fn get_used_mem_current(&self) -> CudaResult<usize> {
