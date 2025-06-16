@@ -374,18 +374,21 @@ pub struct GpuSharedState<'a> {
 }
 
 impl<'a> GpuSharedState<'a> {
+    const MAIN_BINARY_KEY: usize = 0;
+    const RECURSION_BINARY_KEY: usize = 1;
+
     #[cfg(feature = "gpu")]
     pub fn new(binary: &Vec<u32>) -> Self {
         use gpu_prover::circuit_type::MainCircuitType;
         use gpu_prover::execution::prover::ExecutableBinary;
         use gpu_prover::execution::prover::ExecutionProver;
         let main_binary = ExecutableBinary {
-            key: 0,
+            key: Self::MAIN_BINARY_KEY,
             circuit_type: MainCircuitType::RiscVCycles,
             bytecode: binary.clone(),
         };
         let recursion_binary = ExecutableBinary {
-            key: 1,
+            key: Self::RECURSION_BINARY_KEY,
             circuit_type: MainCircuitType::ReducedRiscVMachine,
             bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
         };
@@ -422,46 +425,49 @@ pub fn create_proofs_internal(
             if prev_end_params_output.is_some() {
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
             }
-            let (basic_proofs, delegation_proofs, register_values) = if let Some(gpu_shared_state) =
-                gpu_shared_state
-            {
-                #[cfg(feature = "gpu")]
-                {
-                    println!("**** proving using GPU ****");
-                    let timer = std::time::Instant::now();
-                    let (final_register_values, basic_proofs, delegation_proofs) = gpu_shared_state
-                        .prover
-                        .commit_memory_and_prove(0, &0, num_instances, non_determinism_source);
-                    println!(
-                        "**** proofs generated in {:.3}s ****",
-                        timer.elapsed().as_secs_f64()
-                    );
-                    (
-                        basic_proofs,
-                        delegation_proofs,
-                        final_register_values.into(),
-                    )
-                }
-                #[cfg(not(feature = "gpu"))]
-                {
-                    let _ = gpu_shared_state;
-                    panic!("GPU not enabled - please compile with --features gpu flag.")
-                }
-            } else {
-                let main_circuit_precomputations =
-                    setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                let delegation_precomputations =
-                    setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
+            let (basic_proofs, delegation_proofs, register_values) =
+                if let Some(gpu_shared_state) = gpu_shared_state {
+                    #[cfg(feature = "gpu")]
+                    {
+                        println!("**** proving using GPU ****");
+                        let timer = std::time::Instant::now();
+                        let (final_register_values, basic_proofs, delegation_proofs) =
+                            gpu_shared_state.prover.commit_memory_and_prove(
+                                0,
+                                &GpuSharedState::MAIN_BINARY_KEY,
+                                num_instances,
+                                non_determinism_source,
+                            );
+                        println!(
+                            "**** proofs generated in {:.3}s ****",
+                            timer.elapsed().as_secs_f64()
+                        );
+                        (
+                            basic_proofs,
+                            delegation_proofs,
+                            final_register_values.into(),
+                        )
+                    }
+                    #[cfg(not(feature = "gpu"))]
+                    {
+                        let _ = gpu_shared_state;
+                        panic!("GPU not enabled - please compile with --features gpu flag.")
+                    }
+                } else {
+                    let main_circuit_precomputations =
+                        setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
+                    let delegation_precomputations =
+                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
 
-                prover_examples::prove_image_execution(
-                    num_instances,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                )
-            };
+                    prover_examples::prove_image_execution(
+                        num_instances,
+                        &binary,
+                        non_determinism_source,
+                        &main_circuit_precomputations,
+                        &delegation_precomputations,
+                        &worker,
+                    )
+                };
 
             (
                 ProofList {
@@ -483,7 +489,7 @@ pub fn create_proofs_internal(
                         let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
-                                &1,
+                                &GpuSharedState::RECURSION_BINARY_KEY,
                                 num_instances,
                                 non_determinism_source,
                             );
