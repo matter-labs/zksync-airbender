@@ -51,6 +51,13 @@ type A = ConcurrentStaticHostAllocator;
 const CPU_WORKERS_COUNT: usize = 6;
 const CYCLES_TRACING_WORKERS_COUNT: usize = CPU_WORKERS_COUNT - 2;
 
+/// Represents an executable binary that can be proven by the prover
+///
+///  # Fields
+/// * `key`: unique identifier for the binary, can be for example a &str or usize, anything that implements Clone, Debug, Eq, and Hash
+/// * `circuit_type`: the type of the circuit this binary is for, one of the values from the `MainCircuitType` enumeration
+/// * `bytecode`: the bytecode of the binary, can be a Vec<u32> or any other type that can be converted into Box<[u32]>
+///
 #[derive(Clone)]
 pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash, B: Into<Box<[u32]>>> {
     pub key: K,
@@ -81,6 +88,15 @@ pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
 }
 
 impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
+    ///  Creates a new instance of `ExecutionProver`.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_concurrent_batches`: maximum number of concurrent batches that the prover allocates host buffers for, this is a soft limit, the prover will work with more batches if needed, but it can stall certain operations for some time
+    /// * `binaries`: a vector of executable binaries that the prover can work with, each binary must have a unique key
+    ///
+    /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
+    ///
     pub fn new(
         max_concurrent_batches: usize,
         binaries: Vec<ExecutableBinary<K, impl Into<Box<[u32]>>>>,
@@ -665,6 +681,20 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         )
     }
 
+    ///  Produces memory commitments.
+    ///
+    /// # Arguments
+    ///
+    /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
+    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
+    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
+    /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
+    ///
+    /// returns: a tuple containing:
+    ///     - final register values for the main circuit,
+    ///     - a vector of memory commitments for the chunks of the main circuit,
+    ///     - a vector of memory commitments for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    ///
     pub fn commit_memory(
         &self,
         batch_id: u64,
@@ -709,6 +739,21 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         )
     }
 
+    ///  Produces proofs.
+    ///
+    /// # Arguments
+    ///
+    /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
+    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
+    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
+    /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
+    /// * `external_challenges`: an instance of `ExternalChallenges` that contains the challenges to be used in the proof generation
+    ///
+    /// returns: a tuple containing:
+    ///     - final register values for the main circuit,
+    ///     - a vector of proofs for the chunks of the main circuit,
+    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    ///
     pub fn prove(
         &self,
         batch_id: u64,
@@ -746,6 +791,20 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         (final_register_values, main_proofs, delegation_proofs)
     }
 
+    ///  Commits to memory and produces proofs using challenge derived from the memory commitments.
+    ///
+    /// # Arguments
+    ///
+    /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
+    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
+    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
+    /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
+    ///
+    /// returns: a tuple containing:
+    ///     - final register values for the main circuit,
+    ///     - a vector of proofs for the chunks of the main circuit,
+    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    ///
     pub fn commit_memory_and_prove(
         &self,
         batch_id: u64,
