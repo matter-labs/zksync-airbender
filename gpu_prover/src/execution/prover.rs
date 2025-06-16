@@ -122,7 +122,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             + cycles_tracing_data_bytes_needed
             + delegation_tracing_data_bytes_needed;
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
-        let host_allocations_count = total_gb_needed + device_count;
+        let host_allocations_count = total_gb_needed + device_count * 2;
         info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
         MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
             .unwrap();
