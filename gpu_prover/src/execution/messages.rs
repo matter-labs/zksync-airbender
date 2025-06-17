@@ -15,7 +15,10 @@ pub enum WorkerResult<A: GoodAllocator> {
     CyclesTracingResult {
         chunks_traced_count: usize,
     },
-    DelegationWitness(DelegationWitness<A>),
+    DelegationWitness {
+        circuit_sequence: usize,
+        witness: DelegationWitness<A>,
+    },
     DelegationTracingResult {
         delegation_chunks_counts: HashMap<u16, usize>,
     },
