@@ -659,6 +659,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             .sorted_by_key(|(index, _)| *index)
             .map(|(_, caps)| caps)
             .collect_vec();
+        // delegation_memory_commitments is a HashMap.
+        // We unpack it into a vector with helper logic to ensure elements are ordered by id.
         let mut delegation_memory_commitment_keys =
             delegation_memory_commitments.keys().copied().collect_vec();
         delegation_memory_commitment_keys.sort_unstable();
@@ -674,6 +676,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             .sorted_by_key(|(index, _)| *index)
             .map(|(_, proof)| proof)
             .collect_vec();
+        // delegation_proofs is a HashMap.
+        // We unpack it into a vector with helper logic to ensure elements are ordered by id.
         let mut delegation_proof_keys = delegation_proofs.keys().copied().collect_vec();
         delegation_proof_keys.sort_unstable();
         let delegation_proofs = delegation_proof_keys
