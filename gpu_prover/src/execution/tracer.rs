@@ -128,6 +128,17 @@ impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
         };
         dst.fill_with(|| unsafe { self.iterator.next().unwrap_unchecked() });
     }
+
+    pub fn skip_next_chunk(&mut self) {
+        let chunks_count = self.get_chunks_count();
+        assert!(self.next_chunk_index < chunks_count);
+        let count = if self.next_chunk_index == 0 {
+            self.touched_ram_cells_count % self.chunk_size
+        } else {
+            self.chunk_size
+        };
+        self.iterator.advance_by(count).unwrap();
+    }
 }
 
 pub fn create_setup_and_teardown_chunker<'a>(
@@ -183,18 +194,26 @@ impl<A: GoodAllocator> CycleTracingData<A> {
     }
 }
 
-#[derive(Default)]
-pub struct DelegationTracingData<A: GoodAllocator = Global> {
-    pub witnesses: HashMap<u16, DelegationWitness<A>>,
+pub struct DelegationCounter {
+    pub num_requests: usize,
+    pub counter: usize,
 }
 
-// type SwapDelegationWitnessFn<A> = Box<dyn for<'b> Fn(u16, &'b mut DelegationWitness<A>) + 'a>;
+pub enum DelegationTracingType<A: GoodAllocator> {
+    Counter(DelegationCounter),
+    Witness(DelegationWitness<A>),
+}
+
+#[derive(Default)]
+pub struct DelegationTracingData<A: GoodAllocator = Global> {
+    pub tracing_types: HashMap<u16, DelegationTracingType<A>>,
+}
 
 pub struct ExecutionTracer<
     'a,
     const RAM_SIZE: usize,
     const LOG_ROM_BOUND: u32,
-    S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
+    S: Fn(u16, Option<DelegationTracingType<A>>) -> DelegationTracingType<A>,
     A: GoodAllocator = Global,
     const TRACE_TOUCHED_RAM: bool = false,
     const TRACE_CYCLES: bool = false,
@@ -219,7 +238,7 @@ impl<
         'a,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
-        S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
+        S: Fn(u16, Option<DelegationTracingType<A>>) -> DelegationTracingType<A>,
         A: GoodAllocator,
         const TRACE_TOUCHED_RAM: bool,
         const TRACE_CYCLES: bool,
@@ -260,7 +279,7 @@ impl<
         C: MachineConfig,
         const RAM_SIZE: usize,
         const LOG_ROM_BOUND: u32,
-        S: Fn(u16, Option<DelegationWitness<A>>) -> DelegationWitness<A>,
+        S: Fn(u16, Option<DelegationTracingType<A>>) -> DelegationTracingType<A>,
         A: GoodAllocator,
         const TRACE_TOUCHED_RAM: bool,
         const TRACE_CYCLES: bool,
@@ -554,77 +573,82 @@ impl<
         if TRACE_DELEGATIONS {
             let current_tracer = self
                 .delegation_tracing_data
-                .witnesses
+                .tracing_types
                 .entry(delegation_type)
                 .or_insert_with(|| (self.swap_delegation_witness_fn)(delegation_type, None));
-            debug_assert_eq!(current_tracer.base_register_index, base_register);
 
-            // trace register part
-            let mut register_index = base_register;
-            for dst in register_accesses.iter_mut() {
-                let read_timestamp = self
-                    .ram_tracing_data
-                    .mark_register_use(register_index, write_timestamp);
-                dst.timestamp = TimestampData::from_scalar(read_timestamp);
+            let should_replace = match current_tracer {
+                DelegationTracingType::Counter(counter) => {
+                    counter.counter += 1;
+                    counter.counter == counter.num_requests
+                }
+                DelegationTracingType::Witness(witness) => {
+                    debug_assert_eq!(witness.base_register_index, base_register);
 
-                register_index += 1;
-            }
+                    // trace register part
+                    let mut register_index = base_register;
+                    for dst in register_accesses.iter_mut() {
+                        let read_timestamp = self
+                            .ram_tracing_data
+                            .mark_register_use(register_index, write_timestamp);
+                        dst.timestamp = TimestampData::from_scalar(read_timestamp);
 
-            // formal reads and writes
-            for (phys_address, dst) in indirect_read_addresses
-                .iter()
-                .zip(indirect_reads.iter_mut())
-            {
-                let phys_address = *phys_address;
-                let phys_word_idx = phys_address / 4;
+                        register_index += 1;
+                    }
 
-                let read_timestamp = self
-                    .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
+                    // formal reads and writes
+                    for (phys_address, dst) in indirect_read_addresses
+                        .iter()
+                        .zip(indirect_reads.iter_mut())
+                    {
+                        let phys_address = *phys_address;
+                        let phys_word_idx = phys_address / 4;
 
-                dst.timestamp = TimestampData::from_scalar(read_timestamp);
-            }
+                        let read_timestamp = self
+                            .ram_tracing_data
+                            .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
-            for (phys_address, dst) in indirect_write_addresses
-                .iter()
-                .zip(indirect_writes.iter_mut())
-            {
-                let phys_address = *phys_address;
-                let phys_word_idx = phys_address / 4;
+                        dst.timestamp = TimestampData::from_scalar(read_timestamp);
+                    }
 
-                let read_timestamp = self
-                    .ram_tracing_data
-                    .mark_ram_slot_use(phys_word_idx, write_timestamp);
+                    for (phys_address, dst) in indirect_write_addresses
+                        .iter()
+                        .zip(indirect_writes.iter_mut())
+                    {
+                        let phys_address = *phys_address;
+                        let phys_word_idx = phys_address / 4;
 
-                dst.timestamp = TimestampData::from_scalar(read_timestamp);
-            }
+                        let read_timestamp = self
+                            .ram_tracing_data
+                            .mark_ram_slot_use(phys_word_idx, write_timestamp);
 
-            current_tracer
-                .register_accesses
-                .extend_from_slice(&*register_accesses);
-            current_tracer
-                .indirect_reads
-                .extend_from_slice(&*indirect_reads);
-            current_tracer
-                .indirect_writes
-                .extend_from_slice(&*indirect_writes);
-            current_tracer
-                .write_timestamp
-                .push_within_capacity(TimestampData::from_scalar(write_timestamp))
-                .unwrap();
+                        dst.timestamp = TimestampData::from_scalar(read_timestamp);
+                    }
 
-            current_tracer.assert_consistency();
+                    witness
+                        .register_accesses
+                        .extend_from_slice(&*register_accesses);
+                    witness.indirect_reads.extend_from_slice(&*indirect_reads);
+                    witness.indirect_writes.extend_from_slice(&*indirect_writes);
+                    witness
+                        .write_timestamp
+                        .push_within_capacity(TimestampData::from_scalar(write_timestamp))
+                        .unwrap();
+
+                    witness.assert_consistency();
+                    witness.at_capacity()
+                }
+            };
             // swap if needed
-            let should_replace = current_tracer.at_capacity();
             if should_replace {
                 let witness = self
                     .delegation_tracing_data
-                    .witnesses
+                    .tracing_types
                     .remove(&delegation_type)
                     .unwrap();
                 let witness = (self.swap_delegation_witness_fn)(delegation_type, Some(witness));
                 self.delegation_tracing_data
-                    .witnesses
+                    .tracing_types
                     .insert(delegation_type, witness);
             }
         } else {
