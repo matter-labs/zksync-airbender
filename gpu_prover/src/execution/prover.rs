@@ -659,14 +659,33 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             .sorted_by_key(|(index, _)| *index)
             .map(|(_, caps)| caps)
             .collect_vec();
-        let delegation_memory_commitments = delegation_memory_commitments
-            .into_iter()
-            .map(|(id, caps)| (id as u32, caps))
+        // delegation_memory_commitments is a HashMap.
+        // We unpack it into a vector with helper logic to ensure elements are ordered by id.
+        let mut delegation_memory_commitment_keys =
+            delegation_memory_commitments.keys().copied().collect_vec();
+        delegation_memory_commitment_keys.sort_unstable();
+        let delegation_memory_commitments = delegation_memory_commitment_keys
+            .iter()
+            .map(|id| {
+                let proofs = delegation_memory_commitments.remove(id).unwrap();
+                (*id as u32, proofs)
+            })
             .collect_vec();
         let main_proofs = main_proofs
             .into_iter()
             .sorted_by_key(|(index, _)| *index)
             .map(|(_, proof)| proof)
+            .collect_vec();
+        // delegation_proofs is a HashMap.
+        // We unpack it into a vector with helper logic to ensure elements are ordered by id.
+        let mut delegation_proof_keys = delegation_proofs.keys().copied().collect_vec();
+        delegation_proof_keys.sort_unstable();
+        let delegation_proofs = delegation_proof_keys
+            .iter()
+            .map(|id| {
+                let proofs = delegation_proofs.remove(id).unwrap();
+                (*id as u32, proofs)
+            })
             .collect_vec();
         let delegation_proofs = delegation_proofs
             .into_iter()
