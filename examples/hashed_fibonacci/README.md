@@ -6,7 +6,7 @@ This example shows how you can use delegation circuits (here - blake for hashing
 
 `input.txt` contains example inputs (`n = 0000000f` = 15 fibonacci iterations, `h = 00000001` = 1 blake iteration).
 
-You can try it with the tools/cli runner as shown below.
+You can try it with the [tools/cli](../../tools/cli) runner as shown below.
 
 ## Example commands (from tools/cli directory)
 

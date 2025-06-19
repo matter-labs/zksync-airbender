@@ -2,7 +2,7 @@
 
 Dynamic fibonacci reads a number `n` (in hex) from an input file and computes the n-th fibonacci number % 7919.
 
-You can try it with the tools/cli runner as shown below.
+You can try it with the [tools/cli](../../tools/cli) runner as shown below.
 
 ## Example commands (from tools/cli directory)
 
