@@ -2,19 +2,44 @@
 
 Dynamic fibonacci reads a number `n` (in hex) from an input file and computes the n-th fibonacci number.
 
-The example input.txt sets `n=002dc6c0` (3 million iterations). You can try it with tools/cli as shown below.
+You can try it with the tools/cli runner as shown below.
 
 ## Example commands (from tools/cli directory)
 
-Trace the execution and get cycle count:
+### Smaller (1-segment) case.
+
+Use `input.txt`, which sets `n = 0007a120` (500_000 iterations).
+
+Trace execution and get cycle count:
 
 ```
-cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt --cycles 40000000
+cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
 ```
-`--cycles 40000000` tells the prover to trace and prove up to 40m RiscV cycles, enough to accommodate input.txt's default 3000000 iterations.
 
 Prove (with recursion):
 
 ```
 cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin  --cycles 40000000 --input-file ../../examples/dynamic_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
 ```
+
+### Larger (multi-segment) case
+
+Use `input_large.txt`, which sets `n = 002dc6c0` (3_000_000 iterations). This corresponds to [zkvm_perf](https://github.com/succinctlabs/zkvm-perf)'s `fibonacci40m` case (40m refers to an upper bound on the number of RISC-V cycles. The number of Fibonacci iterations is also [3_000_000](https://github.com/succinctlabs/zkvm-perf/blob/main/eval/src/sp1.rs#L70-L72)).
+
+Trace execution and get cycle count:
+
+```
+cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt
+```
+
+`--cycles 40000000` tells the CLI tool to trace and prove up to 40m RiscV cycles.
+
+Prove (with recursion):
+
+```
+cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin  --cycles 40000000 --input-file ../../examples/dynamic_fibonacci/input_large.txt --output-dir /tmp --gpu --until final-recursion
+```
+
+## Rebuilding
+
+If you want to tweak the program itself (`src/main.rs`), you must rebuild by running `dump_bin.sh`. You might need to install [cargo-binutils](https://crates.io/crates/cargo-binutils/).
