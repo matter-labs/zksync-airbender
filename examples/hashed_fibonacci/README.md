@@ -10,9 +10,9 @@ You can try it with the tools/cli runner as shown below.
 
 ## Example commands (from tools/cli directory)
 
-Trace execution and get cycle count:
+Trace execution to get cycle count and output:
 ```
-cargo run --profile cli run --bin ../../examples/hashed_fibonacci/app.bin --input_file ../../examples/hashed_fibonacci/input.txt
+cargo run --profile cli run --bin ../../examples/hashed_fibonacci/app.bin --input-file ../../examples/hashed_fibonacci/input.txt
 ```
 
 Prove (with recursion):

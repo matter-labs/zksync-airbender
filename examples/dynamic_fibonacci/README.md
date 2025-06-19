@@ -10,7 +10,7 @@ You can try it with the tools/cli runner as shown below.
 
 Use `input.txt`, which sets `n = 0007a120` (500_000 iterations).
 
-Trace execution and get cycle count:
+Trace execution to get cycle count and output:
 
 ```
 cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
@@ -19,23 +19,23 @@ cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --inp
 Prove (with recursion):
 
 ```
-cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin  --cycles 40000000 --input-file ../../examples/dynamic_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
+cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
 ```
 
 ### Larger (multi-segment) case
 
 Use `input_large.txt`, which sets `n = 002dc6c0` (3_000_000 iterations). This corresponds to [zkvm_perf](https://github.com/succinctlabs/zkvm-perf)'s `fibonacci40m` case (40m refers to an upper bound on the number of RISC-V cycles. The number of Fibonacci iterations is also [3_000_000](https://github.com/succinctlabs/zkvm-perf/blob/main/eval/src/sp1.rs#L70-L72)).
 
-Trace execution and get cycle count:
+Trace execution to get cycle count and output:
 ```
-cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt
+cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000
 ```
 
 `--cycles 40000000` tells the CLI tool to trace and prove up to 40m RiscV cycles.
 
 Prove (with recursion):
 ```
-cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin  --cycles 40000000 --input-file ../../examples/dynamic_fibonacci/input_large.txt --output-dir /tmp --gpu --until final-recursion
+cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000 --output-dir /tmp --gpu --until final-recursion
 ```
 
 ## Rebuilding
