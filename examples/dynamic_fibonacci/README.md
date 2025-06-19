@@ -1,12 +1,12 @@
 # ZK prover example
 
-Dynamic fibonacci reads a number `n` (in hex) from an input file and computes the n-th fibonacci number.
+Dynamic fibonacci reads a number `n` (in hex) from an input file and computes the n-th fibonacci number % 7919.
 
 You can try it with the tools/cli runner as shown below.
 
 ## Example commands (from tools/cli directory)
 
-### Smaller (1-segment) case.
+### Smaller (1-segment) case
 
 Use `input.txt`, which sets `n = 0007a120` (500_000 iterations).
 
@@ -27,7 +27,6 @@ cargo run --release -p cli --no-default-features --features gpu prove --bin ../.
 Use `input_large.txt`, which sets `n = 002dc6c0` (3_000_000 iterations). This corresponds to [zkvm_perf](https://github.com/succinctlabs/zkvm-perf)'s `fibonacci40m` case (40m refers to an upper bound on the number of RISC-V cycles. The number of Fibonacci iterations is also [3_000_000](https://github.com/succinctlabs/zkvm-perf/blob/main/eval/src/sp1.rs#L70-L72)).
 
 Trace execution and get cycle count:
-
 ```
 cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt
 ```
@@ -35,7 +34,6 @@ cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --inp
 `--cycles 40000000` tells the CLI tool to trace and prove up to 40m RiscV cycles.
 
 Prove (with recursion):
-
 ```
 cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin  --cycles 40000000 --input-file ../../examples/dynamic_fibonacci/input_large.txt --output-dir /tmp --gpu --until final-recursion
 ```
