@@ -11,16 +11,15 @@ You can try it with the tools/cli runner as shown below.
 Use `input.txt`, which sets `n = 0007a120` (500_000 iterations).
 
 Trace execution to get cycle count and output:
+```
+cargo run --release run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
+```
 
+Prove on GPU (with recursion):
 ```
-cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
+cargo run --release --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
 ```
-
-Prove (with recursion):
-
-```
-cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
-```
+To prove on CPU, omit `--gpu`.
 
 ### Larger (multi-segment) case
 
@@ -28,14 +27,14 @@ Use `input_large.txt`, which sets `n = 002dc6c0` (3_000_000 iterations). This co
 
 Trace execution to get cycle count and output:
 ```
-cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000
+cargo run --release run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000
 ```
 
 `--cycles 40000000` tells the CLI tool to trace and prove up to 40m RiscV cycles.
 
-Prove (with recursion):
+Prove on GPU (with recursion):
 ```
-cargo run --release -p cli --no-default-features --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000 --output-dir /tmp --gpu --until final-recursion
+cargo run --release --features gpu prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000 --output-dir /tmp --gpu --until final-recursion
 ```
 
 ## Rebuilding
