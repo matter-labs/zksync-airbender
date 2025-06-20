@@ -124,54 +124,7 @@ impl<
                 new_pc_value: NextPcValue::Custom(dst),
             }
         } else {
-            // NOTE why we only check 2nd bit and completely ignore lowest one:
-            // - if it's JAL, then we add PC (0 mod 4) with immediate, that encodes 2-byte offset, so it's 0 mod 2 anyway
-            // - if it's JALR then we should clean the lowest bit anyway, so we only need to check 2nd bit
-
-            let [bit_1, dst_low] = opt_ctx.append_lookup_relation(
-                cs,
-                &[x.0[0].get_variable()],
-                TableType::JumpCleanupOffset.to_num(),
-                exec_flag,
-            );
-            let bit_1 = Boolean::Is(bit_1);
-            let is_misaligned_addr = bit_1;
-
-            let dst_low = Num::Var(dst_low);
-            let dst_high = x.0[1];
-            let dst = Register([dst_low, dst_high]);
-            let trapped = is_misaligned_addr;
-            let trap_reason = Num::Constant(F::from_u64_unchecked(
-                TrapReason::InstructionAddressMisaligned as u64,
-            ));
-
-            if exec_flag.get_value(cs).unwrap_or(false) {
-                println!("JUMP");
-                if is_jal.get_value(cs).unwrap() {
-                    dbg!(pc.get_value_unsigned(cs));
-                } else {
-                    dbg!(src1.get_value_unsigned(cs));
-                }
-                dbg!(imm.get_value_unsigned(cs));
-                if trapped.get_value(cs).unwrap() {
-                    dbg!(trap_reason.get_value(cs));
-                } else {
-                    dbg!(dst.get_value_unsigned(cs));
-                }
-            }
-
-            let returned_value = [
-                Constraint::<F>::from(pc_next.0[0].get_variable()),
-                Constraint::<F>::from(pc_next.0[1].get_variable()),
-            ];
-
-            CommonDiffs {
-                exec_flag,
-                trapped: Some(trapped),
-                trap_reason: Some(trap_reason),
-                rd_value: vec![(returned_value, exec_flag)],
-                new_pc_value: NextPcValue::Custom(dst),
-            }
+            unimplemented!();
         }
     }
 }

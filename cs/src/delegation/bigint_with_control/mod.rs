@@ -376,19 +376,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
                     &subtraction_result_limbs[i].1,
                     &intermediate_carry_value,
                 );
-            // rest
-            value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
-                &assign_subtraction_result,
-                &subtraction_result_limbs[i].0,
-                &value,
-            );
-            intermediate_carry_value =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                    &assign_subtraction_result,
-                    &subtraction_result_limbs[i].1,
-                    &intermediate_carry_value,
-                );
-
             placer.assign_u16(additive_ops_result[i], &value);
             placer.assign_mask(intermediate_carry_variables[i], &intermediate_carry_value);
         }
