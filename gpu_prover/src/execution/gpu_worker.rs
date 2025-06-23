@@ -27,6 +27,8 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use era_cudart::device::device_synchronize;
+
 type BF = Mersenne31Field;
 
 const NUM_QUERIES: usize = 53;
@@ -247,6 +249,7 @@ fn gpu_worker<C: ProverContext>(
                         log_tree_cap_size,
                         &context,
                     )?;
+                    context.get_exec_stream().synchronize()?;
                     JobType::MemoryCommitment(job)
                 }
                 GpuWorkRequest::Proof(request) => {
