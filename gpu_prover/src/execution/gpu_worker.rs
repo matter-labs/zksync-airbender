@@ -10,7 +10,7 @@ use crate::prover::setup::SetupPrecomputations;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
-use era_cudart::device::get_device_properties;
+use era_cudart::device::{device_synchronize, get_device_properties};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
 use log::{debug, error, info, trace};
@@ -26,8 +26,6 @@ use std::mem;
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::Arc;
-
-use era_cudart::device::device_synchronize;
 
 type BF = Mersenne31Field;
 
