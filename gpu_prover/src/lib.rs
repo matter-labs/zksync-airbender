@@ -8,7 +8,6 @@
 #![feature(vec_push_within_capacity)]
 #![feature(iter_array_chunks)]
 #![feature(let_chains)]
-#![feature(iter_advance_by)]
 
 pub mod allocator;
 pub mod barycentric;

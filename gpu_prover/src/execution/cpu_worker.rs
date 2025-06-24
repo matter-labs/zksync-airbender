@@ -1,7 +1,7 @@
 use super::messages::WorkerResult;
 use super::tracer::{
-    create_setup_and_teardown_chunker, BoxedMemoryImplWithRom, CycleTracingData, DelegationCounter,
-    DelegationTracingData, DelegationTracingType, ExecutionTracer, RamTracingData,
+    create_setup_and_teardown_chunker, BoxedMemoryImplWithRom, CycleTracingData,
+    DelegationTracingData, ExecutionTracer, RamTracingData,
 };
 use crate::circuit_type::DelegationCircuitType;
 use crossbeam_channel::{Receiver, Sender};
@@ -17,7 +17,7 @@ use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
 use prover::tracers::delegation::DelegationWitness;
 use prover::ShuffleRamSetupAndTeardown;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::time::Instant;
 use trace_and_split::setups::trace_len_for_machine;
@@ -55,18 +55,14 @@ pub struct CyclesChunk<A: GoodAllocator> {
 #[derive(Clone)]
 pub enum CpuWorkerMode<A: GoodAllocator> {
     TraceTouchedRam {
-        skip_set: HashSet<usize>,
         free_setup_and_teardowns: Receiver<ShuffleRamSetupAndTeardown<A>>,
     },
     TraceCycles {
-        skip_set: HashSet<usize>,
         split_count: usize,
         split_index: usize,
         free_cycle_tracing_data: Receiver<CycleTracingData<A>>,
     },
     TraceDelegations {
-        skip_sets: HashMap<DelegationCircuitType, HashSet<usize>>,
-        delegation_num_requests: HashMap<DelegationCircuitType, usize>,
         free_delegation_witnesses: HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
     },
 }
@@ -84,7 +80,6 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
     move || {
         match mode {
             CpuWorkerMode::TraceTouchedRam {
-                skip_set,
                 free_setup_and_teardowns,
             } => trace_touched_ram::<C, A>(
                 batch_id,
@@ -92,12 +87,10 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 num_main_chunks_upper_bound,
                 binary,
                 non_determinism,
-                skip_set,
                 free_setup_and_teardowns,
                 results,
             ),
             CpuWorkerMode::TraceCycles {
-                skip_set,
                 split_count,
                 split_index,
                 free_cycle_tracing_data,
@@ -107,15 +100,12 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 num_main_chunks_upper_bound,
                 binary,
                 non_determinism,
-                skip_set,
                 split_count,
                 split_index,
                 free_cycle_tracing_data,
                 results,
             ),
             CpuWorkerMode::TraceDelegations {
-                skip_sets,
-                delegation_num_requests,
                 free_delegation_witnesses,
             } => trace_delegations::<C, A>(
                 batch_id,
@@ -123,8 +113,6 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 num_main_chunks_upper_bound,
                 binary,
                 non_determinism,
-                skip_sets,
-                delegation_num_requests,
                 free_delegation_witnesses,
                 results,
             ),
@@ -139,7 +127,6 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     num_main_chunks_upper_bound: usize,
     binary: impl Deref<Target = impl Deref<Target = [u32]>>,
     non_determinism: impl Deref<Target = impl NonDeterminism>,
-    skip_set: HashSet<usize>,
     free_setup_and_teardowns: Receiver<ShuffleRamSetupAndTeardown<A>>,
     results: Sender<WorkerResult<A>>,
 ) {
@@ -189,25 +176,19 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
             tracer.ram_tracing_data.get_touched_ram_cells_count() as usize;
         let chunks_needed_for_setup_and_teardowns =
             touched_ram_cells_count.div_ceil(cycles_per_chunk);
-        let chunks_diff = chunks_traced_count - next_chunk_index_with_no_setup_and_teardown;
-        if chunks_needed_for_setup_and_teardowns < chunks_diff {
+        if chunks_needed_for_setup_and_teardowns
+            < (chunks_traced_count - next_chunk_index_with_no_setup_and_teardown)
+        {
             trace!(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {} does not need setup and teardown",
                 next_chunk_index_with_no_setup_and_teardown
             );
-            if skip_set.contains(&next_chunk_index_with_no_setup_and_teardown) {
-                trace!(
-                    "BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {} skipped",
-                    next_chunk_index_with_no_setup_and_teardown
-                );
-            } else {
-                let chunk = SetupAndTeardownChunk {
-                    index: next_chunk_index_with_no_setup_and_teardown,
-                    chunk: None,
-                };
-                let result = WorkerResult::SetupAndTeardownChunk(chunk);
-                results.send(result).unwrap();
-            }
+            let chunk = SetupAndTeardownChunk {
+                index: next_chunk_index_with_no_setup_and_teardown,
+                chunk: None,
+            };
+            let result = WorkerResult::SetupAndTeardownChunk(chunk);
+            results.send(result).unwrap();
             next_chunk_index_with_no_setup_and_teardown += 1;
         }
         if finished {
@@ -255,21 +236,13 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     );
     let now = Instant::now();
     for index in next_chunk_index_with_no_setup_and_teardown..chunks_traced_count {
-        if skip_set.contains(&index) {
-            chunker.skip_next_chunk();
-            trace!(
-                "BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {} skipped",
-                index
-            );
-        } else {
-            let mut setup_and_teardown = free_setup_and_teardowns.recv().unwrap();
-            unsafe { setup_and_teardown.lazy_init_data.set_len(cycles_per_chunk) };
-            chunker.populate_next_chunk(&mut setup_and_teardown.lazy_init_data);
-            let chunk = Some(setup_and_teardown);
-            let chunk = SetupAndTeardownChunk { index, chunk };
-            let result = WorkerResult::SetupAndTeardownChunk(chunk);
-            results.send(result).unwrap();
-        }
+        let mut setup_and_teardown = free_setup_and_teardowns.recv().unwrap();
+        unsafe { setup_and_teardown.lazy_init_data.set_len(cycles_per_chunk) };
+        chunker.populate_next_chunk(&mut setup_and_teardown.lazy_init_data);
+        let chunk = Some(setup_and_teardown);
+        let chunk = SetupAndTeardownChunk { index, chunk };
+        let result = WorkerResult::SetupAndTeardownChunk(chunk);
+        results.send(result).unwrap();
     }
     trace!(
         "BATCH[{batch_id}] CPU_WORKER[{worker_id}] setup and teardown chunk(s) collected in {:.3} ms",
@@ -299,7 +272,6 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
     num_main_chunks_upper_bound: usize,
     binary: impl Deref<Target = impl Deref<Target = [u32]>>,
     non_determinism: impl Deref<Target = impl NonDeterminism>,
-    skip_set: HashSet<usize>,
     split_count: usize,
     split_index: usize,
     free_cycle_tracing_data: Receiver<CycleTracingData<A>>,
@@ -328,7 +300,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
         let initial_timestamp =
             timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, chunk_index);
         let finished;
-        if chunk_index % split_count == split_index && !skip_set.contains(&chunk_index) {
+        if chunk_index % split_count == split_index {
             let cycle_tracing_data = free_cycle_tracing_data.recv().unwrap();
             trace!(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] tracing cycles for chunk {chunk_index}"
@@ -415,8 +387,6 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     num_main_chunks_upper_bound: usize,
     binary: impl Deref<Target = impl Deref<Target = [u32]>>,
     non_determinism: impl Deref<Target = impl NonDeterminism>,
-    skip_sets: HashMap<DelegationCircuitType, HashSet<usize>>,
-    delegation_num_requests: HashMap<DelegationCircuitType, usize>,
     free_delegation_witnesses: HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
     results: Sender<WorkerResult<A>>,
 ) {
@@ -436,53 +406,22 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     let cycle_tracing_data = CycleTracingData::with_cycles_capacity(0);
     let delegation_tracing_data = DelegationTracingData::default();
     let delegation_chunks_counts = RefCell::new(HashMap::new());
-    let delegation_swap_fn = |delegation_id, tracing_type: Option<DelegationTracingType<A>>| {
+    let delegation_swap_fn = |delegation_id, witness: Option<DelegationWitness<A>>| {
         let circuit_type = DelegationCircuitType::from(delegation_id);
-        if let Some(tracing_type) = tracing_type {
-            let mut borrow = delegation_chunks_counts.borrow_mut();
-            let entry = borrow.entry(delegation_id).or_default();
-            match tracing_type {
-                DelegationTracingType::Counter(counter) => {
-                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full {:?} delegation counter with {} delegations counted", circuit_type, counter.num_requests);
-                }
-                DelegationTracingType::Witness(witness) => {
-                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full {:?} delegation witness with {} delegations produced", circuit_type, witness.num_requests);
-                    let result = WorkerResult::DelegationWitness {
-                        circuit_sequence: *entry,
-                        witness,
-                    };
-                    results.send(result).unwrap();
-                }
-            }
-            *entry += 1;
+        if let Some(witness) = witness {
+            trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full {:?} delegation witness with {} delegations produced", circuit_type, witness.num_requests);
+            *delegation_chunks_counts
+                .borrow_mut()
+                .entry(delegation_id)
+                .or_default() += 1;
+            let result = WorkerResult::DelegationWitness(witness);
+            results.send(result).unwrap();
         }
-        let current_count = delegation_chunks_counts
-            .borrow()
-            .get(&delegation_id)
-            .copied()
-            .unwrap_or_default();
-        if skip_sets
+        free_delegation_witnesses
             .get(&circuit_type)
-            .map(|s| s.contains(&current_count))
-            .unwrap_or(false)
-        {
-            trace!(
-                "BATCH[{batch_id}] CPU_WORKER[{worker_id}] skipping {:?} delegation chunk",
-                circuit_type
-            );
-            let counter = DelegationCounter {
-                num_requests: delegation_num_requests[&circuit_type],
-                counter: 0,
-            };
-            DelegationTracingType::Counter(counter)
-        } else {
-            let witness = free_delegation_witnesses
-                .get(&circuit_type)
-                .unwrap()
-                .recv()
-                .unwrap();
-            DelegationTracingType::Witness(witness)
-        }
+            .unwrap()
+            .recv()
+            .unwrap()
     };
     let initial_timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
     let mut tracer = ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, true>::new(
@@ -529,30 +468,17 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
         end_reached,
         "end of execution was not reached after {num_main_chunks_upper_bound} chunks"
     );
-    let mut delegation_chunks_counts = delegation_chunks_counts.borrow().clone();
-    for (delegation_id, tracing_type) in tracer.delegation_tracing_data.tracing_types.drain() {
-        let entry = delegation_chunks_counts.entry(delegation_id).or_default();
-        match tracing_type {
-            DelegationTracingType::Counter(counter) => {
-                trace!(
-                    "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {delegation_id} counter with {} delegations counted",
-                    counter.counter
-                );
-            }
-            DelegationTracingType::Witness(witness) => {
-                witness.assert_consistency();
-                trace!(
-                    "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {delegation_id} witness with {} delegations produced",
-                    witness.write_timestamp.len()
-                );
-                let result = WorkerResult::DelegationWitness {
-                    circuit_sequence: *entry,
-                    witness,
-                };
-                results.send(result).unwrap();
-            }
-        }
-        *entry += 1;
+    let mut witnesses = tracer.delegation_tracing_data.witnesses;
+    let mut delegation_chunks_counts = delegation_chunks_counts.into_inner();
+    for (delegation_id, witness) in witnesses.drain() {
+        witness.assert_consistency();
+        trace!(
+            "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {delegation_id} witness with {} delegations produced",
+            witness.write_timestamp.len()
+        );
+        *delegation_chunks_counts.entry(delegation_id).or_default() += 1;
+        let result = WorkerResult::DelegationWitness(witness);
+        results.send(result).unwrap();
     }
     let result = WorkerResult::DelegationTracingResult {
         delegation_chunks_counts,

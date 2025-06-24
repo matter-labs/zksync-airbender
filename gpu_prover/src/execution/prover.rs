@@ -35,9 +35,7 @@ use prover::risc_v_simulator::cycle::{
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
 use prover::ShuffleRamSetupAndTeardown;
-use std::alloc::Global;
-use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
@@ -74,12 +72,10 @@ struct BinaryHolder {
 }
 
 pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
-    device_count: usize,
     gpu_manager: GpuManager<MemPoolProverContext<'a>>,
     worker: Worker,
     wait_group: Option<WaitGroup>,
     binaries: HashMap<K, BinaryHolder>,
-    delegation_num_requests: HashMap<DelegationCircuitType, usize>,
     delegation_circuits_precomputations:
         HashMap<DelegationCircuitType, CircuitPrecomputationsHost<A>>,
     free_setup_and_teardowns_sender: Sender<ShuffleRamSetupAndTeardown<A>>,
@@ -89,23 +85,6 @@ pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
     free_delegation_witness_senders: HashMap<DelegationCircuitType, Sender<DelegationWitness<A>>>,
     free_delegation_witness_receivers:
         HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
-}
-
-#[derive(Default)]
-struct FrontChunksCache<A: GoodAllocator> {
-    main_chunks: HashMap<usize, TracingDataHost<A>>,
-    delegation_chunks: HashMap<DelegationCircuitType, HashMap<usize, TracingDataHost<A>>>,
-}
-
-impl<A: GoodAllocator> FrontChunksCache<A> {
-    fn get_chunks_count(&self) -> usize {
-        self.main_chunks.len()
-            + self
-                .delegation_chunks
-                .values()
-                .map(|v| v.len())
-                .sum::<usize>()
-    }
 }
 
 impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
@@ -139,26 +118,17 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         }
         let combined_bytes_for_delegation_traces = binaries
             .iter()
-            .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
+            .map(|b| Self::get_delegation_factories(b.circuit_type).into_iter())
             .flatten()
             .unique_by(|(t, _)| *t)
             .map(|(_, factory)| delegation_witness_size(factory()))
             .sum::<usize>();
-        let delegation_num_requests = binaries
-            .iter()
-            .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
-            .flatten()
-            .unique_by(|(t, _)| *t)
-            .map(|(circuit_type, factory)| (circuit_type, factory().num_requests))
-            .collect();
-        let setup_and_teardowns_count = max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT
-            + max_concurrent_batches * device_count
-            + device_count * 2;
+        let setup_and_teardowns_count =
+            max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2;
         let setups_and_teardowns_bytes_needed =
             setup_and_teardowns_count * max_num_cycles * size_of::<LazyInitAndTeardown>();
-        let cycles_tracing_data_count = max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT
-            + max_concurrent_batches * device_count
-            + device_count * 2;
+        let cycles_tracing_data_count =
+            max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT + device_count * 2;
         let cycles_tracing_data_bytes_needed =
             cycles_tracing_data_count * max_num_cycles * size_of::<SingleCycleTracingData>();
         let delegation_tracing_data_count = max_concurrent_batches + device_count * 2;
@@ -242,12 +212,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                 .collect();
         info!("PROVER produced precomputations for all delegation circuits");
         Self {
-            device_count,
             gpu_manager,
             worker,
             wait_group,
             binaries,
-            delegation_num_requests,
             delegation_circuits_precomputations,
             free_setup_and_teardowns_sender,
             free_setup_and_teardowns_receiver,
@@ -261,7 +229,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
     fn get_results(
         &self,
         proving: bool,
-        front_chunks_cache: &mut Option<FrontChunksCache<A>>,
         batch_id: u64,
         binary_key: &K,
         num_instances_upper_bound: usize,
@@ -280,80 +247,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         assert!(trace_len.is_power_of_two());
         let cycles_per_circuit = trace_len - 1;
         let (work_results_sender, worker_results_receiver) = unbounded();
-        let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
-        let gpu_work_batch = GpuWorkBatch {
-            batch_id,
-            receiver: gpu_work_requests_receiver,
-            sender: work_results_sender.clone(),
-        };
-        trace!("BATCH[{batch_id}] PROVER sending work batch to GPU manager");
-        self.gpu_manager.send_batch(gpu_work_batch);
-        let main_skip_set = front_chunks_cache
-            .as_ref()
-            .map(|c| {
-                c.main_chunks
-                    .iter()
-                    .map(|(index, _)| *index)
-                    .collect::<HashSet<usize>>()
-            })
-            .unwrap_or_default();
-        let delegation_skip_sets = front_chunks_cache
-            .as_ref()
-            .map(|c| {
-                c.delegation_chunks
-                    .iter()
-                    .map(|(t, s)| (*t, s.iter().map(|(i, _)| *i).collect::<HashSet<usize>>()))
-                    .collect::<HashMap<DelegationCircuitType, HashSet<usize>>>()
-            })
-            .unwrap_or_default();
-        let mut main_work_requests_count = 0;
-        if proving {
-            if let Some(cache) = front_chunks_cache.take() {
-                let FrontChunksCache {
-                    main_chunks,
-                    delegation_chunks,
-                } = cache;
-                for (circuit_sequence, tracing_data) in main_chunks.into_iter() {
-                    let circuit_type = CircuitType::Main(binary.circuit_type);
-                    let precomputations = binary.precomputations.clone();
-                    let request = ProofRequest {
-                        batch_id,
-                        circuit_type,
-                        circuit_sequence,
-                        precomputations,
-                        tracing_data,
-                        external_challenges: external_challenges.unwrap(),
-                    };
-                    let request = GpuWorkRequest::Proof(request);
-                    trace!("BATCH[{batch_id}] PROVER sending cached main circuit proof request for chunk {circuit_sequence} to GPU manager");
-                    gpu_work_requests_sender.send(request).unwrap();
-                    main_work_requests_count += 1;
-                }
-                for (delegation_type, tracing_data_map) in delegation_chunks.into_iter() {
-                    let circuit_type = CircuitType::Delegation(delegation_type);
-                    let precomputations =
-                        self.delegation_circuits_precomputations[&delegation_type].clone();
-                    for (circuit_sequence, tracing_data) in tracing_data_map.into_iter() {
-                        let request = ProofRequest {
-                            batch_id,
-                            circuit_type,
-                            circuit_sequence,
-                            precomputations: precomputations.clone(),
-                            tracing_data,
-                            external_challenges: external_challenges.unwrap(),
-                        };
-                        let request = GpuWorkRequest::Proof(request);
-                        trace!("BATCH[{batch_id}] PROVER sending cached delegation proof request for delegation {:?} to GPU manager", delegation_type);
-                        gpu_work_requests_sender.send(request).unwrap();
-                    }
-                }
-            }
-        }
         trace!("BATCH[{batch_id}] PROVER spawning CPU workers");
         let non_determinism_source = Arc::new(non_determinism_source);
         let mut cpu_worker_id = 0;
         let ram_tracing_mode = CpuWorkerMode::TraceTouchedRam {
-            skip_set: main_skip_set.clone(),
             free_setup_and_teardowns: self.free_setup_and_teardowns_receiver.clone(),
         };
         self.spawn_cpu_worker(
@@ -369,7 +266,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         cpu_worker_id += 1;
         for split_index in 0..CYCLES_TRACING_WORKERS_COUNT {
             let ram_tracing_mode = CpuWorkerMode::TraceCycles {
-                skip_set: main_skip_set.clone(),
                 split_count: CYCLES_TRACING_WORKERS_COUNT,
                 split_index,
                 free_cycle_tracing_data: self.free_cycle_tracing_data_receiver.clone(),
@@ -387,8 +283,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             cpu_worker_id += 1;
         }
         let delegation_mode = CpuWorkerMode::TraceDelegations {
-            skip_sets: delegation_skip_sets,
-            delegation_num_requests: self.delegation_num_requests.clone(),
             free_delegation_witnesses: self.free_delegation_witness_receivers.clone(),
         };
         self.spawn_cpu_worker(
@@ -402,6 +296,14 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             work_results_sender.clone(),
         );
         trace!("BATCH[{batch_id}] PROVER CPU workers spawned");
+        let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
+        let gpu_work_batch = GpuWorkBatch {
+            batch_id,
+            receiver: gpu_work_requests_receiver,
+            sender: work_results_sender.clone(),
+        };
+        trace!("BATCH[{batch_id}] PROVER sending work batch to GPU manager");
+        self.gpu_manager.send_batch(gpu_work_batch);
         drop(work_results_sender);
         let mut final_main_chunks_count = None;
         let mut final_register_values = None;
@@ -457,6 +359,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                 gpu_work_requests_sender.send(request).unwrap();
             };
         let mut send_main_work_request = Some(send_main_work_request);
+        let mut main_work_requests_count = 0;
         for result in worker_results_receiver {
             match result {
                 WorkerResult::SetupAndTeardownChunk(chunk) => {
@@ -501,10 +404,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                     let previous_count = final_main_chunks_count.replace(chunks_traced_count);
                     assert!(previous_count.is_none_or(|count| count == chunks_traced_count));
                 }
-                WorkerResult::DelegationWitness {
-                    circuit_sequence,
-                    witness,
-                } => {
+                WorkerResult::DelegationWitness(witness) => {
                     let id = witness.delegation_type;
                     let delegation_circuit_type = DelegationCircuitType::from(id);
                     let circuit_type = CircuitType::Delegation(delegation_circuit_type);
@@ -516,7 +416,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                         let proof_request = ProofRequest {
                             batch_id,
                             circuit_type,
-                            circuit_sequence,
+                            circuit_sequence: 0,
                             precomputations,
                             tracing_data,
                             external_challenges: external_challenges.unwrap(),
@@ -572,108 +472,67 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                         } => {
                             let circuit_type = circuit_type.as_main().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received memory commitment for main circuit {:?} chunk {}", circuit_type, circuit_sequence);
-                            if front_chunks_cache
-                                .as_ref()
-                                .map_or(false, |cache| cache.get_chunks_count() < self.device_count)
-                            {
-                                trace!(
-                                    "BATCH[{batch_id}] PROVER caching trace for main circuit {:?} chunk {}",
-                                    circuit_type,
-                                    circuit_sequence
-                                );
-                                let data = TracingDataHost::Main {
-                                    setup_and_teardown,
-                                    trace,
-                                };
-                                assert!(front_chunks_cache
-                                    .as_mut()
-                                    .unwrap()
-                                    .main_chunks
-                                    .insert(circuit_sequence, data)
-                                    .is_none());
-                            } else {
-                                if let Some(setup_and_teardown) = setup_and_teardown {
-                                    let lazy_init_data =
-                                        Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
-                                    let setup_and_teardown =
-                                        ShuffleRamSetupAndTeardown { lazy_init_data };
-                                    self.free_setup_and_teardowns_sender
-                                        .send(setup_and_teardown)
-                                        .unwrap();
-                                }
-                                let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
-                                per_cycle_data.clear();
-                                let cycle_tracing_data = CycleTracingData { per_cycle_data };
-                                self.free_cycle_tracing_data_sender
-                                    .send(cycle_tracing_data)
+                            if let Some(setup_and_teardown) = setup_and_teardown {
+                                let lazy_init_data =
+                                    Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
+                                let setup_and_teardown =
+                                    ShuffleRamSetupAndTeardown { lazy_init_data };
+                                self.free_setup_and_teardowns_sender
+                                    .send(setup_and_teardown)
                                     .unwrap();
                             }
+                            let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
+                            per_cycle_data.clear();
+                            let cycle_tracing_data = CycleTracingData { per_cycle_data };
+                            self.free_cycle_tracing_data_sender
+                                .send(cycle_tracing_data)
+                                .unwrap();
                             main_memory_commitments.push((circuit_sequence, merkle_tree_caps));
                         }
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received memory commitment for delegation circuit type: {:?}", circuit_type);
-                            if front_chunks_cache
-                                .as_ref()
-                                .map_or(false, |cache| cache.get_chunks_count() < self.device_count)
-                            {
-                                trace!(
-                                    "BATCH[{batch_id}] PROVER caching trace for delegation circuit {:?}",
-                                    circuit_type,
-                                );
-                                let data = TracingDataHost::Delegation(witness);
-                                assert!(front_chunks_cache
-                                    .as_mut()
-                                    .unwrap()
-                                    .delegation_chunks
-                                    .entry(circuit_type)
-                                    .or_insert_with(HashMap::new)
-                                    .insert(circuit_sequence, data)
-                                    .is_none());
-                            } else {
-                                let DelegationTraceHost {
-                                    num_requests,
-                                    num_register_accesses_per_delegation,
-                                    num_indirect_reads_per_delegation,
-                                    num_indirect_writes_per_delegation,
-                                    base_register_index,
-                                    delegation_type,
-                                    indirect_accesses_properties,
-                                    write_timestamp,
-                                    register_accesses,
-                                    indirect_reads,
-                                    indirect_writes,
-                                } = witness;
-                                let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
-                                write_timestamp.clear();
-                                let mut register_accesses =
-                                    Arc::into_inner(register_accesses).unwrap();
-                                register_accesses.clear();
-                                let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
-                                indirect_reads.clear();
-                                let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
-                                indirect_writes.clear();
-                                let witness = DelegationWitness {
-                                    num_requests,
-                                    num_register_accesses_per_delegation,
-                                    num_indirect_reads_per_delegation,
-                                    num_indirect_writes_per_delegation,
-                                    base_register_index,
-                                    delegation_type,
-                                    indirect_accesses_properties,
-                                    write_timestamp,
-                                    register_accesses,
-                                    indirect_reads,
-                                    indirect_writes,
-                                };
-                                self.free_delegation_witness_senders
-                                    .get(&DelegationCircuitType::from(delegation_type))
-                                    .unwrap()
-                                    .send(witness)
-                                    .unwrap();
-                            }
+                            let DelegationTraceHost {
+                                num_requests,
+                                num_register_accesses_per_delegation,
+                                num_indirect_reads_per_delegation,
+                                num_indirect_writes_per_delegation,
+                                base_register_index,
+                                delegation_type,
+                                indirect_accesses_properties,
+                                write_timestamp,
+                                register_accesses,
+                                indirect_reads,
+                                indirect_writes,
+                            } = witness;
+                            let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
+                            write_timestamp.clear();
+                            let mut register_accesses = Arc::into_inner(register_accesses).unwrap();
+                            register_accesses.clear();
+                            let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
+                            indirect_reads.clear();
+                            let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
+                            indirect_writes.clear();
+                            let witness = DelegationWitness {
+                                num_requests,
+                                num_register_accesses_per_delegation,
+                                num_indirect_reads_per_delegation,
+                                num_indirect_writes_per_delegation,
+                                base_register_index,
+                                delegation_type,
+                                indirect_accesses_properties,
+                                write_timestamp,
+                                register_accesses,
+                                indirect_reads,
+                                indirect_writes,
+                            };
+                            self.free_delegation_witness_senders
+                                .get(&DelegationCircuitType::from(delegation_type))
+                                .unwrap()
+                                .send(witness)
+                                .unwrap();
                             delegation_memory_commitments
-                                .entry(circuit_type as u16)
+                                .entry(delegation_type)
                                 .or_insert_with(Vec::new)
                                 .push(merkle_tree_caps);
                         }
@@ -841,52 +700,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         )
     }
 
-    fn commit_memory_inner(
-        &self,
-        front_chunks_cache: &mut Option<FrontChunksCache<A>>,
-        batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
-    ) -> (
-        [FinalRegisterValue; 32],
-        Vec<Vec<MerkleTreeCapVarLength>>,
-        Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
-    ) {
-        info!(
-            "BATCH[{batch_id}] PROVER producing memory commitment for binary with key {:?}",
-            &binary_key
-        );
-        let timer = Instant::now();
-        let (
-            final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-            main_proofs,
-            delegation_proofs,
-        ) = self.get_results(
-            false,
-            front_chunks_cache,
-            batch_id,
-            binary_key,
-            num_instances_upper_bound,
-            non_determinism_source,
-            None,
-        );
-        assert!(main_proofs.is_empty());
-        assert!(delegation_proofs.is_empty());
-        info!(
-            "BATCH[{batch_id}] PROVER produced commitments for binary with key {:?} in {:.3}s",
-            binary_key,
-            timer.elapsed().as_secs_f64()
-        );
-        (
-            final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-        )
-    }
-
     ///  Produces memory commitments.
     ///
     /// # Arguments
@@ -912,26 +725,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         Vec<Vec<MerkleTreeCapVarLength>>,
         Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
     ) {
-        self.commit_memory_inner(
-            &mut None,
-            batch_id,
-            binary_key,
-            num_instances_upper_bound,
-            non_determinism_source,
-        )
-    }
-
-    fn prove_inner(
-        &self,
-        front_chunks_cache: &mut Option<FrontChunksCache<A>>,
-        batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
-        external_challenges: ExternalChallenges,
-    ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
         info!(
-            "BATCH[{batch_id}] PROVER producing proofs for binary with key {:?}",
+            "BATCH[{batch_id}] PROVER producing memory commitment for binary with key {:?}",
             &binary_key
         );
         let timer = Instant::now();
@@ -942,22 +737,25 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             main_proofs,
             delegation_proofs,
         ) = self.get_results(
-            true,
-            front_chunks_cache,
+            false,
             batch_id,
             binary_key,
             num_instances_upper_bound,
             non_determinism_source,
-            Some(external_challenges),
+            None,
         );
-        assert!(main_memory_commitments.is_empty());
-        assert!(delegation_memory_commitments.is_empty());
+        assert!(main_proofs.is_empty());
+        assert!(delegation_proofs.is_empty());
         info!(
-            "BATCH[{batch_id}] PROVER produced proofs for binary with key {:?} in {:.3}s",
+            "BATCH[{batch_id}] PROVER produced commitments for binary with key {:?} in {:.3}s",
             binary_key,
             timer.elapsed().as_secs_f64()
         );
-        (final_register_values, main_proofs, delegation_proofs)
+        (
+            final_register_values,
+            main_memory_commitments,
+            delegation_memory_commitments,
+        )
     }
 
     ///  Produces proofs.
@@ -983,14 +781,33 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
         external_challenges: ExternalChallenges,
     ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
-        self.prove_inner(
-            &mut None,
+        info!(
+            "BATCH[{batch_id}] PROVER producing proofs for binary with key {:?}",
+            &binary_key
+        );
+        let timer = Instant::now();
+        let (
+            final_register_values,
+            main_memory_commitments,
+            delegation_memory_commitments,
+            main_proofs,
+            delegation_proofs,
+        ) = self.get_results(
+            true,
             batch_id,
             binary_key,
             num_instances_upper_bound,
             non_determinism_source,
-            external_challenges,
-        )
+            Some(external_challenges),
+        );
+        assert!(main_memory_commitments.is_empty());
+        assert!(delegation_memory_commitments.is_empty());
+        info!(
+            "BATCH[{batch_id}] PROVER produced proofs for binary with key {:?} in {:.3}s",
+            binary_key,
+            timer.elapsed().as_secs_f64()
+        );
+        (final_register_values, main_proofs, delegation_proofs)
     }
 
     ///  Commits to memory and produces proofs using challenge derived from the memory commitments.
@@ -1015,22 +832,13 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         non_determinism_source: impl NonDeterminism + Clone + Send + Sync + 'static,
     ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
         let timer = Instant::now();
-        let mut front_chunks_cache = Some(FrontChunksCache::default());
         let (final_register_values, main_memory_commitments, delegation_memory_commitments) = self
-            .commit_memory_inner(
-                &mut front_chunks_cache,
+            .commit_memory(
                 batch_id,
                 binary_key,
                 num_instances_upper_bound,
                 non_determinism_source.clone(),
             );
-        assert_eq!(
-            front_chunks_cache.as_ref().unwrap().get_chunks_count(),
-            min(
-                self.device_count,
-                main_memory_commitments.len() + delegation_memory_commitments.len()
-            )
-        );
         let memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
             &self.binaries[&binary_key].precomputations.tree_caps,
             &final_register_values,
@@ -1047,15 +855,13 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             memory_challenges_seed,
             produce_delegation_challenge,
         );
-        let result = self.prove_inner(
-            &mut front_chunks_cache,
+        let result = self.prove(
             batch_id,
             binary_key,
             num_instances_upper_bound,
             non_determinism_source,
             external_challenges,
         );
-        assert!(front_chunks_cache.is_none());
         info!(
             "BATCH[{batch_id}] PROVER committed to memory and produced proofs for binary with key {:?} in {:.3}s",
             binary_key,
