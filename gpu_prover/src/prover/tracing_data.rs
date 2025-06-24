@@ -110,6 +110,7 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
                             context,
                         )?;
                     } else {
+                        self.transfer.ensure_allocated(context)?;
                         set_to_zero(
                             &mut d_setup_and_teardown.lazy_init_data,
                             context.get_h2d_stream(),
