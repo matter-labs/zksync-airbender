@@ -19,18 +19,22 @@ blake2s_u32 = { workspace = true }
 cs = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
-itertools = { workspace = true }
 prover = { workspace = true, features = ["default"] }
+trace_and_split = { workspace = true }
 worker = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
 era_cudart = "0.154"
 era_cudart_sys = "0.154"
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
 nvtx = "1"
 transpose = "0.2"
 
 [features]
 default = []
-print_gpu_mem_usage = []
-print_gpu_stages_timings = []
+log_gpu_mem_usage = []
+log_gpu_stages_timings = []
 
 [dev-dependencies]
 execution_utils = { workspace = true }

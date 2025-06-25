@@ -42,6 +42,7 @@ full_statement_verifier = { path = "../../full_statement_verifier", features=["r
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3_ce", version = "=0.10.6" }
 
+gpu_prover = { workspace = true, optional = true }
 
 [features]
 
@@ -54,4 +55,4 @@ include_verifiers = ["full_statement_verifier", "risc_v_cycles_verifier", "blake
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["prover_examples/gpu"]
+gpu = ["prover_examples/gpu", "gpu_prover"]

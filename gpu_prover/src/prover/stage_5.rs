@@ -43,7 +43,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
         folding_description: &FoldingDescription,
         num_queries: usize,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        twiddles: &'a Twiddles<E2, impl GoodAllocator>,
+        twiddles: &Twiddles<E2, impl GoodAllocator>,
         context: &C,
     ) -> CudaResult<Self>
     where
@@ -251,6 +251,8 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             let domain_size = 1 << log_current_domain_size;
             let monomials = Arc::new(Mutex::new(vec![]));
             let monomials_clone = monomials.clone();
+            let mut inverse_twiddles = Vec::with_capacity(twiddles.inverse_twiddles.len());
+            inverse_twiddles.extend_from_slice(&twiddles.inverse_twiddles);
             let monomials_fn = move || {
                 let mut monomials = monomials_clone.lock().unwrap();
                 let mut c0 = Vec::with_capacity(domain_size);
@@ -263,8 +265,8 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 assert_eq!(c1.len(), domain_size);
                 bitreverse_enumeration_inplace(&mut c0);
                 bitreverse_enumeration_inplace(&mut c1);
-                Self::interpolate(&mut c0, &twiddles.inverse_twiddles);
-                Self::interpolate(&mut c1, &twiddles.inverse_twiddles);
+                Self::interpolate(&mut c0, &inverse_twiddles);
+                Self::interpolate(&mut c1, &inverse_twiddles);
                 for (c0, c1) in c0.into_iter().zip(c1.into_iter()) {
                     let el = E4 { c0, c1 };
                     monomials.push(el);

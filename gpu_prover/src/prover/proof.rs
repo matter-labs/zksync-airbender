@@ -56,7 +56,7 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
         self.is_finished_event.query()
     }
 
-    pub fn finish(self) -> CudaResult<Proof> {
+    pub fn finish(self) -> CudaResult<(Proof, f32)> {
         let Self {
             ranges,
             is_finished_event,
@@ -84,18 +84,18 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
         is_finished_event.synchronize()?;
         drop(callbacks);
 
-        #[cfg(feature = "print_gpu_stages_timings")]
+        #[cfg(feature = "log_gpu_stages_timings")]
         {
-            println!("GPU setup time: {} ms", ranges[0].elapsed()?);
-            println!("GPU stage 1 time: {} ms", ranges[1].elapsed()?);
-            println!("GPU stage 2 time: {} ms", ranges[2].elapsed()?);
-            println!("GPU stage 3 time: {} ms", ranges[3].elapsed()?);
-            println!("GPU stage 4 time: {} ms", ranges[4].elapsed()?);
-            println!("GPU stage 5 time: {} ms", ranges[5].elapsed()?);
-            println!("GPU pow time: {} ms", ranges[6].elapsed()?);
-            println!("GPU queries time: {} ms", ranges[7].elapsed()?);
+            log::debug!("GPU setup time: {:.3} ms", ranges[0].elapsed()?);
+            log::debug!("GPU stage 1 time: {:.3} ms", ranges[1].elapsed()?);
+            log::debug!("GPU stage 2 time: {:.3} ms", ranges[2].elapsed()?);
+            log::debug!("GPU stage 3 time: {:.3} ms", ranges[3].elapsed()?);
+            log::debug!("GPU stage 4 time: {:.3} ms", ranges[4].elapsed()?);
+            log::debug!("GPU stage 5 time: {:.3} ms", ranges[5].elapsed()?);
+            log::debug!("GPU pow time: {:.3} ms", ranges[6].elapsed()?);
+            log::debug!("GPU queries time: {:.3} ms", ranges[7].elapsed()?);
         }
-        println!("GPU proof time: {} ms", ranges[8].elapsed()?);
+        let proof_time_ms = ranges[8].elapsed()?;
 
         let public_inputs = public_inputs.lock().unwrap().clone();
         let witness_tree_caps = transform_tree_caps(&witness_tree_caps);
@@ -147,17 +147,17 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
             circuit_sequence,
             delegation_type,
         };
-        Ok(proof)
+        Ok((proof, proof_time_ms))
     }
 }
 
 pub fn prove<'a, C: ProverContext>(
-    circuit: &'a CompiledCircuitArtifact<BF>,
+    circuit: Arc<CompiledCircuitArtifact<BF>>,
     external_values: ExternalValues,
     setup: &mut SetupPrecomputations<C>,
     tracing_data_transfer: TracingDataTransfer<'a, C>,
-    twiddles: &'a Twiddles<Mersenne31Complex, impl GoodAllocator>,
-    lde_precomputations: &'a LdePrecomputations<impl GoodAllocator>,
+    twiddles: &Twiddles<Mersenne31Complex, impl GoodAllocator>,
+    lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     circuit_sequence: usize,
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
@@ -169,11 +169,9 @@ pub fn prove<'a, C: ProverContext>(
 where
     C::HostAllocator: 'a,
 {
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("initial ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("initial")?;
+
     let trace_len = circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
@@ -181,7 +179,7 @@ where
     assert!(circuit_sequence <= u16::MAX as usize);
     let delegation_processing_type = delegation_processing_type.unwrap_or_default();
     let cached_data_values = ProverCachedData::new(
-        circuit,
+        &circuit,
         &external_values,
         trace_len,
         circuit_sequence,
@@ -203,62 +201,50 @@ where
     setup_range.end(stream)?;
 
     let mut stage_1_output = StageOneOutput::allocate_trace_holders(
-        circuit,
+        &circuit,
         log_lde_factor,
         log_tree_cap_size,
         context,
     )?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_1.allocate_trace_holders ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_1.allocate_trace_holders")?;
 
     let mut stage_2_output = StageTwoOutput::allocate_trace_evaluations(
-        circuit,
+        &circuit,
         log_lde_factor,
         log_tree_cap_size,
         context,
     )?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_2.allocate_trace_evaluations ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_2.allocate_trace_evaluations")?;
 
     // witness_generation
     let witness_generation_range = device_tracing::Range::new("witness_generation")?;
     witness_generation_range.start(stream)?;
     stage_1_output.generate_witness(
-        circuit,
+        &circuit,
         setup,
         tracing_data_transfer,
         circuit_sequence,
         context,
     )?;
     witness_generation_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after generate_witness ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after generate_witness")?;
 
     // stage 1
     let stage_1_range = device_tracing::Range::new("stage_1")?;
     stage_1_range.start(stream)?;
-    stage_1_output.commit_witness(circuit, context)?;
+    stage_1_output.commit_witness(&circuit, context)?;
     stage_1_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_1 ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_1")?;
 
     setup.trace_holder.produce_tree_caps(context)?;
 
     // seed
     let seed = initialize_seed::<C>(
-        circuit,
+        &circuit,
         external_values.clone(),
         circuit_sequence,
         delegation_processing_type,
@@ -273,28 +259,25 @@ where
     stage_2_range.start(stream)?;
     stage_2_output.generate(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
         setup,
         &mut stage_1_output,
         context,
     )?;
     stage_2_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_2 ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_2")?;
 
     // stage 3
     let stage_3_range = device_tracing::Range::new("stage_3")?;
     stage_3_range.start(stream)?;
     let stage_3_output = StageThreeOutput::new(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
-        lde_precomputations,
-        twiddles,
+        &lde_precomputations,
+        &twiddles,
         external_values.clone(),
         setup,
         &stage_1_output,
@@ -304,20 +287,17 @@ where
         context,
     )?;
     stage_3_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_3 ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_3")?;
 
     // stage 4
     let stage_4_range = device_tracing::Range::new("stage_4")?;
     stage_4_range.start(stream)?;
     let stage_4_output = StageFourOutput::new(
         seed.clone(),
-        circuit,
+        &circuit,
         &cached_data_values,
-        twiddles,
+        &twiddles,
         &setup,
         &stage_1_output,
         &stage_2_output,
@@ -328,11 +308,8 @@ where
         context,
     )?;
     stage_4_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_4 ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_4 ")?;
 
     // stage 5
     let stage_5_range = device_tracing::Range::new("stage_5")?;
@@ -344,16 +321,13 @@ where
         log_lde_factor,
         &optimal_folding,
         num_queries,
-        lde_precomputations,
-        twiddles,
+        &lde_precomputations,
+        &twiddles,
         context,
     )?;
     stage_5_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after stage_5 ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after stage_5 ")?;
 
     // pow
     let pow_range = device_tracing::Range::new("pow")?;
@@ -366,11 +340,8 @@ where
         context,
     )?;
     pow_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after pow ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after pow ")?;
 
     // pow
     let queries_range = device_tracing::Range::new("queries")?;
@@ -390,11 +361,8 @@ where
         context,
     )?;
     queries_range.end(stream)?;
-    #[cfg(feature = "print_gpu_mem_usage")]
-    {
-        print!("after queries ");
-        context.print_mem_pool_stats()?;
-    }
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_mem_pool_stats("after queries")?;
 
     // ensure no transfer spilling back to previously scheduled proofs
     {
@@ -461,7 +429,7 @@ where
 }
 
 fn initialize_seed<'a, C: ProverContext>(
-    circuit: &'a CompiledCircuitArtifact<Mersenne31Field>,
+    circuit: &Arc<CompiledCircuitArtifact<Mersenne31Field>>,
     external_values: ExternalValues,
     circuit_sequence: usize,
     delegation_processing_type: u16,
@@ -479,6 +447,7 @@ where
     let witness_tree_caps = stage_1_output.witness_holder.get_tree_caps();
     let memory_tree_caps = stage_1_output.memory_holder.get_tree_caps();
     let public_inputs = stage_1_output.get_public_inputs();
+    let circuit_clone = circuit.clone();
     let seed_fn = move || {
         let mut input = vec![];
         input.push(circuit_sequence as u32);
@@ -491,7 +460,7 @@ where
         {
             input.extend_from_slice(&delegation_argument_challenges.flatten());
         }
-        if circuit
+        if circuit_clone
             .memory_layout
             .shuffle_ram_inits_and_teardowns
             .is_some()

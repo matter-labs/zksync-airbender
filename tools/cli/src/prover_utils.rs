@@ -1,5 +1,3 @@
-#[cfg(feature = "gpu")]
-use crate::setup::SetupCache;
 use crate::Machine;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use clap::ValueEnum;
@@ -10,8 +8,6 @@ use execution_utils::{
 use trace_and_split::FinalRegisterValue;
 use verifier_common::parse_field_els_as_u32_checked;
 
-use std::{alloc::Global, fs, io::Read, path::Path};
-
 use prover::{
     cs::utils::split_timestamp,
     prover_stages::Proof,
@@ -21,6 +17,8 @@ use prover::{
     },
     transcript::{Blake2sBufferingTranscript, Seed},
 };
+use std::{alloc::Global, fs, io::Read, path::Path};
+
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
@@ -278,10 +276,16 @@ pub fn create_proofs(
         vec![]
     };
 
-    let mut gpu_state = if use_gpu {
-        Some(GpuSharedState::default())
+    // Serialization and deserialization of artifacts
+    // (as requested by user arguments) can take a lot of time,
+    // and typically won't be needed in production.
+    // total_proof_time accumulates the actual time spent on
+    // the production critical path
+    // (tracing, witness generation, proving, recursion).
+    let (mut gpu_state, mut total_proof_time) = if use_gpu {
+        (Some(GpuSharedState::new(&binary)), Some(0f64))
     } else {
-        None
+        (None, None)
     };
     let mut gpu_state = gpu_state.as_mut();
 
@@ -292,6 +296,7 @@ pub fn create_proofs(
         num_instances,
         prev_metadata.map(|x| x.create_prev_metadata()),
         &mut gpu_state,
+        &mut total_proof_time,
     );
 
     // Now we finished 'basic' proving - check if there is a need for recursion.
@@ -304,8 +309,13 @@ pub fn create_proofs(
             proof_list.write_to_directory(&base_tmp_dir);
             serialize_to_file(&proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
-        let (recursion_proof_list, recursion_proof_metadata) =
-            create_recursion_proofs(proof_list, proof_metadata, tmp_dir, &mut gpu_state);
+        let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
+            proof_list,
+            proof_metadata,
+            tmp_dir,
+            &mut gpu_state,
+            &mut total_proof_time,
+        );
         match until {
             ProvingLimit::FinalRecursion => {
                 recursion_proof_list.write_to_directory(Path::new(output_dir));
@@ -342,6 +352,13 @@ pub fn create_proofs(
             &Path::new(output_dir).join("metadata.json"),
         )
     }
+
+    if gpu_state.is_some() {
+        println!(
+            "**** Total time on production critical path {:.3}s ****",
+            total_proof_time.unwrap(),
+        );
+    }
 }
 
 pub fn load_binary_from_path(path: &String) -> Vec<u32> {
@@ -368,35 +385,41 @@ fn should_stop_recursion(proof_metadata: &ProofMetadata) -> bool {
 }
 
 // For now, we share the setup cache, only for GPU (as we really care for performance there).
-#[derive(Default)]
-pub struct GpuSharedState {
+pub struct GpuSharedState<'a> {
     #[cfg(feature = "gpu")]
-    pub cache: SetupCache<Global, prover_examples::gpu::ConcurrentStaticHostAllocator>,
-    #[cfg(feature = "gpu")]
-    pub gpu_threads: Option<Vec<prover_examples::multigpu::GpuThread>>,
+    pub prover: gpu_prover::execution::prover::ExecutionProver<'a, usize>,
+    #[cfg(not(feature = "gpu"))]
+    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-#[cfg(feature = "gpu")]
-impl GpuSharedState {
-    /// Create setups for given binary, and unviersal verifier.
-    pub fn preheat_for_universal_verifier(&mut self, binary: &Vec<u32>) {
-        let now = std::time::Instant::now();
+impl<'a> GpuSharedState<'a> {
+    const MAIN_BINARY_KEY: usize = 0;
+    const RECURSION_BINARY_KEY: usize = 1;
 
-        self.cache.get_or_create_main_circuit(binary);
-        self.cache
-            .get_or_create_reduced_circuit(&get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER));
-        self.cache.get_or_create_delegations();
-        println!("Creating setup took {:?}", now.elapsed());
+    #[cfg(feature = "gpu")]
+    pub fn new(binary: &Vec<u32>) -> Self {
+        use gpu_prover::circuit_type::MainCircuitType;
+        use gpu_prover::execution::prover::ExecutableBinary;
+        use gpu_prover::execution::prover::ExecutionProver;
+        let main_binary = ExecutableBinary {
+            key: Self::MAIN_BINARY_KEY,
+            circuit_type: MainCircuitType::RiscVCycles,
+            bytecode: binary.clone(),
+        };
+        let recursion_binary = ExecutableBinary {
+            key: Self::RECURSION_BINARY_KEY,
+            circuit_type: MainCircuitType::ReducedRiscVMachine,
+            bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
+        };
+        let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
+        Self { prover }
     }
 
-    pub fn enable_multigpu(&mut self) {
-        use prover_examples::multigpu::GpuThread;
-        if self.gpu_threads.is_some() {
-            panic!("GPU threads already initialized.");
+    #[cfg(not(feature = "gpu"))]
+    pub fn new(_binary: &Vec<u32>) -> Self {
+        Self {
+            _phantom: std::marker::PhantomData,
         }
-        let mut gpu_threads = GpuThread::init_multigpu().expect("Failed to initialize GPU threads");
-        GpuThread::start_multigpu(&mut gpu_threads);
-        self.gpu_threads = Some(gpu_threads);
     }
 }
 
@@ -407,6 +430,7 @@ pub fn create_proofs_internal(
     num_instances: usize,
     prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
+    total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
     let worker = worker::Worker::new_with_num_threads(8);
 
@@ -421,69 +445,48 @@ pub fn create_proofs_internal(
             if prev_end_params_output.is_some() {
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
             }
-            let (basic_proofs, delegation_proofs, register_values) = if let Some(gpu_shared_state) =
-                gpu_shared_state
-            {
-                #[cfg(feature = "gpu")]
-                {
-                    println!("**** proving using GPU ****");
-
-                    let main_circuit_precomputations = gpu_shared_state
-                        .cache
-                        .get_or_create_main_circuit(&binary)
-                        .clone();
-                    let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations();
-
-                    if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
-                        // MultiGPU case
-                        prover_examples::multigpu::multigpu_prove_image_execution_for_machine_with_gpu_tracers(
-                            num_instances,
-                            &binary,
-                            non_determinism_source,
-                            main_circuit_precomputations.0,
-                            main_circuit_precomputations.1,
-                            delegation_precomputations.0,
-                            delegation_precomputations.1,
-                            &gpu_threads,
-                            &worker,
+            let (basic_proofs, delegation_proofs, register_values) =
+                if let Some(gpu_shared_state) = gpu_shared_state {
+                    #[cfg(feature = "gpu")]
+                    {
+                        println!("**** proving using GPU ****");
+                        let timer = std::time::Instant::now();
+                        let (final_register_values, basic_proofs, delegation_proofs) =
+                            gpu_shared_state.prover.commit_memory_and_prove(
+                                0,
+                                &GpuSharedState::MAIN_BINARY_KEY,
+                                num_instances,
+                                non_determinism_source,
+                            );
+                        let elapsed = timer.elapsed().as_secs_f64();
+                        *total_proof_time.as_mut().unwrap() += elapsed;
+                        println!("**** proofs generated in {:.3}s ****", elapsed,);
+                        (
+                            basic_proofs,
+                            delegation_proofs,
+                            final_register_values.into(),
                         )
-                        .unwrap()
-                    } else {
-                        // Single GPU with a local context (slower)
-                        let context = prover_examples::gpu::create_default_prover_context();
-                        prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
-                            num_instances,
-                            &binary,
-                            non_determinism_source,
-                            &main_circuit_precomputations.0,
-                            &delegation_precomputations.0,
-                            &context,
-                            &worker,
-                        )
-                        .unwrap()
                     }
-                }
-                #[cfg(not(feature = "gpu"))]
-                {
-                    let _ = gpu_shared_state;
-                    panic!("GPU not enabled - please compile with --features gpu flag.")
-                }
-            } else {
-                let main_circuit_precomputations =
-                    setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                let delegation_precomputations =
-                    setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
+                    #[cfg(not(feature = "gpu"))]
+                    {
+                        let _ = gpu_shared_state;
+                        panic!("GPU not enabled - please compile with --features gpu flag.")
+                    }
+                } else {
+                    let main_circuit_precomputations =
+                        setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
+                    let delegation_precomputations =
+                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
 
-                prover_examples::prove_image_execution(
-                    num_instances,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                )
-            };
+                    prover_examples::prove_image_execution(
+                        num_instances,
+                        &binary,
+                        non_determinism_source,
+                        &main_circuit_precomputations,
+                        &delegation_precomputations,
+                        &worker,
+                    )
+                };
 
             (
                 ProofList {
@@ -496,70 +499,48 @@ pub fn create_proofs_internal(
             )
         }
         Machine::Reduced => {
-            let (reduced_proofs, delegation_proofs, register_values) = if let Some(
-                gpu_shared_state,
-            ) = gpu_shared_state
-            {
-                #[cfg(feature = "gpu")]
-                {
-                    println!("**** proving using GPU ****");
-                    let main_circuit_precomputations = gpu_shared_state
-                        .cache
-                        .get_or_create_reduced_circuit(&binary)
-                        .clone();
-                    let delegation_precomputations =
-                        gpu_shared_state.cache.get_or_create_delegations();
-
-                    if let Some(gpu_threads) = &gpu_shared_state.gpu_threads {
-                        // MultiGPU case
-                        prover_examples::multigpu::multigpu_prove_image_execution_for_machine_with_gpu_tracers(
-                            num_instances,
-                            &binary,
-                            non_determinism_source,
-                            main_circuit_precomputations.0,
-
-                            main_circuit_precomputations.1,
-                            delegation_precomputations.0,
-                            delegation_precomputations.1,
-                            &gpu_threads,
-                            &worker,
+            let (reduced_proofs, delegation_proofs, register_values) =
+                if let Some(gpu_shared_state) = gpu_shared_state {
+                    #[cfg(feature = "gpu")]
+                    {
+                        println!("**** proving using GPU ****");
+                        let timer = std::time::Instant::now();
+                        let (final_register_values, basic_proofs, delegation_proofs) =
+                            gpu_shared_state.prover.commit_memory_and_prove(
+                                0,
+                                &GpuSharedState::RECURSION_BINARY_KEY,
+                                num_instances,
+                                non_determinism_source,
+                            );
+                        let elapsed = timer.elapsed().as_secs_f64();
+                        *total_proof_time.as_mut().unwrap() += elapsed;
+                        println!("**** proofs generated in {:.3}s ****", elapsed);
+                        (
+                            basic_proofs,
+                            delegation_proofs,
+                            final_register_values.into(),
                         )
-                        .unwrap()
-                    } else {
-                        // Single GPU with a local context (slower)
-                        let context = prover_examples::gpu::create_default_prover_context();
-                        prover_examples::gpu::gpu_prove_image_execution_for_machine_with_gpu_tracers(
-                            num_instances,
-                            &binary,
-                            non_determinism_source,
-                            &main_circuit_precomputations.0,
-                            &delegation_precomputations.0,
-                            &context,
-                            &worker,
-                        )
-                        .unwrap()
                     }
-                }
-                #[cfg(not(feature = "gpu"))]
-                {
-                    let _ = gpu_shared_state;
-                    panic!("GPU not enabled - please compile with --features gpu flag.")
-                }
-            } else {
-                let main_circuit_precomputations =
-                    setups::get_reduced_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                let delegation_precomputations =
-                    setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
+                    #[cfg(not(feature = "gpu"))]
+                    {
+                        let _ = gpu_shared_state;
+                        panic!("GPU not enabled - please compile with --features gpu flag.")
+                    }
+                } else {
+                    let main_circuit_precomputations =
+                        setups::get_reduced_riscv_circuit_setup::<Global, Global>(&binary, &worker);
+                    let delegation_precomputations =
+                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
 
-                prover_examples::prove_image_execution_on_reduced_machine(
-                    num_instances,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                )
-            };
+                    prover_examples::prove_image_execution_on_reduced_machine(
+                        num_instances,
+                        &binary,
+                        non_determinism_source,
+                        &main_circuit_precomputations,
+                        &delegation_precomputations,
+                        &worker,
+                    )
+                };
 
             (
                 ProofList {
@@ -650,6 +631,7 @@ pub fn create_recursion_proofs(
     proof_metadata: ProofMetadata,
     tmp_dir: &Option<String>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
+    total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
     assert!(
         proof_metadata.basic_proof_count > 0,
@@ -675,6 +657,7 @@ pub fn create_recursion_proofs(
             current_proof_metadata.total_proofs(),
             Some(current_proof_metadata.create_prev_metadata()),
             gpu_shared_state,
+            total_proof_time,
         );
 
         if let Some(tmp_dir) = tmp_dir {
@@ -725,6 +708,7 @@ pub fn create_final_proofs(
             &Machine::ReducedFinal,
             current_proof_metadata.total_proofs(),
             Some(current_proof_metadata.create_prev_metadata()),
+            &mut None,
             &mut None,
         );
         if let Some(tmp_dir) = tmp_dir {

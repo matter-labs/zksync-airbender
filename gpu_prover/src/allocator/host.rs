@@ -6,6 +6,7 @@ use crate::allocator::{
 };
 use era_cudart::memory::HostAllocation;
 use fft::GoodAllocator;
+use log::error;
 use std::alloc::{AllocError, Allocator, Layout};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, DerefMut};
@@ -85,19 +86,18 @@ impl<T, W: InnerStaticHostAllocatorWrapper> DerefMut
 
 unsafe impl Allocator for ConcurrentStaticHostAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        // dbg!(layout);
         let len = layout.size();
         if let Ok(data) = self.inner.lock().unwrap().alloc(len) {
             let ptr = data.ptr;
             assert!(ptr.is_aligned_to(layout.align()));
             Ok(NonNull::slice_from_raw_parts(ptr, len))
         } else {
+            error!("allocation of {len} bytes in ConcurrentStaticHostAllocator failed");
             Err(AllocError)
         }
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // dbg!(ptr, layout);
         let len = layout.size().next_multiple_of(1 << self.log_chunk_size);
         let data = StaticAllocationData::new(ptr, len);
         self.inner.lock().unwrap().free(data);

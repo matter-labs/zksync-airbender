@@ -64,13 +64,13 @@ async fn fetch_data_from_json_rpc(
     }
 }
 
-struct LocalProver {
+struct LocalProver<'a> {
     pub binary: Vec<u32>,
-    pub gpu_state: GpuSharedState,
+    pub gpu_state: GpuSharedState<'a>,
 }
 
-impl LocalProver {
-    fn new(zksync_os_bin_path: String) -> LocalProver {
+impl<'a> LocalProver<'a> {
+    fn new(zksync_os_bin_path: String) -> LocalProver<'a> {
         let binary = load_binary_from_path(&zksync_os_bin_path);
         LocalProver::new_internal(binary)
     }
@@ -81,11 +81,8 @@ impl LocalProver {
         LocalProver::new_internal(padded_binary)
     }
 
-    fn new_internal(padded_binary: Vec<u32>) -> LocalProver {
-        let mut gpu_state = GpuSharedState::default();
-        gpu_state.preheat_for_universal_verifier(&padded_binary);
-        gpu_state.enable_multigpu();
-
+    fn new_internal(padded_binary: Vec<u32>) -> LocalProver<'a> {
+        let gpu_state = GpuSharedState::new(&padded_binary);
         LocalProver {
             binary: padded_binary,
             gpu_state,

@@ -25,9 +25,6 @@ gpu_prover = { workspace = true, optional = true }
 nvtx = { version = "1", optional = true}
 cs = { workspace = true, optional = true}
 
-# For multigpu
-crossbeam = { version = "0.8" , optional = true}
-
 [dev-dependencies]
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
 
@@ -43,4 +40,4 @@ timing_logs = []
 
 default = ["timing_logs"]
 
-gpu = ["gpu_prover", "nvtx", "cs", "crossbeam"]
+gpu = ["gpu_prover", "nvtx", "cs"]

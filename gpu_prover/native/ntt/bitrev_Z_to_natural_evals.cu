@@ -6,7 +6,8 @@ template <unsigned LOG_VALS_PER_THREAD>
 DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                             vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                             const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                                            const unsigned log_extension_degree, const unsigned coset_idx) {
+                                                                            const unsigned log_extension_degree, const unsigned coset_idx,
+                                                                            const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -16,9 +17,10 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vect
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
-  const unsigned gmem_offset = VALS_PER_BLOCK * blockIdx.x + VALS_PER_WARP * warp_id;
+  const unsigned gmem_offset = VALS_PER_BLOCK * effective_block_idx_x + VALS_PER_WARP * warp_id;
   gmem_in.add_row(gmem_offset);
   gmem_in.add_col(COL_PAIRS_PER_BLOCK * blockIdx.y);
   gmem_out.add_row(gmem_offset);
@@ -98,25 +100,26 @@ extern "C" __launch_bounds__(128, 8) __global__
     void bitrev_Z_to_natural_coset_evals_initial_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                               const unsigned log_extension_degree, const unsigned coset_idx) {
-  bitrev_Z_to_natural_coset_evals_initial_stages_warp<3>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree,
-                                                         coset_idx);
+                                                               const unsigned log_extension_degree, const unsigned coset_idx, const unsigned grid_offset) {
+  bitrev_Z_to_natural_coset_evals_initial_stages_warp<3>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree, coset_idx,
+                                                         grid_offset);
 }
 
 extern "C" __launch_bounds__(128, 8) __global__
     void bitrev_Z_to_natural_coset_evals_initial_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                               const unsigned log_extension_degree, const unsigned coset_idx) {
-  bitrev_Z_to_natural_coset_evals_initial_stages_warp<2>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree,
-                                                         coset_idx);
+                                                               const unsigned log_extension_degree, const unsigned coset_idx, const unsigned grid_offset) {
+  bitrev_Z_to_natural_coset_evals_initial_stages_warp<2>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree, coset_idx,
+                                                         grid_offset);
 }
 
 template <unsigned LOG_VALS_PER_THREAD>
 DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                              vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                              const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                                             const unsigned log_extension_degree, const unsigned coset_idx) {
+                                                                             const unsigned log_extension_degree, const unsigned coset_idx,
+                                                                             const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -127,9 +130,10 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
-  const unsigned gmem_block_offset = VALS_PER_BLOCK * blockIdx.x;
+  const unsigned gmem_block_offset = VALS_PER_BLOCK * effective_block_idx_x;
   const unsigned gmem_offset = gmem_block_offset + VALS_PER_WARP * warp_id;
   gmem_in.add_row(gmem_offset);
   gmem_in.add_col(COL_PAIRS_PER_BLOCK * blockIdx.y);
@@ -263,7 +267,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
 
     const unsigned stages_so_far = 6 + LOG_VALS_PER_THREAD - 1;
     lane_mask = 8;
-    unsigned exchg_region_offset = blockIdx.x * (WARPS_PER_BLOCK >> 1) + (lane_id >> 4);
+    unsigned exchg_region_offset = effective_block_idx_x * (WARPS_PER_BLOCK >> 1) + (lane_id >> 4);
     for (unsigned s = 0; s < 2; s++) {
       if (s + stages_so_far < stages_this_launch) {
 #pragma unroll
@@ -282,7 +286,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
       exchg_region_offset >>= 1;
     }
 
-    exchg_region_offset = blockIdx.x * (PAIRS_PER_THREAD >> 1);
+    exchg_region_offset = effective_block_idx_x * (PAIRS_PER_THREAD >> 1);
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
       if (i + 2 + stages_so_far <= stages_this_launch) {
 #pragma unroll
@@ -315,16 +319,18 @@ extern "C" __launch_bounds__(512, 2) __global__
     void bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                       const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                                      const unsigned log_extension_degree, const unsigned coset_idx) {
+                                                                      const unsigned log_extension_degree, const unsigned coset_idx,
+                                                                      const unsigned grid_offset) {
   bitrev_Z_to_natural_coset_evals_initial_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, log_extension_degree,
-                                                          coset_idx);
+                                                          coset_idx, grid_offset);
 }
 
 template <unsigned LOG_VALS_PER_THREAD>
 DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                                 vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
                                                                                 const unsigned start_stage, const bool skip_first_stage, const unsigned log_n,
-                                                                                const unsigned num_Z_cols, const unsigned log_extension_degree) {
+                                                                                const unsigned num_Z_cols, const unsigned log_extension_degree,
+                                                                                const unsigned grid_offset) {
   constexpr unsigned COL_PAIRS_PER_BLOCK = COLS_PER_BLOCK<e2f>::VAL;
   constexpr unsigned VALS_PER_THREAD = 1u << LOG_VALS_PER_THREAD;
   constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
@@ -338,16 +344,17 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
 
   __shared__ e2f smem[VALS_PER_BLOCK];
 
+  const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned lane_id{threadIdx.x & 31};
   const unsigned warp_id{threadIdx.x >> 5};
   const unsigned log_tile_stride = skip_first_stage ? start_stage - 1 : start_stage;
   const unsigned tile_stride = 1u << log_tile_stride;
   const unsigned log_blocks_per_region = log_tile_stride - 4; // tile size is always 16
   const unsigned block_bfly_region_size = TILES_PER_BLOCK * tile_stride;
-  const unsigned block_bfly_region = blockIdx.x >> log_blocks_per_region;
+  const unsigned block_bfly_region = effective_block_idx_x >> log_blocks_per_region;
   const unsigned block_exchg_region_offset = block_bfly_region * EXCHG_REGIONS_PER_BLOCK;
   const unsigned block_bfly_region_start = block_bfly_region * block_bfly_region_size;
-  const unsigned block_start_in_bfly_region = 16 * (blockIdx.x & ((1u << log_blocks_per_region) - 1));
+  const unsigned block_start_in_bfly_region = 16 * (effective_block_idx_x & ((1u << log_blocks_per_region) - 1));
   gmem_in.add_row(block_bfly_region_start + block_start_in_bfly_region);
   gmem_in.add_col(COL_PAIRS_PER_BLOCK * blockIdx.y);
   // annoyingly scrambled, but should be coalesced overall
@@ -492,15 +499,17 @@ extern "C" __launch_bounds__(512, 2) __global__
     void bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                         vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                                         const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                                        const unsigned log_extension_degree, const unsigned coset_idx) {
-  bitrev_Z_to_natural_coset_evals_noninitial_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols, log_extension_degree);
+                                                                        const unsigned log_extension_degree, const unsigned coset_idx,
+                                                                        const unsigned grid_offset) {
+  bitrev_Z_to_natural_coset_evals_noninitial_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols, log_extension_degree,
+                                                             grid_offset);
 }
 
 // Simple, non-optimized kernel used for log_n < 16, to unblock debugging small proofs.
 extern "C" __launch_bounds__(512, 2) __global__
-    void bitrev_Z_to_natural_coset_evals_1_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt,
-                                                 const unsigned log_extension_degree, const unsigned coset_idx) {
+    void bitrev_Z_to_natural_coset_evals_one_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
+                                                   const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt,
+                                                   const unsigned log_extension_degree, const unsigned coset_idx) {
   const unsigned col_pair = blockIdx.x / blocks_per_ntt;
   const unsigned bid_in_ntt = blockIdx.x - col_pair * blocks_per_ntt;
   const unsigned tid_in_ntt = threadIdx.x + bid_in_ntt * blockDim.x;

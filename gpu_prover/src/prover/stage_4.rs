@@ -41,9 +41,9 @@ pub(crate) struct StageFourOutput<'a, C: ProverContext> {
 impl<'a, C: ProverContext> StageFourOutput<'a, C> {
     pub fn new(
         seed: Arc<Mutex<Seed>>,
-        circuit: &'a CompiledCircuitArtifact<BF>,
+        circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
-        twiddles: &'a Twiddles<E2, impl GoodAllocator>,
+        twiddles: &Twiddles<E2, impl GoodAllocator>,
         setup: &SetupPrecomputations<C>,
         stage_1_output: &StageOneOutput<C>,
         stage_2_output: &StageTwoOutput<C>,
@@ -229,13 +229,15 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
         let h_challenges_times_evals_clone = h_challenges_times_evals.clone();
         let h_non_witness_challenges_at_z_omega_clone = h_non_witness_challenges_at_z_omega.clone();
         let cached_data_clone = cached_data.clone();
+        let twiddles_omega_inv = twiddles.omega_inv;
+        let circuit_clone = circuit.clone();
         let get_challenges = move || {
             let _ = get_metadata(
                 &values_at_z_clone,
                 *alpha_clone.lock().unwrap().deref(),
-                twiddles.omega_inv,
+                twiddles_omega_inv,
                 &cached_data_clone,
-                &circuit,
+                &circuit_clone,
                 &mut h_e4_scratch_clone.lock().unwrap().deref_mut(),
                 &mut h_challenges_times_evals_clone.lock().unwrap(),
                 &mut h_non_witness_challenges_at_z_omega_clone.lock().unwrap(),
@@ -300,7 +302,9 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             COSET_INDEX,
             log_domain_size,
             log_lde_factor,
-            stream,
+            context.get_exec_stream(),
+            context.get_aux_stream(),
+            context.get_device_properties(),
         )?;
         assert!(log_tree_cap_size >= log_lde_factor);
         let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;

@@ -51,12 +51,12 @@ pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) ->
     }
 }
 
-const MODULUS: u32 = 1_000_000_000;
+const MODULUS: u32 = 7919;
 
 unsafe fn workload() -> ! {
     // Read the n number from the input.
     let n = csr_read_word();
-    let mut a = 1;
+    let mut a = 0;
     let mut b = 1;
     for _i in 0..n {
         let c = (a + b) % MODULUS;

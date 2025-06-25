@@ -25,7 +25,7 @@ impl<'a, C: ProverContext> MemoryCommitmentJob<'a, C> {
         self.is_finished_event.query()
     }
 
-    pub fn finish(self) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
+    pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
             range,
             is_finished_event,
@@ -34,9 +34,9 @@ impl<'a, C: ProverContext> MemoryCommitmentJob<'a, C> {
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
-        println!("GPU memory commitment time: {} ms", range.elapsed()?);
+        let commitment_time_ms = range.elapsed()?;
         let tree_caps = transform_tree_caps(&tree_caps);
-        Ok(tree_caps)
+        Ok((tree_caps, commitment_time_ms))
     }
 }
 

@@ -36,8 +36,6 @@ use trace_and_split::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
-#[cfg(feature = "gpu")]
-pub mod multigpu;
 
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
