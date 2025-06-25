@@ -3,6 +3,8 @@
 circuit_names=(
     "full_machine_2^20_4_2nd_word_bits"
     "full_machine_2^21_4_2nd_word_bits"
+    "reduced_machine_2^22_4_2nd_word_bits"
+    "reduced_machine_2^23_4_2nd_word_bits"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do

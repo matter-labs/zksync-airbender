@@ -1,12 +1,12 @@
 [
   {
-    "trace_len_log": 20,
+    "trace_len_log": 22,
     "second_word_bits": 4,
-    "reduced_machine": false
+    "reduced_machine": true
   },
   {
-    "trace_len_log": 21,
+    "trace_len_log": 23,
     "second_word_bits": 4,
-    "reduced_machine": false
+    "reduced_machine": true
   }
 ]

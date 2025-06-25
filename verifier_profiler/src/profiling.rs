@@ -1,10 +1,10 @@
 use super::*;
 
-use prover::prover_stages::Proof;
 use cs::one_row_compiler::CompiledCircuitArtifact;
-use std::collections::VecDeque;
+use prover::prover_stages::Proof;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSourceState;
 use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
+use std::collections::VecDeque;
 use verifier_common::proof_flattener::flatten_proof_for_skeleton;
 use verifier_common::proof_flattener::flatten_query;
 
@@ -15,7 +15,8 @@ pub fn profile_inner(
     compiled_verifiers_dir: &str,
     flamegraph_dir: &str,
 ) {
-    let proof: Proof = deserialize_from_file(&format!("{}/{}", proofs_dir, config.proof_file_name()));
+    let proof: Proof =
+        deserialize_from_file(&format!("{}/{}", proofs_dir, config.proof_file_name()));
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         deserialize_from_file(&format!("{}/{}", circuit_dir, config.layout_file_name()));
 

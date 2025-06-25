@@ -1,23 +1,21 @@
 use super::*;
 
-pub fn generate_circuit_files(
-    config: &ProfilingConfig,
-    dir: &str,
-) {
+pub fn generate_circuit_files(config: &ProfilingConfig, dir: &str) {
     const SECOND_WORD_BITS_FOUR: usize = 4;
     const SECOND_WORD_BITS_FIVE: usize = 5;
 
-    let rom_table = match config.second_word_bits {
-        SECOND_WORD_BITS_FOUR => create_table_for_rom_image::<Mersenne31Field, SECOND_WORD_BITS_FOUR>(
-            &[],
-            TableType::RomRead.to_table_id(),
-        ),
-        SECOND_WORD_BITS_FIVE => create_table_for_rom_image::<_, SECOND_WORD_BITS_FIVE>(
-            &[],
-            TableType::RomRead.to_table_id(),
-        ),
-        _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
-    };
+    let rom_table =
+        match config.second_word_bits {
+            SECOND_WORD_BITS_FOUR => create_table_for_rom_image::<
+                Mersenne31Field,
+                SECOND_WORD_BITS_FOUR,
+            >(&[], TableType::RomRead.to_table_id()),
+            SECOND_WORD_BITS_FIVE => create_table_for_rom_image::<_, SECOND_WORD_BITS_FIVE>(
+                &[],
+                TableType::RomRead.to_table_id(),
+            ),
+            _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
+        };
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
         true,
@@ -29,12 +27,22 @@ pub fn generate_circuit_files(
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
         match config.second_word_bits {
             SECOND_WORD_BITS_FOUR => (
-                default_compile_machine::<MinimalMachineNoExceptionHandlingWithDelegation, SECOND_WORD_BITS_FOUR>(machine, rom_table, Some(csr_table), config.trace_len_log),
-                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FOUR>(machine)
+                default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(
+                    machine,
+                    rom_table,
+                    Some(csr_table),
+                    config.trace_len_log,
+                ),
+                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FOUR>(machine),
             ),
             SECOND_WORD_BITS_FIVE => (
-                default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(machine, rom_table, Some(csr_table), config.trace_len_log),
-                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FIVE>(machine)
+                default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(
+                    machine,
+                    rom_table,
+                    Some(csr_table),
+                    config.trace_len_log,
+                ),
+                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FIVE>(machine),
             ),
             _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
         }
@@ -42,12 +50,22 @@ pub fn generate_circuit_files(
         let machine = FullIsaMachineWithDelegationNoExceptionHandling;
         match config.second_word_bits {
             SECOND_WORD_BITS_FOUR => (
-                default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(machine, rom_table, Some(csr_table), config.trace_len_log),
-                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FOUR>(machine)
+                default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(
+                    machine,
+                    rom_table,
+                    Some(csr_table),
+                    config.trace_len_log,
+                ),
+                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FOUR>(machine),
             ),
             SECOND_WORD_BITS_FIVE => (
-                default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(machine, rom_table, Some(csr_table), config.trace_len_log),
-                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FIVE>(machine)
+                default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(
+                    machine,
+                    rom_table,
+                    Some(csr_table),
+                    config.trace_len_log,
+                ),
+                dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS_FIVE>(machine),
             ),
             _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
         }
@@ -74,20 +92,28 @@ pub fn generate_circuit_files(
 
     std::fs::File::create(&generated_filename)
         .unwrap()
-        .write_all(&format_rust_code(&full_stream.to_string()).unwrap().as_bytes())
+        .write_all(
+            &format_rust_code(&full_stream.to_string())
+                .unwrap()
+                .as_bytes(),
+        )
         .unwrap();
 
     let mut generated_filename = dir.clone();
-        generated_filename.push_str(&config.circuit_layout_file_name());
-    
+    generated_filename.push_str(&config.circuit_layout_file_name());
+
     std::fs::File::create(&generated_filename)
         .unwrap()
-        .write_all(&format_rust_code(&circuit_layout.to_string()).unwrap().as_bytes())
+        .write_all(
+            &format_rust_code(&circuit_layout.to_string())
+                .unwrap()
+                .as_bytes(),
+        )
         .unwrap();
 
     let mut generated_filename = dir;
-        generated_filename.push_str(&config.quotient_file_name());
-    
+    generated_filename.push_str(&config.quotient_file_name());
+
     std::fs::File::create(&generated_filename)
         .unwrap()
         .write_all(&format_rust_code(&quotient.to_string()).unwrap().as_bytes())

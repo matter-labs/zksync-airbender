@@ -1,7 +1,7 @@
 use super::*;
 
-use worker::Worker;
 use prover::prover_stages::Proof;
+use worker::Worker;
 
 pub mod blake2s_delegation_with_gpu_tracer {
     use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
@@ -29,9 +29,7 @@ pub mod blake2s_delegation_with_gpu_tracer {
     }
 }
 
-pub fn generate_testing_proof(
-    config: &ProfilingConfig,
-) -> Proof {
+pub fn generate_testing_proof(config: &ProfilingConfig) -> Proof {
     const SECOND_WORD_BITS_FOUR: usize = 4;
     const SECOND_WORD_BITS_FIVE: usize = 5;
     const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
@@ -41,29 +39,36 @@ pub fn generate_testing_proof(
     let lde_factor = 2;
     let tree_cap_size = 32;
 
-    // let worker = Worker::new_with_num_threads(1);
-    let worker = Worker::new();
+    let worker = Worker::new_with_num_threads(1);
+    // let worker = Worker::new();
 
     // load binary
 
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .array_chunks::<4>()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    let rom_table = match config.second_word_bits {
-        SECOND_WORD_BITS_FOUR => create_table_for_rom_image::<Mersenne31Field, SECOND_WORD_BITS_FOUR>(
-            &binary,
-            TableType::RomRead.to_table_id(),
-        ),
-        SECOND_WORD_BITS_FIVE => create_table_for_rom_image::<_, SECOND_WORD_BITS_FIVE>(
-            &binary,
-            TableType::RomRead.to_table_id(),
-        ),
-        _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
-    };
+    // // 15 fibs, 1 hash
+    // let non_determinism_responses = vec![15u32, 1];
+
+    // let binary = vec![0x6f; 10]; // jal x0, 0
+    let non_determinism_responses = vec![];
+
+    let rom_table =
+        match config.second_word_bits {
+            SECOND_WORD_BITS_FOUR => create_table_for_rom_image::<
+                Mersenne31Field,
+                SECOND_WORD_BITS_FOUR,
+            >(&binary, TableType::RomRead.to_table_id()),
+            SECOND_WORD_BITS_FIVE => create_table_for_rom_image::<_, SECOND_WORD_BITS_FIVE>(
+                &binary,
+                TableType::RomRead.to_table_id(),
+            ),
+            _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
+        };
 
     use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
 
@@ -77,35 +82,34 @@ pub fn generate_testing_proof(
     let compiled_machine = if config.reduced_machine {
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
         match config.second_word_bits {
-            SECOND_WORD_BITS_FOUR => default_compile_machine::<MinimalMachineNoExceptionHandlingWithDelegation, SECOND_WORD_BITS_FOUR>(
+            SECOND_WORD_BITS_FOUR => default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(
                 machine,
                 rom_table.clone(),
                 Some(csr_table.clone()),
-                config.trace_len_log
+                config.trace_len_log,
             ),
             SECOND_WORD_BITS_FIVE => default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(
                 machine,
                 rom_table.clone(),
                 Some(csr_table.clone()),
-                config.trace_len_log
+                config.trace_len_log,
             ),
             _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
         }
     } else {
         let machine = FullIsaMachineWithDelegationNoExceptionHandling;
         match config.second_word_bits {
-            SECOND_WORD_BITS_FOUR =>
-                default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(
-                    machine, 
-                    rom_table.clone(), 
-                    Some(csr_table.clone()), 
-                    config.trace_len_log
+            SECOND_WORD_BITS_FOUR => default_compile_machine::<_, SECOND_WORD_BITS_FOUR>(
+                machine,
+                rom_table.clone(),
+                Some(csr_table.clone()),
+                config.trace_len_log,
             ),
             SECOND_WORD_BITS_FIVE => default_compile_machine::<_, SECOND_WORD_BITS_FIVE>(
-                machine, 
-                rom_table.clone(), 
-                Some(csr_table.clone()), 
-                config.trace_len_log
+                machine,
+                rom_table.clone(),
+                Some(csr_table.clone()),
+                config.trace_len_log,
             ),
             _ => panic!("Unsupported second word bits: {}", config.second_word_bits),
         }
@@ -145,12 +149,12 @@ pub fn generate_testing_proof(
 
     // compile all delegation circuit
 
-    use std::collections::HashMap;
-    use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+    use cs::cs::circuit::Circuit;
     use cs::cs::cs_reference::BasicAssembly;
     use cs::one_row_compiler::OneRowCompiler;
-    use cs::cs::circuit::Circuit;
+    use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
     use prover::DelegationProcessorDescription;
+    use std::collections::HashMap;
 
     let mut delegation_circuits_eval_fns: HashMap<
         u32,
@@ -189,12 +193,10 @@ pub fn generate_testing_proof(
         );
     }
 
-    // 15 fibs, 1 hash
-    let non_determinism_responses = vec![15u32, 1];
-
     use prover::dev_run_all_and_make_witness_ext_with_gpu_tracers;
 
-    let witness_eval_fn = crate::witness_generation_functions::get_witness_function_from_config(config);
+    let witness_eval_fn =
+        crate::witness_generation_functions::get_witness_function_from_config(config);
 
     let (witness_chunks, register_final_values, delegation_circuits) = if config.reduced_machine {
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
@@ -286,10 +288,10 @@ pub fn generate_testing_proof(
 
     assert_eq!(witness_chunks.len(), 1);
 
-    use std::alloc::Global;
-    use fft::Twiddles;
     use fft::LdePrecomputations;
+    use fft::Twiddles;
     use prover::prover_stages::SetupPrecomputations;
+    use std::alloc::Global;
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(domain_size, &worker);
     let lde_precomputations = LdePrecomputations::new(domain_size, lde_factor, &[0, 1], &worker);
@@ -317,10 +319,10 @@ pub fn generate_testing_proof(
     );
     assert!(is_satisfied);
 
-    use field::Mersenne31Quartic;
-    use field::Mersenne31Complex;
-    use field::PrimeField;
     use field::Field;
+    use field::Mersenne31Complex;
+    use field::Mersenne31Quartic;
+    use field::PrimeField;
 
     let challenge = Mersenne31Quartic {
         c0: Mersenne31Complex {
@@ -358,38 +360,38 @@ pub fn generate_testing_proof(
         current_challenge.mul_assign(&challenge);
     }
 
-//     // // we can also evaluate constraint for debug purposes
-//     // {
-//     //     let compiled_constraints = CompiledConstraintsForDomain::from_compiled_circuit(
-//     //         &compiled_machine,
-//     //         Mersenne31Complex::ONE,
-//     //         trace_len as u32,
-//     //     );
+    //     // // we can also evaluate constraint for debug purposes
+    //     // {
+    //     //     let compiled_constraints = CompiledConstraintsForDomain::from_compiled_circuit(
+    //     //         &compiled_machine,
+    //     //         Mersenne31Complex::ONE,
+    //     //         trace_len as u32,
+    //     //     );
 
-//     //     let now = std::time::Instant::now();
-//     //     let quotient_view = evaluate_constraints_on_domain(
-//     //         &witness.exec_trace,
-//     //         witness.num_witness_columns,
-//     //         &quad_terms_challenges,
-//     //         &linear_terms_challenges,
-//     //         &compiled_constraints,
-//     //         &worker,
-//     //     );
-//     //     dbg!(&now.elapsed());
+    //     //     let now = std::time::Instant::now();
+    //     //     let quotient_view = evaluate_constraints_on_domain(
+    //     //         &witness.exec_trace,
+    //     //         witness.num_witness_columns,
+    //     //         &quad_terms_challenges,
+    //     //         &linear_terms_challenges,
+    //     //         &compiled_constraints,
+    //     //         &worker,
+    //     //     );
+    //     //     dbg!(&now.elapsed());
 
-//     //     let mut quotient_row = quotient_view.row_view(0..NUM_PROC_CYCLES);
-//     //     for _ in 0..NUM_PROC_CYCLES {
-//     //         let as_field = unsafe {
-//     //             quotient_row
-//     //                 .current_row_ref()
-//     //                 .as_ptr()
-//     //                 .cast::<Mersenne31Quartic>()
-//     //                 .read()
-//     //         };
-//     //         assert_eq!(as_field, Mersenne31Quartic::ZERO);
-//     //         quotient_row.advance_row();
-//     //     }
-//     // }
+    //     //     let mut quotient_row = quotient_view.row_view(0..NUM_PROC_CYCLES);
+    //     //     for _ in 0..NUM_PROC_CYCLES {
+    //     //         let as_field = unsafe {
+    //     //             quotient_row
+    //     //                 .current_row_ref()
+    //     //                 .as_ptr()
+    //     //                 .cast::<Mersenne31Quartic>()
+    //     //                 .read()
+    //     //         };
+    //     //         assert_eq!(as_field, Mersenne31Quartic::ZERO);
+    //     //         quotient_row.advance_row();
+    //     //     }
+    //     // }
 
     let memory_argument_alpha = Mersenne31Quartic::from_array_of_base([
         Mersenne31Field(2),
@@ -476,7 +478,7 @@ pub fn generate_testing_proof(
     use prover::prover_stages::prove;
 
     let now = std::time::Instant::now();
-    let (prover_data, proof) = prove::<{prover::DEFAULT_TRACE_PADDING_MULTIPLE}, _>(
+    let (prover_data, proof) = prove::<{ prover::DEFAULT_TRACE_PADDING_MULTIPLE }, _>(
         &compiled_machine,
         &public_inputs,
         &external_values,
@@ -496,147 +498,147 @@ pub fn generate_testing_proof(
 
     proof
 
-//     if !for_gpu_comparison {
-//         serialize_to_file(&proof, "delegation_proof");
-//     }
+    //     if !for_gpu_comparison {
+    //         serialize_to_file(&proof, "delegation_proof");
+    //     }
 
-//     if let Some(ref gpu_comparison_hook) = maybe_delegator_gpu_comparison_hook {
-//         let log_n = (NUM_PROC_CYCLES + 1).trailing_zeros();
-//         assert_eq!(log_n, 20);
-//         let gpu_comparison_args = GpuComparisonArgs {
-//             circuit: &compiled_machine,
-//             setup: &setup,
-//             external_values: &external_values,
-//             public_inputs: &public_inputs,
-//             twiddles: &twiddles,
-//             lde_precomputations: &lde_precomputations,
-//             table_driver: &table_driver,
-//             lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-//             log_n: log_n as usize,
-//             circuit_sequence: 0,
-//             delegation_processing_type: None,
-//             prover_data: &prover_data,
-//         };
-//         gpu_comparison_hook(&gpu_comparison_args);
-//     }
+    //     if let Some(ref gpu_comparison_hook) = maybe_delegator_gpu_comparison_hook {
+    //         let log_n = (NUM_PROC_CYCLES + 1).trailing_zeros();
+    //         assert_eq!(log_n, 20);
+    //         let gpu_comparison_args = GpuComparisonArgs {
+    //             circuit: &compiled_machine,
+    //             setup: &setup,
+    //             external_values: &external_values,
+    //             public_inputs: &public_inputs,
+    //             twiddles: &twiddles,
+    //             lde_precomputations: &lde_precomputations,
+    //             table_driver: &table_driver,
+    //             lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+    //             log_n: log_n as usize,
+    //             circuit_sequence: 0,
+    //             delegation_processing_type: None,
+    //             prover_data: &prover_data,
+    //         };
+    //         gpu_comparison_hook(&gpu_comparison_args);
+    //     }
 
-//     let register_contribution_in_memory_argument =
-//         produce_register_contribution_into_memory_accumulator(
-//             &register_final_values,
-//             memory_argument_linearization_challenges_powers,
-//             memory_argument_gamma,
-//         );
+    //     let register_contribution_in_memory_argument =
+    //         produce_register_contribution_into_memory_accumulator(
+    //             &register_final_values,
+    //             memory_argument_linearization_challenges_powers,
+    //             memory_argument_gamma,
+    //         );
 
-//     dbg!(&prover_data.stage_2_result.grand_product_accumulator);
-//     dbg!(&prover_data.stage_2_result.sum_over_delegation_poly);
-//     dbg!(register_contribution_in_memory_argument);
+    //     dbg!(&prover_data.stage_2_result.grand_product_accumulator);
+    //     dbg!(&prover_data.stage_2_result.sum_over_delegation_poly);
+    //     dbg!(register_contribution_in_memory_argument);
 
-//     let mut memory_accumulator = prover_data.stage_2_result.grand_product_accumulator;
-//     memory_accumulator.mul_assign(&register_contribution_in_memory_argument);
+    //     let mut memory_accumulator = prover_data.stage_2_result.grand_product_accumulator;
+    //     memory_accumulator.mul_assign(&register_contribution_in_memory_argument);
 
-//     let mut sum_over_delegation_poly = prover_data.stage_2_result.sum_over_delegation_poly;
+    //     let mut sum_over_delegation_poly = prover_data.stage_2_result.sum_over_delegation_poly;
 
-//     // now prove delegation circuits
-//     let mut external_values = external_values;
-//     external_values.aux_boundary_values = Default::default();
-//     for work_type in delegation_circuits.into_iter() {
-//         dbg!(work_type.delegation_type);
-//         dbg!(work_type.trace_len);
-//         dbg!(work_type.work_units.len());
+    //     // now prove delegation circuits
+    //     let mut external_values = external_values;
+    //     external_values.aux_boundary_values = Default::default();
+    //     for work_type in delegation_circuits.into_iter() {
+    //         dbg!(work_type.delegation_type);
+    //         dbg!(work_type.trace_len);
+    //         dbg!(work_type.work_units.len());
 
-//         let delegation_type = work_type.delegation_type;
-//         // create setup
-//         let twiddles: Twiddles<_, Global> = Twiddles::new(work_type.trace_len, &worker);
-//         let lde_precomputations =
-//             LdePrecomputations::new(work_type.trace_len, lde_factor, &[0, 1], &worker);
+    //         let delegation_type = work_type.delegation_type;
+    //         // create setup
+    //         let twiddles: Twiddles<_, Global> = Twiddles::new(work_type.trace_len, &worker);
+    //         let lde_precomputations =
+    //             LdePrecomputations::new(work_type.trace_len, lde_factor, &[0, 1], &worker);
 
-//         let setup = SetupPrecomputations::from_tables_and_trace_len(
-//             &work_type.table_driver,
-//             work_type.trace_len,
-//             &work_type.compiled_circuit.setup_layout,
-//             &twiddles,
-//             &lde_precomputations,
-//             lde_factor,
-//             tree_cap_size,
-//             &worker,
-//         );
+    //         let setup = SetupPrecomputations::from_tables_and_trace_len(
+    //             &work_type.table_driver,
+    //             work_type.trace_len,
+    //             &work_type.compiled_circuit.setup_layout,
+    //             &twiddles,
+    //             &lde_precomputations,
+    //             lde_factor,
+    //             tree_cap_size,
+    //             &worker,
+    //         );
 
-//         for witness in work_type.work_units.into_iter() {
-//             println!(
-//                 "Checking if delegation type {} circuit is satisfied",
-//                 delegation_type
-//             );
-//             let is_satisfied = check_satisfied(
-//                 &work_type.compiled_circuit,
-//                 &witness.witness.exec_trace,
-//                 witness.witness.num_witness_columns,
-//             );
-//             assert!(is_satisfied);
+    //         for witness in work_type.work_units.into_iter() {
+    //             println!(
+    //                 "Checking if delegation type {} circuit is satisfied",
+    //                 delegation_type
+    //             );
+    //             let is_satisfied = check_satisfied(
+    //                 &work_type.compiled_circuit,
+    //                 &witness.witness.exec_trace,
+    //                 witness.witness.num_witness_columns,
+    //             );
+    //             assert!(is_satisfied);
 
-//             let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
-//                 Some(witness.witness.lookup_mapping.clone())
-//             } else {
-//                 None
-//             };
+    //             let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
+    //                 Some(witness.witness.lookup_mapping.clone())
+    //             } else {
+    //                 None
+    //             };
 
-//             dbg!(witness.witness.exec_trace.len());
-//             let now = std::time::Instant::now();
-//             let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
-//                 &work_type.compiled_circuit,
-//                 &[],
-//                 &external_values,
-//                 witness.witness,
-//                 &setup,
-//                 &twiddles,
-//                 &lde_precomputations,
-//                 0,
-//                 Some(delegation_type),
-//                 lde_factor,
-//                 tree_cap_size,
-//                 53,
-//                 28,
-//                 &worker,
-//             );
-//             println!(
-//                 "Delegation circuit type {} proving time is {:?}",
-//                 delegation_type,
-//                 now.elapsed()
-//             );
+    //             dbg!(witness.witness.exec_trace.len());
+    //             let now = std::time::Instant::now();
+    //             let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
+    //                 &work_type.compiled_circuit,
+    //                 &[],
+    //                 &external_values,
+    //                 witness.witness,
+    //                 &setup,
+    //                 &twiddles,
+    //                 &lde_precomputations,
+    //                 0,
+    //                 Some(delegation_type),
+    //                 lde_factor,
+    //                 tree_cap_size,
+    //                 53,
+    //                 28,
+    //                 &worker,
+    //             );
+    //             println!(
+    //                 "Delegation circuit type {} proving time is {:?}",
+    //                 delegation_type,
+    //                 now.elapsed()
+    //             );
 
-//             if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
-//                 let log_n = work_type.trace_len.trailing_zeros();
-//                 assert_eq!(work_type.trace_len, 1 << log_n);
-//                 let dummy_public_inputs = Vec::<Mersenne31Field>::new();
-//                 let gpu_comparison_args = GpuComparisonArgs {
-//                     circuit: &work_type.compiled_circuit,
-//                     setup: &setup,
-//                     external_values: &external_values,
-//                     public_inputs: &dummy_public_inputs,
-//                     twiddles: &twiddles,
-//                     lde_precomputations: &lde_precomputations,
-//                     table_driver: &work_type.table_driver,
-//                     lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-//                     log_n: log_n as usize,
-//                     circuit_sequence: 0,
-//                     delegation_processing_type: Some(delegation_type),
-//                     prover_data: &prover_data,
-//                 };
-//                 gpu_comparison_hook(&gpu_comparison_args);
-//             }
+    //             if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
+    //                 let log_n = work_type.trace_len.trailing_zeros();
+    //                 assert_eq!(work_type.trace_len, 1 << log_n);
+    //                 let dummy_public_inputs = Vec::<Mersenne31Field>::new();
+    //                 let gpu_comparison_args = GpuComparisonArgs {
+    //                     circuit: &work_type.compiled_circuit,
+    //                     setup: &setup,
+    //                     external_values: &external_values,
+    //                     public_inputs: &dummy_public_inputs,
+    //                     twiddles: &twiddles,
+    //                     lde_precomputations: &lde_precomputations,
+    //                     table_driver: &work_type.table_driver,
+    //                     lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+    //                     log_n: log_n as usize,
+    //                     circuit_sequence: 0,
+    //                     delegation_processing_type: Some(delegation_type),
+    //                     prover_data: &prover_data,
+    //                 };
+    //                 gpu_comparison_hook(&gpu_comparison_args);
+    //             }
 
-//             if !for_gpu_comparison {
-//                 serialize_to_file(&proof, "blake2s_delegator_proof");
-//             }
+    //             if !for_gpu_comparison {
+    //                 serialize_to_file(&proof, "blake2s_delegator_proof");
+    //             }
 
-//             dbg!(prover_data.stage_2_result.grand_product_accumulator);
-//             dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+    //             dbg!(prover_data.stage_2_result.grand_product_accumulator);
+    //             dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
 
-//             memory_accumulator.mul_assign(&prover_data.stage_2_result.grand_product_accumulator);
-//             sum_over_delegation_poly
-//                 .sub_assign(&prover_data.stage_2_result.sum_over_delegation_poly);
-//         }
-//     }
+    //             memory_accumulator.mul_assign(&prover_data.stage_2_result.grand_product_accumulator);
+    //             sum_over_delegation_poly
+    //                 .sub_assign(&prover_data.stage_2_result.sum_over_delegation_poly);
+    //         }
+    //     }
 
-//     assert_eq!(memory_accumulator, Mersenne31Quartic::ONE);
-//     assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
+    //     assert_eq!(memory_accumulator, Mersenne31Quartic::ONE);
+    //     assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
 }

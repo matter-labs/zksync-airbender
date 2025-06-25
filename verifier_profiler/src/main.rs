@@ -8,44 +8,43 @@
 // TODO: Compile verifiers
 // TODO: Test verifiers in RISC-V simulator
 
-use quote::quote;
 use proc_macro2::TokenStream;
-
+use quote::quote;
 
 // use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 // use prover::witness_evaluator::SimpleWitnessProxy;
-use prover::SimpleWitnessProxy;
-use prover::witness_proxy::WitnessProxy;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
+use prover::witness_proxy::WitnessProxy;
+use prover::SimpleWitnessProxy;
 // use ::cs::cs::placeholder::Placeholder;
 // use ::cs::cs::witness_placer::WitnessTypeSet;
 // use ::field::Mersenne31Field;
 // use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use risc_v_simulator::cycle::IMStandardIsaConfig;
 
-use std::io::Write;
-use field::Mersenne31Field;
 use cs::cs::oracle::Oracle;
+use cs::cs::placeholder::Placeholder;
+use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use cs::cs::witness_placer::{
     WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
     WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
     WitnessComputationalU8, WitnessMask, WitnessTypeSet,
 };
-use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-use cs::cs::placeholder::Placeholder;
+use cs::default_compile_machine;
+use cs::machine::machine_configurations::create_csr_table_for_delegation;
+use cs::machine::machine_configurations::create_table_for_rom_image;
+use cs::machine::machine_configurations::dump_ssa_witness_eval_form;
 use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
 use cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
-use cs::machine::machine_configurations::create_table_for_rom_image;
 use cs::tables::TableType;
-use cs::machine::machine_configurations::create_csr_table_for_delegation;
-use cs::machine::machine_configurations::dump_ssa_witness_eval_form;
-use cs::default_compile_machine;
+use field::Mersenne31Field;
+use std::io::Write;
 use witness_eval_generator::derive_from_ssa::derive_from_ssa;
 
 pub mod circuit_files;
-pub mod witness_generation_functions;
-pub mod testing_prover;
 pub mod profiling;
+pub mod testing_prover;
+pub mod witness_generation_functions;
 
 const CIRCUIT_DIR: &str = "circuit_files";
 const PROOFS_DIR: &str = "proofs";
@@ -78,19 +77,19 @@ fn include_witness_generator_function_test() {
             "witness_gen_{}_{}_{}",
             config.trace_len_log,
             config.second_word_bits,
-            if config.reduced_machine { "reduced" } else { "full" }
+            if config.reduced_machine {
+                "reduced"
+            } else {
+                "full"
+            }
         );
 
         use proc_macro2::Ident;
         use proc_macro2::Span;
 
         let mod_name = Ident::new(&mod_name, Span::call_site());
-        
-        let path = format!(
-            "../{}/{}",
-            CIRCUIT_DIR,
-            config.witness_gen_file_name()
-        );
+
+        let path = format!("../{}/{}", CIRCUIT_DIR, config.witness_gen_file_name());
 
         let ProfilingConfig {
             trace_len_log,
@@ -98,7 +97,7 @@ fn include_witness_generator_function_test() {
             reduced_machine,
         } = config;
 
-        let t = quote!{
+        let t = quote! {
             if config.trace_len_log == #trace_len_log &&
                config.second_word_bits == #second_word_bits &&
                config.reduced_machine == #reduced_machine
@@ -109,7 +108,7 @@ fn include_witness_generator_function_test() {
 
         stream.extend(t);
 
-        let t = quote!{
+        let t = quote! {
             mod #mod_name {
                 use super::*;
 
@@ -146,12 +145,16 @@ fn include_witness_generator_function_test() {
 
     std::fs::File::create(&generated_filename)
         .unwrap()
-        .write_all(&format_rust_code(&full_stream.to_string()).unwrap().as_bytes())
+        .write_all(
+            &format_rust_code(&full_stream.to_string())
+                .unwrap()
+                .as_bytes(),
+        )
         .unwrap();
 }
 
 #[test]
-fn generate_testing_proofs() { 
+fn generate_testing_proofs() {
     let proof_configs = deserialize_from_file::<Vec<ProfilingConfig>>("profiling_configs.json");
 
     for config in proof_configs {
@@ -246,7 +249,7 @@ const COMPILING_VERIFIERS_SCRIPT: &str = "for CIRCUIT_NAME in \"${circuit_names[
 done";
 
 #[test]
-fn profile_verifiers() { 
+fn profile_verifiers() {
     let proof_configs = deserialize_from_file::<Vec<ProfilingConfig>>("profiling_configs.json");
 
     for config in proof_configs {
@@ -271,7 +274,11 @@ impl ProfilingConfig {
     pub fn circuit_name(&self) -> String {
         format!(
             "{}_machine_2^{}_{}_2nd_word_bits",
-            if self.reduced_machine { "reduced" } else { "full" },
+            if self.reduced_machine {
+                "reduced"
+            } else {
+                "full"
+            },
             self.trace_len_log,
             self.second_word_bits
         )
@@ -329,10 +336,7 @@ const PROVING_CONFIGS: [ProfilingConfig; 4] = [
 ];
 
 fn main() {
-    serialize_to_file(
-        &PROVING_CONFIGS,
-        "profiling_configs.json",
-    );
+    serialize_to_file(&PROVING_CONFIGS, "profiling_configs.json");
 }
 
 /// Runs rustfmt to format the code.
@@ -374,6 +378,6 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 }
 
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
+    let src = std::fs::File::open(filename).expect(&format!("{}", filename));
     serde_json::from_reader(src).unwrap()
 }
