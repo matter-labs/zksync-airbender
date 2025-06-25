@@ -98,6 +98,7 @@ impl<'a> LocalProver<'a> {
 
         let non_determinism_data = u32_from_hex_string(&data);
 
+        let mut total_proof_time = Some(0f64);
         let (proof_list, proof_metadata) = create_proofs_internal(
             &self.binary,
             non_determinism_data,
@@ -106,6 +107,7 @@ impl<'a> LocalProver<'a> {
             100,
             None,
             &mut Some(&mut self.gpu_state),
+            &mut total_proof_time,
         );
         let basic_duration = now.elapsed().as_millis() as u64;
         let basic_proofs = proof_list.basic_proofs.len();
@@ -119,6 +121,7 @@ impl<'a> LocalProver<'a> {
             proof_metadata,
             &None,
             &mut Some(&mut self.gpu_state),
+            &mut total_proof_time,
         );
 
         let program_proof = program_proof_from_proof_list_and_metadata(
