@@ -1,0 +1,10352 @@
+{
+  "witness_layout": {
+    "multiplicities_columns_for_range_check_16": {
+      "start": 0,
+      "num_elements": 1
+    },
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 1,
+      "num_elements": 1
+    },
+    "multiplicities_columns_for_generic_lookup": {
+      "start": 2,
+      "num_elements": 4
+    },
+    "range_check_8_columns": {
+      "start": 6,
+      "num_elements": 12
+    },
+    "range_check_16_columns": {
+      "start": 18,
+      "num_elements": 12
+    },
+    "width_3_lookups": [
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 77
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 78
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 79
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RomAddressSpaceSeparator"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Expression": {
+              "linear_terms": [
+                [
+                  1,
+                  {
+                    "WitnessSubtree": 18
+                  }
+                ],
+                [
+                  65536,
+                  {
+                    "WitnessSubtree": 79
+                  }
+                ]
+              ],
+              "constant_term": 0
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 80
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 81
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RomRead"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 82
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 83
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 84
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "QuickDecodeDecompositionCheck4x4x4"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 85
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 86
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 87
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "QuickDecodeDecompositionCheck7x3x6"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Expression": {
+              "linear_terms": [
+                [
+                  1,
+                  {
+                    "WitnessSubtree": 85
+                  }
+                ],
+                [
+                  128,
+                  {
+                    "WitnessSubtree": 86
+                  }
+                ],
+                [
+                  1024,
+                  {
+                    "WitnessSubtree": 87
+                  }
+                ],
+                [
+                  65536,
+                  {
+                    "WitnessSubtree": 31
+                  }
+                ]
+              ],
+              "constant_term": 0
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [
+                [
+                  1,
+                  {
+                    "WitnessSubtree": 32
+                  }
+                ],
+                [
+                  2,
+                  {
+                    "WitnessSubtree": 33
+                  }
+                ],
+                [
+                  4,
+                  {
+                    "WitnessSubtree": 34
+                  }
+                ],
+                [
+                  8,
+                  {
+                    "WitnessSubtree": 35
+                  }
+                ],
+                [
+                  16,
+                  {
+                    "WitnessSubtree": 36
+                  }
+                ],
+                [
+                  32,
+                  {
+                    "WitnessSubtree": 37
+                  }
+                ],
+                [
+                  64,
+                  {
+                    "WitnessSubtree": 38
+                  }
+                ],
+                [
+                  128,
+                  {
+                    "WitnessSubtree": 39
+                  }
+                ],
+                [
+                  256,
+                  {
+                    "WitnessSubtree": 40
+                  }
+                ],
+                [
+                  512,
+                  {
+                    "WitnessSubtree": 41
+                  }
+                ],
+                [
+                  1024,
+                  {
+                    "WitnessSubtree": 42
+                  }
+                ],
+                [
+                  2048,
+                  {
+                    "WitnessSubtree": 43
+                  }
+                ],
+                [
+                  4096,
+                  {
+                    "WitnessSubtree": 44
+                  }
+                ],
+                [
+                  8192,
+                  {
+                    "WitnessSubtree": 45
+                  }
+                ],
+                [
+                  16384,
+                  {
+                    "WitnessSubtree": 46
+                  }
+                ],
+                [
+                  32768,
+                  {
+                    "WitnessSubtree": 47
+                  }
+                ],
+                [
+                  65536,
+                  {
+                    "WitnessSubtree": 48
+                  }
+                ],
+                [
+                  131072,
+                  {
+                    "WitnessSubtree": 49
+                  }
+                ],
+                [
+                  262144,
+                  {
+                    "WitnessSubtree": 50
+                  }
+                ],
+                [
+                  524288,
+                  {
+                    "WitnessSubtree": 51
+                  }
+                ],
+                [
+                  1048576,
+                  {
+                    "WitnessSubtree": 52
+                  }
+                ],
+                [
+                  2097152,
+                  {
+                    "WitnessSubtree": 53
+                  }
+                ],
+                [
+                  4194304,
+                  {
+                    "WitnessSubtree": 54
+                  }
+                ]
+              ],
+              "constant_term": 0
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "OpTypeBitmask"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "MemorySubtree": 9
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 88
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 89
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "U16GetSignAndHighByte"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 90
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 91
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 92
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "U16GetSignAndHighByte"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 93
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 94
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 95
+            }
+          }
+        ],
+        "table_index": {
+          "Variable": {
+            "WitnessSubtree": 96
+          }
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 97
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 98
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 99
+            }
+          }
+        ],
+        "table_index": {
+          "Variable": {
+            "WitnessSubtree": 100
+          }
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 101
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 102
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 103
+            }
+          }
+        ],
+        "table_index": {
+          "Variable": {
+            "WitnessSubtree": 104
+          }
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 105
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 106
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 107
+            }
+          }
+        ],
+        "table_index": {
+          "Variable": {
+            "WitnessSubtree": 108
+          }
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 6
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 7
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 8
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 9
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 10
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 11
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 12
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 13
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 14
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 15
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      },
+      {
+        "input_columns": [
+          {
+            "Variable": {
+              "WitnessSubtree": 16
+            }
+          },
+          {
+            "Variable": {
+              "WitnessSubtree": 17
+            }
+          },
+          {
+            "Expression": {
+              "linear_terms": [],
+              "constant_term": 0
+            }
+          }
+        ],
+        "table_index": {
+          "Constant": "RangeCheckSmall"
+        }
+      }
+    ],
+    "range_check_16_lookup_expressions": [
+      {
+        "Variable": {
+          "WitnessSubtree": 18
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 19
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 20
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 21
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 22
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 23
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 24
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 25
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 26
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 27
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 28
+        }
+      },
+      {
+        "Variable": {
+          "WitnessSubtree": 29
+        }
+      }
+    ],
+    "timestamp_range_check_lookup_expressions": [
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              524288,
+              {
+                "WitnessSubtree": 74
+              }
+            ],
+            [
+              1,
+              {
+                "MemorySubtree": 6
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 0
+              }
+            ]
+          ],
+          "constant_term": 2147483647
+        }
+      },
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              1,
+              {
+                "MemorySubtree": 7
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 1
+              }
+            ],
+            [
+              2147483646,
+              {
+                "WitnessSubtree": 74
+              }
+            ]
+          ],
+          "constant_term": 524288
+        }
+      },
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              524288,
+              {
+                "WitnessSubtree": 75
+              }
+            ],
+            [
+              1,
+              {
+                "MemorySubtree": 11
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 0
+              }
+            ]
+          ],
+          "constant_term": 2147483646
+        }
+      },
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              1,
+              {
+                "MemorySubtree": 12
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 1
+              }
+            ],
+            [
+              2147483646,
+              {
+                "WitnessSubtree": 75
+              }
+            ]
+          ],
+          "constant_term": 524288
+        }
+      },
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              524288,
+              {
+                "WitnessSubtree": 76
+              }
+            ],
+            [
+              1,
+              {
+                "MemorySubtree": 18
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 0
+              }
+            ]
+          ],
+          "constant_term": 2147483645
+        }
+      },
+      {
+        "Expression": {
+          "linear_terms": [
+            [
+              1,
+              {
+                "MemorySubtree": 19
+              }
+            ],
+            [
+              2147483646,
+              {
+                "SetupSubtree": 1
+              }
+            ],
+            [
+              2147483646,
+              {
+                "WitnessSubtree": 76
+              }
+            ]
+          ],
+          "constant_term": 524288
+        }
+      }
+    ],
+    "offset_for_special_shuffle_ram_timestamps_range_check_expressions": 0,
+    "boolean_vars_columns_range": {
+      "start": 30,
+      "num_elements": 47
+    },
+    "scratch_space_columns_range": {
+      "start": 109,
+      "num_elements": 85
+    },
+    "total_width": 194
+  },
+  "memory_layout": {
+    "shuffle_ram_inits_and_teardowns": {
+      "lazy_init_addresses_columns": {
+        "start": 0,
+        "num_elements": 1
+      },
+      "lazy_teardown_values_columns": {
+        "start": 2,
+        "num_elements": 1
+      },
+      "lazy_teardown_timestamps_columns": {
+        "start": 4,
+        "num_elements": 1
+      }
+    },
+    "shuffle_ram_access_sets": [
+      {
+        "Readonly": {
+          "in_cycle_write_index": 0,
+          "address": {
+            "RegisterOnly": {
+              "register_index": {
+                "start": 10,
+                "num_elements": 1
+              }
+            }
+          },
+          "read_timestamp": {
+            "start": 6,
+            "num_elements": 1
+          },
+          "read_value": {
+            "start": 8,
+            "num_elements": 1
+          }
+        }
+      },
+      {
+        "Readonly": {
+          "in_cycle_write_index": 1,
+          "address": {
+            "RegisterOrRam": {
+              "is_register": {
+                "start": 15,
+                "num_elements": 1
+              },
+              "address": {
+                "start": 16,
+                "num_elements": 1
+              }
+            }
+          },
+          "read_timestamp": {
+            "start": 11,
+            "num_elements": 1
+          },
+          "read_value": {
+            "start": 13,
+            "num_elements": 1
+          }
+        }
+      },
+      {
+        "Write": {
+          "in_cycle_write_index": 2,
+          "address": {
+            "RegisterOrRam": {
+              "is_register": {
+                "start": 22,
+                "num_elements": 1
+              },
+              "address": {
+                "start": 23,
+                "num_elements": 1
+              }
+            }
+          },
+          "read_timestamp": {
+            "start": 18,
+            "num_elements": 1
+          },
+          "read_value": {
+            "start": 20,
+            "num_elements": 1
+          },
+          "write_value": {
+            "start": 25,
+            "num_elements": 1
+          }
+        }
+      }
+    ],
+    "delegation_request_layout": {
+      "multiplicity": {
+        "start": 27,
+        "num_elements": 1
+      },
+      "delegation_type": {
+        "start": 28,
+        "num_elements": 1
+      },
+      "abi_mem_offset_high": {
+        "start": 29,
+        "num_elements": 1
+      },
+      "in_cycle_write_index": 3
+    },
+    "delegation_processor_layout": null,
+    "batched_ram_accesses": [],
+    "register_and_indirect_accesses": [],
+    "total_width": 30
+  },
+  "setup_layout": {
+    "timestamp_setup_columns": {
+      "start": 0,
+      "num_elements": 1
+    },
+    "range_check_16_setup_column": {
+      "start": 2,
+      "num_elements": 1
+    },
+    "timestamp_range_check_setup_column": {
+      "start": 3,
+      "num_elements": 1
+    },
+    "generic_lookup_setup_columns": {
+      "start": 4,
+      "num_elements": 4
+    },
+    "total_width": 20
+  },
+  "stage_2_layout": {
+    "intermediate_polys_for_range_check_16": {
+      "num_pairs": 6,
+      "base_field_oracles": {
+        "start": 0,
+        "num_elements": 6
+      },
+      "ext_4_field_oracles": {
+        "start": 12,
+        "num_elements": 6
+      }
+    },
+    "remainder_for_range_check_16": null,
+    "lazy_init_address_range_check_16": {
+      "num_pairs": 1,
+      "base_field_oracles": {
+        "start": 6,
+        "num_elements": 1
+      },
+      "ext_4_field_oracles": {
+        "start": 36,
+        "num_elements": 1
+      }
+    },
+    "intermediate_polys_for_timestamp_range_checks": {
+      "num_pairs": 3,
+      "base_field_oracles": {
+        "start": 7,
+        "num_elements": 3
+      },
+      "ext_4_field_oracles": {
+        "start": 40,
+        "num_elements": 3
+      }
+    },
+    "intermediate_polys_for_generic_lookup": {
+      "start": 52,
+      "num_elements": 17
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 120,
+      "num_elements": 1
+    },
+    "intermediate_poly_for_timestamp_range_check_multiplicity": {
+      "start": 124,
+      "num_elements": 1
+    },
+    "intermediate_polys_for_generic_multiplicities": {
+      "start": 128,
+      "num_elements": 4
+    },
+    "delegation_processing_aux_poly": {
+      "start": 144,
+      "num_elements": 1
+    },
+    "intermediate_polys_for_memory_argument": {
+      "start": 148,
+      "num_elements": 5
+    },
+    "ext4_polys_offset": 12,
+    "total_width": 168
+  },
+  "degree_2_constraints": [
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 30
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 30
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 31
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 31
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 32
+          },
+          {
+            "WitnessSubtree": 32
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 32
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 33
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 33
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 34
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 34
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "WitnessSubtree": 35
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 35
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "WitnessSubtree": 36
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 36
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 37
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 37
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 38
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 38
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 39
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 40
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 40
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 41
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 41
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 42
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 43
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 45
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 46
+          },
+          {
+            "WitnessSubtree": 46
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 46
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 47
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 48
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 49
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 49
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 50
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 53
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 53
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 54
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 54
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 55
+          },
+          {
+            "WitnessSubtree": 55
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 55
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 56
+          },
+          {
+            "WitnessSubtree": 56
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 56
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 57
+          },
+          {
+            "WitnessSubtree": 57
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 57
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 58
+          },
+          {
+            "WitnessSubtree": 58
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 58
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 59
+          },
+          {
+            "WitnessSubtree": 59
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 59
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 60
+          },
+          {
+            "WitnessSubtree": 60
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 60
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 61
+          },
+          {
+            "WitnessSubtree": 61
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 61
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 62
+          },
+          {
+            "WitnessSubtree": 62
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 62
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 63
+          },
+          {
+            "WitnessSubtree": 63
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 63
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 64
+          },
+          {
+            "WitnessSubtree": 64
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 64
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 65
+          },
+          {
+            "WitnessSubtree": 65
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 65
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 66
+          },
+          {
+            "WitnessSubtree": 66
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 66
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 67
+          },
+          {
+            "WitnessSubtree": 67
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 67
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 68
+          },
+          {
+            "WitnessSubtree": 68
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 68
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 69
+          },
+          {
+            "WitnessSubtree": 69
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 69
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 70
+          },
+          {
+            "WitnessSubtree": 70
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 70
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 71
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 71
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 72
+          },
+          {
+            "WitnessSubtree": 72
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 72
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 73
+          },
+          {
+            "WitnessSubtree": 73
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 73
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 74
+          },
+          {
+            "WitnessSubtree": 74
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 74
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 75
+          },
+          {
+            "WitnessSubtree": 75
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 75
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 76
+          },
+          {
+            "WitnessSubtree": 76
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 76
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          65536,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 30
+          }
+        ],
+        [
+          2147483643,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          1024,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 82
+          }
+        ],
+        [
+          4,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          16384,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 80
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2080374783,
+          {
+            "WitnessSubtree": 80
+          },
+          {
+            "WitnessSubtree": 82
+          }
+        ],
+        [
+          2147221503,
+          {
+            "WitnessSubtree": 80
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          1073741823,
+          {
+            "WitnessSubtree": 80
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          4,
+          {
+            "WitnessSubtree": 82
+          },
+          {
+            "WitnessSubtree": 82
+          }
+        ],
+        [
+          67108864,
+          {
+            "WitnessSubtree": 82
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          128,
+          {
+            "WitnessSubtree": 82
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 85
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          1073741824,
+          {
+            "WitnessSubtree": 85
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          1024,
+          {
+            "WitnessSubtree": 86
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          256,
+          {
+            "WitnessSubtree": 30
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2,
+          {
+            "WitnessSubtree": 82
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          32,
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          4194304,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 31
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          8192,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          8388608,
+          {
+            "WitnessSubtree": 81
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 81
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          1610612735,
+          {
+            "WitnessSubtree": 81
+          },
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          2147483643,
+          {
+            "WitnessSubtree": 81
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          8388608,
+          {
+            "WitnessSubtree": 83
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          536870912,
+          {
+            "WitnessSubtree": 83
+          },
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          4,
+          {
+            "WitnessSubtree": 83
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          4,
+          {
+            "WitnessSubtree": 84
+          },
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          128,
+          {
+            "WitnessSubtree": 84
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          1024,
+          {
+            "WitnessSubtree": 87
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2048,
+          {
+            "WitnessSubtree": 31
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          134217728,
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          2,
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          32,
+          {
+            "WitnessSubtree": 87
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 35
+          }
+        ],
+        [
+          2146959359,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 36
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 37
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          61440,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 34
+          }
+        ],
+        [
+          63488,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 35
+          }
+        ],
+        [
+          61440,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 36
+          }
+        ],
+        [
+          2143289343,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          134217728,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          16,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2147479553,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "WitnessSubtree": 82
+          }
+        ],
+        [
+          2147483631,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          4096,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          128,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          2147483519,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          2147479553,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 84
+          }
+        ],
+        [
+          4096,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          32,
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 109
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147418112,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 37
+          }
+        ],
+        [
+          2147483632,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          65535,
+          {
+            "WitnessSubtree": 31
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 110
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 111
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 35
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 90
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1073741824,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 18
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 19
+          }
+        ],
+        [
+          1073741824,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 19
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147450883,
+          {
+            "WitnessSubtree": 18
+          }
+        ],
+        [
+          32764,
+          {
+            "WitnessSubtree": 19
+          }
+        ]
+      ],
+      "constant_term": 2147352583
+    },
+    {
+      "quadratic_terms": [
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 112
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 112
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 77
+          },
+          {
+            "WitnessSubtree": 112
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          65536,
+          {
+            "WitnessSubtree": 112
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 53
+          },
+          {
+            "WitnessSubtree": 54
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 53
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 119
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 88
+          },
+          {
+            "WitnessSubtree": 119
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 120
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 53
+          },
+          {
+            "WitnessSubtree": 91
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 121
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 122
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 123
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 54
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 124
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 91
+          },
+          {
+            "WitnessSubtree": 124
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 125
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 88
+          },
+          {
+            "WitnessSubtree": 124
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418110,
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147352573,
+          {
+            "WitnessSubtree": 125
+          },
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 125
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 126
+          }
+        ],
+        [
+          65537,
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 56
+          },
+          {
+            "WitnessSubtree": 126
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 126
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 127
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147418110,
+          {
+            "WitnessSubtree": 57
+          },
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 128
+          }
+        ],
+        [
+          65537,
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 58
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483645,
+          {
+            "WitnessSubtree": 125
+          },
+          {
+            "WitnessSubtree": 128
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 125
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 128
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 131
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 131
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 132
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 131
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 133
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483645,
+          {
+            "WitnessSubtree": 55
+          },
+          {
+            "WitnessSubtree": 131
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 55
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 131
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 134
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 24
+          },
+          {
+            "WitnessSubtree": 136
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 25
+          },
+          {
+            "WitnessSubtree": 136
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 135
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 24
+          },
+          {
+            "WitnessSubtree": 135
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 25
+          },
+          {
+            "WitnessSubtree": 135
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 134
+          },
+          {
+            "WitnessSubtree": 135
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 134
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 135
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 137
+          }
+        ]
+      ],
+      "constant_term": 1
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 128
+          },
+          {
+            "WitnessSubtree": 134
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 128
+          },
+          {
+            "WitnessSubtree": 137
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 134
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 138
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 138
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 130
+          },
+          {
+            "WitnessSubtree": 138
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418112,
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418112,
+          {
+            "WitnessSubtree": 130
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 53
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 139
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 139
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 139
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 140
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 139
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 139
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 141
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 142
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 142
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 143
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 77
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          2147352575,
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 144
+          }
+        ]
+      ],
+      "constant_term": 131072
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 53
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 146
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 53
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 147
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 150
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 8
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 151
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 9
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 54
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 152
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 153
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 152
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 152
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 153
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 154
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 155
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 156
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "MemorySubtree": 16
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "MemorySubtree": 17
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 149
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 149
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 158
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 157
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 157
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 159
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483645,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 155
+          },
+          {
+            "MemorySubtree": 16
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 155
+          },
+          {
+            "MemorySubtree": 17
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 160
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 13
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "MemorySubtree": 13
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 161
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 54
+          },
+          {
+            "MemorySubtree": 14
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 162
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2048,
+          {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          134217728,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          32,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "MemorySubtree": 16
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147481599,
+          {
+            "WitnessSubtree": 31
+          }
+        ],
+        [
+          134217728,
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 87
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 16
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "MemorySubtree": 17
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "MemorySubtree": 17
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 163
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 164
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 163
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 163
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 164
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 20
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 21
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 165
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 20
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          2147483645,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 111
+          },
+          {
+            "WitnessSubtree": 163
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 90
+          },
+          {
+            "WitnessSubtree": 163
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 52
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 166
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 166
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 20
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 166
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 167
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 166
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "MemorySubtree": 21
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 168
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 21
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 167
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "WitnessSubtree": 167
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 168
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "WitnessSubtree": 168
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 163
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "MemorySubtree": 27
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "MemorySubtree": 9
+          },
+          {
+            "MemorySubtree": 27
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "MemorySubtree": 29
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          134217728,
+          {
+            "WitnessSubtree": 81
+          },
+          {
+            "MemorySubtree": 27
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 83
+          },
+          {
+            "MemorySubtree": 27
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "MemorySubtree": 28
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 26
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 27
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 24
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 24
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 40
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 150
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 111
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 111
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 60
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 25
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 25
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 40
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 40
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 151
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 90
+          },
+          {
+            "WitnessSubtree": 132
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 90
+          },
+          {
+            "WitnessSubtree": 133
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 55
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 60
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 61
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 59
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 61
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 169
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 170
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 169
+          },
+          {
+            "WitnessSubtree": 171
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 170
+          },
+          {
+            "WitnessSubtree": 171
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 56
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 56
+          },
+          {
+            "WitnessSubtree": 169
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 56
+          },
+          {
+            "WitnessSubtree": 170
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 172
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 173
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 172
+          },
+          {
+            "WitnessSubtree": 174
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 173
+          },
+          {
+            "WitnessSubtree": 174
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 57
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 57
+          },
+          {
+            "WitnessSubtree": 172
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 57
+          },
+          {
+            "WitnessSubtree": 173
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 175
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 176
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 175
+          },
+          {
+            "WitnessSubtree": 177
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 176
+          },
+          {
+            "WitnessSubtree": 177
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 58
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 58
+          },
+          {
+            "WitnessSubtree": 175
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 58
+          },
+          {
+            "WitnessSubtree": 176
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 113
+          }
+        ],
+        [
+          134217728,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 81
+          }
+        ],
+        [
+          2013265919,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 114
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 93
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 114
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          31,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 94
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 95
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          17,
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          25,
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          17,
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          18,
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          7,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          18,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 96
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2139095039,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 113
+          }
+        ],
+        [
+          8388608,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ],
+        [
+          8,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 55
+          }
+        ],
+        [
+          16,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 56
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          32,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 88
+          }
+        ],
+        [
+          64,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 91
+          }
+        ],
+        [
+          2097152,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ],
+        [
+          65536,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 97
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          8388608,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          2139095039,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 114
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 98
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 99
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          22,
+          {
+            "WitnessSubtree": 42
+          }
+        ],
+        [
+          23,
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          37,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          23,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 100
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 89
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          2097152,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 53
+          }
+        ],
+        [
+          65536,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 86
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          65536,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ],
+        [
+          2147483645,
+          {
+            "WitnessSubtree": 116
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          65536,
+          {
+            "WitnessSubtree": 118
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 155
+          },
+          {
+            "WitnessSubtree": 160
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 101
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 92
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 145
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 145
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 102
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 145
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 148
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 148
+          },
+          {
+            "WitnessSubtree": 155
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 103
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          37,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          40,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 104
+          }
+        ],
+        [
+          24,
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          39,
+          {
+            "WitnessSubtree": 155
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 89
+          }
+        ],
+        [
+          2,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 52
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 88
+          }
+        ],
+        [
+          4,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 165
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 86
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          65536,
+          {
+            "WitnessSubtree": 115
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "WitnessSubtree": 156
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 105
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 92
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 149
+          },
+          {
+            "WitnessSubtree": 154
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 106
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 149
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "WitnessSubtree": 157
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 107
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          20,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          41,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 108
+          }
+        ],
+        [
+          39,
+          {
+            "WitnessSubtree": 154
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 6
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 7
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 8
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 9
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 125
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 120
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 178
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 111
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 10
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 11
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 90
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 12
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 13
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 127
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 121
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 179
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 180
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 181
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 128
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 182
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "MemorySubtree": 8
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 183
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "MemorySubtree": 9
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 184
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 22
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 185
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 23
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 129
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 186
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 10
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 11
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 10
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 14
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 62
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 180
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 183
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 12
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 13
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 11
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 12
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 10
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 11
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 10
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 14
+          }
+        ],
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 15
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 62
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 63
+          }
+        ],
+        [
+          2113929215,
+          {
+            "WitnessSubtree": 64
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 181
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 184
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          65535,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 13
+          }
+        ],
+        [
+          65280,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 12
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 13
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 11
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 12
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 10
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ],
+        [
+          65280,
+          {
+            "WitnessSubtree": 11
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 15
+          }
+        ],
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 16
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 63
+          }
+        ],
+        [
+          512,
+          {
+            "WitnessSubtree": 64
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 65
+          }
+        ],
+        [
+          2113929215,
+          {
+            "WitnessSubtree": 66
+          }
+        ],
+        [
+          2080374783,
+          {
+            "WitnessSubtree": 67
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 182
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 185
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          65535,
+          {
+            "WitnessSubtree": 6
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 7
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 13
+          }
+        ],
+        [
+          65280,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 179
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 10
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 11
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 12
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ],
+        [
+          65280,
+          {
+            "WitnessSubtree": 13
+          },
+          {
+            "WitnessSubtree": 178
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 16
+          }
+        ],
+        [
+          2147418111,
+          {
+            "WitnessSubtree": 17
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 65
+          }
+        ],
+        [
+          512,
+          {
+            "WitnessSubtree": 66
+          }
+        ],
+        [
+          1024,
+          {
+            "WitnessSubtree": 67
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 68
+          }
+        ],
+        [
+          2113929215,
+          {
+            "WitnessSubtree": 69
+          }
+        ],
+        [
+          2080374783,
+          {
+            "WitnessSubtree": 70
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 182
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 186
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 20
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 26
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 115
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 140
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 46
+          },
+          {
+            "WitnessSubtree": 109
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 122
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 146
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 148
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "WitnessSubtree": 158
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 155
+          },
+          {
+            "WitnessSubtree": 161
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 187
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 27
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 117
+          }
+        ],
+        [
+          256,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 118
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 141
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 46
+          },
+          {
+            "WitnessSubtree": 110
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 123
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 147
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 149
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 154
+          },
+          {
+            "WitnessSubtree": 159
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 155
+          },
+          {
+            "WitnessSubtree": 162
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          131072,
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 188
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 71
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 189
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 80
+          },
+          {
+            "WitnessSubtree": 189
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 85
+          },
+          {
+            "WitnessSubtree": 189
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 86
+          },
+          {
+            "WitnessSubtree": 189
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 71
+          }
+        ]
+      ],
+      "constant_term": 2147483646
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 187
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 187
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 190
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 71
+          },
+          {
+            "WitnessSubtree": 188
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 188
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 191
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 33
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 34
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 37
+          }
+        ],
+        [
+          2147483391,
+          {
+            "WitnessSubtree": 30
+          },
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ],
+        [
+          16777216,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 80
+          }
+        ],
+        [
+          2130706431,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 85
+          }
+        ],
+        [
+          2147483615,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 86
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 23
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 24
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 190
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 190
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 190
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 190
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "WitnessSubtree": 191
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 33
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "WitnessSubtree": 191
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 34
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "WitnessSubtree": 191
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 37
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "WitnessSubtree": 191
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 38
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 25
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 36
+          },
+          {
+            "MemorySubtree": 26
+          }
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 41
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 46
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 143
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 45
+          },
+          {
+            "WitnessSubtree": 116
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 192
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 41
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 46
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          32768,
+          {
+            "WitnessSubtree": 18
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 41
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 46
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          2147450879,
+          {
+            "WitnessSubtree": 19
+          },
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 21
+          },
+          {
+            "WitnessSubtree": 45
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 39
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 40
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 41
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 42
+          },
+          {
+            "WitnessSubtree": 144
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 43
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 44
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 46
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 47
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 48
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 49
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 50
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 51
+          },
+          {
+            "WitnessSubtree": 77
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          131072,
+          {
+            "WitnessSubtree": 39
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 40
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 41
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 43
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 44
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 46
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 48
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 49
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 50
+          }
+        ],
+        [
+          131072,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 193
+          }
+        ]
+      ],
+      "constant_term": 0
+    }
+  ],
+  "degree_1_constraints": [
+    {
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 78
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 30
+          }
+        ],
+        [
+          2,
+          {
+            "WitnessSubtree": 83
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 10
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 32
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 47
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 15
+          }
+        ]
+      ],
+      "constant_term": 1
+    },
+    {
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 51
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 22
+          }
+        ]
+      ],
+      "constant_term": 1
+    }
+  ],
+  "state_linkage_constraints": [
+    [
+      {
+        "WitnessSubtree": 192
+      },
+      {
+        "WitnessSubtree": 18
+      }
+    ],
+    [
+      {
+        "WitnessSubtree": 193
+      },
+      {
+        "WitnessSubtree": 77
+      }
+    ]
+  ],
+  "public_inputs": [
+    [
+      "FirstRow",
+      {
+        "WitnessSubtree": 18
+      }
+    ],
+    [
+      "FirstRow",
+      {
+        "WitnessSubtree": 77
+      }
+    ],
+    [
+      "OneBeforeLastRow",
+      {
+        "WitnessSubtree": 192
+      }
+    ],
+    [
+      "OneBeforeLastRow",
+      {
+        "WitnessSubtree": 193
+      }
+    ]
+  ],
+  "variable_mapping": {
+    "0": {
+      "WitnessSubtree": 18
+    },
+    "1": {
+      "WitnessSubtree": 77
+    },
+    "2": {
+      "WitnessSubtree": 78
+    },
+    "3": {
+      "WitnessSubtree": 79
+    },
+    "4": {
+      "WitnessSubtree": 80
+    },
+    "5": {
+      "WitnessSubtree": 81
+    },
+    "6": {
+      "WitnessSubtree": 85
+    },
+    "7": {
+      "WitnessSubtree": 82
+    },
+    "8": {
+      "WitnessSubtree": 86
+    },
+    "9": {
+      "WitnessSubtree": 30
+    },
+    "10": {
+      "WitnessSubtree": 83
+    },
+    "11": {
+      "WitnessSubtree": 84
+    },
+    "12": {
+      "WitnessSubtree": 87
+    },
+    "13": {
+      "WitnessSubtree": 31
+    },
+    "14": {
+      "MemorySubtree": 10
+    },
+    "15": {
+      "WitnessSubtree": 32
+    },
+    "16": {
+      "WitnessSubtree": 33
+    },
+    "17": {
+      "WitnessSubtree": 34
+    },
+    "18": {
+      "WitnessSubtree": 35
+    },
+    "19": {
+      "WitnessSubtree": 36
+    },
+    "20": {
+      "WitnessSubtree": 37
+    },
+    "21": {
+      "WitnessSubtree": 38
+    },
+    "22": {
+      "WitnessSubtree": 39
+    },
+    "23": {
+      "WitnessSubtree": 40
+    },
+    "24": {
+      "WitnessSubtree": 41
+    },
+    "25": {
+      "WitnessSubtree": 42
+    },
+    "26": {
+      "WitnessSubtree": 43
+    },
+    "27": {
+      "WitnessSubtree": 44
+    },
+    "28": {
+      "WitnessSubtree": 45
+    },
+    "29": {
+      "WitnessSubtree": 46
+    },
+    "30": {
+      "WitnessSubtree": 47
+    },
+    "31": {
+      "WitnessSubtree": 48
+    },
+    "32": {
+      "WitnessSubtree": 49
+    },
+    "33": {
+      "WitnessSubtree": 50
+    },
+    "34": {
+      "WitnessSubtree": 51
+    },
+    "35": {
+      "WitnessSubtree": 52
+    },
+    "36": {
+      "WitnessSubtree": 53
+    },
+    "37": {
+      "WitnessSubtree": 54
+    },
+    "38": {
+      "WitnessSubtree": 109
+    },
+    "39": {
+      "WitnessSubtree": 110
+    },
+    "40": {
+      "MemorySubtree": 8
+    },
+    "41": {
+      "MemorySubtree": 9
+    },
+    "42": {
+      "MemorySubtree": 13
+    },
+    "43": {
+      "MemorySubtree": 14
+    },
+    "44": {
+      "MemorySubtree": 16
+    },
+    "45": {
+      "MemorySubtree": 17
+    },
+    "46": {
+      "MemorySubtree": 20
+    },
+    "47": {
+      "MemorySubtree": 21
+    },
+    "48": {
+      "MemorySubtree": 25
+    },
+    "49": {
+      "MemorySubtree": 26
+    },
+    "50": {
+      "MemorySubtree": 23
+    },
+    "51": {
+      "MemorySubtree": 24
+    },
+    "52": {
+      "WitnessSubtree": 111
+    },
+    "53": {
+      "WitnessSubtree": 90
+    },
+    "54": {
+      "WitnessSubtree": 19
+    },
+    "55": {
+      "OptimizedOut": 0
+    },
+    "56": {
+      "WitnessSubtree": 112
+    },
+    "57": {
+      "WitnessSubtree": 113
+    },
+    "58": {
+      "WitnessSubtree": 88
+    },
+    "59": {
+      "WitnessSubtree": 89
+    },
+    "60": {
+      "WitnessSubtree": 114
+    },
+    "61": {
+      "WitnessSubtree": 91
+    },
+    "62": {
+      "WitnessSubtree": 92
+    },
+    "63": {
+      "WitnessSubtree": 20
+    },
+    "64": {
+      "WitnessSubtree": 21
+    },
+    "65": {
+      "WitnessSubtree": 55
+    },
+    "66": {
+      "WitnessSubtree": 115
+    },
+    "67": {
+      "WitnessSubtree": 116
+    },
+    "68": {
+      "WitnessSubtree": 117
+    },
+    "69": {
+      "WitnessSubtree": 118
+    },
+    "70": {
+      "WitnessSubtree": 119
+    },
+    "71": {
+      "WitnessSubtree": 120
+    },
+    "72": {
+      "WitnessSubtree": 121
+    },
+    "73": {
+      "WitnessSubtree": 22
+    },
+    "74": {
+      "WitnessSubtree": 23
+    },
+    "75": {
+      "WitnessSubtree": 122
+    },
+    "76": {
+      "WitnessSubtree": 123
+    },
+    "77": {
+      "WitnessSubtree": 124
+    },
+    "78": {
+      "WitnessSubtree": 125
+    },
+    "79": {
+      "OptimizedOut": 1
+    },
+    "80": {
+      "WitnessSubtree": 126
+    },
+    "81": {
+      "WitnessSubtree": 56
+    },
+    "82": {
+      "WitnessSubtree": 127
+    },
+    "83": {
+      "WitnessSubtree": 57
+    },
+    "84": {
+      "WitnessSubtree": 128
+    },
+    "85": {
+      "WitnessSubtree": 129
+    },
+    "86": {
+      "WitnessSubtree": 58
+    },
+    "87": {
+      "WitnessSubtree": 130
+    },
+    "88": {
+      "WitnessSubtree": 131
+    },
+    "89": {
+      "WitnessSubtree": 132
+    },
+    "90": {
+      "WitnessSubtree": 24
+    },
+    "91": {
+      "WitnessSubtree": 25
+    },
+    "92": {
+      "WitnessSubtree": 133
+    },
+    "93": {
+      "WitnessSubtree": 134
+    },
+    "94": {
+      "WitnessSubtree": 135
+    },
+    "95": {
+      "WitnessSubtree": 136
+    },
+    "96": {
+      "WitnessSubtree": 137
+    },
+    "97": {
+      "WitnessSubtree": 138
+    },
+    "98": {
+      "WitnessSubtree": 139
+    },
+    "99": {
+      "WitnessSubtree": 140
+    },
+    "100": {
+      "WitnessSubtree": 141
+    },
+    "101": {
+      "WitnessSubtree": 59
+    },
+    "102": {
+      "WitnessSubtree": 142
+    },
+    "103": {
+      "WitnessSubtree": 143
+    },
+    "104": {
+      "WitnessSubtree": 144
+    },
+    "105": {
+      "WitnessSubtree": 145
+    },
+    "106": {
+      "WitnessSubtree": 146
+    },
+    "107": {
+      "WitnessSubtree": 147
+    },
+    "108": {
+      "WitnessSubtree": 148
+    },
+    "109": {
+      "WitnessSubtree": 149
+    },
+    "110": {
+      "WitnessSubtree": 150
+    },
+    "111": {
+      "WitnessSubtree": 151
+    },
+    "112": {
+      "WitnessSubtree": 152
+    },
+    "113": {
+      "WitnessSubtree": 153
+    },
+    "114": {
+      "WitnessSubtree": 154
+    },
+    "115": {
+      "WitnessSubtree": 155
+    },
+    "116": {
+      "WitnessSubtree": 156
+    },
+    "117": {
+      "WitnessSubtree": 157
+    },
+    "118": {
+      "WitnessSubtree": 158
+    },
+    "119": {
+      "WitnessSubtree": 159
+    },
+    "120": {
+      "WitnessSubtree": 160
+    },
+    "121": {
+      "WitnessSubtree": 161
+    },
+    "122": {
+      "WitnessSubtree": 162
+    },
+    "123": {
+      "MemorySubtree": 15
+    },
+    "124": {
+      "WitnessSubtree": 163
+    },
+    "125": {
+      "WitnessSubtree": 164
+    },
+    "126": {
+      "WitnessSubtree": 165
+    },
+    "127": {
+      "WitnessSubtree": 166
+    },
+    "128": {
+      "WitnessSubtree": 167
+    },
+    "129": {
+      "WitnessSubtree": 168
+    },
+    "130": {
+      "MemorySubtree": 22
+    },
+    "131": {
+      "WitnessSubtree": 26
+    },
+    "132": {
+      "WitnessSubtree": 27
+    },
+    "133": {
+      "MemorySubtree": 27
+    },
+    "134": {
+      "MemorySubtree": 29
+    },
+    "135": {
+      "MemorySubtree": 28
+    },
+    "136": {
+      "WitnessSubtree": 60
+    },
+    "137": {
+      "WitnessSubtree": 61
+    },
+    "138": {
+      "WitnessSubtree": 169
+    },
+    "139": {
+      "WitnessSubtree": 170
+    },
+    "140": {
+      "WitnessSubtree": 171
+    },
+    "141": {
+      "WitnessSubtree": 172
+    },
+    "142": {
+      "WitnessSubtree": 173
+    },
+    "143": {
+      "WitnessSubtree": 174
+    },
+    "144": {
+      "WitnessSubtree": 175
+    },
+    "145": {
+      "WitnessSubtree": 176
+    },
+    "146": {
+      "WitnessSubtree": 177
+    },
+    "147": {
+      "WitnessSubtree": 93
+    },
+    "148": {
+      "WitnessSubtree": 94
+    },
+    "149": {
+      "WitnessSubtree": 95
+    },
+    "150": {
+      "WitnessSubtree": 96
+    },
+    "151": {
+      "WitnessSubtree": 97
+    },
+    "152": {
+      "WitnessSubtree": 98
+    },
+    "153": {
+      "WitnessSubtree": 99
+    },
+    "154": {
+      "WitnessSubtree": 100
+    },
+    "155": {
+      "WitnessSubtree": 101
+    },
+    "156": {
+      "WitnessSubtree": 102
+    },
+    "157": {
+      "WitnessSubtree": 103
+    },
+    "158": {
+      "WitnessSubtree": 104
+    },
+    "159": {
+      "WitnessSubtree": 105
+    },
+    "160": {
+      "WitnessSubtree": 106
+    },
+    "161": {
+      "WitnessSubtree": 107
+    },
+    "162": {
+      "WitnessSubtree": 108
+    },
+    "163": {
+      "OptimizedOut": 2
+    },
+    "164": {
+      "OptimizedOut": 3
+    },
+    "165": {
+      "WitnessSubtree": 178
+    },
+    "166": {
+      "OptimizedOut": 4
+    },
+    "167": {
+      "OptimizedOut": 5
+    },
+    "168": {
+      "WitnessSubtree": 179
+    },
+    "169": {
+      "WitnessSubtree": 180
+    },
+    "170": {
+      "WitnessSubtree": 181
+    },
+    "171": {
+      "WitnessSubtree": 182
+    },
+    "172": {
+      "WitnessSubtree": 183
+    },
+    "173": {
+      "WitnessSubtree": 184
+    },
+    "174": {
+      "WitnessSubtree": 185
+    },
+    "175": {
+      "WitnessSubtree": 186
+    },
+    "176": {
+      "WitnessSubtree": 6
+    },
+    "177": {
+      "WitnessSubtree": 7
+    },
+    "178": {
+      "WitnessSubtree": 8
+    },
+    "179": {
+      "WitnessSubtree": 9
+    },
+    "180": {
+      "WitnessSubtree": 10
+    },
+    "181": {
+      "WitnessSubtree": 11
+    },
+    "182": {
+      "WitnessSubtree": 12
+    },
+    "183": {
+      "WitnessSubtree": 13
+    },
+    "184": {
+      "WitnessSubtree": 62
+    },
+    "185": {
+      "WitnessSubtree": 14
+    },
+    "186": {
+      "WitnessSubtree": 63
+    },
+    "187": {
+      "WitnessSubtree": 64
+    },
+    "188": {
+      "WitnessSubtree": 15
+    },
+    "189": {
+      "WitnessSubtree": 65
+    },
+    "190": {
+      "WitnessSubtree": 66
+    },
+    "191": {
+      "WitnessSubtree": 67
+    },
+    "192": {
+      "WitnessSubtree": 16
+    },
+    "193": {
+      "WitnessSubtree": 68
+    },
+    "194": {
+      "WitnessSubtree": 69
+    },
+    "195": {
+      "WitnessSubtree": 70
+    },
+    "196": {
+      "WitnessSubtree": 17
+    },
+    "197": {
+      "WitnessSubtree": 187
+    },
+    "198": {
+      "WitnessSubtree": 188
+    },
+    "199": {
+      "OptimizedOut": 6
+    },
+    "200": {
+      "WitnessSubtree": 189
+    },
+    "201": {
+      "WitnessSubtree": 71
+    },
+    "202": {
+      "WitnessSubtree": 190
+    },
+    "203": {
+      "WitnessSubtree": 191
+    },
+    "204": {
+      "WitnessSubtree": 192
+    },
+    "205": {
+      "WitnessSubtree": 193
+    },
+    "206": {
+      "WitnessSubtree": 28
+    },
+    "207": {
+      "WitnessSubtree": 29
+    },
+    "208": {
+      "WitnessSubtree": 72
+    },
+    "209": {
+      "WitnessSubtree": 73
+    },
+    "210": {
+      "MemorySubtree": 0
+    },
+    "211": {
+      "MemorySubtree": 1
+    },
+    "212": {
+      "MemorySubtree": 2
+    },
+    "213": {
+      "MemorySubtree": 3
+    },
+    "214": {
+      "MemorySubtree": 4
+    },
+    "215": {
+      "MemorySubtree": 5
+    },
+    "216": {
+      "MemorySubtree": 6
+    },
+    "217": {
+      "MemorySubtree": 7
+    },
+    "218": {
+      "WitnessSubtree": 74
+    },
+    "219": {
+      "MemorySubtree": 11
+    },
+    "220": {
+      "MemorySubtree": 12
+    },
+    "221": {
+      "WitnessSubtree": 75
+    },
+    "222": {
+      "MemorySubtree": 18
+    },
+    "223": {
+      "MemorySubtree": 19
+    },
+    "224": {
+      "WitnessSubtree": 76
+    }
+  },
+  "scratch_space_size_for_witness_gen": 7,
+  "lazy_init_address_aux_vars": {
+    "aux_low_high": [
+      {
+        "WitnessSubtree": 28
+      },
+      {
+        "WitnessSubtree": 29
+      }
+    ],
+    "intermediate_borrow": {
+      "WitnessSubtree": 72
+    },
+    "final_borrow": {
+      "WitnessSubtree": 73
+    }
+  },
+  "memory_queries_timestamp_comparison_aux_vars": [
+    {
+      "WitnessSubtree": 74
+    },
+    {
+      "WitnessSubtree": 75
+    },
+    {
+      "WitnessSubtree": 76
+    }
+  ],
+  "batched_memory_access_timestamp_comparison_aux_vars": {
+    "predicate": {
+      "OptimizedOut": 0
+    },
+    "write_timestamp_columns": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "write_timestamp": [
+      {
+        "OptimizedOut": 0
+      },
+      {
+        "OptimizedOut": 0
+      }
+    ],
+    "aux_borrow_vars": []
+  },
+  "register_and_indirect_access_timestamp_comparison_aux_vars": {
+    "predicate": {
+      "OptimizedOut": 0
+    },
+    "write_timestamp_columns": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "write_timestamp": [
+      {
+        "OptimizedOut": 0
+      },
+      {
+        "OptimizedOut": 0
+      }
+    ],
+    "aux_borrow_sets": []
+  },
+  "trace_len": 2097152,
+  "table_offsets": [
+    0,
+    1,
+    131073,
+    131073,
+    131073,
+    196609,
+    196609,
+    262145,
+    327681,
+    393217,
+    393217,
+    393217,
+    397313,
+    462849,
+    462849,
+    462849,
+    462849,
+    528385,
+    593921,
+    659457,
+    659457,
+    659585,
+    659585,
+    659713,
+    725249,
+    987393,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    991489,
+    5185793,
+    5185793,
+    6234369,
+    6365441,
+    6496513
+  ],
+  "total_tables_size": 6496513
+}

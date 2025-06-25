@@ -1,0 +1,12 @@
+[
+  {
+    "trace_len_log": 20,
+    "second_word_bits": 4,
+    "reduced_machine": false
+  },
+  {
+    "trace_len_log": 21,
+    "second_word_bits": 4,
+    "reduced_machine": false
+  }
+]
