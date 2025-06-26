@@ -164,8 +164,8 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
       gmem_in.get_two_adjacent(64 * i + 2 * lane_id, vals[2 * i], vals[2 * i + 1]);
     }
 
-// #pragma unroll 1 worth a try here if registers spill
-#pragma unroll
+// #pragma unroll should be fine here, but it spills registers sometimes
+#pragma unroll 1
     for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
       const unsigned mem_idx = gmem_offset + 64 * i + 2 * lane_id;
       const unsigned idx0 = bitrev(mem_idx, log_n);
