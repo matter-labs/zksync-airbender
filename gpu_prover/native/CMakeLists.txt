@@ -69,6 +69,6 @@ set_target_properties(gpu_prover_native PROPERTIES CUDA_SEPARABLE_COMPILATION ON
 set_target_properties(gpu_prover_native PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 target_compile_options(gpu_prover_native PRIVATE --expt-relaxed-constexpr)
 target_compile_options(gpu_prover_native PRIVATE --ptxas-options=-v)
-target_compile_options(gpu_prover_native PRIVATE -lineinfo)
+#target_compile_options(gpu_prover_native PRIVATE -lineinfo)
 target_compile_options(gpu_prover_native PRIVATE --keep)
 install(TARGETS gpu_prover_native DESTINATION .)
