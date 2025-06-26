@@ -296,7 +296,14 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
     }
 
     exchg_region_offset = effective_block_idx_x * (PAIRS_PER_THREAD >> 1);
+// #pragma unroll 1 here makes no sense. It should make i dynamic, which should make
+// inner loop bounds dynamic, which should make vals accesses dynamic and cause spilling.
+// Yet for some reason unroll 1 prevents register spilling on H100.
+#if __CUDA_ARCH__ == 900
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
       if (i + 2 + stages_so_far <= stages_this_launch) {
 #pragma unroll
@@ -311,6 +318,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
       }
       exchg_region_offset >>= 1;
     }
+
 #pragma unroll
     for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
       // memory::store_cg(gmem_out + 4 * i * VALS_PER_WARP, vals[2 * i]);
@@ -321,10 +329,6 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
   }
 }
 
-// Bizarrely, on cuda 12.2 and 12.3:
-// With launch bounds it uses 64 registers per thread AND spills registers.
-// Without launch bounds it still uses 64 registers per thread but DOES NOT spill registers.
-// #justnvccthings
 extern "C" __launch_bounds__(512, 2) __global__
     void bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,

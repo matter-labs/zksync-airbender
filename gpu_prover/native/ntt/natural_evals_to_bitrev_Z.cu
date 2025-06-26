@@ -188,7 +188,11 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
     unsigned lane_mask = 16;
     unsigned halfwarp_id = lane_id >> 4;
 // #pragma unroll 1 worth a try here if registers spill
+#if __CUDA_ARCH__ == 900
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned s = 0; s < 2; s++) {
       if ((s + LOG_VALS_PER_THREAD - 1) >= stages_to_skip) {
 #pragma unroll
