@@ -58,7 +58,11 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
     }
 
     unsigned lane_mask = 16;
+#if __CUDA_ARCH__ == 1200
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned stage = 0, s = 5; stage < 6; stage++, s--) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
