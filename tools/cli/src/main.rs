@@ -245,6 +245,11 @@ fn fetch_final_input_json(input: &InputConfig) -> Result<Option<String>, reqwest
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .format_module_path(false)
+        .format_target(false)
+        .init();
     let cli = Cli::parse();
     match &cli.command {
         Commands::Prove {
