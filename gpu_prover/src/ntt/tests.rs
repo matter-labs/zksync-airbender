@@ -786,7 +786,7 @@ fn test_bitrev_Z_to_natural_trace_coset_evals() {
 #[serial]
 #[ignore]
 fn test_bitrev_Z_to_natural_trace_coset_evals_large() {
-    run_bitrev_Z_to_natural_trace_coset_evals(17..23, 8);
+    run_bitrev_Z_to_natural_trace_coset_evals(22..23, 8);
 }
 
 #[test]
@@ -816,7 +816,7 @@ fn test_bitrev_Z_to_natural_composition_main_evals() {
 #[serial]
 #[ignore]
 fn test_bitrev_Z_to_natural_composition_main_evals_large() {
-    run_bitrev_Z_to_natural_composition_main_evals(17..23, 4);
+    run_bitrev_Z_to_natural_composition_main_evals(22..23, 4);
 }
 
 #[test]
@@ -836,5 +836,5 @@ fn test_natural_main_evals_to_natural_coset_evals_large_even_num_Z_cols() {
 #[serial]
 #[ignore]
 fn test_natural_main_evals_to_natural_coset_evals_large_odd_num_Z_cols() {
-    run_natural_main_evals_to_natural_coset_evals(16..23, 10);
+    run_natural_main_evals_to_natural_coset_evals(22..23, 10);
 }

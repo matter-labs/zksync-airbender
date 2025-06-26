@@ -44,6 +44,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vect
       gmem_in.get_two_adjacent(64 * i + 2 * lane_id, vals[2 * i], vals[2 * i + 1]);
     }
 
+// #pragma unroll should be fine here, but it spills registers sometimes
 #pragma unroll 1
     for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
       const unsigned mem_idx = gmem_offset + 64 * i + 2 * lane_id;
@@ -56,6 +57,8 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vect
     unsigned lane_mask = 1;
     e2f *twiddles_this_stage = twiddle_cache;
     unsigned num_twiddles_this_stage = VALS_PER_WARP >> 1;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned stage = 0; stage < 6; stage++) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -69,6 +72,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vect
       num_twiddles_this_stage >>= 1;
     }
 
+#pragma unroll
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
 #pragma unroll
       for (unsigned j = 0; j < PAIRS_PER_THREAD >> i; j++) {
@@ -160,7 +164,8 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
       gmem_in.get_two_adjacent(64 * i + 2 * lane_id, vals[2 * i], vals[2 * i + 1]);
     }
 
-#pragma unroll 1
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
       const unsigned mem_idx = gmem_offset + 64 * i + 2 * lane_id;
       const unsigned idx0 = bitrev(mem_idx, log_n);
@@ -172,6 +177,8 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
     unsigned lane_mask = 1;
     e2f *twiddles_this_stage = twiddle_cache;
     unsigned num_twiddles_this_stage = VALS_PER_WARP >> 1;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned stage = 0; stage < 6; stage++) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -185,6 +192,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
       num_twiddles_this_stage >>= 1;
     }
 
+#pragma unroll
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
 #pragma unroll
       for (unsigned j = 0; j < PAIRS_PER_THREAD >> i; j++) {
@@ -268,6 +276,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
     const unsigned stages_so_far = 6 + LOG_VALS_PER_THREAD - 1;
     lane_mask = 8;
     unsigned exchg_region_offset = effective_block_idx_x * (WARPS_PER_BLOCK >> 1) + (lane_id >> 4);
+#pragma unroll 1
     for (unsigned s = 0; s < 2; s++) {
       if (s + stages_so_far < stages_this_launch) {
 #pragma unroll
@@ -287,6 +296,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
     }
 
     exchg_region_offset = effective_block_idx_x * (PAIRS_PER_THREAD >> 1);
+#pragma unroll
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
       if (i + 2 + stages_so_far <= stages_this_launch) {
 #pragma unroll
@@ -396,6 +406,8 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
     unsigned lane_mask = 8;
     e2f *twiddles_this_stage = twiddle_cache;
     unsigned num_twiddles_this_stage = 1u << LOG_VALS_PER_THREAD;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned s = 4; s < LOG_VALS_PER_THREAD + 3; s++) {
       if (!skip_first_stage || s > 4) {
 #pragma unroll
@@ -410,6 +422,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
       num_twiddles_this_stage >>= 1;
     }
 
+#pragma unroll
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
 #pragma unroll
       for (unsigned j = 0; j < PAIRS_PER_THREAD >> i; j++) {
@@ -460,6 +473,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
 
     lane_mask = 8;
     unsigned exchg_region_offset = (block_exchg_region_offset >> (LOG_VALS_PER_THREAD + 1)) + (lane_id >> 4);
+#pragma unroll 1
     for (unsigned s = 0; s < 2; s++) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -472,6 +486,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
       exchg_region_offset >>= 1;
     }
 
+#pragma unroll
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
 #pragma unroll
       for (unsigned j = 0; j < PAIRS_PER_THREAD >> i; j++) {
