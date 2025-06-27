@@ -58,13 +58,15 @@ where
         }
     }
 
-    pub(crate) fn run<FnPre, FnPost>(&mut self, mut fn_pre: FnPre, mut fn_post: FnPost)
+    pub(crate) fn run<FnPre, FnPost>(&mut self, mut fn_pre: FnPre, mut fn_post: FnPost) -> ExecReport
     where
         FnPre: FnMut(&mut Self, usize),
         FnPost: FnMut(&mut Self, usize),
     {
+        let now = std::time::Instant::now();
         let mut previous_pc = self.state.pc;
         let mut end_of_execution_reached = false;
+        let mut cycles = 0;
 
         for cycle in 0..self.cycles as usize {
             if let Some(profiler) = self.profiler.as_mut() {
@@ -91,6 +93,7 @@ where
 
             if self.state.pc == previous_pc {
                 end_of_execution_reached = true;
+                cycles = cycle;
                 println!("Took {} cycles to finish", cycle);
                 break;
             }
@@ -103,10 +106,17 @@ where
             self.cycles
         );
 
+        let exec_time = now.elapsed();
+
         if let Some(profiler) = self.profiler.as_mut() {
             println!("Profiler begins execution");
             profiler.print_stats();
             profiler.write_stacktrace();
+        }
+
+        ExecReport { 
+            exec_time,
+            exec_cycles: cycles, 
         }
     }
 }
@@ -156,6 +166,11 @@ pub struct ProfilerConfig {
     pub frequency_recip: usize,
 }
 
+pub struct ExecReport {
+    exec_time: std::time::Duration,
+    exec_cycles: usize,
+}
+
 impl DiagnosticsConfig {
     pub fn new(symbols_path: PathBuf) -> Self {
         Self {
@@ -172,6 +187,12 @@ impl ProfilerConfig {
             reverse_graph: false,
             frequency_recip: 100,
         }
+    }
+}
+
+impl ExecReport {
+    pub fn freq(&self) -> usize {
+        self.exec_cycles * 1000 / self.exec_time.as_millis() as usize
     }
 }
 

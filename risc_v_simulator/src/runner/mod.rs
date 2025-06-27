@@ -6,6 +6,7 @@ use crate::cycle::state::StateTracer;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::NoMMU;
+use crate::sim::ExecReport;
 use crate::sim::Simulator;
 use crate::sim::SimulatorConfig;
 use crate::{abstractions::memory::VectorMemoryImpl, cycle::state::RiscV32State};
@@ -18,7 +19,7 @@ pub fn run_simple_simulator(config: SimulatorConfig) -> [u32; 8] {
 }
 
 pub fn run_simple_with_entry_point(config: SimulatorConfig) -> [u32; 8] {
-    let (_, state) =
+    let (_, state, _) =
         run_simple_with_entry_point_and_non_determimism_source(config, QuasiUARTSource::default());
     let registers = state.registers;
     [
@@ -38,7 +39,7 @@ pub fn run_simple_with_entry_point_and_non_determimism_source<
 >(
     config: SimulatorConfig,
     non_determinism_source: S,
-) -> (S, RiscV32State<IMStandardIsaConfig>) {
+) -> (S, RiscV32State<IMStandardIsaConfig>, ExecReport) {
     run_simple_with_entry_point_and_non_determimism_source_for_config::<S, IMStandardIsaConfig>(
         config,
         non_determinism_source,
@@ -51,7 +52,7 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
 >(
     config: SimulatorConfig,
     non_determinism_source: S,
-) -> (S, RiscV32State<C>) {
+) -> (S, RiscV32State<C>, ExecReport) {
     let state = RiscV32State::<C>::initial(config.entry_point);
     let memory_tracer = ();
     let mmu = NoMMU { sapt: 0 };
@@ -68,9 +69,9 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
         non_determinism_source,
     );
 
-    sim.run(|_, _| {}, |_, _| {});
+    let exec = sim.run(|_, _| {}, |_, _| {});
 
-    (sim.non_determinism_source, sim.state)
+    (sim.non_determinism_source, sim.state, exec)
 }
 
 pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C: MachineConfig>(
