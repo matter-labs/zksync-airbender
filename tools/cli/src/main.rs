@@ -626,7 +626,7 @@ fn run_binary(
 
     let registers = match machine {
         Machine::Standard => {
-            let (_, final_state) =
+            let (_, final_state, _) =
                 run_simple_with_entry_point_and_non_determimism_source_for_config::<
                     _,
                     IMStandardIsaConfig,
@@ -635,7 +635,7 @@ fn run_binary(
             final_state.registers
         }
         Machine::Reduced => {
-            let (_, final_state) =
+            let (_, final_state, _) =
                 run_simple_with_entry_point_and_non_determimism_source_for_config::<
                     _,
                     IWithoutByteAccessIsaConfigWithDelegation,
@@ -644,7 +644,7 @@ fn run_binary(
             final_state.registers
         }
         Machine::ReducedFinal => {
-            let (_, final_state) =
+            let (_, final_state, _) =
                 run_simple_with_entry_point_and_non_determimism_source_for_config::<
                     _,
                     IWithoutByteAccessIsaConfig,
