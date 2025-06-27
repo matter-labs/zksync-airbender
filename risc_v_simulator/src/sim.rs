@@ -58,7 +58,11 @@ where
         }
     }
 
-    pub(crate) fn run<FnPre, FnPost>(&mut self, mut fn_pre: FnPre, mut fn_post: FnPost) -> ExecReport
+    pub(crate) fn run<FnPre, FnPost>(
+        &mut self,
+        mut fn_pre: FnPre,
+        mut fn_post: FnPost,
+    ) -> ExecReport
     where
         FnPre: FnMut(&mut Self, usize),
         FnPost: FnMut(&mut Self, usize),
@@ -114,9 +118,9 @@ where
             profiler.write_stacktrace();
         }
 
-        ExecReport { 
+        ExecReport {
             exec_time,
-            exec_cycles: cycles, 
+            exec_cycles: cycles,
         }
     }
 }
