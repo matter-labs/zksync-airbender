@@ -94,11 +94,29 @@ impl<A: GoodAllocator> From<DelegationWitness<A>> for DelegationTraceHost<A> {
             num_indirect_writes_per_delegation: value.num_indirect_writes_per_delegation,
             base_register_index: value.base_register_index,
             delegation_type: value.delegation_type,
-            indirect_accesses_properties: value.indirect_accesses_properties.clone(),
+            indirect_accesses_properties: value.indirect_accesses_properties,
             write_timestamp: Arc::new(value.write_timestamp),
             register_accesses: Arc::new(value.register_accesses),
             indirect_reads: Arc::new(value.indirect_reads),
             indirect_writes: Arc::new(value.indirect_writes),
+        }
+    }
+}
+
+impl<A: GoodAllocator> Into<DelegationWitness<A>> for DelegationTraceHost<A> {
+    fn into(self) -> DelegationWitness<A> {
+        DelegationWitness {
+            num_requests: self.num_requests,
+            num_register_accesses_per_delegation: self.num_register_accesses_per_delegation,
+            num_indirect_reads_per_delegation: self.num_indirect_reads_per_delegation,
+            num_indirect_writes_per_delegation: self.num_indirect_writes_per_delegation,
+            base_register_index: self.base_register_index,
+            delegation_type: self.delegation_type,
+            indirect_accesses_properties: self.indirect_accesses_properties,
+            write_timestamp: Arc::into_inner(self.write_timestamp).unwrap(),
+            register_accesses: Arc::into_inner(self.register_accesses).unwrap(),
+            indirect_reads: Arc::into_inner(self.indirect_reads).unwrap(),
+            indirect_writes: Arc::into_inner(self.indirect_writes).unwrap(),
         }
     }
 }
