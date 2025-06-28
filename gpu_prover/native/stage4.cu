@@ -71,7 +71,7 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     const NonWitnessChallengesAtZOmega *non_witness_challenges_at_z_omega_ref, const ChallengesTimesEvals *challenges_times_evals_ref,
     vectorized_e4_matrix_setter<st_modifier::cs> quotient, const unsigned num_setup_cols, const unsigned num_witness_cols, const unsigned num_memory_cols,
     const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols, const bool process_shuffle_ram_init,
-    const unsigned memory_lazy_init_addresses_cols_start, const unsigned stage_2_memory_grand_product_offset, const unsigned log_n, const bool bit_reversed) {
+    const unsigned memory_lazy_init_addresses_cols_start, const unsigned log_n, const bool bit_reversed) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
