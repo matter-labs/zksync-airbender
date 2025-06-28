@@ -197,7 +197,7 @@ impl<A: GoodAllocator> CycleTracingData<A> {
 
 pub struct DelegationCounter {
     pub num_requests: usize,
-    pub counter: usize,
+    pub count: usize,
 }
 
 pub enum DelegationTracingType<A: GoodAllocator> {
@@ -581,8 +581,8 @@ impl<
 
             let should_replace = match current_tracer {
                 DelegationTracingType::Counter(counter) => {
-                    counter.counter += 1;
-                    counter.counter == counter.num_requests
+                    counter.count += 1;
+                    counter.count == counter.num_requests
                 }
                 DelegationTracingType::Witness(witness) => {
                     debug_assert_eq!(witness.base_register_index, base_register);

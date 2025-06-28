@@ -446,21 +446,21 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     let delegation_swap_fn = |circuit_type, tracing_type: Option<DelegationTracingType<A>>| {
         if let Some(tracing_type) = tracing_type {
             let mut borrow = delegation_chunks_counts.borrow_mut();
-            let entry = borrow.entry(circuit_type).or_default();
+            let value = borrow.entry(circuit_type).or_default();
             match tracing_type {
                 DelegationTracingType::Counter(counter) => {
-                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full delegation {:?} chunk {entry} counter with {} delegations counted", circuit_type, counter.num_requests);
+                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full delegation {:?} chunk {value} counter with {} delegations counted", circuit_type, counter.num_requests);
                 }
                 DelegationTracingType::Witness(witness) => {
-                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full delegation {:?} chunk {entry} witness with {} delegations produced", circuit_type, witness.num_requests);
+                    trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] full delegation {:?} chunk {value} witness with {} delegations produced", circuit_type, witness.num_requests);
                     let result = WorkerResult::DelegationWitness {
-                        circuit_sequence: *entry,
+                        circuit_sequence: *value,
                         witness,
                     };
                     results.send(result).unwrap();
                 }
             }
-            *entry += 1;
+            *value += 1;
         }
         let current_count = delegation_chunks_counts
             .borrow()
@@ -474,7 +474,7 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
             );
             let counter = DelegationCounter {
                 num_requests: delegation_num_requests[&circuit_type],
-                counter: 0,
+                count: 0,
             };
             DelegationTracingType::Counter(counter)
         } else {
@@ -533,38 +533,28 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     );
     let mut delegation_chunks_counts = delegation_chunks_counts.borrow().clone();
     for (circuit_type, tracing_type) in tracer.delegation_tracing_data.tracing_types.drain() {
-        let entry = delegation_chunks_counts.entry(circuit_type).or_default();
+        let value = delegation_chunks_counts.entry(circuit_type).or_default();
         match tracing_type {
             DelegationTracingType::Counter(counter) => {
-                assert_ne!(counter.counter, 0);
-                trace!(
-                    "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {:?} chunk {entry} counter with {} delegations counted",
-                    circuit_type,
-                    counter.counter
-                );
+                let count = counter.count;
+                assert_ne!(count, 0);
+                trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {circuit_type:?} chunk {value} counter with {count} delegations counted");
             }
             DelegationTracingType::Witness(witness) => {
                 witness.assert_consistency();
-                if witness.write_timestamp.is_empty() {
-                    trace!(
-                        "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {:?} final chunk {entry} has no delegations, skipping",
-                        circuit_type
-                    );
-                    continue;
-                }
-                trace!(
-                    "BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {:?} chunk {entry} witness with {} delegations produced",
-                    circuit_type,
-                    witness.write_timestamp.len()
-                );
+                let is_empty = witness.write_timestamp.is_empty();
+                trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] delegation {circuit_type:?} chunk {value} witness with {} delegations produced", witness.write_timestamp.len());
                 let result = WorkerResult::DelegationWitness {
-                    circuit_sequence: *entry,
+                    circuit_sequence: *value,
                     witness,
                 };
                 results.send(result).unwrap();
+                if is_empty {
+                    continue;
+                }
             }
         }
-        *entry += 1;
+        *value += 1;
     }
     let result = WorkerResult::DelegationTracingResult {
         delegation_chunks_counts,
