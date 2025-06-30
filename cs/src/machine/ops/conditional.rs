@@ -181,7 +181,7 @@ impl<
         // NOTE: below lookups are conditional, so we do NOT use Booleans
 
         if ASSUME_TRUSTED_CODE == false {
-            todo!();
+            unimplemented!();
         } else {
             // jump destination is always 0 mod 2 as explained above
             let [bit_1, _] = opt_ctx.append_lookup_relation(

@@ -117,10 +117,11 @@ pub struct OptimizationContext<F: PrimeField, C: Circuit<F>> {
 }
 
 impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
+    #[inline(always)]
     pub fn save_indexers(&self) -> OptCtxIndexers {
         self.indexers
     }
-
+    #[inline(always)]
     pub fn restore_indexers(&mut self, indexers: OptCtxIndexers) {
         self.indexers = indexers
     }
@@ -144,7 +145,7 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             _marker: std::marker::PhantomData,
         }
     }
-
+    #[inline(always)]
     pub fn reset_indexers(&mut self) {
         self.indexers.reset()
     }
@@ -462,8 +463,6 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             let mask = placer.get_boolean(exec_flag_var);
             witness_early_branch_if_possible(mask, placer, &evaluate_fn_inner);
         };
-
-        cs.set_values(value_fn);
 
         cs.set_values(value_fn);
 

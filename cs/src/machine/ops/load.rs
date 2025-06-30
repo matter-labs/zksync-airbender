@@ -147,7 +147,7 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
             // this is common for FAMILY of memory instructions
 
             if SUPPORT_SIGNED == false {
-                todo!();
+                unimplemented!();
             }
 
             let full_word_access_flag =
@@ -183,7 +183,7 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
 
                 cs.add_constraint(Term::from(bit_0) * exec_half_word.get_terms());
             } else {
-                todo!();
+                unimplemented!();
             }
 
             // NOTE: we do NOT cast presumable bits to booleans, as it's under conditional assignment of lookup
@@ -380,7 +380,7 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
             } else {
                 // we trap if misaligned access that can happen in untrusted code
 
-                todo!();
+                unimplemented!();
             }
         } else {
             // support only LW, and so we assume code is trusted
