@@ -6,7 +6,12 @@
 use blake2s_u32::Blake2sState;
 use clap::{Parser, Subcommand};
 use cli_lib::generate_constants::generate_constants_for_binary;
-use cli_lib::prover_utils::{create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata, generate_oracle_data_from_metadata_and_proof_list, proof_list_and_metadata_from_program_proof, serialize_to_file, u32_from_hex_string, ProvingLimit, VerifierCircuitsIdentifiers, DEFAULT_CYCLES};
+use cli_lib::prover_utils::{
+    create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
+    generate_oracle_data_from_metadata_and_proof_list, proof_list_and_metadata_from_program_proof,
+    serialize_to_file, u32_from_hex_string, ProvingLimit, VerifierCircuitsIdentifiers,
+    DEFAULT_CYCLES,
+};
 use cli_lib::Machine;
 
 use cli_lib::vk::generate_vk;
@@ -511,14 +516,22 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     u32_to_file(output_file, &oracle);
 }
 
-fn flatten_two(prev_program_proof_path: &String, curr_program_proof_path: &String, output_file: &String) {
+fn flatten_two(
+    prev_program_proof_path: &String,
+    curr_program_proof_path: &String,
+    output_file: &String,
+) {
     let curr_program_proof: ProgramProof = deserialize_from_file(curr_program_proof_path);
     let prev_program_proof: ProgramProof = deserialize_from_file(prev_program_proof_path);
-    
-    let (curr_metadata, curr_proof_list) = proof_list_and_metadata_from_program_proof(curr_program_proof);
-    let (prev_metadata, prev_proof_list) = proof_list_and_metadata_from_program_proof(prev_program_proof);
-    let curr_oracle = generate_oracle_data_from_metadata_and_proof_list(&curr_metadata, &curr_proof_list);
-    let mut prev_oracle = generate_oracle_data_from_metadata_and_proof_list(&prev_metadata, &prev_proof_list);
+
+    let (curr_metadata, curr_proof_list) =
+        proof_list_and_metadata_from_program_proof(curr_program_proof);
+    let (prev_metadata, prev_proof_list) =
+        proof_list_and_metadata_from_program_proof(prev_program_proof);
+    let curr_oracle =
+        generate_oracle_data_from_metadata_and_proof_list(&curr_metadata, &curr_proof_list);
+    let mut prev_oracle =
+        generate_oracle_data_from_metadata_and_proof_list(&prev_metadata, &prev_proof_list);
 
     prev_oracle.extend(curr_oracle);
     assert!(curr_metadata.reduced_proof_count > 0);
