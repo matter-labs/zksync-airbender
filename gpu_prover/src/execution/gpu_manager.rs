@@ -1,4 +1,4 @@
-use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest};
+use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest, SetupToCache};
 use super::messages::WorkerResult;
 use crate::cudart::device::get_device_count;
 use crate::cudart::result::CudaResult;
@@ -27,13 +27,19 @@ pub struct GpuManager<C: ProverContext, A: GoodAllocator + 'static = Global> {
 }
 
 impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
-    pub fn new() -> Self {
+    pub fn new(
+        setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>,
+        initialized_wait_group: WaitGroup,
+    ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
         let wait_group = WaitGroup::new();
         let wait_group_clone = wait_group.clone();
         thread::spawn(move || {
-            let result = scope(|s| gpu_manager::<C>(batches_receiver, s)).unwrap();
+            let result = scope(|s| {
+                gpu_manager::<C>(initialized_wait_group, setups_to_cache, batches_receiver, s)
+            })
+            .unwrap();
             if let Err(e) = result {
                 error!("GPU_MANAGER encountered an error: {e}");
                 exit(1);
@@ -60,6 +66,8 @@ impl<C: ProverContext, A: GoodAllocator + 'static> Drop for GpuManager<C, A> {
     }
 }
 fn gpu_manager<C: ProverContext>(
+    initialized_wait_group: WaitGroup,
+    setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>,
     batches_receiver: Receiver<GpuWorkBatch<C::HostAllocator, impl GoodAllocator + 'static>>,
     scope: &Scope,
 ) -> CudaResult<()> {
@@ -83,6 +91,7 @@ fn gpu_manager<C: ProverContext>(
         let gpu_worker_func = get_gpu_worker_func::<C>(
             device_id,
             prover_context_config,
+            setups_to_cache.clone(),
             worker_initialized_sender.clone(),
             request_receiver,
             result_sender,
@@ -92,6 +101,7 @@ fn gpu_manager<C: ProverContext>(
     }
     drop(worker_initialized_sender);
     assert_eq!(worker_initialized_receiver.iter().count(), device_count);
+    drop(initialized_wait_group);
     trace!("GPU_MANAGER all GPU workers initialized");
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();

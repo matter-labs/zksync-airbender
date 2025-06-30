@@ -32,6 +32,12 @@ type BF = Mersenne31Field;
 const NUM_QUERIES: usize = 53;
 const POW_BITS: u32 = 28;
 
+#[derive(Clone)]
+pub struct SetupToCache<A: GoodAllocator, B: GoodAllocator = Global> {
+    pub circuit_type: CircuitType,
+    pub precomputations: CircuitPrecomputationsHost<A, B>,
+}
+
 pub struct MemoryCommitmentRequest<A: GoodAllocator, B: GoodAllocator = Global> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
@@ -82,6 +88,7 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
 pub fn get_gpu_worker_func<C: ProverContext>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
+    setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
     requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator + 'static>>>,
     results: Sender<Option<WorkerResult<C::HostAllocator>>>,
@@ -90,6 +97,7 @@ pub fn get_gpu_worker_func<C: ProverContext>(
         let result = gpu_worker::<C>(
             device_id,
             prover_context_config,
+            setups_to_cache,
             is_initialized,
             requests,
             results,
@@ -119,6 +127,7 @@ struct SetupHolder<'a, C: ProverContext> {
 fn gpu_worker<C: ProverContext>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
+    setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
     requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator>>>,
     results: Sender<Option<WorkerResult<C::HostAllocator>>>,
@@ -138,9 +147,46 @@ fn gpu_worker<C: ProverContext>(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
+    let mut setups = vec![];
+    for setup in setups_to_cache {
+        let SetupToCache {
+            circuit_type,
+            precomputations,
+        } = setup;
+        let lde_factor = precomputations.lde_precomputations.lde_factor;
+        assert!(lde_factor.is_power_of_two());
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let domain_size = precomputations.lde_precomputations.domain_size;
+        assert!(domain_size.is_power_of_two());
+        let log_domain_size = domain_size.trailing_zeros();
+        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+        let mut setup = SetupPrecomputations::new(
+            &precomputations.compiled_circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            &context,
+        )?;
+        match circuit_type {
+            CircuitType::Main(main) => trace!("GPU_WORKER[{device_id}] transferring setup trace for main circuit {main:?}"),
+            CircuitType::Delegation(delegation) => trace!("GPU_WORKER[{device_id}] transferring setup trace for delegation circuit {delegation:?}"),
+        }
+        let trace = precomputations.setup.clone();
+        setup.schedule_transfer(trace.clone(), &context)?;
+        match circuit_type {
+            CircuitType::Main(main) => {
+                trace!("GPU_WORKER[{device_id}] generating setup for main circuit {main:?}")
+            }
+            CircuitType::Delegation(delegation) => trace!(
+                "GPU_WORKER[{device_id}] generating setup for delegation circuit {delegation:?}"
+            ),
+        }
+        setup.ensure_commitment_produced(&context)?;
+        let setup = Rc::new(RefCell::new(setup));
+        let holder = SetupHolder { setup, trace };
+        setups.push(holder);
+    }
     is_initialized.send(()).unwrap();
     drop(is_initialized);
-    let mut current_setup: Option<SetupHolder<C>> = None;
     let mut current_transfer = None;
     let mut current_job = None;
     for request in requests {
@@ -154,42 +200,12 @@ fn gpu_worker<C: ProverContext>(
                     request.tracing_data.clone(),
                 ),
                 GpuWorkRequest::Proof(request) => {
-                    let batch_id = request.batch_id;
                     let precomputations = &request.precomputations;
-                    let setup = if let Some(holder) = &current_setup
-                        && Arc::ptr_eq(&holder.trace, &precomputations.setup)
-                    {
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for delegation circuit {delegation:?}"),
-                        }
-                        holder.setup.clone()
-                    } else {
-                        let lde_factor = precomputations.lde_precomputations.lde_factor;
-                        assert!(lde_factor.is_power_of_two());
-                        let log_lde_factor = lde_factor.trailing_zeros();
-                        let domain_size = precomputations.lde_precomputations.domain_size;
-                        assert!(domain_size.is_power_of_two());
-                        let log_domain_size = domain_size.trailing_zeros();
-                        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-                        let mut setup = SetupPrecomputations::new(
-                            &precomputations.compiled_circuit,
-                            log_lde_factor,
-                            log_tree_cap_size,
-                            &context,
-                        )?;
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for delegation circuit {delegation:?}"),
-                        }
-                        setup.schedule_transfer(precomputations.setup.clone(), &context)?;
-                        let setup = Rc::new(RefCell::new(setup));
-                        current_setup = Some(SetupHolder {
-                            setup: setup.clone(),
-                            trace: precomputations.setup.clone(),
-                        });
-                        setup
-                    };
+                    let holder = setups
+                        .iter()
+                        .find(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup))
+                        .unwrap();
+                    let setup = holder.setup.clone();
                     (
                         request.batch_id,
                         request.circuit_type,
