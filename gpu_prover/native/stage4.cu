@@ -71,7 +71,7 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     const NonWitnessChallengesAtZOmega *non_witness_challenges_at_z_omega_ref, const ChallengesTimesEvals *challenges_times_evals_ref,
     vectorized_e4_matrix_setter<st_modifier::cs> quotient, const unsigned num_setup_cols, const unsigned num_witness_cols, const unsigned num_memory_cols,
     const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols, const bool process_shuffle_ram_init,
-    const unsigned memory_lazy_init_addresses_cols_start, const unsigned stage_2_memory_grand_product_offset, const unsigned log_n, const bool bit_reversed) {
+    const unsigned memory_lazy_init_addresses_cols_start, const unsigned log_n, const bool bit_reversed) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -107,45 +107,48 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
   // setup terms at z
   for (unsigned i = 0; i < num_setup_cols; i++) {
     const bf val = setup_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = non_witness_challenges_at_z.get(flat_idx++);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    flat_idx++;
   }
 
   // memory terms at z and z * omega
   for (unsigned i = 0; i < num_memory_cols; i++) {
     const bf val = memory_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = non_witness_challenges_at_z.get(flat_idx++);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
     if (process_shuffle_ram_init && i >= memory_lazy_init_addresses_cols_start && i < memory_lazy_init_addresses_cols_start + 2) {
       const e4 challenge = non_witness_challenges_at_z_omega.challenges[i - memory_lazy_init_addresses_cols_start];
       acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
     }
-    flat_idx++;
   }
 
   // stage 2 bf terms at z
   for (unsigned i = 0; i < num_stage_2_bf_cols; i++) {
     const bf val = stage_2_bf_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = non_witness_challenges_at_z.get(flat_idx++);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    flat_idx++;
   }
 
   // stage 2 e4 terms at z and z * omega
-  const unsigned grand_product_challenge_at_z_omega_idx = process_shuffle_ram_init ? 2 : 0;
-  for (unsigned i = 0; i < num_stage_2_e4_cols; i++) {
+  for (unsigned i = 0; i < num_stage_2_e4_cols - 1; i++) {
     const e4 val = stage_2_e4_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = non_witness_challenges_at_z.get(flat_idx++);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    if (i == stage_2_memory_grand_product_offset) {
-      const e4 challenge = non_witness_challenges_at_z_omega.challenges[grand_product_challenge_at_z_omega_idx];
-      acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
-    }
-    flat_idx++;
+  }
+  { // peel last iteration to include grand product term at z * omega
+    const e4 val = stage_2_e4_cols.get_at_col(num_stage_2_e4_cols - 1);
+    const e4 challenge = non_witness_challenges_at_z.get(flat_idx++);
+    acc_z = e4::add(acc_z, e4::mul(challenge, val));
+    // Why not
+    // const unsigned grand_product_challenge_at_z_omega_idx = process_shuffle_ram_init ? 2 : 0;
+    // const e4 challenge_at_z_omega = non_witness_challenges_at_z_omega.challenges[grand_product_challenge_at_z_omega_idx];
+    // ? Because if the compiler puts non_witness_challenges_at_z_omega in registers, it treats that as a dynamic access and spills registers.
+    const e4 challenge_at_z_omega =
+        process_shuffle_ram_init ? non_witness_challenges_at_z_omega.challenges[2] : non_witness_challenges_at_z_omega.challenges[0];
+    acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge_at_z_omega, val));
   }
 
-  // // composition term at z
+  // composition term at z
   const e4 val = composition_col.get();
   const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
   acc_z = e4::add(acc_z, e4::mul(challenge, val));
