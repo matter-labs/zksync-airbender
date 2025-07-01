@@ -1163,7 +1163,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                 self.worker.pool.spawn(func);
             }
             MainCircuitType::MachineWithoutSignedMulDiv => {
-                let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
+                let func = get_cpu_worker_func::<IMWithoutSignedMulDivIsaConfig, _>(
                     wait_group,
                     batch_id,
                     worker_id,

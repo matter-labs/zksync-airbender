@@ -441,7 +441,7 @@ impl<'a> GpuSharedState<'a> {
             let final_recursion_binary = ExecutableBinary {
                 key: Self::FINAL_RECURSION_BINARY_KEY,
                 circuit_type: MainCircuitType::FinalReducedRiscVMachine,
-                bytecode: get_padded_binary(FINAL_RECURSION_LAYER_VERIFIER),
+                bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER),
             };
             binaries.push(final_recursion_binary);
         }
