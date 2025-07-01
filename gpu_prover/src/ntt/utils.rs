@@ -18,13 +18,13 @@ pub(crate) enum B2N_LAUNCH {
     NONINITIAL_7_OR_8_BLOCK,
 }
 
-// Kernel plans for sizes 2^16..24.
+// Kernel plans for sizes 2^16..25.
 // I'd rather use a hashmap containing vectors of different sizes instead of a list of fixed-size lists,
 // but Rust didn't let me declare hashmaps or vectors const.
 #[allow(non_camel_case_types)]
 pub(crate) type N2B_Plan = [Option<(N2B_LAUNCH, usize, usize)>; 3];
 
-pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 9] = [
+pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 10] = [
     [
         Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
         Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
@@ -70,12 +70,17 @@ pub(crate) const STAGE_PLANS_N2B: [N2B_Plan; 9] = [
         Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
         Some((N2B_LAUNCH::FINAL_8_WARP, 8, 4 * 256)),
     ],
+    [
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::NONFINAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((N2B_LAUNCH::FINAL_9_TO_12_BLOCK, 9, 4096)),
+    ],
 ];
 
 #[allow(non_camel_case_types)]
 pub(crate) type B2N_Plan = [Option<(B2N_LAUNCH, usize, usize)>; 3];
 
-pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
+pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 10] = [
     [
         Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
         Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
@@ -118,6 +123,11 @@ pub(crate) const STAGE_PLANS_B2N: [B2N_Plan; 9] = [
     ],
     [
         Some((B2N_LAUNCH::INITIAL_8_WARP, 8, 4 * 256)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
+        Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
+    ],
+    [
+        Some((B2N_LAUNCH::INITIAL_9_TO_12_BLOCK, 9, 4096)),
         Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
         Some((B2N_LAUNCH::NONINITIAL_7_OR_8_BLOCK, 8, 4096)),
     ],

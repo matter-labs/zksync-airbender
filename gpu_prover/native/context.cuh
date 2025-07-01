@@ -8,7 +8,7 @@ namespace field {
 
 // TODO:
 // Decide max order we need based on trace column length and constraint degree
-static constexpr unsigned OMEGA_LOG_ORDER = 24;
+static constexpr unsigned OMEGA_LOG_ORDER = 26;
 static constexpr unsigned CIRCLE_GROUP_LOG_ORDER = 31;
 
 struct powers_layer_data {

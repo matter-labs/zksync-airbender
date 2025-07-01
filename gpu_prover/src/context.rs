@@ -11,7 +11,7 @@ use field::Field;
 
 use crate::field::{BaseField, Ext2Field};
 
-pub const OMEGA_LOG_ORDER: u32 = 24;
+pub const OMEGA_LOG_ORDER: u32 = 26;
 pub const CIRCLE_GROUP_LOG_ORDER: u32 = 31;
 pub const FINEST_LOG_COUNT: u32 = CIRCLE_GROUP_LOG_ORDER - OMEGA_LOG_ORDER;
 
