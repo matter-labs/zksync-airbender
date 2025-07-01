@@ -8,10 +8,12 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
+    #[inline(always)]
     pub fn from_delegation_type(delegation_type: u16) -> Self {
         Self::Delegation(delegation_type.into())
     }
 
+    #[inline(always)]
     pub fn as_main(&self) -> Option<MainCircuitType> {
         match self {
             CircuitType::Main(circuit_type) => Some(*circuit_type),
@@ -19,6 +21,7 @@ impl CircuitType {
         }
     }
 
+    #[inline(always)]
     pub fn as_delegation(&self) -> Option<DelegationCircuitType> {
         match self {
             CircuitType::Delegation(circuit_type) => Some(*circuit_type),
@@ -43,6 +46,7 @@ pub enum DelegationCircuitType {
 }
 
 impl From<u16> for DelegationCircuitType {
+    #[inline(always)]
     fn from(delegation_type: u16) -> Self {
         match delegation_type as u32 {
             U256_OPS_WITH_CONTROL_ACCESS_ID => DelegationCircuitType::BigIntWithControl,

@@ -1,5 +1,6 @@
 use super::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
 use super::gpu_worker::{MemoryCommitmentResult, ProofResult};
+use crate::circuit_type::DelegationCircuitType;
 use fft::GoodAllocator;
 use prover::tracers::delegation::DelegationWitness;
 use std::collections::HashMap;
@@ -15,9 +16,12 @@ pub enum WorkerResult<A: GoodAllocator> {
     CyclesTracingResult {
         chunks_traced_count: usize,
     },
-    DelegationWitness(DelegationWitness<A>),
+    DelegationWitness {
+        circuit_sequence: usize,
+        witness: DelegationWitness<A>,
+    },
     DelegationTracingResult {
-        delegation_chunks_counts: HashMap<u16, usize>,
+        delegation_chunks_counts: HashMap<DelegationCircuitType, usize>,
     },
     MemoryCommitment(MemoryCommitmentResult<A>),
     Proof(ProofResult<A>),

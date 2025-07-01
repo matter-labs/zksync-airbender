@@ -41,6 +41,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
 
     e2f *twiddles_this_stage = twiddle_cache + VALS_PER_WARP - 2;
     unsigned num_twiddles_this_stage = 1;
+#pragma unroll
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -57,6 +58,11 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
     }
 
     unsigned lane_mask = 16;
+#if __CUDA_ARCH__ == 1200
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
     for (unsigned stage = 0, s = 5; stage < 6; stage++, s--) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -85,6 +91,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
       }
     }
 
+#pragma unroll
     for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
       // gmem_out.set_at_row(64 * i + 2 * lane_id, vals[2 * i]);
       // gmem_out.set_at_row(64 * i + 2 * lane_id + 1, vals[2 * i + 1]);
@@ -162,6 +169,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 
     const unsigned stages_to_skip = MAX_STAGES_THIS_LAUNCH - stages_this_launch;
     unsigned exchg_region_offset = effective_block_idx_x;
+#pragma unroll
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
       if (i >= stages_to_skip) {
 #pragma unroll
@@ -179,6 +187,12 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 
     unsigned lane_mask = 16;
     unsigned halfwarp_id = lane_id >> 4;
+// #pragma unroll 1 worth a try here if registers spill
+#if __CUDA_ARCH__ == 900
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
     for (unsigned s = 0; s < 2; s++) {
       if ((s + LOG_VALS_PER_THREAD - 1) >= stages_to_skip) {
 #pragma unroll
@@ -253,6 +267,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 
     e2f *twiddles_this_stage = twiddle_cache + VALS_PER_WARP - 2;
     unsigned num_twiddles_this_stage = 1;
+#pragma unroll
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -269,6 +284,8 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
     }
 
     lane_mask = 16;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned stage = 0, s = 5; stage < 6; stage++, s--) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -372,6 +389,7 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
     }
 
     unsigned block_exchg_region_offset = block_bfly_region;
+#pragma unroll
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -387,6 +405,8 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
     unsigned lane_mask = 16;
     unsigned halfwarp_id = lane_id >> 4;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll 1
     for (unsigned s = 0; s < 2; s++) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -437,6 +457,7 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
     e2f *twiddles_this_stage = twiddle_cache + 2 * VALS_PER_THREAD - 2;
     unsigned num_twiddles_this_stage = 1;
+#pragma unroll
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -453,6 +474,8 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
     }
 
     lane_mask = 16;
+// #pragma unroll 1 worth a try here if registers spill
+#pragma unroll
     for (unsigned s = 0; s < 2; s++) {
       if (!skip_last_stage || s < 1) {
 #pragma unroll

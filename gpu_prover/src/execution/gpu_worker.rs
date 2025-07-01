@@ -159,10 +159,10 @@ fn gpu_worker<C: ProverContext>(
                     let setup = if let Some(holder) = &current_setup
                         && Arc::ptr_eq(&holder.trace, &precomputations.setup)
                     {
-                        trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] proof request reusing setup for circuit {:?}",
-                            request.circuit_type,
-                        );
+                        match request.circuit_type {
+                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for main circuit {main:?}"),
+                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for delegation circuit {delegation:?}"),
+                        }
                         holder.setup.clone()
                     } else {
                         let lde_factor = precomputations.lde_precomputations.lde_factor;
@@ -178,10 +178,10 @@ fn gpu_worker<C: ProverContext>(
                             log_tree_cap_size,
                             &context,
                         )?;
-                        trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for circuit {:?}",
-                            request.circuit_type,
-                        );
+                        match request.circuit_type {
+                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for main circuit {main:?}"),
+                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for delegation circuit {delegation:?}"),
+                        }
                         setup.schedule_transfer(precomputations.setup.clone(), &context)?;
                         let setup = Rc::new(RefCell::new(setup));
                         current_setup = Some(SetupHolder {
@@ -200,15 +200,8 @@ fn gpu_worker<C: ProverContext>(
                 }
             };
             match circuit_type {
-                CircuitType::Main(main) => trace!(
-                    "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for main circuit {:?} chunk {}",
-                    main,
-                    circuit_sequence
-                ),
-                CircuitType::Delegation(delegation) => trace!(
-                    "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for delegation circuit {:?}",
-                    delegation,
-                ),
+                CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for main circuit {main:?} chunk {circuit_sequence}"),
+                CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for delegation circuit {delegation:?} chunk {circuit_sequence}"),
             }
             let mut transfer = TracingDataTransfer::new(circuit_type, tracing_data, &context)?;
             transfer.schedule_transfer(&context)?;
@@ -228,8 +221,9 @@ fn gpu_worker<C: ProverContext>(
                             request.circuit_sequence
                         ),
                         CircuitType::Delegation(delegation) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for delegation circuit {:?}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for delegation circuit {:?} chunk {}",
                             delegation,
+                            request.circuit_sequence
                         ),
                     }
                     let precomputations = &request.precomputations;
@@ -258,8 +252,9 @@ fn gpu_worker<C: ProverContext>(
                             request.circuit_sequence
                         ),
                         CircuitType::Delegation(delegation) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for delegation circuit {:?}",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for delegation circuit {:?} chunk {}",
                             delegation,
+                            request.circuit_sequence
                         ),
                     }
                     let precomputations = &request.precomputations;
@@ -284,6 +279,10 @@ fn gpu_worker<C: ProverContext>(
                         aux_boundary_values,
                     };
                     let setup = setup.unwrap();
+                    let circuit_sequence = match request.circuit_type {
+                        CircuitType::Main(_) => request.circuit_sequence,
+                        CircuitType::Delegation(_) => 0,
+                    };
                     let delegation_processing_type = match request.circuit_type {
                         CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
@@ -295,7 +294,7 @@ fn gpu_worker<C: ProverContext>(
                         transfer,
                         &precomputations.twiddles,
                         &precomputations.lde_precomputations,
-                        request.circuit_sequence,
+                        circuit_sequence,
                         delegation_processing_type,
                         precomputations.lde_precomputations.lde_factor,
                         NUM_QUERIES,
@@ -314,8 +313,8 @@ fn gpu_worker<C: ProverContext>(
         let result = if let Some((request, job)) = job {
             match request {
                 GpuWorkRequest::MemoryCommitment(request) => {
-                    let batch_id = request.batch_id;
                     let MemoryCommitmentRequest {
+                        batch_id,
                         circuit_type,
                         circuit_sequence,
                         tracing_data,
@@ -325,16 +324,17 @@ fn gpu_worker<C: ProverContext>(
                         JobType::MemoryCommitment(job) => job.finish()?,
                         JobType::Proof(_) => unreachable!(),
                     };
-                    match request.circuit_type {
+                    match circuit_type {
                         CircuitType::Main(main) => debug!(
                             "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for main circuit {:?} chunk {} in {:.3} ms",
                             main,
-                            request.circuit_sequence,
+                            circuit_sequence,
                             commitment_time_ms
                         ),
                         CircuitType::Delegation(delegation) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for delegation circuit {:?} in {:.3} ms",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for delegation circuit {:?} chunk {} in {:.3} ms",
                             delegation,
+                            circuit_sequence,
                             commitment_time_ms
                         ),
                     }
@@ -348,8 +348,8 @@ fn gpu_worker<C: ProverContext>(
                     Some(WorkerResult::MemoryCommitment(result))
                 }
                 GpuWorkRequest::Proof(request) => {
-                    let batch_id = request.batch_id;
                     let ProofRequest {
+                        batch_id,
                         circuit_type,
                         circuit_sequence,
                         tracing_data,
@@ -359,16 +359,17 @@ fn gpu_worker<C: ProverContext>(
                         JobType::MemoryCommitment(_) => unreachable!(),
                         JobType::Proof(job) => job.finish()?,
                     };
-                    match request.circuit_type {
+                    match circuit_type {
                         CircuitType::Main(main) => debug!(
                             "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for main circuit {:?} chunk {} in {:.3} ms",
                             main,
-                            request.circuit_sequence,
+                            circuit_sequence,
                             proof_time_ms,
                         ),
                         CircuitType::Delegation(delegation) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for delegation circuit {:?} in {:.3} ms",
+                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for delegation circuit {:?} chunk {} in {:.3} ms",
                             delegation,
+                            circuit_sequence,
                             proof_time_ms,
                         ),
                     }
