@@ -97,6 +97,9 @@ enum Commands {
         input: InputConfig,
         #[arg(long, default_value = "output")]
         output_dir: String,
+        /// If true, use GPU for proving.
+        #[arg(long)]
+        gpu: bool,
     },
     /// Verifies a single proof.
     Verify {
@@ -276,13 +279,18 @@ fn main() {
                 gpu.clone(),
             );
         }
-        Commands::ProveFinal { input, output_dir } => {
+        Commands::ProveFinal {
+            input,
+            output_dir,
+            gpu,
+        } => {
             let input = fetch_final_input_json(input).expect("Failed to fetch");
 
             let input_program_proof: ProgramProof = serde_json::from_str(&input.unwrap())
                 .expect("Failed to parse input_hex into ProgramProof");
 
-            let program_proof = create_final_proofs_from_program_proof(input_program_proof);
+            let program_proof =
+                create_final_proofs_from_program_proof(input_program_proof, gpu.clone());
 
             serialize_to_file(
                 &program_proof,

@@ -82,7 +82,7 @@ impl<'a> LocalProver<'a> {
     }
 
     fn new_internal(padded_binary: Vec<u32>) -> LocalProver<'a> {
-        let gpu_state = GpuSharedState::new(&padded_binary);
+        let gpu_state = GpuSharedState::new(Some(&padded_binary), true, false);
         LocalProver {
             binary: padded_binary,
             gpu_state,
