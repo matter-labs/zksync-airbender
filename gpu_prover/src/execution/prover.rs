@@ -1028,7 +1028,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             &delegation_memory_commitments,
         );
         let produce_delegation_challenge = match &self.binaries[&binary_key].circuit_type {
-            MainCircuitType::FinalReducedRiscVMachine => false,
+            MainCircuitType::FinalReducedRiscVMachine => true,
             MainCircuitType::MachineWithoutSignedMulDiv => true,
             MainCircuitType::ReducedRiscVMachine => true,
             MainCircuitType::RiscVCycles => true,
