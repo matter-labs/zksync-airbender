@@ -20,6 +20,7 @@ cli = { path = "../cli" }
 warp = "0.3"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"
+env_logger = "0.11"
 
 [features]
 # if enabled - allow GPU for proving.
