@@ -32,6 +32,7 @@ type BF = Mersenne31Field;
 const NUM_QUERIES: usize = 53;
 const POW_BITS: u32 = 28;
 
+// represents a request to generate and cache a device-side setup from a host-side setup for later use in the GPU worker
 #[derive(Clone)]
 pub struct SetupToCache<A: GoodAllocator, B: GoodAllocator = Global> {
     pub circuit_type: CircuitType,

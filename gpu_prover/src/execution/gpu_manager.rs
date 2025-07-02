@@ -28,8 +28,8 @@ pub struct GpuManager<C: ProverContext, A: GoodAllocator + 'static = Global> {
 
 impl<C: ProverContext, A: GoodAllocator + 'static> GpuManager<C, A> {
     pub fn new(
-        setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>,
-        initialized_wait_group: WaitGroup,
+        setups_to_cache: Vec<SetupToCache<C::HostAllocator, impl GoodAllocator + 'static>>, // vector of setups to cache on the device by each GPU worker
+        initialized_wait_group: WaitGroup, // wait group is a synchronization mechanism to signal that all GPU workers are initialized and ready to process requests
     ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
