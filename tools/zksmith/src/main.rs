@@ -294,6 +294,13 @@ struct RpcResponse {
 //#[tokio::main]
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Stdout)
+        .format_timestamp_millis()
+        .format_module_path(false)
+        .format_target(false)
+        .init();
+
     let index_html = include_str!("index.html");
 
     let cli = Cli::parse();
