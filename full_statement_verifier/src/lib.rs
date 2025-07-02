@@ -298,7 +298,7 @@ unsafe fn verify_full_statement<const BASE_LAYER: bool>(
                 transcript.absorb(&buffer);
             }
 
-            for circuit_sequence in 0..num_circuits {
+            for _circuit_sequence in 0..num_circuits {
                 // Note: this will make sure that all external challenges are the same as we progress,
                 // and so we will only need to save the result at the very end
                 (verification_function)(&mut delegation_proof_output, &mut state_variables);

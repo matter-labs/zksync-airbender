@@ -259,7 +259,6 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
         let (gpu_proof, _) = {
             let lde_factor = setups::lde_factor_for_machine::<C>();
-            let circuit = &risc_v_circuit_precomputations.compiled_circuit;
             let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
                 (None, AuxArgumentsBoundaryValues::default())
             } else {
