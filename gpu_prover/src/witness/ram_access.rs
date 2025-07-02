@@ -183,46 +183,6 @@ impl From<cs::definitions::BatchedRamAccessColumns> for BatchedRamAccessColumns 
     }
 }
 
-pub const MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT: usize = 4;
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
-pub struct BatchedRamTimestampComparisonAuxVars {
-    pub predicate: ColumnAddress,
-    pub write_timestamp_columns: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-    pub write_timestamp: [ColumnAddress; 2],
-    pub aux_borrow_vars_count: u32,
-    pub aux_borrow_vars:
-        [ColumnAddress; MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT],
-}
-
-impl From<&cs::definitions::BatchedRamTimestampComparisonAuxVars>
-    for BatchedRamTimestampComparisonAuxVars
-{
-    fn from(value: &cs::definitions::BatchedRamTimestampComparisonAuxVars) -> Self {
-        let aux_borrow_vars_count = value.aux_borrow_vars.len() as u32;
-        assert!(
-            aux_borrow_vars_count
-                <= MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT as u32
-        );
-        let mut aux_borrow_vars = [ColumnAddress::default();
-            MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT];
-        for (i, value) in value.aux_borrow_vars.iter().enumerate() {
-            aux_borrow_vars[i] = value.clone().into();
-        }
-        Self {
-            predicate: value.predicate.into(),
-            write_timestamp_columns: value.write_timestamp_columns.into(),
-            write_timestamp: [
-                value.write_timestamp[0].into(),
-                value.write_timestamp[1].into(),
-            ],
-            aux_borrow_vars_count,
-            aux_borrow_vars,
-        }
-    }
-}
-
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]

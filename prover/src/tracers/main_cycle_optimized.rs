@@ -9,8 +9,10 @@ use crate::tracers::delegation::DelegationWitness;
 use cs::definitions::{TimestampData, TimestampScalar, TIMESTAMP_STEP};
 use fft::GoodAllocator;
 use risc_v_simulator::abstractions::tracer::*;
-use risc_v_simulator::cycle::{state::RiscV32State, *};
+use risc_v_simulator::cycle::*;
 
+#[allow(deprecated)]
+use risc_v_simulator::cycle::state::RiscV32State;
 // NOTE: this tracer ALLOWS for delegations to initialize memory, so we should use enough cycles
 // to eventually perform all the inits
 
@@ -414,6 +416,7 @@ impl<
     > Tracer<C>
     for GPUFriendlyTracer<C, A, TRACE_FOR_TEARDOWNS, TRACE_FOR_PROVING, TRACE_DELEGATIONS>
 {
+    #[allow(deprecated)]
     #[inline(always)]
     fn at_cycle_start(&mut self, current_state: &RiscV32State<C>) {
         if TRACE_FOR_PROVING {
@@ -448,6 +451,7 @@ impl<
         }
     }
 
+    #[allow(deprecated)]
     #[inline(always)]
     fn at_cycle_end(&mut self, _current_state: &RiscV32State<C>) {
         self.current_timestamp += TIMESTAMP_STEP;

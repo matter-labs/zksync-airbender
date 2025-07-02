@@ -55,11 +55,13 @@ pub fn basic_invalid_bitmask() -> u64 {
 
 pub trait RegisterValueSource<F: PrimeField>: 'static + Clone {
     fn get_register(&self) -> Register<F>;
+    #[allow(deprecated)]
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F>;
     fn get_register_with_decomposition_and_sign(&self) -> Option<RegisterDecompositionWithSign<F>>;
     fn get_sign_bit(&self) -> Option<Boolean>;
 }
 
+#[allow(deprecated)]
 impl<F: PrimeField> RegisterValueSource<F> for RegisterDecomposition<F> {
     fn get_register(&self) -> Register<F> {
         self.into_register()
@@ -79,6 +81,7 @@ impl<F: PrimeField> RegisterValueSource<F> for RegisterDecompositionWithSign<F> 
     fn get_register(&self) -> Register<F> {
         self.clone().into_register()
     }
+    #[allow(deprecated)]
     fn get_register_with_decomposition(&self) -> RegisterDecomposition<F> {
         todo!();
     }

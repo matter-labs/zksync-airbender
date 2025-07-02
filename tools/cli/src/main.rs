@@ -632,6 +632,7 @@ fn run_binary(
                     IMStandardIsaConfig,
                 >(config, non_determinism_source);
 
+            #[allow(deprecated)]
             final_state.registers
         }
         Machine::Reduced => {
@@ -641,6 +642,7 @@ fn run_binary(
                     IWithoutByteAccessIsaConfigWithDelegation,
                 >(config, non_determinism_source);
 
+            #[allow(deprecated)]
             final_state.registers
         }
         Machine::ReducedFinal => {
@@ -650,6 +652,7 @@ fn run_binary(
                     IWithoutByteAccessIsaConfig,
                 >(config, non_determinism_source);
 
+            #[allow(deprecated)]
             final_state.registers
         }
     };
