@@ -1,0 +1,41 @@
+[package]
+name = "verifier_profiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+cs = {workspace = true, features = ["compiler"]}
+field.workspace = true
+serde.workspace = true
+serde_json = { version = "*"}
+witness_eval_generator = {workspace = true}
+worker.workspace = true
+prover = {workspace = true, features = ["prover"]}
+risc_v_simulator.workspace = true
+fft.workspace = true
+verifier_generator.workspace = true
+verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
+
+quote = { version = "1" }
+proc-macro2 = "1"
+proc-macro-error = "1"
+
+# arrayvec.workspace = true
+# blake2s_u32 = { workspace = true, optional = true}
+# poseidon2 = { workspace = true, optional = true}
+# itertools = { workspace = true, optional = true }
+# derivative = { version = "2", optional = true }
+# smallvec = {version = "1.13", features = ["const_generics", "const_new", "serde"], optional = true }
+# proc-macro2 = {version = "1", optional = true }
+# syn = {version = "2", optional = true }
+# quote = {version = "1", optional = true }
+# divrem = {version = "1", optional = true }
+# seq-macro = { workspace = true, optional = true }
+# super-seq-macro = { workspace = true, optional = true }
+# bincode = { version = "1.3", optional = true }
