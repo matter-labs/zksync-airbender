@@ -226,6 +226,7 @@ pub struct VerificationKey {
     pub params_hex: String,
 }
 
+#[allow(deprecated)]
 pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> {
     use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
 

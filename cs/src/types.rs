@@ -1034,6 +1034,7 @@ pub struct RegisterDecomposition<F: PrimeField> {
     pub u8_decomposition: [Num<F>; 4],
 }
 
+#[allow(deprecated)]
 impl<F: PrimeField> RegisterDecomposition<F> {
     pub fn into_register(&self) -> Register<F> {
         Register(self.u16_limbs)
