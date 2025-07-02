@@ -2,7 +2,7 @@ use super::context::{DeviceProperties, ProverContext};
 use super::BF;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
 use crate::device_structures::{
-    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
+    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut,
 };
 use crate::ntt::{
     bitrev_Z_to_natural_composition_main_evals, natural_composition_coset_evals_to_bitrev_Z,
@@ -254,25 +254,34 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         evaluations.len(),
         domain_size * columns_count.next_multiple_of(2)
     );
-    let mut reduce_result = context.alloc(columns_count)?;
-    let batch_reduce_temp_storage_bytes = get_batch_reduce_temp_storage_bytes::<BF>(
-        ReduceOperation::Sum,
-        columns_count as i32,
-        (domain_size - 1) as i32,
+    set_to_zero(
+        &mut DeviceMatrixChunkMut::new(
+            &mut evaluations[..columns_count << log_domain_size],
+            domain_size,
+            domain_size - 1,
+            1,
+        ),
+        stream,
     )?;
+    let mut reduce_result = context.alloc(columns_count)?;
+    let batch_reduce_temp_storage_bytes =
+        get_batch_reduce_with_adaptive_parallelism_temp_storage_bytes::<BF>(
+            ReduceOperation::Sum,
+            columns_count as i32,
+            domain_size as i32,
+        )?;
     let mut batch_reduce_temp_storage = context.alloc(batch_reduce_temp_storage_bytes)?;
     let stream = context.get_exec_stream();
-    batch_reduce::<BF>(
+    batch_reduce_with_adaptive_parallelism::<BF>(
         ReduceOperation::Sum,
         &mut batch_reduce_temp_storage,
-        &DeviceMatrixChunk::new(
+        &DeviceMatrix::new(
             &evaluations[0..columns_count * domain_size],
             domain_size,
-            0,
-            domain_size - 1,
         ),
         &mut reduce_result,
         stream,
+        context.get_device_properties(),
     )?;
     context.free(batch_reduce_temp_storage)?;
     neg(
