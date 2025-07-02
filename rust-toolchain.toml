@@ -1,3 +1,4 @@
 [toolchain]
-# channel = "nightly-2024-11-09"
-channel = "nightly"
+channel = "nightly-2025-05-14"
+# Most recent nightly is failing with the cycle detected.
+#channel = "nightly"
