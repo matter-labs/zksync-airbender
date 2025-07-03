@@ -123,10 +123,26 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
         let mut d_alloc_e4_scratch = context.alloc(num_e4_scratch_elems)?;
-        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(trace_len, num_stage_2_bf_cols)?;
+        let (
+            cub_scratch_bytes,
+            batch_reduce_intermediate_elems,
+        ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch(
+            trace_len,
+            num_stage_2_bf_cols,
+            cached_data.handle_delegation_requests,
+            cached_data.process_delegations,
+            context.get_device_properties(),
+        )?;
         let mut d_alloc_scratch_for_cub_ops = context.alloc(cub_scratch_bytes)?;
-        let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);
-        let mut d_alloc_scratch_for_col_sums = context.alloc(num_bf_scratch_elems)?;
+        let mut maybe_d_alloc_scratch_for_batch_reduce_intermediates =
+            if batch_reduce_intermediate_elems > 0 {
+                let alloc = context.alloc(batch_reduce_intermediate_elems)?;
+                Some(alloc)
+            } else {
+                None
+            };
+        let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
+        let mut d_alloc_scratch_for_col_sums = context.alloc(col_sums_scratch_elems)?;
         let mut d_lookup_challenges = context.alloc(1)?;
         let guard = lookup_challenges.lock().unwrap();
         memory_copy_async(
@@ -148,6 +164,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             &mut d_stage_2_cols,
             &mut d_alloc_e4_scratch,
             &mut d_alloc_scratch_for_cub_ops,
+            maybe_d_alloc_scratch_for_batch_reduce_intermediates,
             &mut d_alloc_scratch_for_col_sums,
             &d_lookup_challenges[0],
             cached_data,
@@ -155,7 +172,14 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             circuit.total_tables_size,
             log_domain_size,
             stream,
+            context.get_device_properties(),
         )?;
+        context.free(d_alloc_e4_scratch)?;
+        context.free(d_alloc_scratch_for_cub_ops);
+        if let Some(alloc) = maybe_d_alloc_scratch_for_batch_reduce_intermediates {
+            context.free(alloc)?;
+        }
+        context.free(d_alloc_scratch_for_col_sums)?;
         drop(generic_lookup_mappings);
         trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;

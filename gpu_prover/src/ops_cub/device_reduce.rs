@@ -233,11 +233,11 @@ fn get_batch_reduce_with_adaptive_parallelism_temp_storage_internal<T: Reduce>(
         batch_size as i32,
         segments_per_col as i32,
     )?;
-    let scratch_first_phase_result_elems = batch_size * segments_per_col;
+    let intermediate_elems = batch_size * segments_per_col;
     Ok((
         cub_scratch_first_phase_bytes,
         cub_scratch_second_phase_bytes,
-        scratch_first_phase_result_elems,
+        intermediate_elems,
         segments_per_col,
     ))
 }
@@ -251,7 +251,7 @@ pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
     let (
         cub_scratch_first_phase_bytes,
         cub_scratch_second_phase_bytes,
-        scratch_first_phase_result_elems,
+        intermediate_elems,
         _,
     ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
         operation,
@@ -264,7 +264,7 @@ pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
             cub_scratch_first_phase_bytes,
             cub_scratch_second_phase_bytes,
         ),
-        scratch_first_phase_result_elems,
+        intermediate_elems,
     ))
 }
 
@@ -284,7 +284,7 @@ pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
     let (
         cub_scratch_first_phase_bytes,
         cub_scratch_second_phase_bytes,
-        scratch_first_phase_result_elems,
+        intermediate_elems,
         segments_per_col,
     ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
         operation,
@@ -310,7 +310,7 @@ pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
         );
     }
     let first_phase_result = d_first_phase_result_scratch.unwrap();
-    assert_eq!(first_phase_result.len(), scratch_first_phase_result_elems);
+    assert_eq!(first_phase_result.len(), intermediate_elems);
     batch_reduce(
         operation,
         &mut d_cub_scratch[0..cub_scratch_first_phase_bytes],

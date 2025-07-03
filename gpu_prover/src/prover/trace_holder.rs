@@ -266,7 +266,7 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         stream,
     )?;
     let mut reduce_result = context.alloc(columns_count)?;
-    let (cub_scratch_bytes, first_phase_result_elems) =
+    let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
         get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
             ReduceOperation::Sum,
             columns_count,
@@ -274,14 +274,14 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
             context.get_device_properties(),
         )?;
     let mut cub_scratch = context.alloc(cub_scratch_bytes)?;
-    let mut first_phase_result_alloc = if first_phase_result_elems > 0 {
-        let first_phase_result = context.alloc(first_phase_result_elems)?;
-        Some(first_phase_result)
+    let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
+        let  = context.alloc(batch_reduce_intermediate_elems)?;
+        Some(batch_reduce_intermediates)
     } else {
         None
     };
-    let first_phase_result: Option<&mut DeviceSlice<BF>> =
-        if let Some(ref mut alloc) = first_phase_result_alloc {
+    let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+        if let Some(ref mut alloc) = maybe_batch_reduce_intermediates_alloc {
             Some(alloc)
         } else {
             None
@@ -289,14 +289,14 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     batch_reduce_with_adaptive_parallelism::<BF>(
         ReduceOperation::Sum,
         &mut cub_scratch,
-        first_phase_result,
+        maybe_batch_reduce_intermediates,
         &DeviceMatrix::new(&evaluations[0..columns_count * domain_size], domain_size),
         &mut reduce_result,
         stream,
         context.get_device_properties(),
     )?;
     context.free(cub_scratch)?;
-    if let Some(alloc) = first_phase_result_alloc {
+    if let Some(alloc) = maybe_batch_reduce_intermediates_alloc {
         context.free(alloc)?;
     };
     neg(
