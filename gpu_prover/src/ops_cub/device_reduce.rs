@@ -248,17 +248,13 @@ pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
     num_items: usize,
     device_properties: &DeviceProperties,
 ) -> CudaResult<(usize, usize)> {
-    let (
-        cub_scratch_first_phase_bytes,
-        cub_scratch_second_phase_bytes,
-        intermediate_elems,
-        _,
-    ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
-        operation,
-        batch_size,
-        num_items,
-        device_properties,
-    )?;
+    let (cub_scratch_first_phase_bytes, cub_scratch_second_phase_bytes, intermediate_elems, _) =
+        get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
+            operation,
+            batch_size,
+            num_items,
+            device_properties,
+        )?;
     Ok((
         std::cmp::max(
             cub_scratch_first_phase_bytes,

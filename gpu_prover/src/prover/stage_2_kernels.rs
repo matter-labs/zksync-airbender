@@ -164,10 +164,7 @@ cuda_kernel!(
 
 register_and_indirect_memory_args!(register_and_indirect_memory_args_kernel);
 
-pub fn get_stage_2_e4_scratch(
-    domain_size: usize,
-    circuit: &CompiledCircuitArtifact<BF>,
-) -> usize {
+pub fn get_stage_2_e4_scratch(domain_size: usize, circuit: &CompiledCircuitArtifact<BF>) -> usize {
     max(
         (1 << 16) + (1 << TIMESTAMP_COLUMNS_NUM_BITS) + circuit.total_tables_size,
         2 * domain_size, // for transposed grand product
@@ -228,10 +225,7 @@ pub fn get_stage_2_cub_and_batch_reduce_intermediate_scratch(
             delegation_aux_batch_reduce_scratch_bytes,
             grand_product_scratch_bytes,
         ),
-        (
-            bf_args_batch_reduce_intermediate_elems,
-            delegation_aux_batch_reduce_intermediate_elems,
-        ),
+        (bf_args_batch_reduce_intermediate_elems, delegation_aux_batch_reduce_intermediate_elems),
     ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
         domain_size,
         num_stage_2_bf_cols,
@@ -239,21 +233,19 @@ pub fn get_stage_2_cub_and_batch_reduce_intermediate_scratch(
         process_delegations,
         device_properties,
     )?;
-    Ok(
-        (
+    Ok((
+        max(
             max(
-                max(
-                    bf_args_batch_reduce_scratch_bytes,
-                    delegation_aux_batch_reduce_scratch_bytes,
-                ),
-                grand_product_scratch_bytes,
+                bf_args_batch_reduce_scratch_bytes,
+                delegation_aux_batch_reduce_scratch_bytes,
             ),
-            max(
-                bf_args_batch_reduce_intermediate_elems,
-                delegation_aux_batch_reduce_intermediate_elems,
-            ),
-        )
-    )
+            grand_product_scratch_bytes,
+        ),
+        max(
+            bf_args_batch_reduce_intermediate_elems,
+            delegation_aux_batch_reduce_intermediate_elems,
+        ),
+    ))
 }
 
 pub fn get_stage_2_col_sums_scratch(num_stage_2_bf_cols: usize) -> usize {
@@ -794,10 +786,7 @@ pub fn compute_stage_2_args_on_main_domain(
             delegation_aux_batch_reduce_scratch_bytes,
             grand_product_scratch_bytes,
         ),
-        (
-            bf_args_batch_reduce_intermediate_elems,
-            delegation_aux_batch_reduce_intermediate_elems,
-        ),
+        (bf_args_batch_reduce_intermediate_elems, delegation_aux_batch_reduce_intermediate_elems),
     ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
         n,
         num_stage_2_bf_cols,
@@ -815,8 +804,9 @@ pub fn compute_stage_2_args_on_main_domain(
             grand_product_scratch_bytes,
         ),
     );
-    if bf_args_batch_reduce_intermediate_elems > 0 ||
-        delegation_aux_batch_reduce_intermediate_elems > 0 {
+    if bf_args_batch_reduce_intermediate_elems > 0
+        || delegation_aux_batch_reduce_intermediate_elems > 0
+    {
         assert_eq!(
             maybe_batch_reduce_intermediates.as_ref().unwrap().len(),
             max(
@@ -829,7 +819,10 @@ pub fn compute_stage_2_args_on_main_domain(
     };
     let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
         if bf_args_batch_reduce_intermediate_elems > 0 {
-            Some(&mut (maybe_batch_reduce_intermediates.as_mut().unwrap())[0..bf_args_batch_reduce_intermediate_elems])
+            Some(
+                &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
+                    [0..bf_args_batch_reduce_intermediate_elems],
+            )
         } else {
             None
         };
@@ -867,7 +860,10 @@ pub fn compute_stage_2_args_on_main_domain(
         let delegation_aux_poly_cols = DeviceMatrixChunkMut::new(slice, stride, offset, n);
         let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
             if delegation_aux_batch_reduce_intermediate_elems > 0 {
-                Some(&mut (maybe_batch_reduce_intermediates.as_mut().unwrap())[0..delegation_aux_batch_reduce_intermediate_elems])
+                Some(
+                    &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
+                        [0..delegation_aux_batch_reduce_intermediate_elems],
+                )
             } else {
                 None
             };
