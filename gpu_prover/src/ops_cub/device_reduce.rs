@@ -271,7 +271,7 @@ pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
 pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
     operation: ReduceOperation,
     d_cub_scratch: &mut DeviceSlice<u8>,
-    d_first_phase_result_scratch: Option<&mut DeviceSlice<T>>,
+    d_intermediates: Option<&mut DeviceSlice<T>>,
     d_in: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
     d_out: &mut DeviceSlice<T>,
     stream: &CudaStream,
@@ -300,7 +300,7 @@ pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
         ),
     );
     if segments_per_col == 1 {
-        assert!(d_first_phase_result_scratch.is_none());
+        assert!(d_intermediates.is_none());
         return batch_reduce(
             operation,
             &mut d_cub_scratch[0..cub_scratch_first_phase_bytes],
@@ -309,7 +309,7 @@ pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
             stream,
         );
     }
-    let first_phase_result = d_first_phase_result_scratch.unwrap();
+    let first_phase_result = d_intermediates.unwrap();
     assert_eq!(first_phase_result.len(), intermediate_elems);
     batch_reduce(
         operation,

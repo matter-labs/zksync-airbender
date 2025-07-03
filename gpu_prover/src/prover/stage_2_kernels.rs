@@ -11,6 +11,7 @@ use crate::ops_cub::device_reduce::{
 };
 use crate::ops_cub::device_scan::{get_scan_temp_storage_bytes, scan, ScanOperation};
 use crate::ops_simple::{set_to_zero, sub_into_x};
+use crate::prover::context::DeviceProperties;
 use crate::utils::WARP_SIZE;
 
 use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -176,38 +177,39 @@ pub fn get_stage_2_e4_scratch(
 pub fn get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
     domain_size: usize,
     num_stage_2_bf_cols: usize,
-    handle_delegations: bool,
-    process_delegation_requests: bool,
+    handle_delegation_requests: bool,
+    process_delegations: bool,
     device_properties: &DeviceProperties,
 ) -> CudaResult<((usize, usize, usize), (usize, usize))> {
-    let (bf_args_batch_reduce_bytes, bf_args_batch_reduce_intermediate_elems =
+    let (bf_args_batch_reduce_scratch_bytes, bf_args_batch_reduce_intermediate_elems) =
         get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
             ReduceOperation::Sum,
             num_stage_2_bf_cols,
             domain_size,
             device_properties,
         )?;
-    let (delegation_aux_batch_reduce_bytes, delegation_aux_batch_reduce_intermediate_elems) =
+    let (delegation_aux_batch_reduce_scratch_bytes, delegation_aux_batch_reduce_intermediate_elems) =
         if handle_delegation_requests || process_delegations {
-            get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
+            let (x, y) = get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
                 ReduceOperation::Sum,
                 4, // one vectorized E4 col
                 domain_size,
                 device_properties,
             )?;
+            (x, y)
         } else {
             (0, 0)
         };
-    let grand_product_bytes =
-        get_scan_temp_storage_bytes::<E4>(ScanOperation::Product, false, domain_size)?;
+    let grand_product_scratch_bytes =
+        get_scan_temp_storage_bytes::<E4>(ScanOperation::Product, false, domain_size as i32)?;
     Ok((
         (
-            bf_args_batch_reduce_bytes,
-            delegation_aux_batch_reduce_bytes,
-            grand_product_bytes,
+            bf_args_batch_reduce_scratch_bytes,
+            delegation_aux_batch_reduce_scratch_bytes,
+            grand_product_scratch_bytes,
         ),
         (
-            bf_args_batch_reduce_intermediate_elems
+            bf_args_batch_reduce_intermediate_elems,
             delegation_aux_batch_reduce_intermediate_elems,
         ),
     ))
@@ -222,33 +224,35 @@ pub fn get_stage_2_cub_and_batch_reduce_intermediate_scratch(
 ) -> CudaResult<(usize, usize)> {
     let (
         (
-            bf_args_batch_reduce_bytes,
-            delegation_aux_batch_reduce_bytes,
-            grand_product_bytes,
+            bf_args_batch_reduce_scratch_bytes,
+            delegation_aux_batch_reduce_scratch_bytes,
+            grand_product_scratch_bytes,
         ),
         (
-            bf_args_batch_reduce_intermediate_elems
+            bf_args_batch_reduce_intermediate_elems,
             delegation_aux_batch_reduce_intermediate_elems,
         ),
     ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
         domain_size,
         num_stage_2_bf_cols,
-        handle_delegations,
-        process_delegation_requests,
+        handle_delegation_requests,
+        process_delegations,
         device_properties,
     )?;
     Ok(
-        max(
+        (
             max(
-                bf_args_batch_reduce_bytes,
-                delegation_aux_batch_reduce_bytes,
+                max(
+                    bf_args_batch_reduce_scratch_bytes,
+                    delegation_aux_batch_reduce_scratch_bytes,
+                ),
+                grand_product_scratch_bytes,
             ),
-            grand_product_bytes,
-        ),
-        max(
-            bf_args_batch_reduce_intermediate_elems,
-            delegatiopn_aux_batch_reduce_bytes,
-        ),
+            max(
+                bf_args_batch_reduce_intermediate_elems,
+                delegation_aux_batch_reduce_intermediate_elems,
+            ),
+        )
     )
 }
 
@@ -264,7 +268,7 @@ pub fn compute_stage_2_args_on_main_domain(
     stage_2_cols: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     scratch_for_aggregated_entry_invs: &mut DeviceSlice<E4>,
     scratch_for_cub_ops: &mut DeviceSlice<u8>,
-    scratch_for_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>>,
+    maybe_batch_reduce_intermediates: &mut Option<&mut DeviceSlice<BF>>,
     scratch_for_col_sums: &mut DeviceSlice<BF>,
     lookup_challenges: &DeviceVariable<LookupChallenges>,
     cached_data: &ProverCachedData,
@@ -786,16 +790,16 @@ pub fn compute_stage_2_args_on_main_domain(
     );
     let (
         (
-            bf_args_batch_reduce_bytes,
-            delegation_aux_batch_reduce_bytes,
-            grand_product_bytes,
+            bf_args_batch_reduce_scratch_bytes,
+            delegation_aux_batch_reduce_scratch_bytes,
+            grand_product_scratch_bytes,
         ),
         (
-            bf_args_batch_reduce_intermediate_elems
+            bf_args_batch_reduce_intermediate_elems,
             delegation_aux_batch_reduce_intermediate_elems,
         ),
     ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
-        domain_size,
+        n,
         num_stage_2_bf_cols,
         handle_delegation_requests,
         process_delegations,
@@ -805,34 +809,34 @@ pub fn compute_stage_2_args_on_main_domain(
         scratch_for_cub_ops.len(),
         max(
             max(
-                bf_args_batch_reduce_bytes,
-                delegation_aux_batch_reduce_bytes,
+                bf_args_batch_reduce_scratch_bytes,
+                delegation_aux_batch_reduce_scratch_bytes,
             ),
-            grand_product_bytes,
+            grand_product_scratch_bytes,
         ),
     );
     if bf_args_batch_reduce_intermediate_elems > 0 ||
         delegation_aux_batch_reduce_intermediate_elems > 0 {
         assert_eq!(
-            scratch_for_batch_reduce_intermediates.unwrap().len(),
+            maybe_batch_reduce_intermediates.as_ref().unwrap().len(),
             max(
                 bf_args_batch_reduce_intermediate_elems,
                 delegation_aux_batch_reduce_intermediate_elems,
             ),
         )
     } else {
-        assert!(scratch_for_batch_reduce_intermediates.is_none());
+        assert!(maybe_batch_reduce_intermediates.is_none());
     };
-    let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+    let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
         if bf_args_batch_reduce_intermediate_elems > 0 {
-            Some(&mut alloc[0..bf_args_batch_reduce_intermediate_elems])
+            Some(&mut (maybe_batch_reduce_intermediates.as_mut().unwrap())[0..bf_args_batch_reduce_intermediate_elems])
         } else {
             None
         };
     batch_reduce_with_adaptive_parallelism::<BF>(
         ReduceOperation::Sum,
         &mut scratch_for_cub_ops[0..bf_args_batch_reduce_scratch_bytes],
-        maybe_batch_reduce_intermediates,
+        maybe_intermediates,
         &stage_2_bf_cols,
         &mut scratch_for_col_sums[0..num_stage_2_bf_cols],
         stream,
@@ -861,16 +865,16 @@ pub fn compute_stage_2_args_on_main_domain(
         let slice =
             &mut (stage_2_e4_cols.slice_mut())[start_col * stride..(start_col + 4) * stride];
         let delegation_aux_poly_cols = DeviceMatrixChunkMut::new(slice, stride, offset, n);
-        let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
-            if bf_args_batch_reduce_intermediate_elems > 0 {
-                Some(&mut alloc[0..delegation_aux_batch_reduce_intermediate_elems])
+        let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
+            if delegation_aux_batch_reduce_intermediate_elems > 0 {
+                Some(&mut (maybe_batch_reduce_intermediates.as_mut().unwrap())[0..delegation_aux_batch_reduce_intermediate_elems])
             } else {
                 None
             };
         batch_reduce_with_adaptive_parallelism::<BF>(
             ReduceOperation::Sum,
             &mut scratch_for_cub_ops[0..delegation_aux_batch_reduce_scratch_bytes],
-            maybe_batch_reduce_intermediates,
+            maybe_intermediates,
             &delegation_aux_poly_cols,
             &mut scratch_for_col_sums[0..4],
             stream,

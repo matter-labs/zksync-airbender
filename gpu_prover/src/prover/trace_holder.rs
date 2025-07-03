@@ -275,14 +275,14 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         )?;
     let mut cub_scratch = context.alloc(cub_scratch_bytes)?;
     let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
-        let  = context.alloc(batch_reduce_intermediate_elems)?;
-        Some(batch_reduce_intermediates)
+        let d_alloc = context.alloc(batch_reduce_intermediate_elems)?;
+        Some(d_alloc)
     } else {
         None
     };
     let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
-        if let Some(ref mut alloc) = maybe_batch_reduce_intermediates_alloc {
-            Some(alloc)
+        if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+            Some(d_alloc)
         } else {
             None
         };

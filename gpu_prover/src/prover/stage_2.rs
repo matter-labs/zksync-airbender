@@ -13,6 +13,7 @@ use cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
@@ -121,7 +122,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let trace_holder = &mut self.trace_holder;
         let trace = trace_holder.get_evaluations_mut();
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
-        let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
+        let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
         let mut d_alloc_e4_scratch = context.alloc(num_e4_scratch_elems)?;
         let (
             cub_scratch_bytes,
@@ -134,10 +135,16 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             context.get_device_properties(),
         )?;
         let mut d_alloc_scratch_for_cub_ops = context.alloc(cub_scratch_bytes)?;
-        let mut maybe_d_alloc_scratch_for_batch_reduce_intermediates =
+        let mut maybe_batch_reduce_intermediates_alloc =
             if batch_reduce_intermediate_elems > 0 {
                 let alloc = context.alloc(batch_reduce_intermediate_elems)?;
                 Some(alloc)
+            } else {
+                None
+            };
+        let mut maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+            if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+                Some(d_alloc)
             } else {
                 None
             };
@@ -164,7 +171,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             &mut d_stage_2_cols,
             &mut d_alloc_e4_scratch,
             &mut d_alloc_scratch_for_cub_ops,
-            maybe_d_alloc_scratch_for_batch_reduce_intermediates,
+            &mut maybe_batch_reduce_intermediates,
             &mut d_alloc_scratch_for_col_sums,
             &d_lookup_challenges[0],
             cached_data,
@@ -175,8 +182,8 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             context.get_device_properties(),
         )?;
         context.free(d_alloc_e4_scratch)?;
-        context.free(d_alloc_scratch_for_cub_ops);
-        if let Some(alloc) = maybe_d_alloc_scratch_for_batch_reduce_intermediates {
+        context.free(d_alloc_scratch_for_cub_ops)?;
+        if let Some(alloc) = maybe_batch_reduce_intermediates_alloc {
             context.free(alloc)?;
         }
         context.free(d_alloc_scratch_for_col_sums)?;
