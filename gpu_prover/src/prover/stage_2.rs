@@ -123,11 +123,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
         let mut d_alloc_e4_scratch = context.alloc(num_e4_scratch_elems)?;
-        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(
-            trace_len,
-            num_stage_2_bf_cols,
-            context.get_device_properties(),
-        )?;
+        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(trace_len, num_stage_2_bf_cols)?;
         let mut d_alloc_scratch_for_cub_ops = context.alloc(cub_scratch_bytes)?;
         let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);
         let mut d_alloc_scratch_for_col_sums = context.alloc(num_bf_scratch_elems)?;
@@ -159,7 +155,6 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             circuit.total_tables_size,
             log_domain_size,
             stream,
-            &context.get_device_properties(),
         )?;
         drop(generic_lookup_mappings);
         trace_holder.allocate_to_full(context)?;

@@ -6,7 +6,9 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t};
 
-use crate::device_structures::{DeviceMatrixChunkImpl, DeviceVectorChunkImpl, PtrAndStride};
+use crate::device_structures::{
+    DeviceMatrix, DeviceMatrixChunkImpl, DeviceVectorChunkImpl, PtrAndStride,
+};
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::prover::context::DeviceProperties;
 
@@ -173,12 +175,12 @@ pub fn batch_reduce<T: Reduce>(
 // Batch reduce with adaptive parallelism is meant to optimize
 // common production cases where we know the matrix is contiguous
 // and column length is a large power of 2.
-fn get_segments_per_col<T: Reduce>(
+fn get_segments_per_col(
     batch_size: usize,
     num_items: usize,
     device_properties: &DeviceProperties,
 ) -> usize {
-    const MIN_ELEMS_PER_BLOCK = 256;
+    const MIN_ELEMS_PER_BLOCK: usize = 256;
     assert!(num_items.is_power_of_two());
     assert!(num_items >= MIN_ELEMS_PER_BLOCK);
     let sm_count = device_properties.sm_count;
@@ -210,30 +212,34 @@ fn get_batch_reduce_with_adaptive_parallelism_temp_storage_internal<T: Reduce>(
 ) -> CudaResult<(usize, usize, usize, usize)> {
     let segments_per_col = get_segments_per_col(batch_size, num_items, device_properties);
     if segments_per_col == 1 {
-        return (
-            get_batch_reduce_temp_storage_bytes::<T>::(operation, batch_size as i32, num_items as i32)?,
+        return Ok((
+            get_batch_reduce_temp_storage_bytes::<T>(
+                operation,
+                batch_size as i32,
+                num_items as i32,
+            )?,
             0,
             0,
             segments_per_col,
-        );
+        ));
     }
-    let cub_scratch_first_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>::(
+    let cub_scratch_first_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>(
         operation,
         (batch_size * segments_per_col) as i32,
-        (num_items / segments_per_col) as i32
+        (num_items / segments_per_col) as i32,
     )?;
-    let cub_scratch_second_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>::(
+    let cub_scratch_second_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>(
         operation,
         batch_size as i32,
         segments_per_col as i32,
     )?;
     let scratch_first_phase_result_elems = batch_size * segments_per_col;
-    (
+    Ok((
         cub_scratch_first_phase_bytes,
         cub_scratch_second_phase_bytes,
         scratch_first_phase_result_elems,
         segments_per_col,
-    )
+    ))
 }
 
 pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
@@ -241,25 +247,28 @@ pub fn get_batch_reduce_with_adaptive_parallelism_temp_storage<T: Reduce>(
     batch_size: usize,
     num_items: usize,
     device_properties: &DeviceProperties,
-) -> CudaResult<(usize, usize)>{
+) -> CudaResult<(usize, usize)> {
     let (
         cub_scratch_first_phase_bytes,
         cub_scratch_second_phase_bytes,
         scratch_first_phase_result_elems,
-        _
-    ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>::(
+        _,
+    ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
         operation,
         batch_size,
         num_items,
         device_properties,
     )?;
-    (
-        std::cmp::max(cub_scratch_first_phase_bytes, cub_scratch_second_phase_bytes),
+    Ok((
+        std::cmp::max(
+            cub_scratch_first_phase_bytes,
+            cub_scratch_second_phase_bytes,
+        ),
         scratch_first_phase_result_elems,
-    );
+    ))
 }
 
-pub fn batch_reduce_with_adaptive_parallellism<T: Reduce>(
+pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
     operation: ReduceOperation,
     d_cub_scratch: &mut DeviceSlice<u8>,
     d_first_phase_result_scratch: Option<&mut DeviceSlice<T>>,
@@ -277,33 +286,39 @@ pub fn batch_reduce_with_adaptive_parallellism<T: Reduce>(
         cub_scratch_second_phase_bytes,
         scratch_first_phase_result_elems,
         segments_per_col,
-    ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>::(
+    ) = get_batch_reduce_with_adaptive_parallelism_temp_storage_internal::<T>(
         operation,
         batch_size,
         num_items,
         device_properties,
     )?;
-    if segments_per_col == 1 {
-        assert!(d_first_phase_result_scratch.is_none());
-        return batch_reduce(operation, d_temp_storage, d_in, d_out, stream);
-    }
-    let d_first_phase_result_scratch = d_first_phase_result_scratch.unwrap();
-    assert_eq!(d_first_phase_result_scratch.len(), scratch_first_phase_result_elems);
     assert_eq!(
         d_cub_scratch.len(),
-        std::cmp::max(cub_scratch_first_phase_bytes, cub_scratch_second_phase_bytes),
+        std::cmp::max(
+            cub_scratch_first_phase_bytes,
+            cub_scratch_second_phase_bytes
+        ),
     );
-    let mut first_phase_result_matrix = DeviceMatrixMut::new(
-        d_first_phase_result_scratch,
-        segments_per_col,
-    );
+    if segments_per_col == 1 {
+        assert!(d_first_phase_result_scratch.is_none());
+        return batch_reduce(
+            operation,
+            &mut d_cub_scratch[0..cub_scratch_first_phase_bytes],
+            d_in,
+            d_out,
+            stream,
+        );
+    }
+    let first_phase_result = d_first_phase_result_scratch.unwrap();
+    assert_eq!(first_phase_result.len(), scratch_first_phase_result_elems);
     batch_reduce(
         operation,
         &mut d_cub_scratch[0..cub_scratch_first_phase_bytes],
         &DeviceMatrix::new(d_in.slice(), num_items / segments_per_col),
-        &mut first_phase_result_matrix,
+        first_phase_result,
         stream,
     )?;
+    let first_phase_result_matrix = DeviceMatrix::new(first_phase_result, segments_per_col);
     batch_reduce(
         operation,
         &mut d_cub_scratch[0..cub_scratch_second_phase_bytes],

@@ -10,7 +10,6 @@ use crate::ops_cub::device_reduce::{
 };
 use crate::ops_cub::device_scan::{get_scan_temp_storage_bytes, scan, ScanOperation};
 use crate::ops_simple::{set_to_zero, sub_into_x};
-use crate::prover::context::DeviceProperties;
 use crate::utils::WARP_SIZE;
 
 use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -176,23 +175,18 @@ pub fn get_stage_2_e4_scratch_elems(
 pub fn get_stage_2_cub_scratch_bytes_internal(
     domain_size: usize,
     num_stage_2_bf_cols: usize,
-    device_properties: &DeviceProperties,
 ) -> CudaResult<(usize, (usize, usize, usize))> {
     let domain_size = domain_size as i32;
-    let bf_args_batch_reduce_bytes =
-        get_batch_reduce_with_adaptive_parallelism_temp_storage_bytes::<BF>(
-            ReduceOperation::Sum,
-            num_stage_2_bf_cols as i32,
-            domain_size,
-            device_properties,
-        )?;
-    let delegation_aux_batch_reduce_bytes =
-        get_batch_reduce_with_adaptive_parallelism_temp_storage_bytes::<BF>(
-            ReduceOperation::Sum,
-            4 as i32, // one vectorized E4 col
-            domain_size,
-            device_properties,
-        )?;
+    let bf_args_batch_reduce_bytes = get_batch_reduce_temp_storage_bytes::<BF>(
+        ReduceOperation::Sum,
+        num_stage_2_bf_cols as i32,
+        domain_size,
+    )?;
+    let delegation_aux_batch_reduce_bytes = get_batch_reduce_temp_storage_bytes::<BF>(
+        ReduceOperation::Sum,
+        4 as i32, // one vectorized E4 col
+        domain_size,
+    )?;
     let grand_product_bytes =
         get_scan_temp_storage_bytes::<E4>(ScanOperation::Product, false, domain_size)?;
     Ok((
@@ -214,13 +208,9 @@ pub fn get_stage_2_cub_scratch_bytes_internal(
 pub fn get_stage_2_cub_scratch_bytes(
     domain_size: usize,
     num_stage_2_bf_cols: usize,
-    device_properties: &DeviceProperties,
 ) -> CudaResult<usize> {
-    let (cub_scratch_bytes, _) = get_stage_2_cub_scratch_bytes_internal(
-        domain_size,
-        num_stage_2_bf_cols,
-        device_properties,
-    )?;
+    let (cub_scratch_bytes, _) =
+        get_stage_2_cub_scratch_bytes_internal(domain_size, num_stage_2_bf_cols)?;
     Ok(cub_scratch_bytes)
 }
 
@@ -243,7 +233,6 @@ pub fn compute_stage_2_args_on_main_domain(
     num_generic_table_rows: usize,
     log_n: u32,
     stream: &CudaStream,
-    device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     assert_eq!(REGISTER_SIZE, 2);
     assert_eq!(NUM_TIMESTAMP_COLUMNS_FOR_RAM, 2);
@@ -762,15 +751,14 @@ pub fn compute_stage_2_args_on_main_domain(
             delegation_aux_batch_reduce_scratch_bytes,
             grand_product_scratch_bytes,
         ),
-    ) = get_stage_2_cub_scratch_bytes_internal(n, num_stage_2_bf_cols, device_properties)?;
+    ) = get_stage_2_cub_scratch_bytes_internal(n, num_stage_2_bf_cols)?;
     assert_eq!(scratch_for_cub_ops.len(), cub_scratch_bytes);
-    batch_reduce_with_adaptive_parallelism::<BF>(
+    batch_reduce::<BF>(
         ReduceOperation::Sum,
         &mut scratch_for_cub_ops[0..bf_args_batch_reduce_scratch_bytes],
         &stage_2_bf_cols,
         &mut scratch_for_col_sums[0..num_stage_2_bf_cols],
         stream,
-        device_properties,
     )?;
     let stride = stage_2_bf_cols.stride();
     let offset = stage_2_bf_cols.offset();
@@ -795,13 +783,12 @@ pub fn compute_stage_2_args_on_main_domain(
         let slice =
             &mut (stage_2_e4_cols.slice_mut())[start_col * stride..(start_col + 4) * stride];
         let delegation_aux_poly_cols = DeviceMatrixChunkMut::new(slice, stride, offset, n);
-        batch_reduce_with_adaptive_parallelism::<BF>(
+        batch_reduce::<BF>(
             ReduceOperation::Sum,
             &mut scratch_for_cub_ops[0..delegation_aux_batch_reduce_scratch_bytes],
             &delegation_aux_poly_cols,
             &mut scratch_for_col_sums[0..4],
             stream,
-            device_properties,
         )?;
         let mut last_row = DeviceMatrixChunkMut::new(slice, stride, offset + n - 1, 1);
         let scratch_for_col_sums_match_last_row_shape =
@@ -973,7 +960,6 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let device_properties = DeviceProperties::new();
         let num_memory_args = circuit
             .stage_2_layout
             .intermediate_polys_for_memory_argument
@@ -988,11 +974,8 @@ mod tests {
             DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
         let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(domain_size, circuit);
         let mut d_alloc_e4_scratch = DeviceAllocation::<E4>::alloc(num_e4_scratch_elems).unwrap();
-        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(
-            domain_size,
-            num_stage_2_bf_cols,
-            device_properties
-        ).unwrap();
+        let cub_scratch_bytes =
+            get_stage_2_cub_scratch_bytes(domain_size, num_stage_2_bf_cols).unwrap();
         let mut d_alloc_scratch_for_cub_ops =
             DeviceAllocation::<u8>::alloc(cub_scratch_bytes).unwrap();
         let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);

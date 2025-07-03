@@ -1,22 +1,22 @@
 use super::context::{DeviceProperties, ProverContext};
 use super::BF;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
-use crate::device_structures::{
-    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut,
-};
+use crate::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::ntt::{
     bitrev_Z_to_natural_composition_main_evals, natural_composition_coset_evals_to_bitrev_Z,
     natural_main_evals_to_natural_coset_evals,
 };
 use crate::ops_cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
+    batch_reduce_with_adaptive_parallelism,
+    get_batch_reduce_with_adaptive_parallelism_temp_storage, ReduceOperation,
 };
-use crate::ops_simple::{neg, set_to_zero};
+use crate::ops_simple::{neg, set_by_val, set_to_zero};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 use era_cudart::stream::CudaStream;
 use fft::GoodAllocator;
+use field::Field;
 use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::ops::DerefMut;
@@ -254,7 +254,9 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         evaluations.len(),
         domain_size * columns_count.next_multiple_of(2)
     );
-    set_to_zero(
+    let stream = context.get_exec_stream();
+    set_by_val(
+        BF::ZERO,
         &mut DeviceMatrixChunkMut::new(
             &mut evaluations[..columns_count << log_domain_size],
             domain_size,
@@ -264,26 +266,39 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         stream,
     )?;
     let mut reduce_result = context.alloc(columns_count)?;
-    let batch_reduce_temp_storage_bytes =
-        get_batch_reduce_with_adaptive_parallelism_temp_storage_bytes::<BF>(
+    let (cub_scratch_bytes, first_phase_result_elems) =
+        get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
             ReduceOperation::Sum,
-            columns_count as i32,
-            domain_size as i32,
+            columns_count,
+            domain_size,
+            context.get_device_properties(),
         )?;
-    let mut batch_reduce_temp_storage = context.alloc(batch_reduce_temp_storage_bytes)?;
-    let stream = context.get_exec_stream();
+    let mut cub_scratch = context.alloc(cub_scratch_bytes)?;
+    let mut first_phase_result_alloc = if first_phase_result_elems > 0 {
+        let first_phase_result = context.alloc(first_phase_result_elems)?;
+        Some(first_phase_result)
+    } else {
+        None
+    };
+    let first_phase_result: Option<&mut DeviceSlice<BF>> =
+        if let Some(ref mut alloc) = first_phase_result_alloc {
+            Some(alloc)
+        } else {
+            None
+        };
     batch_reduce_with_adaptive_parallelism::<BF>(
         ReduceOperation::Sum,
-        &mut batch_reduce_temp_storage,
-        &DeviceMatrix::new(
-            &evaluations[0..columns_count * domain_size],
-            domain_size,
-        ),
+        &mut cub_scratch,
+        first_phase_result,
+        &DeviceMatrix::new(&evaluations[0..columns_count * domain_size], domain_size),
         &mut reduce_result,
         stream,
         context.get_device_properties(),
     )?;
-    context.free(batch_reduce_temp_storage)?;
+    context.free(cub_scratch)?;
+    if let Some(alloc) = first_phase_result_alloc {
+        context.free(alloc)?;
+    };
     neg(
         &DeviceMatrix::new(&reduce_result, 1),
         &mut DeviceMatrixChunkMut::new(
