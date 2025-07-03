@@ -139,12 +139,12 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         } else {
             None
         };
-        let mut maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
-            if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
-                Some(d_alloc)
-            } else {
-                None
-            };
+        let mut maybe_batch_reduce_intermediates: &mut Option<&mut DeviceSlice<BF>> = &mut maybe_batch_reduce_intermediates_alloc;
+            // if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+            //     Some(d_alloc)
+            // } else {
+            //     None
+            // };
         let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
         let mut d_alloc_scratch_for_col_sums = context.alloc(col_sums_scratch_elems)?;
         let mut d_lookup_challenges = context.alloc(1)?;
