@@ -161,13 +161,7 @@ where
 
     type M: RiscV32Machine<Self::ND, Self::MS, Self::TR, Self::MMU, Self::C>;
 
-    fn instantiate(self, config: &SimulatorConfig) -> Self::M {
-        let mut machine = self.instantiate(config);
-
-        machine.populate_memory(config.entry_point, config.bin.to_iter());
-
-        machine
-    }
+    fn instantiate(self, config: &SimulatorConfig) -> Self::M;
 }
 
 pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C> 
@@ -182,7 +176,6 @@ pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
     fn cycle(&mut self);
 
     fn state(&self) -> &RiscV32ObservableState;
-    fn non_determinism_source(&self) -> &ND;
 
     fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR);
 
@@ -192,13 +185,6 @@ pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
         dwarf_cache: &mut diag::DwarfCache,
         cycle: usize
     ) -> diag::StacktraceCollectionResult;
-
-    fn populate_memory<B>(&mut self, at: u32, bytes: B) 
-        where B: IntoIterator<Item = u8>;
-
-    // fn pc(&self) -> u32;
-    // fn sapt(&self) -> u32;
-    // fn registers(&self) -> &[u32; NUM_REGISTERS];
 }
 
 pub enum BinarySource<'a> {

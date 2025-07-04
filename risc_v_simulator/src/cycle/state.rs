@@ -87,23 +87,6 @@ where
     MMU: MMUImplementation<MS, TR, C>,
     C: MachineConfig, 
 {
-    // fn initial(entry_point: u32) -> Self {
-    //     let state = RiscV32State::initial(entry_point);
-    //     let memory_tracer = ();
-    //     let mmu = crate::mmu::NoMMU { sapt: state.sapt };
-    //     let non_determinism_source = crate::abstractions::non_determinism::QuasiUARTSource::default();
-    //
-    //     let mut memory = crate::abstractions::memory::VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-    //
-    //     Self {
-    //         state,
-    //         memory_source: memory,
-    //         memory_tracer,
-    //         mmu,
-    //         non_determinism_source,
-    //     }
-    // }
-
     fn cycle(
         &mut self,
     ) {
@@ -116,11 +99,16 @@ where
     }
 
     fn state(&self) -> &RiscV32ObservableState {
-        todo!()
+        &self.state.observable
     }
 
     fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR) {
-        todo!()
+        (
+            self.state.observable,
+            self.memory_source,
+            self.non_determinism_source,
+            self.memory_tracer,
+        )
     }
 
     fn collect_stacktrace(
@@ -139,17 +127,6 @@ where
             cycle
         )
     }
-
-    fn populate_memory<B>(&mut self, at: u32, bytes: B) 
-        where B: IntoIterator<Item = u8> {
-        // self.memory_source.load_image(at, bytes.into_iter());
-        todo!()
-    }
-
-    fn non_determinism_source(&self) -> &ND {
-        todo!()
-    }
-
 }
 
 // static CSR_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
