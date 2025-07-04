@@ -239,17 +239,17 @@ pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> 
         IMIsaConfigWithAllDelegations,
     >(binary, 0, 1 << 30, source);
 
-    if final_state.pc != final_pc {
+    if final_state.state.pc != final_pc {
         println!(
             "Execution ended on the unexpected PC: was expecting 0x{:08x}, but ended at {:08x}",
-            final_pc, final_state.pc
+            final_pc, final_state.state.pc
         );
         return None;
     }
 
     // our convention is to return 32 bytes placed into registers x10-x26
 
-    let regs = final_state.registers[10..26].try_into().unwrap();
+    let regs = final_state.state.registers[10..26].try_into().unwrap();
 
     Some(regs)
 }

@@ -611,7 +611,7 @@ fn run_binary(
     machine: &Machine,
 ) {
     let config = SimulatorConfig {
-        bin_path: bin_path.into(),
+        bin: bin_path.into(),
         cycles: cycles.unwrap_or(DEFAULT_CYCLES),
         entry_point: 0,
         diagnostics: None,

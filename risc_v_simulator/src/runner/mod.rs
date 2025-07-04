@@ -1,15 +1,24 @@
 use std::path::Path;
 
+use crate::abstractions::memory::MemorySource;
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::non_determinism::QuasiUARTSource;
+use crate::cycle::state::RiscV32MachineV1;
 use crate::cycle::state::StateTracer;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::NoMMU;
-use crate::sim::ExecReport;
+use crate::setup::BaselineWithND;
+use crate::setup::DefaultSetup;
+use crate::sim::BinarySource;
+use crate::sim::RiscV32MachineSetup;
+use crate::sim::RunResult;
+use crate::sim::ProfilerConfig;
+use crate::sim::RiscV32Machine;
+use crate::sim::RunResultMeasurements;
 use crate::sim::Simulator;
 use crate::sim::SimulatorConfig;
-use crate::{abstractions::memory::VectorMemoryImpl, cycle::state::RiscV32State};
+use crate::{abstractions::memory::VectorMemoryImpl};
 
 pub const DEFAULT_ENTRY_POINT: u32 = 0x01000000;
 pub const CUSTOM_ENTRY_POINT: u32 = 0;
@@ -19,9 +28,9 @@ pub fn run_simple_simulator(config: SimulatorConfig) -> [u32; 8] {
 }
 
 pub fn run_simple_with_entry_point(config: SimulatorConfig) -> [u32; 8] {
-    let (_, state, _) =
+    let result =
         run_simple_with_entry_point_and_non_determimism_source(config, QuasiUARTSource::default());
-    let registers = state.registers;
+    let registers = result.state.registers;
     [
         registers[10],
         registers[11],
@@ -39,8 +48,9 @@ pub fn run_simple_with_entry_point_and_non_determimism_source<
 >(
     config: SimulatorConfig,
     non_determinism_source: S,
-) -> (S, RiscV32State<IMStandardIsaConfig>, ExecReport) {
-    run_simple_with_entry_point_and_non_determimism_source_for_config::<S, IMStandardIsaConfig>(
+) -> RunResult<BaselineWithND<S, IMStandardIsaConfig>> {
+    run_simple_with_entry_point_and_non_determimism_source_for_config::<
+        S, IMStandardIsaConfig>(
         config,
         non_determinism_source,
     )
@@ -52,63 +62,45 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
 >(
     config: SimulatorConfig,
     non_determinism_source: S,
-) -> (S, RiscV32State<C>, ExecReport) {
-    let state = RiscV32State::<C>::initial(config.entry_point);
-    let memory_tracer = ();
-    let mmu = NoMMU { sapt: 0 };
+) -> RunResult<BaselineWithND<S, C>> {
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-    memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
+    let setup = BaselineWithND::<_, C>::new(non_determinism_source);
 
-    let mut sim = Simulator::new(
+    let mut sim = Simulator::<_, C>::new(
         config,
-        state,
-        memory,
-        memory_tracer,
-        mmu,
-        non_determinism_source,
+        setup
     );
 
-    let exec = sim.run(|_, _| {}, |_, _| {});
-
-    (sim.non_determinism_source, sim.state, exec)
+    sim.run(|_, _| {}, |_, _| {})
 }
 
-pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C: MachineConfig>(
+pub fn run_simple_for_num_cycles<
+    S: NonDeterminismCSRSource<VectorMemoryImpl>,
+    C: MachineConfig
+> (
     binary: &[u8],
     entry_point: u32,
     cycles: usize,
     mut non_determinism_source: S,
-) -> RiscV32State<C> {
-    let mut state = RiscV32State::<C>::initial(entry_point);
-    let mut memory_tracer = ();
-    let mut mmu = NoMMU { sapt: 0 };
+) -> RunResult<BaselineWithND<S, C>> {
+    let setup = BaselineWithND::<_, C>::new(non_determinism_source);
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-    memory.load_image(entry_point, binary.iter().copied());
+    let mut sim = Simulator::<_, C>::new(
+        SimulatorConfig::new(
+            BinarySource::Slice(binary),
+            entry_point,
+            cycles,
+            None
+        ),
+        setup,
+    );
 
-    let mut previous_pc = entry_point;
-    let mut cycle_counter = 0u64;
+    let exec = sim.run(|_, _| {}, |_, _| {});
 
-    for _cycle in 0..cycles as usize {
-        cycle_counter += 1;
-        RiscV32State::<C>::cycle(
-            &mut state,
-            &mut memory,
-            &mut memory_tracer,
-            &mut mmu,
-            &mut non_determinism_source,
-        );
 
-        if state.pc == previous_pc {
-            println!("Took {} cycles to finish", cycle_counter);
-            break;
-        }
-        previous_pc = state.pc;
-    }
-
-    state
+    exec
 }
+
 
 // pub fn run_simple_with_entry_point_with_delegation_and_non_determimism_source<
 //     S: NonDeterminismCSRSource<VectorMemoryImpl>,
@@ -137,45 +129,36 @@ pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C
 //     sim.non_determinism_source
 // }
 
-pub fn run_simulator_with_traces(config: SimulatorConfig) -> (StateTracer, ()) {
-    run_simulator_with_traces_for_config(config)
-}
+// pub fn run_simulator_with_traces(config: SimulatorConfig) -> (StateTracer, ()) {
+//     run_simulator_with_traces_for_config(config)
+// }
 
-pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
+pub fn run_simulator_with_traces_for_config<
+    C: MachineConfig
+> (
     config: SimulatorConfig,
-) -> (StateTracer<C>, ()) {
-    let state = RiscV32State::<C>::initial(CUSTOM_ENTRY_POINT);
-    let memory_tracer = ();
-    let mmu = NoMMU { sapt: state.sapt };
-    let non_determinism_source = QuasiUARTSource::default();
+) -> (StateTracer, ()) {
+    let setup = DefaultSetup::default();
 
-    let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-    memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
+    let mut state_tracer = StateTracer::new_for_num_cycles(config.cycles);
 
-    let cycles = config.cycles;
-    println!("Will run for up to {} cycles", cycles);
-
-    let mut sim = Simulator::new(
+    let mut sim = Simulator::<DefaultSetup, C>::new(
         config,
-        state,
-        memory,
-        memory_tracer,
-        mmu,
-        non_determinism_source,
+        setup,
     );
 
-    let mut state_tracer = StateTracer::new_for_num_cycles(cycles + 1);
-    state_tracer.insert(0, sim.state);
 
-    sim.run(
+    state_tracer.insert(0, sim.machine.state().clone());
+
+    let exec = sim.run(
         |_, _| {},
         |sim, cycle| {
-            println!("mtvec: {:?}", sim.state.machine_mode_trap_data.setup.tvec);
-            state_tracer.insert(cycle + 1, sim.state);
+            println!("mtvec: {:?}", sim.machine.state.machine_mode_trap_data.setup.tvec);
+            state_tracer.insert(cycle + 1, sim.machine.state().clone());
         },
     );
 
-    (state_tracer, sim.memory_tracer)
+    (state_tracer, exec.memory_tracer)
 }
 
 fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {

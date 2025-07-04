@@ -5,6 +5,9 @@ use std::hint::unreachable_unchecked;
 
 pub use super::decoder_utils::*;
 pub use super::utils::*;
+use crate::cycle::state::RiscV32ObservableState;
+use crate::mmu::NoMMU;
+use crate::sim::RiscV32Machine;
 use crate::utils::{sign_extend, sign_extend_16, sign_extend_8, zero_extend_16, zero_extend_8};
 
 use crate::abstractions::csr_processor::NoExtraCSRs;
@@ -97,10 +100,65 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
     }
 }
 
+pub(crate) struct Riscv32MachineProverUnrolled<
+    MS: MemorySource,
+    TR: Tracer<C>,
+    ND: NonDeterminismCSRSource<MS>,
+    CSR: DelegationCSRProcessor,
+    C: MachineConfig
+> {
+    pub(crate) state: RiscV32StateForUnrolledProver<C>,
+    pub(crate) memory_source: MS,
+    pub(crate) memory_tracer: TR,
+    pub(crate) non_determinism_source: ND,
+    pub(crate) csr_processor: CSR,
+}
+
+impl<MS, TR, ND, CSR, C> RiscV32Machine<ND, MS, TR, NoMMU, C> for Riscv32MachineProverUnrolled<
+    MS, TR, ND, CSR, C>
+where 
+    MS: MemorySource,
+    TR: Tracer<C>,
+    ND: NonDeterminismCSRSource<MS>,
+    CSR: DelegationCSRProcessor,
+    C: MachineConfig,
+{
+    fn cycle(&mut self) {
+        todo!()
+    }
+
+    fn state(&self) -> &super::state::RiscV32ObservableState {
+        todo!()
+    }
+
+    fn non_determinism_source(&self) -> &ND {
+        todo!()
+    }
+
+    fn deconstruct(self) -> (super::state::RiscV32ObservableState, MS, ND, TR) {
+        todo!()
+    }
+
+    fn collect_stacktrace(
+        &mut self,
+        symbol_info: &crate::sim::diag::SymbolInfo,
+        dwarf_cache: &mut crate::sim::diag::DwarfCache,
+        cycle: usize
+    ) -> crate::sim::diag::StacktraceCollectionResult {
+        todo!()
+    }
+
+    fn populate_memory<B>(&mut self, at: u32, bytes: B) 
+        where B: IntoIterator<Item = u8> {
+        todo!()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaConfig> {
-    pub registers: [u32; NUM_REGISTERS],
-    pub pc: u32,
+    state: RiscV32ObservableState,
+    // pub registers: [u32; NUM_REGISTERS],
+    // pub pc: u32,
 
     _marker: std::marker::PhantomData<Config>,
 }
@@ -115,8 +173,9 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         OPCODES_COUNTER.with_borrow_mut(|el| el.clear());
 
         Self {
-            registers,
-            pc,
+            state: RiscV32ObservableState { registers, pc },
+            // registers,
+            // pc,
             _marker: std::marker::PhantomData,
         }
     }
@@ -127,7 +186,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         unsafe {
             core::hint::assert_unchecked(reg_idx < 32);
         }
-        let res = unsafe { *self.registers.get_unchecked(reg_idx as usize) };
+        let res = unsafe { *self.state.registers.get_unchecked(reg_idx as usize) };
 
         res
     }
@@ -141,7 +200,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
             value = 0;
         }
         unsafe {
-            let dst = self.registers.get_unchecked_mut(reg_idx as usize);
+            let dst = self.state.registers.get_unchecked_mut(reg_idx as usize);
             let existing = *dst;
             *dst = value;
 
@@ -173,7 +232,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         memory_source: &mut M,
         tracer: &mut TR,
     ) -> u32 {
-        let opcode = opcode_read(self.pc, memory_source);
+        let opcode = opcode_read(self.state.pc, memory_source);
 
         opcode
     }
@@ -211,8 +270,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                 core::hint::assert_unchecked(rd < 32);
                 core::hint::assert_unchecked(funct3 < 8);
             }
-            let pc = self.pc;
-            self.pc = self.pc.wrapping_add(4);
+            let pc = self.state.pc;
+            self.state.pc = self.state.pc.wrapping_add(4);
 
             let rs1_value = self.get_register(formal_rs1 as u32);
             tracer.trace_rs1_read(formal_rs1 as u32, rs1_value);
@@ -251,14 +310,14 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     // J format
                     let mut imm: u32 = JTypeOpcode::imm(opcode);
                     sign_extend(&mut imm, 21);
-                    let rd_value = self.pc; // already incremented by 4
+                    let rd_value = self.state.pc; // already incremented by 4
                     let jmp_addr = pc.wrapping_add(imm); // this one is at this cycle
 
                     if jmp_addr & 0x3 != 0 {
                         // unaligned PC
                         panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                     } else {
-                        self.pc = jmp_addr;
+                        self.state.pc = jmp_addr;
                     }
 
                     let rd_old_value = self.set_register(rd, rd_value);
@@ -270,7 +329,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let mut imm: u32 = ITypeOpcode::imm(opcode);
                     // quasi sign extend
                     sign_extend(&mut imm, 12);
-                    let rd_value = self.pc; // already incremented by 4
+                    let rd_value = self.state.pc; // already incremented by 4
                                             //  The target address is obtained by adding the 12-bit signed I-immediate
                                             // to the register rs1, then setting the least-significant bit of the result to zero
                     let jmp_addr = (rs1_value.wrapping_add(imm) & !0x1);
@@ -279,7 +338,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         // unaligned PC
                         panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                     } else {
-                        self.pc = jmp_addr;
+                        self.state.pc = jmp_addr;
                     }
 
                     let rd_old_value = self.set_register(rd, rd_value);
@@ -309,7 +368,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             // unaligned PC
                             panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                         } else {
-                            self.pc = jmp_addr;
+                            self.state.pc = jmp_addr;
                         }
                     }
 
@@ -868,7 +927,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
 
             tracer.at_cycle_end_ext(&*self);
 
-            if self.pc == pc {
+            if self.state.pc == pc {
                 finished_execution = true;
             }
         }
