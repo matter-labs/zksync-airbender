@@ -6,14 +6,17 @@ use crate::ntt::{
     bitrev_Z_to_natural_composition_main_evals, natural_composition_coset_evals_to_bitrev_Z,
     natural_main_evals_to_natural_coset_evals,
 };
-use crate::ops_cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use crate::ops_simple::{neg, set_to_zero};
-use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
+use crate::ops_cub::device_reduce::{
+    batch_reduce_with_adaptive_parallelism,
+    get_batch_reduce_with_adaptive_parallelism_temp_storage, ReduceOperation,
+};
+use crate::ops_simple::{neg, set_by_val, set_to_zero};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
+use era_cudart::stream::CudaStream;
 use fft::GoodAllocator;
+use field::Field;
 use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::ops::DerefMut;
@@ -247,36 +250,55 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
     context: &C,
 ) -> CudaResult<()> {
     let domain_size = 1 << log_domain_size;
+    assert_eq!(
+        evaluations.len(),
+        domain_size * columns_count.next_multiple_of(2)
+    );
+    let stream = context.get_exec_stream();
+    set_by_val(
+        BF::ZERO,
+        &mut DeviceMatrixChunkMut::new(
+            &mut evaluations[..columns_count << log_domain_size],
+            domain_size,
+            domain_size - 1,
+            1,
+        ),
+        stream,
+    )?;
     let mut reduce_result = context.alloc(columns_count)?;
-    let reduce_temp_storage_bytes =
-        get_reduce_temp_storage_bytes::<BF>(ReduceOperation::Sum, (domain_size - 1) as i32)?;
-    let mut reduce_temp_storage_0 = context.alloc(reduce_temp_storage_bytes)?;
-    let mut reduce_temp_storage_1 = context.alloc(reduce_temp_storage_bytes)?;
-    let reduce_temp_storage_refs = [&mut reduce_temp_storage_0, &mut reduce_temp_storage_1];
-    let exec_stream = context.get_exec_stream();
-    let aux_stream = context.get_aux_stream();
-    let stream_refs = [exec_stream, aux_stream];
-    let start_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    let end_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    start_event.record(exec_stream)?;
-    aux_stream.wait_event(&start_event, CudaStreamWaitEventFlags::DEFAULT)?;
-    for (i, col) in evaluations
-        .chunks(domain_size)
-        .take(columns_count)
-        .enumerate()
-    {
-        reduce(
+    let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
+        get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
             ReduceOperation::Sum,
-            reduce_temp_storage_refs[i & 1],
-            &col[..domain_size - 1],
-            &mut reduce_result[i],
-            stream_refs[i & 1],
+            columns_count,
+            domain_size,
+            context.get_device_properties(),
         )?;
-    }
-    end_event.record(aux_stream)?;
-    exec_stream.wait_event(&end_event, CudaStreamWaitEventFlags::DEFAULT)?;
-    context.free(reduce_temp_storage_0)?;
-    context.free(reduce_temp_storage_1)?;
+    let mut cub_scratch = context.alloc(cub_scratch_bytes)?;
+    let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
+        let d_alloc = context.alloc(batch_reduce_intermediate_elems)?;
+        Some(d_alloc)
+    } else {
+        None
+    };
+    let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+        if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+            Some(d_alloc)
+        } else {
+            None
+        };
+    batch_reduce_with_adaptive_parallelism::<BF>(
+        ReduceOperation::Sum,
+        &mut cub_scratch,
+        maybe_batch_reduce_intermediates,
+        &DeviceMatrix::new(&evaluations[0..columns_count * domain_size], domain_size),
+        &mut reduce_result,
+        stream,
+        context.get_device_properties(),
+    )?;
+    context.free(cub_scratch)?;
+    if let Some(alloc) = maybe_batch_reduce_intermediates_alloc {
+        context.free(alloc)?;
+    };
     neg(
         &DeviceMatrix::new(&reduce_result, 1),
         &mut DeviceMatrixChunkMut::new(
@@ -285,14 +307,11 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
             domain_size - 1,
             1,
         ),
-        exec_stream,
+        stream,
     )?;
     context.free(reduce_result)?;
     if padded_to_even {
-        set_to_zero(
-            &mut evaluations[columns_count << log_domain_size..],
-            exec_stream,
-        )?;
+        set_to_zero(&mut evaluations[columns_count << log_domain_size..], stream)?;
     }
     Ok(())
 }
