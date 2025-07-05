@@ -947,6 +947,7 @@ mod tests {
 
     // CPU witness generation and checks are copied from zksync_airbender prover test.
     fn comparison_hook(gpu_comparison_args: &GpuComparisonArgs) {
+        let device_properties = DeviceProperties::new().unwrap();
         let GpuComparisonArgs {
             circuit,
             setup,
@@ -1060,13 +1061,35 @@ mod tests {
             DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
         let num_e4_scratch_elems = get_stage_2_e4_scratch(domain_size, circuit);
         let mut d_alloc_e4_scratch = DeviceAllocation::<E4>::alloc(num_e4_scratch_elems).unwrap();
-        let cub_scratch_bytes =
-            get_stage_2_cub_scratch_bytes(domain_size, num_stage_2_bf_cols).unwrap();
+
+        let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
+            get_stage_2_cub_and_batch_reduce_intermediate_scratch(
+                domain_size,
+                num_stage_2_bf_cols,
+                cached_data.handle_delegation_requests,
+                cached_data.process_delegations,
+                &device_properties,
+            )
+            .unwrap();
         let mut d_alloc_scratch_for_cub_ops =
             DeviceAllocation::<u8>::alloc(cub_scratch_bytes).unwrap();
-        let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);
+        let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
+            let alloc = DeviceAllocation::<BF>::alloc(batch_reduce_intermediate_elems).unwrap();
+            Some(alloc)
+        } else {
+            None
+        };
+        let mut maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+            if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+                Some(d_alloc)
+            } else {
+                None
+            };
+
+        let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
         let mut d_alloc_scratch_for_col_sums =
-            DeviceAllocation::<BF>::alloc(num_bf_scratch_elems).unwrap();
+            DeviceAllocation::<BF>::alloc(col_sums_scratch_elems).unwrap();
+
         let mut d_lookup_challenges = DeviceAllocation::<LookupChallenges>::alloc(1).unwrap();
         memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
         memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
@@ -1107,6 +1130,7 @@ mod tests {
             &mut d_stage_2_cols,
             &mut d_alloc_e4_scratch,
             &mut d_alloc_scratch_for_cub_ops,
+            &mut maybe_batch_reduce_intermediates,
             &mut d_alloc_scratch_for_col_sums,
             &d_lookup_challenges[0],
             &cached_data,
@@ -1114,6 +1138,7 @@ mod tests {
             table_driver.total_tables_len, // may be > trace_len. that's ok.
             log_n as u32,
             &stream,
+            &device_properties,
         )
         .unwrap();
         memory_copy_async(&mut h_stage_2_cols, &d_alloc_stage_2_cols, &stream).unwrap();
