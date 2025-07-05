@@ -184,8 +184,9 @@ fn get_segments_per_col(
     assert!(num_items.is_power_of_two());
     assert!(num_items >= MIN_ELEMS_PER_BLOCK);
     let sm_count = device_properties.sm_count;
-    // Heuristic: assume 4 blocks per SM is plenty to saturate
-    let min_blocks = 4 * sm_count;
+    // Heuristic: assume 2 blocks per SM is enough to saturate
+    const TARGET_BLOCKS_PER_SM: usize = 2;
+    let min_blocks = TARGET_BLOCKS_PER_SM * sm_count;
     if batch_size >= min_blocks {
         return 1;
     }
