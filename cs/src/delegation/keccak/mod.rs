@@ -805,14 +805,14 @@ mod test {
         let compiler = OneRowCompiler::default();
         let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
 
-        serialize_to_file(&compiled, "blake_delegation_layout.json");
+        serialize_to_file(&compiled, "keccak_delegation_layout.json");
     }
 
     #[test]
-    fn blake_delegation_get_witness_graph() {
+    fn keccak_delegation_get_witness_graph() {
         let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
             define_keccak_special5_delegation_circuit,
         );
-        serialize_to_file(&ssa_forms, "blake_delegation_ssa.json");
+        serialize_to_file(&ssa_forms, "keccak_delegation_ssa.json");
     }
 }
