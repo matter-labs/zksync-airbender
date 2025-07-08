@@ -161,25 +161,25 @@ where
     }
 
     fn state(&self) -> &super::state::RiscV32ObservableState {
-        &self.state.state
+        &self.state.observable
     }
 
-    fn deconstruct(self) -> (super::state::RiscV32ObservableState, MS, ND, TR) {
-        let Riscv32MachineProverUnrolled {
-            state,
-            memory_source,
-            memory_tracer,
-            non_determinism_source,
-            csr_processor 
-        } = self;
-
-        (
-            state.state,
-            memory_source,
-            non_determinism_source,
-            memory_tracer
-        )
-    }
+    // fn deconstruct(self) -> (super::state::RiscV32ObservableState, MS, ND, TR) {
+    //     let Riscv32MachineProverUnrolled {
+    //         state,
+    //         memory_source,
+    //         memory_tracer,
+    //         non_determinism_source,
+    //         csr_processor 
+    //     } = self;
+    //
+    //     (
+    //         state.state,
+    //         memory_source,
+    //         non_determinism_source,
+    //         memory_tracer
+    //     )
+    // }
 
     fn collect_stacktrace(
         &mut self,
@@ -190,7 +190,7 @@ where
         crate::sim::diag::collect_stacktrace(
             symbol_info,
             dwarf_cache,
-            &self.state.state,
+            &self.state.observable,
             &mut self.memory_source,
             &mut self.memory_tracer,
             &mut NoMMU::default(),
@@ -200,7 +200,7 @@ where
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaConfig> {
-    state: RiscV32ObservableState,
+    pub observable: RiscV32ObservableState,
     // pub registers: [u32; NUM_REGISTERS],
     // pub pc: u32,
 
@@ -217,7 +217,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         OPCODES_COUNTER.with_borrow_mut(|el| el.clear());
 
         Self {
-            state: RiscV32ObservableState { registers, pc },
+            observable: RiscV32ObservableState { registers, pc },
             // registers,
             // pc,
             _marker: std::marker::PhantomData,
@@ -230,7 +230,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         unsafe {
             core::hint::assert_unchecked(reg_idx < 32);
         }
-        let res = unsafe { *self.state.registers.get_unchecked(reg_idx as usize) };
+        let res = unsafe { *self.observable.registers.get_unchecked(reg_idx as usize) };
 
         res
     }
@@ -244,7 +244,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
             value = 0;
         }
         unsafe {
-            let dst = self.state.registers.get_unchecked_mut(reg_idx as usize);
+            let dst = self.observable.registers.get_unchecked_mut(reg_idx as usize);
             let existing = *dst;
             *dst = value;
 
@@ -276,11 +276,36 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         memory_source: &mut M,
         tracer: &mut TR,
     ) -> u32 {
-        let opcode = opcode_read(self.state.pc, memory_source);
+        let opcode = opcode_read(self.observable.pc, memory_source);
 
         opcode
     }
 
+    pub fn run_cycles<
+        M: MemorySource,
+        TR: Tracer<Config>,
+        ND: NonDeterminismCSRSource<M>,
+        CSR: DelegationCSRProcessor,
+    >(
+        &mut self,
+        memory_source: &mut M,
+        tracer: &mut TR,
+        non_determinism_source: &mut ND,
+        csr_processor: &mut CSR,
+        num_cycles: usize,
+    ) -> bool {
+        let mut finished_execution = false;
+
+        for _cycle in 0..num_cycles {
+            if self.cycle(memory_source, tracer, non_determinism_source, csr_processor) {
+                finished_execution = true;
+            }
+        }
+
+        finished_execution
+    }
+
+    #[inline(always)]
     pub fn cycle<
         M: MemorySource,
         TR: Tracer<Config>,
@@ -292,7 +317,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         tracer: &mut TR,
         non_determinism_source: &mut ND,
         csr_processor: &mut CSR,
-    ) -> () {
+    ) -> bool {
 
         tracer.at_cycle_start_ext(&*self);
 
@@ -311,8 +336,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
             core::hint::assert_unchecked(rd < 32);
             core::hint::assert_unchecked(funct3 < 8);
         }
-        let pc = self.state.pc;
-        self.state.pc = self.state.pc.wrapping_add(4);
+        let pc = self.observable.pc;
+        self.observable.pc = self.observable.pc.wrapping_add(4);
 
         let rs1_value = self.get_register(formal_rs1 as u32);
         tracer.trace_rs1_read(formal_rs1 as u32, rs1_value);
@@ -351,14 +376,14 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                 // J format
                 let mut imm: u32 = JTypeOpcode::imm(opcode);
                 sign_extend(&mut imm, 21);
-                let rd_value = self.state.pc; // already incremented by 4
+                let rd_value = self.observable.pc; // already incremented by 4
                 let jmp_addr = pc.wrapping_add(imm); // this one is at this cycle
 
                 if jmp_addr & 0x3 != 0 {
                     // unaligned PC
                     panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                 } else {
-                    self.state.pc = jmp_addr;
+                    self.observable.pc = jmp_addr;
                 }
 
                 let rd_old_value = self.set_register(rd, rd_value);
@@ -370,7 +395,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                 let mut imm: u32 = ITypeOpcode::imm(opcode);
                 // quasi sign extend
                 sign_extend(&mut imm, 12);
-                let rd_value = self.state.pc; // already incremented by 4
+                let rd_value = self.observable.pc; // already incremented by 4
                 //  The target address is obtained by adding the 12-bit signed I-immediate
                 // to the register rs1, then setting the least-significant bit of the result to zero
                 let jmp_addr = (rs1_value.wrapping_add(imm) & !0x1);
@@ -379,7 +404,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     // unaligned PC
                     panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                 } else {
-                    self.state.pc = jmp_addr;
+                    self.observable.pc = jmp_addr;
                 }
 
                 let rd_old_value = self.set_register(rd, rd_value);
@@ -409,7 +434,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         // unaligned PC
                         panic!("Unaligned jump address 0x{:08x}", jmp_addr);
                     } else {
-                        self.state.pc = jmp_addr;
+                        self.observable.pc = jmp_addr;
                     }
                 }
 
@@ -968,5 +993,9 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
 
         tracer.at_cycle_end_ext(&*self);
 
+        self.observable.pc == pc
+
     }
 }
+
+

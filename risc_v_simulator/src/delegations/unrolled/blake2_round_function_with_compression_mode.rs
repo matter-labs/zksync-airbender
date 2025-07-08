@@ -28,10 +28,10 @@ pub fn blake2_round_function_with_extended_control_over_unrolled_state<
     tracer: &mut TR,
 ) {
     // read registers first
-    let x10 = machine_state.registers[10];
-    let x11 = machine_state.registers[11];
-    let x12 = machine_state.registers[12];
-    let x13 = machine_state.registers[13];
+    let x10 = machine_state.observable.registers[10];
+    let x11 = machine_state.observable.registers[11];
+    let x12 = machine_state.observable.registers[12];
+    let x13 = machine_state.observable.registers[13];
 
     assert!(x10 % 128 == 0, "input pointer is unaligned");
     assert!(x11 % 4 == 0, "input pointer is unaligned");

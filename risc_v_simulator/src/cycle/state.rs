@@ -102,14 +102,14 @@ where
         &self.state.observable
     }
 
-    fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR) {
-        (
-            self.state.observable,
-            self.memory_source,
-            self.non_determinism_source,
-            self.memory_tracer,
-        )
-    }
+    // fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR) {
+    //     (
+    //         self.state.observable,
+    //         self.memory_source,
+    //         self.non_determinism_source,
+    //         self.memory_tracer,
+    //     )
+    // }
 
     fn collect_stacktrace(
         &mut self,

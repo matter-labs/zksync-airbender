@@ -24,7 +24,7 @@ use self::diag::Profiler;
 
 pub(crate) mod diag;
 
-pub(crate) struct Simulator<S, C> 
+pub struct Simulator<S, C> 
 where 
     S: RiscV32MachineSetup,
     C: MachineConfig
@@ -37,7 +37,7 @@ where
     //
     // pub(crate) state: RS,
     cycles: usize,
-    executed: bool,
+    reached_end: bool,
 
     profiler: Option<Profiler>,
     phantom: PhantomData<C>,
@@ -48,21 +48,21 @@ where
     S: RiscV32MachineSetup, 
     C: MachineConfig 
 {
-    pub(crate) fn new(
+    pub fn new(
         config: SimulatorConfig,
         setup: S,
     ) -> Self {
         Self {
             machine: setup.instantiate(&config),
             cycles: config.cycles,
-            executed: false,
+            reached_end: false,
             profiler: Profiler::new(config),
             phantom: PhantomData,
         }
     }
 
-    pub(crate) fn run<FnPre, FnPost>(
-        mut self,
+    pub fn run<FnPre, FnPost>(
+        &mut self,
         mut fn_pre: FnPre,
         mut fn_post: FnPost,
     ) -> RunResult<S>
@@ -70,9 +70,7 @@ where
         FnPre: FnMut(&mut Self, usize),
         FnPost: FnMut(&mut Self, usize),
     {
-        // TODO: consume self on run
-        if self.executed { panic!("Can run only once.") }
-        self.executed = true;
+        if self.reached_end { panic!("Already reached end of execution."); }
 
         let now = std::time::Instant::now();
         let mut previous_pc = self.machine.state().pc;
@@ -91,7 +89,7 @@ where
                 );
             }
 
-            fn_pre(&mut self, cycle);
+            fn_pre(self, cycle);
 
             self.machine.cycle();
 
@@ -103,7 +101,7 @@ where
             //     &mut self.non_determinism_source,
             // );
 
-            fn_post(&mut self, cycle);
+            fn_post(self, cycle);
 
             if self.machine.state().pc == previous_pc {
                 end_of_execution_reached = true;
@@ -114,11 +112,13 @@ where
             previous_pc = self.machine.state().pc;
         }
 
-        assert!(
-            end_of_execution_reached,
-            "program failed to each the end of execution over {} cycles",
-            self.cycles
-        );
+        // assert!(
+        //     end_of_execution_reached,
+        //     "program failed to each the end of execution over {} cycles",
+        //     self.cycles
+        // );
+
+        self.reached_end = end_of_execution_reached;
 
         let exec_time = now.elapsed();
 
@@ -128,13 +128,14 @@ where
             profiler.write_stacktrace();
         }
 
-        let (state, memory_source, non_determinism_source, memory_tracer) = self.machine.deconstruct();
+        // let (state, memory_source, non_determinism_source, memory_tracer) = self.machine.deconstruct();
 
         RunResult {
-            state,
-            memory_source,
-            memory_tracer,
-            non_determinism_source,
+            state: self.machine.state().clone(),
+            // memory_source,
+            // memory_tracer,
+            // non_determinism_source,
+            reached_end: self.reached_end,
             measurements: RunResultMeasurements {
                 time: RunResultTimes { 
                     exec_time,
@@ -145,6 +146,10 @@ where
             },
             phantom: PhantomData,
         }
+    }
+
+    pub fn state(&self) -> &RiscV32ObservableState {
+        &self.machine.state()
     }
 }
 
@@ -177,8 +182,6 @@ pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
 
     fn state(&self) -> &RiscV32ObservableState;
 
-    fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR);
-
     fn collect_stacktrace(
         &mut self,
         symbol_info: &diag::SymbolInfo,
@@ -189,7 +192,7 @@ pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
 
 pub enum BinarySource<'a> {
     Path(PathBuf),
-    Slice(&'a [u8])
+    Slice(&'a [u8]),
 }
 
 impl<'a> BinarySource<'a> {
@@ -219,7 +222,7 @@ pub enum Machine {
 }
 
 pub struct SimulatorConfig<'a> {
-    pub bin: BinarySource<'a>,
+    pub bin: Option<BinarySource<'a>>,
     pub entry_point: u32,
     pub cycles: usize,
     pub diagnostics: Option<DiagnosticsConfig>,
@@ -228,7 +231,7 @@ pub struct SimulatorConfig<'a> {
 impl<'a> SimulatorConfig<'a> {
     pub fn simple<P: AsRef<Path>>(bin_path: P) -> Self {
         Self::new(
-            bin_path.as_ref().to_owned().to(BinarySource::Path),
+            bin_path.as_ref().to_owned().to(BinarySource::Path).to(Option::Some),
             DEFAULT_ENTRY_POINT,
             1 << 22,
             None,
@@ -236,13 +239,13 @@ impl<'a> SimulatorConfig<'a> {
     }
 
     pub fn new(
-        bin_path: BinarySource<'a>,
+        bin: Option<BinarySource<'a>>,
         entry_point: u32,
         cycles: usize,
         diagnostics: Option<DiagnosticsConfig>,
     ) -> Self {
         Self {
-            bin: bin_path,
+            bin,
             entry_point,
             cycles,
             diagnostics,
@@ -283,11 +286,12 @@ impl ProfilerConfig {
 }
 
 pub struct RunResult<S: RiscV32MachineSetup> {
-    pub non_determinism_source: S::ND,
-    pub memory_tracer: S::TR,
-    pub memory_source: S::MS,
+    // pub non_determinism_source: S::ND,
+    // pub memory_tracer: S::TR,
+    // pub memory_source: S::MS,
     pub state: RiscV32ObservableState,
     pub measurements: RunResultMeasurements,
+    pub reached_end: bool,
     phantom: PhantomData<S::C>,
 }
 
@@ -306,4 +310,6 @@ impl RunResultTimes {
         self.exec_cycles * 1000 / self.exec_time.as_millis() as usize
     }
 }
+
+
 
