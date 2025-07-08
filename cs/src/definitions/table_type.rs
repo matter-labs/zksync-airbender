@@ -55,6 +55,12 @@ pub enum TableType {
     StoreByteExistingContribution,
     TruncateShift,
     DynamicPlaceholder,
+    KeccakPermutationIndices12,
+    KeccakPermutationIndices34,
+    KeccakPermutationIndices56,
+    XorSpecialIota,
+    AndN,
+    RotL,
 }
 
 pub const COMMON_TABLE_WIDTH: usize = 3;
