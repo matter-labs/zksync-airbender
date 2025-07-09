@@ -222,7 +222,7 @@ pub enum Machine {
 }
 
 pub struct SimulatorConfig<'a> {
-    pub bin: Option<BinarySource<'a>>,
+    pub bin: BinarySource<'a>,
     pub entry_point: u32,
     pub cycles: usize,
     pub diagnostics: Option<DiagnosticsConfig>,
@@ -231,7 +231,7 @@ pub struct SimulatorConfig<'a> {
 impl<'a> SimulatorConfig<'a> {
     pub fn simple<P: AsRef<Path>>(bin_path: P) -> Self {
         Self::new(
-            bin_path.as_ref().to_owned().to(BinarySource::Path).to(Option::Some),
+            bin_path.as_ref().to_owned().to(BinarySource::Path),
             DEFAULT_ENTRY_POINT,
             1 << 22,
             None,
@@ -239,7 +239,7 @@ impl<'a> SimulatorConfig<'a> {
     }
 
     pub fn new(
-        bin: Option<BinarySource<'a>>,
+        bin: BinarySource<'a>,
         entry_point: u32,
         cycles: usize,
         diagnostics: Option<DiagnosticsConfig>,

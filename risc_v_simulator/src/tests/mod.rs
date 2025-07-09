@@ -106,7 +106,7 @@ fn test_reg_imm_op(op_name: &str, expected: u32, op1: u32, imm: u16) {
             );
         }
         let _ = state.run_cycles(&mut memory, &mut (), &mut ZeroedSource, &mut NoExtraCSRs, 1);
-        assert!(state.observable.registers[3] == expected, "Unexpected output: expected 0x{:08x} for operation `{}` 0x{:08x}, 0x{:04x}, obtained 0x{:08x}", expected, op_name, op1, imm, state.registers[3]);
+        assert!(state.observable.registers[3] == expected, "Unexpected output: expected 0x{:08x} for operation `{}` 0x{:08x}, 0x{:04x}, obtained 0x{:08x}", expected, op_name, op1, imm, state.observable.registers[3]);
     }
 }
 

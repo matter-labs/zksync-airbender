@@ -473,7 +473,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
 
     let register_final_values = std::array::from_fn(|i| {
         let ts = register_last_live_timestamps[i];
-        let value = state.registers[i];
+        let value = state.observable.registers[i];
 
         RamShuffleMemStateRecord {
             last_access_timestamp: ts,
@@ -504,7 +504,7 @@ pub fn dev_run_for_num_cycles_under_convention_ext_with_gpu_tracers<
     }
 
     (
-        state.pc,
+        state.observable.pc,
         traced_chunks,
         all_per_type_logs,
         teardown_data,

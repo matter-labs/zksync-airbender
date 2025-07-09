@@ -51,8 +51,6 @@ pub mod setup {
                 config.entry_point,
                 QuasiUARTSource::default());
 
-            machine.memory_source.load_image(config.entry_point, config.bin.to_iter());
-
             machine
         }
 

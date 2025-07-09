@@ -137,7 +137,7 @@ pub fn run_simulator_with_traces_for_config<
     C: MachineConfig
 > (
     config: SimulatorConfig,
-) -> (StateTracer, ()) {
+) -> RunResult<DefaultSetup> {
     let setup = DefaultSetup::default();
 
     let mut state_tracer = StateTracer::new_for_num_cycles(config.cycles);
@@ -158,7 +158,7 @@ pub fn run_simulator_with_traces_for_config<
         },
     );
 
-    (state_tracer, exec.memory_tracer)
+    exec
 }
 
 fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {
