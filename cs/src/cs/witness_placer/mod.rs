@@ -769,11 +769,15 @@ macro_rules! impl_comp_core {
             }
             #[inline(always)]
             fn shl(&self, shift_magnitude: u32) -> Self {
-                *self << shift_magnitude
+                // the old code is wrong bc 1_uN << N == 1_uN
+                // *self << shift_magnitude 
+                self.unbounded_shl(shift_magnitude)
             }
             #[inline(always)]
             fn shr(&self, shift_magnitude: u32) -> Self {
-                *self >> shift_magnitude
+                // the old code is wrong bc 1_uN >> N == 1_uN
+                // *self >> shift_magnitude
+                self.unbounded_shr(shift_magnitude)
             }
             #[inline(always)]
             fn get_bit(&self, bit_idx: u32) -> Self::Mask {

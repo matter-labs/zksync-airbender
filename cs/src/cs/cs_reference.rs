@@ -46,6 +46,10 @@ pub struct BasicAssembly<F: PrimeField, W: WitnessPlacer<F> = CSDebugWitnessEval
 impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     type WitnessPlacer = W;
 
+    fn current_variable_count(&self) -> usize {
+        self.no_index_assigned as usize
+    }
+
     fn new() -> Self {
         Self {
             no_index_assigned: 0,
@@ -71,7 +75,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 203 {
+        // if self.no_index_assigned == 14 {
         //     panic!("debug");
         // }
         let variable = Variable(self.no_index_assigned);
@@ -132,9 +136,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                     t.get_value(var)
                 }
             } else {
+                dbg!("NO GOOD WITNESSS PLACER", var);
                 None
             }
         } else {
+            dbg!("NO WITNESSS PLACER", var);
             None
         }
     }
@@ -875,10 +881,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
                     }
 
                     if value != F::ZERO {
-                        panic!(
-                            "unsatisfied at constraint {:?} with value {:?}",
-                            constraint, value
-                        );
+                        panic!("unsatisfied at constraint {constraint} with value {value}");
                     }
                 }
             }

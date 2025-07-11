@@ -269,6 +269,7 @@ pub trait Circuit<F: PrimeField>: Sized {
     fn add_variable(&mut self) -> Variable;
     fn set_values(&mut self, node: impl WitnessResolutionDescription<F, Self::WitnessPlacer>);
     fn get_value(&self, _var: Variable) -> Option<F> {
+        dbg!("RUNNING BAD WITNESS GET");
         None
     }
     fn add_constant_variable(&mut self, fr: F) -> Variable;
@@ -810,6 +811,7 @@ pub trait Circuit<F: PrimeField>: Sized {
 
     fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
     fn view_log(&self, name: &'static str);
+    fn current_variable_count(&self) -> usize;
     fn is_satisfied(&mut self) -> bool;
 }
 

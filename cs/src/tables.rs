@@ -1915,6 +1915,7 @@ pub fn create_u16_split_into_bytes_table<F: PrimeField>(id: u32) -> LookupTable<
     )
 }
 
+// WARNING: IF THE CONTROL IS TOTALLY EMPTY THIS WILL OUTPUT JUNK
 pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, const J: usize>(id: u32) -> LookupTable<F, 3> {
     const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
     const PRECOMPILE_COLUMNMIX: u32 = 1;
@@ -1935,7 +1936,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
         let key = [F::from_u64_unchecked(control), F::ZERO, F::ZERO];
         keys.push(key);
     }
-    let table_name = format!("Keccak Permutation Indices table");
+    let table_name = format!("Keccak Permutation Indices({I}, {J}) table");
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -1955,8 +1956,10 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
             };
             let round = (control >> 10) as usize;
 
+            // debug_assert!(precompile < 5 && (control & (1<<precompile))!=0, "NOT {control:0b} -> p{precompile}");
+            // debug_assert!(iter < 5 && ((control >> 5) & (1<<iter))!=0);
             let indices = match precompile {
-                PRECOMPILE_IOTA_COLUMNXOR => {
+                PRECOMPILE_IOTA_COLUMNXOR if iter<5 && round<24 => {
                     let pi = &PERMUTATIONS_ADJUSTED[round*25..]; // indices before applying round permutation
                     let idcol = 25 + iter as u64;
                     let idx0 = pi[iter];
@@ -1966,10 +1969,10 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx20 = pi[iter + 20];
                     [idx0, idx5, idx10, idx15, idx20, idcol]
                 },
-                PRECOMPILE_COLUMNMIX => {
+                PRECOMPILE_COLUMNMIX if iter<5 && round<24 => {
                     [25, 26, 27, 28, 29, 0]
                 },
-                PRECOMPILE_THETA_RHO => {
+                PRECOMPILE_THETA_RHO if iter<5 && round<24 => {
                     const IDCOLS: [u64; 5] = [29, 25, 26, 27, 28];
                     let pi = &PERMUTATIONS_ADJUSTED[round*25..]; // indices before applying round permutation
                     let idcol = IDCOLS[iter];
@@ -1980,7 +1983,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx20 = pi[iter + 20];
                     [idx0, idx5, idx10, idx15, idx20, idcol]
                 },
-                PRECOMPILE_CHI1 => {
+                PRECOMPILE_CHI1 if iter<5 && round<24 => {
                     let pi = &PERMUTATIONS_ADJUSTED[(round+1)*25..]; // indices after applying round permutation
                     let idx = iter*5;
                     let _idx0 = pi[idx];
@@ -1990,7 +1993,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx4 = pi[idx + 4];
                     [idx1, idx2, idx3, idx4, 25, 26]
                 },
-                PRECOMPILE_CHI2 => {
+                PRECOMPILE_CHI2 if iter<5 && round<24 => {
                     let pi = &PERMUTATIONS_ADJUSTED[(round+1)*25..]; // indices after applying round permutation
                     let idx = iter*5;
                     let idx0 = pi[idx];
@@ -2000,7 +2003,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx4 = pi[idx + 4];
                     [idx0, idx3, idx4, 25, 26, 27]
                 },
-                _ => unreachable!()
+                _ => [0,1,2,3,4,5] // THIS IS JUNK!!!!
             };
             let result = [F::from_u64_unchecked(indices[I]), F::from_u64_unchecked(indices[J]), F::ZERO];
             (control as usize, result)
@@ -2009,6 +2012,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
         id,
     )
 }
+// WARN: if you call this with a wrong round it returns junk!
 pub fn create_xor_special_keccakiota_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [0, 1, 32898, 9223372036854808714, 9223372039002292224, 32907, 2147483649, 9223372039002292353, 9223372036854808585, 138, 136, 2147516425, 2147483658, 2147516555, 9223372036854775947, 9223372036854808713, 9223372036854808579, 9223372036854808578, 9223372036854775936, 32778, 9223372039002259466, 9223372039002292353, 9223372036854808704, 2147483649];
     let mut keys = Vec::with_capacity(1 << 16);
@@ -2032,12 +2036,12 @@ pub fn create_xor_special_keccakiota_table<F: PrimeField>(id: u32) -> LookupTabl
             let round_if_iter0 = (b_control & 0b11111) as usize;
             let u8_position = (b_control >> 5) as usize;
 
-            let b = {
+            let b = if round_if_iter0 < 24 {
                 let round_constant = ROUND_CONSTANTS_ADJUSTED[round_if_iter0];
                 let u8_chunks = round_constant.to_le_bytes();
                 u8_chunks[u8_position] as u64
-            };
-            let result = [F::from_u64_unchecked(b), F::ZERO, F::ZERO];
+            } else { 0 }; // THIS IS JUNK
+            let result = [F::from_u64_unchecked(a ^ b), F::ZERO, F::ZERO];
             ((a | b_control<<8) as usize, result)
         },
         Some(|keys| {
@@ -2077,7 +2081,7 @@ pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
 }
 pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let mut keys = Vec::with_capacity(1 << 20);
-    for word_u16 in 0..1<<20 {
+    for word_u16 in 0..1<<16 {
         for rot_const in 0..16 {
             let key = [F::from_u64_unchecked(word_u16 | rot_const<<16), F::ZERO, F::ZERO];
             keys.push(key);
@@ -2093,11 +2097,11 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
             let input = keys[0].as_u64_reduced();
             debug_assert!(input < (1<<20));
 
-            let word_u16 = input & 0xffff;
+            let word_u16 = input as u16;
             let rot_const = (input >> 16) as u32;
 
-            let (left, right) = (word_u16.unbounded_shr(16 - rot_const), word_u16 << rot_const);
-            let result = [F::from_u64_unchecked(left), F::from_u64_unchecked(right), F::ZERO];
+            let (left, right) = (word_u16.unbounded_shr(16 - rot_const), word_u16.unbounded_shl(rot_const));
+            let result = [F::from_u64_unchecked(left as u64), F::from_u64_unchecked(right as u64), F::ZERO];
             (input as usize, result)
         },
         Some(|keys| {
@@ -2107,11 +2111,12 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     )
 }
 
+// NO IDEA WHY THERE'S THIS UPPER BOUND...
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = const {
-    if TOTAL_NUM_OF_TABLES < 48 {
+    if TOTAL_NUM_OF_TABLES < 50 {
         TOTAL_NUM_OF_TABLES
     } else {
-        48
+        50
     }
 };
 

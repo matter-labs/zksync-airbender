@@ -54,13 +54,15 @@ pub enum TableType {
     StoreByteSourceContribution,
     StoreByteExistingContribution,
     TruncateShift,
-    DynamicPlaceholder,
     KeccakPermutationIndices12,
     KeccakPermutationIndices34,
     KeccakPermutationIndices56,
     XorSpecialIota,
     AndN,
     RotL,
+
+    // LEAVE THIS LAST !!
+    DynamicPlaceholder,
 }
 
 pub const COMMON_TABLE_WIDTH: usize = 3;
