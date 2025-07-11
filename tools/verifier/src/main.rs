@@ -166,21 +166,23 @@ unsafe fn workload() -> ! {
             // This way, to verify the combined proof, we can check that it matches
             // the rolling hash of the public inputs.
             let mut hasher = Keccak32::new();
-            // keccak32 expect little endian - so swap bytes on the data.
-            for i in 0..8 {
-                hasher.update(&[output1[i].swap_bytes()]);
+            // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
+            // and we'll actually shift them all by 1.
+            // So our output is the keccak(input1[0..8]>>32, input2[0..8]>>32)
+
+            // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+            hasher.update(&[0u32]); // 0 after shift
+            for i in 0..7 {
+                hasher.update(&[output1[i]]);
             }
-            for i in 0..8 {
-                hasher.update(&[output2[i].swap_bytes()]);
+            hasher.update(&[0u32]); // 0 after shift
+            for i in 0..7 {
+                hasher.update(&[output2[i]]);
             }
             let mut result = [0u32; 16];
+            // TODO: in the future - set the result[7] to be equal to 0.
             result[0..8].copy_from_slice(&hasher.finalize());
             result[8..16].copy_from_slice(&output1[8..16]);
-
-            // and swap data back.
-            for i in 0..8 {
-                result[i] = result[i].swap_bytes();
-            }
 
             riscv_common::zksync_os_finish_success_extended(&result);
         }

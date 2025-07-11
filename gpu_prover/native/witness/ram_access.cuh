@@ -88,16 +88,6 @@ struct BatchedRamAccessColumns {
   BatchedRamAccessColumnsPayload payload;
 };
 
-#define MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT 4
-
-struct BatchedRamTimestampComparisonAuxVars {
-  ColumnAddress predicate;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> write_timestamp_columns;
-  ColumnAddress write_timestamp[2];
-  u32 aux_borrow_vars_count;
-  ColumnAddress aux_borrow_vars[MAX_BATCHED_RAM_TIMESTAMP_COMPARISON_AUX_VARS_AUX_BORROW_VARS_COUNT];
-};
-
 struct RegisterAccessColumnsReadAccess {
   u32 register_index;
   ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;

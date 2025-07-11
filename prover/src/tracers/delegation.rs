@@ -36,24 +36,24 @@ pub struct DelegationWitness<A: GoodAllocator = Global> {
 impl<A: GoodAllocator> DelegationWitness<A> {
     #[inline(always)]
     pub fn assert_consistency(&self) {
-        #[cfg(not(debug_assertions))]
-        return;
+        #[cfg(debug_assertions)]
+        {
+            assert!((self.num_requests + 1).is_power_of_two());
+            let baseline = self.write_timestamp.len();
 
-        assert!((self.num_requests + 1).is_power_of_two());
-        let baseline = self.write_timestamp.len();
-
-        assert_eq!(
-            self.register_accesses.len(),
-            baseline * self.num_register_accesses_per_delegation
-        );
-        assert_eq!(
-            self.indirect_reads.len(),
-            baseline * self.num_indirect_reads_per_delegation
-        );
-        assert_eq!(
-            self.indirect_writes.len(),
-            baseline * self.num_indirect_writes_per_delegation
-        );
+            assert_eq!(
+                self.register_accesses.len(),
+                baseline * self.num_register_accesses_per_delegation
+            );
+            assert_eq!(
+                self.indirect_reads.len(),
+                baseline * self.num_indirect_reads_per_delegation
+            );
+            assert_eq!(
+                self.indirect_writes.len(),
+                baseline * self.num_indirect_writes_per_delegation
+            );
+        }
     }
 
     pub fn at_capacity(&self) -> bool {

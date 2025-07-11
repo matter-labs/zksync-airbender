@@ -4,6 +4,7 @@ use crate::machine::{
     ops::{RD_STORE_LOCAL_TIMESTAMP, RS1_LOAD_LOCAL_TIMESTAMP, RS2_LOAD_LOCAL_TIMESTAMP},
 };
 
+#[allow(dead_code)]
 pub(crate) fn optimized_decode_and_read_reg_operands<
     F: PrimeField,
     CS: Circuit<F>,

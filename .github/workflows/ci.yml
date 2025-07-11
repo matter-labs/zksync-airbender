@@ -390,7 +390,7 @@ jobs:
       - name: Flatten 2 basic fibonacci proofs
         run: ./cli flatten-two --first-metadata  output/metadata.json --second-metadata output/metadata.json --output-file output/proof_merged_flatten.json
       - name: Run
-        run: ./cli run --bin app.bin --input-file  output/proof_merged_flatten.json --cycles 20000000 --machine reduced --expected-results 890242439,3543186763,4251668155,4029038820,912219460,64639318,3267867168,290530290
+        run: ./cli run --bin app.bin --input-file  output/proof_merged_flatten.json --cycles 20000000 --machine reduced --expected-results  1454345518,1110133826,1035806769,2339543873,3120453366,2871045712,1011786604,901067344
 
   
   full_recursion:
