@@ -17,34 +17,33 @@ use crate::cs::witness_placer::WitnessMask;
 
 // INFO:
 // - 5 "precompiles" (ops) packed into one circuit
-// - max of 5 u64 bitwise operations
-// - max of 6 u64 R/W memory accesses
-// - repeatedly called (1 keccak = 504 such calls + few extra cycles)
+// - max of 5 u64 bitwise operations (+ optional rotations)
+// - max of 6 u64 R/W memory accesses (+ 2 u32 register accesses)
+// - repeatedly called (1 keccak = 1k+ such cycles)
 
 // ABI:
 // - 1 register (x11) for state pointer (aligned s.t. state[29] does not overflow low 16 bits)
 // - 1 register (x10.high) for control info (precompile bitmask || i bitmask || round)
 
 // TABLES:
+// - 3 tables for extraction of 6 5-bit indexes
 // - one table for special xor with round constant
 // - one table normal xor with rotation constant
 // - one table for andn
-// - two tables for extraction of 6 5-bit indexes (could be better)
+// - one table for rotation
 
 // CIRCUIT:
-// to keep it simple we will not hyper optimise without OptCtx for now
 // - get state ptr + control param with 2 mem. accesses
-// - extract precompile bitmask flags, to make using OptCtx easy
-// - extract i bitmask bits, to make rotations cheap (b0..b7 become linear combination)
+// - extract precompile bitmask flags, to make u64 memory routing cheap
+// - extract i bitmask bits, to make rotations cheap (u16_boundary_flags become linear combination)
 // - extract the 6 indices to fixed positions -> get 6 u64 R/W (word1..word6) inputs + create outputs
-// - dynamic logic across precompiles is cheaply encoded using OptCtx with precompile flags
+// - dynamic logic across precompiles is cheaply encoded using routing constraints of degree 2
 // - the precompile with round constant is managed through special xor table
-// - the precompiles with xor+rotation receive rotation const + rotation shift amt. encoded using i bits
+// - the precompiles with xor/andn feed into option rotation tables and then to output
 
 // TODO: as it currently stands, delegation prover only supports batched contiguous mem. accesses
 //       because it is encoded as constant offset constraints
 //       so, it will need to be amended to support variable constraints
-// TODO: we need to add value_fn everywhere (before constraints are evaluated)
 
 #[derive(Copy,Clone,Debug)]
 struct LongRegister<F: PrimeField>{
@@ -693,7 +692,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
             println!("\t\trot_const_mod16: {:?}", rot_const_mod16.get_value(cs));
         }
         let [is_rot_lt16, is_rot_lt32, is_rot_lt48, is_rot_lt64] = {
-            let mut rot_bounds: [Constraint<F>; 4] = from_fn(|_| Constraint::empty()); // TODO: does this need to be 0 ??
+            let mut rot_bounds: [Constraint<F>; 4] = from_fn(|_| Constraint::empty());
             for (flag, constant) in precompile_rotation_flags.into_iter().zip(precompile_rotation_constants) {
                 if constant < 16 {
                     rot_bounds[0] = rot_bounds[0].clone() + Term::from(flag);
@@ -713,7 +712,6 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
             Constraint::from(bin_out_u8.high32[0]) + Term::from(1<<8)*Term::from(bin_out_u8.high32[1]) + Term::from(1<<16)*rot_const_mod16.clone(),
             Constraint::from(bin_out_u8.high32[2]) + Term::from(1<<8)*Term::from(bin_out_u8.high32[3]) + Term::from(1<<16)*rot_const_mod16,
         ];
-        // TODO: move this out_u16rot into lookup get variable...
         let out_u16rot = LongRegisterRotation::new(cs);
         let id = TableType::RotL;
         let tuples = [
