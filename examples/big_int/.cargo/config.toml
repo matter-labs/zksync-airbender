@@ -1,0 +1,14 @@
+[build]
+target = "riscv32i-unknown-none-elf"
+rustflags = [
+  "-C", "target-feature=+m,-unaligned-scalar-mem,+relax",
+  "-C", "link-arg=-T../scripts/lds/memory.x",
+  "-C", "link-arg=-T../scripts/lds/link.x",
+  "-C", "link-arg=--save-temps",
+  "-C", "force-frame-pointers",
+]
+
+[toolchain]
+channel = "stable"       # or "1.79.0", "nightly", …
+components = ["rustfmt", "clippy"]
+
