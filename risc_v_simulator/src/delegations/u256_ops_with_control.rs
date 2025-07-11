@@ -32,6 +32,8 @@ pub fn u256_ops_with_control_impl<
 ) {
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
+    let mut state = state.observable;
+
     // read registers first
     let x10 = state.registers[10];
     let x11 = state.registers[11];
