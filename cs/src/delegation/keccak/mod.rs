@@ -66,6 +66,7 @@ impl<F: PrimeField> LongRegister<F>{
         assert!(high <= u32::MAX);
         Some(low as u64 | (high as u64) << 32)
     }
+    #[expect(unused)]
     pub fn get_value_chunks_unsigned<C: Circuit<F>>(self, cs: &C) -> [F; 4] {
         [
             self.low32.0[0].get_value(cs).unwrap(),  
@@ -238,7 +239,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             let [s5, s6] = cs.get_variables_from_lookup_constrained(&[LookupInput::from(control)], TableType::KeccakPermutationIndices56);
             [s1, s2, s3, s4, s5, s6].map(|var| cs.get_value(var).unwrap().as_u64_reduced() as usize)
         };
-        assert!(state_indexes_usize == DEBUG_INDEXES, "wanted indices {DEBUG_INDEXES:?} but got {state_indexes_usize:?} with control {DEBUG_CONTROL:032b}");
+        assert!(state_indexes_usize == DEBUG_INDEXES, "wanted indices {:?} but got {state_indexes_usize:?} with control {:032b}", &DEBUG_INDEXES[..], DEBUG_CONTROL as u32);
 
         let state_inputs = from_fn(|_| LongRegister::new(cs));
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
