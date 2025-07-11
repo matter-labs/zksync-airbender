@@ -260,7 +260,6 @@ fn test_verifier_in_simulator() {
         let inner = VecDeque::<u32>::from(oracle_data);
         let oracle = VectorBasedNonDeterminismSource(inner, QuasiUARTSourceState::Ready);
         let output = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-            
             _,
             IWithoutByteAccessIsaConfigWithDelegation,
             // IMIsaConfigWithAllDelegations,
