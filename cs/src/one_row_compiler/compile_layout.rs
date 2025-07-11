@@ -84,15 +84,17 @@ impl<F: PrimeField> OneRowCompiler<F> {
             );
 
             for el in lookups.iter() {
-                let LookupQueryTableType::Constant(table_type) = el.table else {
-                    panic!("all lookups must use fixed table IDx");
+                if let LookupQueryTableType::Constant(table_type) = el.table {
+                    let t = table_driver.get_table(table_type);
+                    assert!(
+                        t.is_initialized(),
+                        "trying to use table with ID {:?}, but it's not initialized in table driver",
+                        table_type
+                    );
+                }else {
+                    // dbg!("CHANGED THIS FOR KECCAK");
+                    // dbg!("NOT ANYMORE: all lookups must use fixed table IDx");
                 };
-                let t = table_driver.get_table(table_type);
-                assert!(
-                    t.is_initialized(),
-                    "trying to use table with ID {:?}, but it's not initialized in table driver",
-                    table_type
-                );
             }
         } else {
             assert_eq!(shuffle_ram_queries.len(), 3);
@@ -1107,12 +1109,13 @@ impl<F: PrimeField> OneRowCompiler<F> {
             let table_index = match table {
                 LookupQueryTableType::Constant(constant) => TableIndex::Constant(constant),
                 LookupQueryTableType::Variable(variable) => {
-                    let column = layout_witness_subtree_variable(
-                        &mut witness_tree_offset,
-                        variable,
-                        &mut all_variables_to_place,
-                        &mut layout,
-                    );
+                    // let column = layout_witness_subtree_variable(
+                    //     &mut witness_tree_offset,
+                    //     variable,
+                    //     &mut all_variables_to_place,
+                    //     &mut layout,
+                    // );
+                    let column: ColumnSet<1> = ColumnSet::layout_at(&mut witness_tree_offset, 1);
                     let place = ColumnAddress::WitnessSubtree(column.start);
                     TableIndex::Variable(place)
                 }

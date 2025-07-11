@@ -188,3 +188,41 @@ pub fn bigint_with_control_factory_fn<A: GoodAllocator>(
         indirect_writes: Vec::with_capacity_in(capacity * 8, A::default()),
     }
 }
+
+pub fn keccak_special5_with_control_factory_fn<A: GoodAllocator>(
+    delegation_type: u16,
+    num_requests: usize,
+) -> DelegationWitness<A> {
+    let capacity = num_requests + 1;
+    // assert!(
+    //     capacity.is_power_of_two(),
+    //     "expected capacity to be power of two, got {}",
+    //     capacity
+    // );
+
+
+    let x11_indirect_access_properties: Vec<_> = (0..12)
+        .map(|el| IndirectAccessLocation {
+            use_writes: false,
+            index: el,
+        })
+        .collect();
+
+    DelegationWitness {
+        num_requests,
+        num_register_accesses_per_delegation: 2,
+        num_indirect_reads_per_delegation: 0, // ????
+        num_indirect_writes_per_delegation: 12,
+        base_register_index: 10, // ????
+        delegation_type,
+        indirect_accesses_properties: vec![
+            x11_indirect_access_properties,
+        ], // rest is unreachable
+
+        write_timestamp: Vec::with_capacity_in(capacity, A::default()),
+
+        register_accesses: Vec::with_capacity_in(capacity * 2, A::default()),
+        indirect_reads: Vec::with_capacity_in(capacity * 0, A::default()),
+        indirect_writes: Vec::with_capacity_in(capacity * 12, A::default()),
+    }
+}
