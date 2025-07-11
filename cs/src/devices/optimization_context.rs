@@ -1111,8 +1111,10 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             let mul_low = Register::choose_from_orthogonal_variants::<CS>(cs, &flags, &mul_low_s);
             let mul_high = Register::choose_from_orthogonal_variants::<CS>(cs, &flags, &mul_high_s);
 
+            #[allow(deprecated)]
             let op1_decomposition =
                 RegisterDecomposition::parse_reg::<CS>(cs, op1).u8_decomposition;
+            #[allow(deprecated)]
             let op2_decomposition =
                 RegisterDecomposition::parse_reg::<CS>(cs, op2).u8_decomposition;
 

@@ -14,7 +14,6 @@ use crate::cudart::device::get_device_count;
 use crate::prover::context::MemPoolProverContext;
 use crate::prover::context::ProverContext;
 use crate::prover::tracing_data::TracingDataHost;
-use crate::witness::trace_delegation::DelegationTraceHost;
 use crate::witness::trace_main::MainTraceHost;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;
@@ -52,6 +51,7 @@ type A = ConcurrentStaticHostAllocator;
 
 const CPU_WORKERS_COUNT: usize = 6;
 const CYCLES_TRACING_WORKERS_COUNT: usize = CPU_WORKERS_COUNT - 2;
+const CACHE_DELEGATIONS: bool = false;
 
 /// Represents an executable binary that can be proven by the prover
 ///
@@ -315,41 +315,44 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         let mut main_work_requests_count = 0;
         if proving {
             if let Some(cache) = chunks_cache.take() {
+                let external_challenges = external_challenges.unwrap();
                 for entry in cache.queue.into_iter() {
-                    match entry.circuit_type {
-                        CircuitType::Main(circuit_type) => {
-                            assert_eq!(circuit_type, binary.circuit_type);
-                            let circuit_sequence = entry.circuit_sequence;
-                            let tracing_data = entry.tracing_data;
+                    let ChunksCacheEntry {
+                        circuit_type,
+                        circuit_sequence,
+                        tracing_data,
+                    } = entry;
+                    match circuit_type {
+                        CircuitType::Main(main_circuit_type) => {
+                            assert_eq!(main_circuit_type, binary.circuit_type);
                             let precomputations = binary.precomputations.clone();
                             let request = ProofRequest {
                                 batch_id,
-                                circuit_type: entry.circuit_type,
+                                circuit_type,
                                 circuit_sequence,
                                 precomputations,
                                 tracing_data,
-                                external_challenges: external_challenges.unwrap(),
+                                external_challenges,
                             };
                             let request = GpuWorkRequest::Proof(request);
-                            trace!("BATCH[{batch_id}] PROVER sending cached main circuit {circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
+                            trace!("BATCH[{batch_id}] PROVER sending cached main circuit {main_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
                             gpu_work_requests_sender.send(request).unwrap();
                             main_work_requests_count += 1;
                         }
-                        CircuitType::Delegation(circuit_type) => {
-                            let circuit_sequence = entry.circuit_sequence;
-                            let tracing_data = entry.tracing_data;
-                            let precomputations =
-                                self.delegation_circuits_precomputations[&circuit_type].clone();
+                        CircuitType::Delegation(delegation_circuit_type) => {
+                            let precomputations = self.delegation_circuits_precomputations
+                                [&delegation_circuit_type]
+                                .clone();
                             let request = ProofRequest {
                                 batch_id,
-                                circuit_type: entry.circuit_type,
+                                circuit_type,
                                 circuit_sequence,
                                 precomputations,
                                 tracing_data,
-                                external_challenges: external_challenges.unwrap(),
+                                external_challenges,
                             };
                             let request = GpuWorkRequest::Proof(request);
-                            trace!("BATCH[{batch_id}] PROVER sending cached delegation circuit {:?} chunk {circuit_type:?} proof request to GPU manager", circuit_type);
+                            trace!("BATCH[{batch_id}] PROVER sending cached delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
                             gpu_work_requests_sender.send(request).unwrap();
                         }
                     }
@@ -517,38 +520,48 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                 } => {
                     let id = witness.delegation_type;
                     let delegation_circuit_type = DelegationCircuitType::from(id);
-                    let circuit_type = CircuitType::Delegation(delegation_circuit_type);
-                    trace!("BATCH[{batch_id}] PROVER received delegation circuit {:?} chunk {circuit_sequence} witnesses", delegation_circuit_type);
-                    let precomputations =
-                        self.delegation_circuits_precomputations[&delegation_circuit_type].clone();
-                    let tracing_data = TracingDataHost::Delegation(witness.into());
-                    let request = if proving {
-                        let proof_request = ProofRequest {
-                            batch_id,
-                            circuit_type,
-                            circuit_sequence,
-                            precomputations,
-                            tracing_data,
-                            external_challenges: external_challenges.unwrap(),
-                        };
-                        trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request");
-                        GpuWorkRequest::Proof(proof_request)
+                    if witness.write_timestamp.is_empty() {
+                        trace!("BATCH[{batch_id}] PROVER skipping empty delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence}");
+                        self.free_delegation_witness_senders
+                            .get(&delegation_circuit_type)
+                            .unwrap()
+                            .send(witness)
+                            .unwrap();
                     } else {
-                        let memory_commitment_request = MemoryCommitmentRequest {
-                            batch_id,
-                            circuit_type,
-                            circuit_sequence,
-                            precomputations,
-                            tracing_data,
+                        let circuit_type = CircuitType::Delegation(delegation_circuit_type);
+                        trace!("BATCH[{batch_id}] PROVER received delegation circuit {:?} chunk {circuit_sequence} witnesses", delegation_circuit_type);
+                        let precomputations = self.delegation_circuits_precomputations
+                            [&delegation_circuit_type]
+                            .clone();
+                        let tracing_data = TracingDataHost::Delegation(witness.into());
+                        let request = if proving {
+                            let proof_request = ProofRequest {
+                                batch_id,
+                                circuit_type,
+                                circuit_sequence,
+                                precomputations,
+                                tracing_data,
+                                external_challenges: external_challenges.unwrap(),
+                            };
+                            trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request");
+                            GpuWorkRequest::Proof(proof_request)
+                        } else {
+                            let memory_commitment_request = MemoryCommitmentRequest {
+                                batch_id,
+                                circuit_type,
+                                circuit_sequence,
+                                precomputations,
+                                tracing_data,
+                            };
+                            trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} memory commitment request");
+                            GpuWorkRequest::MemoryCommitment(memory_commitment_request)
                         };
-                        trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} memory commitment request");
-                        GpuWorkRequest::MemoryCommitment(memory_commitment_request)
-                    };
-                    delegation_work_sender
-                        .as_ref()
-                        .unwrap()
-                        .send(request)
-                        .unwrap();
+                        delegation_work_sender
+                            .as_ref()
+                            .unwrap()
+                            .send(request)
+                            .unwrap();
+                    }
                 }
                 WorkerResult::DelegationTracingResult {
                     delegation_chunks_counts,
@@ -621,9 +634,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received memory commitment for delegation circuit {circuit_type:?} chunk {circuit_sequence}");
-                            if chunks_cache
-                                .as_ref()
-                                .map_or(false, |cache| !cache.is_at_capacity())
+                            if CACHE_DELEGATIONS
+                                && chunks_cache
+                                    .as_ref()
+                                    .map_or(false, |cache| !cache.is_at_capacity())
                             {
                                 trace!("BATCH[{batch_id}] PROVER caching trace for delegation circuit {circuit_type:?} chunk {circuit_sequence}");
                                 let data = TracingDataHost::Delegation(witness);
@@ -634,43 +648,15 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                                 };
                                 chunks_cache.as_mut().unwrap().queue.push_back(entry);
                             } else {
-                                let DelegationTraceHost {
-                                    num_requests,
-                                    num_register_accesses_per_delegation,
-                                    num_indirect_reads_per_delegation,
-                                    num_indirect_writes_per_delegation,
-                                    base_register_index,
-                                    delegation_type,
-                                    indirect_accesses_properties,
-                                    write_timestamp,
-                                    register_accesses,
-                                    indirect_reads,
-                                    indirect_writes,
-                                } = witness;
-                                let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
-                                write_timestamp.clear();
-                                let mut register_accesses =
-                                    Arc::into_inner(register_accesses).unwrap();
-                                register_accesses.clear();
-                                let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
-                                indirect_reads.clear();
-                                let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
-                                indirect_writes.clear();
-                                let witness = DelegationWitness {
-                                    num_requests,
-                                    num_register_accesses_per_delegation,
-                                    num_indirect_reads_per_delegation,
-                                    num_indirect_writes_per_delegation,
-                                    base_register_index,
-                                    delegation_type,
-                                    indirect_accesses_properties,
-                                    write_timestamp,
-                                    register_accesses,
-                                    indirect_reads,
-                                    indirect_writes,
-                                };
+                                let circuit_type =
+                                    DelegationCircuitType::from(witness.delegation_type);
+                                let mut witness: DelegationWitness<A> = witness.into();
+                                witness.write_timestamp.clear();
+                                witness.register_accesses.clear();
+                                witness.indirect_reads.clear();
+                                witness.indirect_writes.clear();
                                 self.free_delegation_witness_senders
-                                    .get(&DelegationCircuitType::from(delegation_type))
+                                    .get(&circuit_type)
                                     .unwrap()
                                     .send(witness)
                                     .unwrap();
@@ -721,42 +707,14 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received proof for delegation circuit: {circuit_type:?} chunk {circuit_sequence}");
-                            let DelegationTraceHost {
-                                num_requests,
-                                num_register_accesses_per_delegation,
-                                num_indirect_reads_per_delegation,
-                                num_indirect_writes_per_delegation,
-                                base_register_index,
-                                delegation_type,
-                                indirect_accesses_properties,
-                                write_timestamp,
-                                register_accesses,
-                                indirect_reads,
-                                indirect_writes,
-                            } = witness;
-                            let mut write_timestamp = Arc::into_inner(write_timestamp).unwrap();
-                            write_timestamp.clear();
-                            let mut register_accesses = Arc::into_inner(register_accesses).unwrap();
-                            register_accesses.clear();
-                            let mut indirect_reads = Arc::into_inner(indirect_reads).unwrap();
-                            indirect_reads.clear();
-                            let mut indirect_writes = Arc::into_inner(indirect_writes).unwrap();
-                            indirect_writes.clear();
-                            let witness = DelegationWitness {
-                                num_requests,
-                                num_register_accesses_per_delegation,
-                                num_indirect_reads_per_delegation,
-                                num_indirect_writes_per_delegation,
-                                base_register_index,
-                                delegation_type,
-                                indirect_accesses_properties,
-                                write_timestamp,
-                                register_accesses,
-                                indirect_reads,
-                                indirect_writes,
-                            };
+                            let circuit_type = DelegationCircuitType::from(witness.delegation_type);
+                            let mut witness: DelegationWitness<A> = witness.into();
+                            witness.write_timestamp.clear();
+                            witness.register_accesses.clear();
+                            witness.indirect_reads.clear();
+                            witness.indirect_writes.clear();
                             self.free_delegation_witness_senders
-                                .get(&DelegationCircuitType::from(delegation_type))
+                                .get(&circuit_type)
                                 .unwrap()
                                 .send(witness)
                                 .unwrap();
@@ -859,7 +817,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
     ) {
         info!(
-            "BATCH[{batch_id}] PROVER producing memory commitment for binary with key {:?}",
+            "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {:?}",
             &binary_key
         );
         let timer = Instant::now();
@@ -881,7 +839,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         assert!(main_proofs.is_empty());
         assert!(delegation_proofs.is_empty());
         info!(
-            "BATCH[{batch_id}] PROVER produced commitments for binary with key {:?} in {:.3}s",
+            "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {:?} in {:.3}s",
             binary_key,
             timer.elapsed().as_secs_f64()
         );
@@ -1030,16 +988,18 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
                 num_instances_upper_bound,
                 non_determinism_source.clone(),
             );
+        let maximum_cached_count = if CACHE_DELEGATIONS {
+            main_memory_commitments.len()
+                + delegation_memory_commitments
+                    .iter()
+                    .map(|(_, v)| v.len())
+                    .sum::<usize>()
+        } else {
+            main_memory_commitments.len()
+        };
         assert_eq!(
             chunks_cache.as_ref().unwrap().len(),
-            min(
-                cache_capacity,
-                main_memory_commitments.len()
-                    + delegation_memory_commitments
-                        .iter()
-                        .map(|(_, v)| v.len())
-                        .sum::<usize>()
-            )
+            min(cache_capacity, maximum_cached_count)
         );
         let memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
             &self.binaries[&binary_key].precomputations.tree_caps,

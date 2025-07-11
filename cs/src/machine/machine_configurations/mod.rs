@@ -45,6 +45,7 @@ impl IndexableBooleanSet for BasicFlagsSource {
     }
 }
 
+#[allow(deprecated)]
 #[derive(Clone, Debug)]
 pub struct BasicDecodingResultWithoutSigns<F: PrimeField> {
     pub pc_next: Register<F>,
@@ -56,6 +57,7 @@ pub struct BasicDecodingResultWithoutSigns<F: PrimeField> {
     pub funct12: Constraint<F>,
 }
 
+#[allow(deprecated)]
 impl<F: PrimeField> DecoderOutputSource<F, RegisterDecomposition<F>>
     for BasicDecodingResultWithoutSigns<F>
 {

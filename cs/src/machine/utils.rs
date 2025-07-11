@@ -138,6 +138,7 @@ pub fn calculate_pc_next_no_overflows<F: PrimeField, CS: Circuit<F>>(
 //     res
 // }
 
+#[allow(deprecated)]
 pub fn read_from_shuffle_ram_or_bytecode_with_ctx<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     local_timestamp_in_cycle: usize,
@@ -306,6 +307,7 @@ pub(crate) fn get_register_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     (value, query)
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_rs1_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     reg_encoding: Num<F>,
@@ -327,12 +329,14 @@ pub(crate) fn get_rs1_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     (value, query)
 }
 
+#[allow(dead_code)]
 pub(crate) struct RS2ShuffleRamQueryCandidate<F: PrimeField> {
     pub(crate) rs2: Constraint<F>,
     pub(crate) local_timestamp_in_cycle: usize,
     pub(crate) read_value: [Variable; REGISTER_SIZE],
 }
 
+#[allow(dead_code)]
 pub(crate) fn prepare_rs2_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     rs2_constraint: Constraint<F>,

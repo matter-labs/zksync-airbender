@@ -631,7 +631,7 @@ fn run_binary(
                     _,
                     IMStandardIsaConfig,
                 >(config, non_determinism_source);
-
+          
             result.state.registers
         }
         Machine::Reduced => {
