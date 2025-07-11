@@ -25,7 +25,7 @@ fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
     {
         // old simulator
         let mut state = RiscV32State::<IMStandardIsaConfig>::initial(INITIAL_PC);
-        
+
         state.observable.registers[1] = op1;
         state.observable.registers[2] = op2;
         let instr = format!("{} x3, x1, x2", op_name);

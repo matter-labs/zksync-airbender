@@ -11,9 +11,7 @@ use crate::mmu::NoMMU;
 use crate::qol::PipeOp;
 use crate::{
     abstractions::{
-        memory::MemorySource,
-        non_determinism::NonDeterminismCSRSource,
-        tracer::Tracer,
+        memory::MemorySource, non_determinism::NonDeterminismCSRSource, tracer::Tracer,
     },
     cycle::state::RiscV32State as RiscV32StateNaive,
     mmu::MMUImplementation,
@@ -24,10 +22,10 @@ use self::diag::Profiler;
 
 pub(crate) mod diag;
 
-pub struct Simulator<S, C> 
-where 
+pub struct Simulator<S, C>
+where
     S: RiscV32MachineSetup,
-    C: MachineConfig
+    C: MachineConfig,
 {
     pub(crate) machine: S::M,
     // pub(crate) memory_source: MS,
@@ -44,14 +42,11 @@ where
 }
 
 impl<S, C> Simulator<S, C>
-where 
-    S: RiscV32MachineSetup, 
-    C: MachineConfig 
+where
+    S: RiscV32MachineSetup,
+    C: MachineConfig,
 {
-    pub fn new(
-        config: SimulatorConfig,
-        setup: S,
-    ) -> Self {
+    pub fn new(config: SimulatorConfig, setup: S) -> Self {
         Self {
             machine: setup.instantiate(&config),
             cycles: config.cycles,
@@ -61,16 +56,14 @@ where
         }
     }
 
-    pub fn run<FnPre, FnPost>(
-        &mut self,
-        mut fn_pre: FnPre,
-        mut fn_post: FnPost,
-    ) -> RunResult<S>
+    pub fn run<FnPre, FnPost>(&mut self, mut fn_pre: FnPre, mut fn_post: FnPost) -> RunResult<S>
     where
         FnPre: FnMut(&mut Self, usize),
         FnPost: FnMut(&mut Self, usize),
     {
-        if self.reached_end { panic!("Already reached end of execution."); }
+        if self.reached_end {
+            panic!("Already reached end of execution.");
+        }
 
         let now = std::time::Instant::now();
         let mut previous_pc = self.machine.state().pc;
@@ -137,12 +130,11 @@ where
             // non_determinism_source,
             reached_end: self.reached_end,
             measurements: RunResultMeasurements {
-                time: RunResultTimes { 
+                time: RunResultTimes {
                     exec_time,
                     exec_cycles: cycles,
                 },
                 profiler: self.profiler.as_ref().map(|x| x.stats.clone()),
-
             },
             phantom: PhantomData,
         }
@@ -153,10 +145,9 @@ where
     }
 }
 
-
 pub(crate) trait RiscV32MachineSetup
-where 
-    Self: Sized
+where
+    Self: Sized,
 {
     type ND: NonDeterminismCSRSource<Self::MS>;
     type MS: MemorySource;
@@ -169,8 +160,8 @@ where
     fn instantiate(self, config: &SimulatorConfig) -> Self::M;
 }
 
-pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C> 
-    where 
+pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
+where
     ND: NonDeterminismCSRSource<MS>,
     MS: MemorySource,
     TR: Tracer<C>,
@@ -186,7 +177,7 @@ pub(crate) trait RiscV32Machine<ND, MS, TR, MMU, C>
         &mut self,
         symbol_info: &diag::SymbolInfo,
         dwarf_cache: &mut diag::DwarfCache,
-        cycle: usize
+        cycle: usize,
     ) -> diag::StacktraceCollectionResult;
 }
 
@@ -197,8 +188,8 @@ pub enum BinarySource<'a> {
 
 impl<'a> BinarySource<'a> {
     pub fn to_iter(&self) -> Box<dyn Iterator<Item = u8> + 'a> {
-
-        fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> { dbg!(path.as_ref());
+        fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {
+            dbg!(path.as_ref());
             let mut file = std::fs::File::open(path).expect("must open provided file");
             let mut buffer = vec![];
             std::io::Read::read_to_end(&mut file, &mut buffer).expect("must read the file");
@@ -297,7 +288,7 @@ pub struct RunResult<S: RiscV32MachineSetup> {
 
 pub struct RunResultMeasurements {
     time: RunResultTimes,
-    profiler: Option<ProfilerStats>
+    profiler: Option<ProfilerStats>,
 }
 
 pub struct RunResultTimes {
@@ -310,6 +301,3 @@ impl RunResultTimes {
         self.exec_cycles * 1000 / self.exec_time.as_millis() as usize
     }
 }
-
-
-

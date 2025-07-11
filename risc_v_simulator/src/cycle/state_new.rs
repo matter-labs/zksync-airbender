@@ -106,7 +106,7 @@ pub(crate) struct Riscv32MachineProverUnrolled<
     TR: Tracer<C>,
     ND: NonDeterminismCSRSource<MS>,
     CSR: DelegationCSRProcessor,
-    C: MachineConfig
+    C: MachineConfig,
 > {
     pub(crate) state: RiscV32StateForUnrolledProver<C>,
     pub(crate) memory_source: MS,
@@ -115,9 +115,8 @@ pub(crate) struct Riscv32MachineProverUnrolled<
     pub(crate) csr_processor: CSR,
 }
 
-impl<MS, TR, ND, CSR, C> Riscv32MachineProverUnrolled<
-    MS, TR, ND, CSR, C>
-where 
+impl<MS, TR, ND, CSR, C> Riscv32MachineProverUnrolled<MS, TR, ND, CSR, C>
+where
     MS: MemorySource,
     TR: Tracer<C>,
     ND: NonDeterminismCSRSource<MS>,
@@ -142,9 +141,9 @@ where
     }
 }
 
-impl<MS, TR, ND, CSR, C> RiscV32Machine<ND, MS, TR, NoMMU, C> for Riscv32MachineProverUnrolled<
-    MS, TR, ND, CSR, C>
-where 
+impl<MS, TR, ND, CSR, C> RiscV32Machine<ND, MS, TR, NoMMU, C>
+    for Riscv32MachineProverUnrolled<MS, TR, ND, CSR, C>
+where
     MS: MemorySource,
     TR: Tracer<C>,
     ND: NonDeterminismCSRSource<MS>,
@@ -157,7 +156,7 @@ where
             &mut self.memory_tracer,
             &mut self.non_determinism_source,
             &mut self.csr_processor,
-            );
+        );
     }
 
     fn state(&self) -> &super::state::RiscV32ObservableState {
@@ -170,7 +169,7 @@ where
     //         memory_source,
     //         memory_tracer,
     //         non_determinism_source,
-    //         csr_processor 
+    //         csr_processor
     //     } = self;
     //
     //     (
@@ -185,7 +184,7 @@ where
         &mut self,
         symbol_info: &crate::sim::diag::SymbolInfo,
         dwarf_cache: &mut crate::sim::diag::DwarfCache,
-        cycle: usize
+        cycle: usize,
     ) -> crate::sim::diag::StacktraceCollectionResult {
         crate::sim::diag::collect_stacktrace(
             symbol_info,
@@ -194,7 +193,8 @@ where
             &mut self.memory_source,
             &mut self.memory_tracer,
             &mut NoMMU::default(),
-            cycle)
+            cycle,
+        )
     }
 }
 
@@ -203,7 +203,6 @@ pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaCo
     pub observable: RiscV32ObservableState,
     // pub registers: [u32; NUM_REGISTERS],
     // pub pc: u32,
-
     _marker: std::marker::PhantomData<Config>,
 }
 
@@ -244,7 +243,10 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
             value = 0;
         }
         unsafe {
-            let dst = self.observable.registers.get_unchecked_mut(reg_idx as usize);
+            let dst = self
+                .observable
+                .registers
+                .get_unchecked_mut(reg_idx as usize);
             let existing = *dst;
             *dst = value;
 
@@ -318,7 +320,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         non_determinism_source: &mut ND,
         csr_processor: &mut CSR,
     ) -> bool {
-
         tracer.at_cycle_start_ext(&*self);
 
         let opcode = self.decoder_step(memory_source, tracer);
@@ -396,8 +397,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                 // quasi sign extend
                 sign_extend(&mut imm, 12);
                 let rd_value = self.observable.pc; // already incremented by 4
-                //  The target address is obtained by adding the 12-bit signed I-immediate
-                // to the register rs1, then setting the least-significant bit of the result to zero
+                                                   //  The target address is obtained by adding the 12-bit signed I-immediate
+                                                   // to the register rs1, then setting the least-significant bit of the result to zero
                 let jmp_addr = (rs1_value.wrapping_add(imm) & !0x1);
 
                 if jmp_addr & 0x3 != 0 {
@@ -540,7 +541,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             if Config::SUPPORT_MUL && Config::SUPPORT_SIGNED_MUL {
                                 (((operand_1 as i32) as i64)
                                     .wrapping_mul((operand_2 as i32) as i64)
-                                >> 32) as u32
+                                    >> 32) as u32
                             } else {
                                 panic!("Unknown opcode 0x{:08x}", opcode);
                             }
@@ -551,7 +552,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             if Config::SUPPORT_MUL && Config::SUPPORT_SIGNED_MUL {
                                 (((operand_1 as i32) as i64)
                                     .wrapping_mul(((operand_2 as u32) as u64) as i64)
-                                >> 32) as u32
+                                    >> 32) as u32
                             } else {
                                 panic!("Unknown opcode 0x{:08x}", opcode);
                             }
@@ -735,15 +736,9 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         // Memory implementation should handle read in full. For now we only use one
                         // that doesn't step over 4 byte boundary ever, meaning even though formal address is not 4 byte aligned,
                         // loads of u8/u16/u32 are still "aligned"
-                        let (aligned_ram_read_value, ram_read_value) = mem_read::<M, Config>(
-                            memory_source,
-                            load_address as u64,
-                            num_bytes,
-                        );
-                        tracer.trace_ram_read(
-                            (load_address & !0x3) as u64,
-                            aligned_ram_read_value,
-                        );
+                        let (aligned_ram_read_value, ram_read_value) =
+                            mem_read::<M, Config>(memory_source, load_address as u64, num_bytes);
+                        tracer.trace_ram_read((load_address & !0x3) as u64, aligned_ram_read_value);
                         let rd_value = if Config::SUPPORT_SIGNED_LOAD {
                             // now depending on the type of load we extend it
                             match a {
@@ -830,8 +825,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         }
 
                         // memory handles the write in full, whether it's aligned or not, or whatever
-                        let (aligned_ram_old_value, aligned_ram_write_value) =
-                        mem_write::<M, Config>(
+                        let (aligned_ram_old_value, aligned_ram_write_value) = mem_write::<M, Config>(
                             memory_source,
                             store_address as u64,
                             rs2_value,
@@ -913,8 +907,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                                     non_determinism_source.read()
                                 }
                             } else {
-                                    non_determinism_source.read()
-                                };
+                                non_determinism_source.read()
+                            };
                             tracer.trace_non_determinism_read(rd_value);
                         }
                         MARKER_CSR => {
@@ -994,8 +988,5 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         tracer.at_cycle_end_ext(&*self);
 
         self.observable.pc == pc
-
     }
 }
-
-

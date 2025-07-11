@@ -4,7 +4,9 @@ use std::hint::unreachable_unchecked;
 use super::{status_registers::*, MachineConfig};
 use crate::abstractions::csr_processor::CustomCSRProcessor;
 use crate::abstractions::memory::{AccessType, MemorySource, VectorMemoryImpl};
-use crate::abstractions::non_determinism::{NonDeterminismCSRSource, QuasiUARTSource, QuasiUARTSourceState};
+use crate::abstractions::non_determinism::{
+    NonDeterminismCSRSource, QuasiUARTSource, QuasiUARTSourceState,
+};
 use crate::abstractions::tracer::Tracer;
 use crate::abstractions::{mem_read, mem_write};
 use crate::cycle::IMStandardIsaConfig;
@@ -30,7 +32,7 @@ pub struct RiscV32ObservableState {
     pub pc: u32,
 }
 
-pub(crate) struct RiscV32MachineV1<MS, TR, MMU, ND, C = IMStandardIsaConfig> 
+pub(crate) struct RiscV32MachineV1<MS, TR, MMU, ND, C = IMStandardIsaConfig>
 where
     MS: MemorySource,
     TR: Tracer<C>,
@@ -45,16 +47,10 @@ where
     pub(crate) non_determinism_source: ND,
 }
 
-impl<ND, C> RiscV32MachineV1<
-    VectorMemoryImpl,
-    (),
-    NoMMU,
-    ND,
-    C,
->
+impl<ND, C> RiscV32MachineV1<VectorMemoryImpl, (), NoMMU, ND, C>
 where
     ND: NonDeterminismCSRSource<VectorMemoryImpl>,
-    C: MachineConfig, 
+    C: MachineConfig,
 {
     pub fn with_nd(entry_point: u32, non_determinism_source: ND) -> Self {
         let state = RiscV32State::initial(entry_point);
@@ -73,23 +69,15 @@ where
     }
 }
 
-impl<ND, MS, TR, MMU, C> RiscV32Machine<ND, MS, TR, MMU, C> for RiscV32MachineV1<
-    MS,
-    TR,
-    MMU,
-    ND,
-    C,
->
+impl<ND, MS, TR, MMU, C> RiscV32Machine<ND, MS, TR, MMU, C> for RiscV32MachineV1<MS, TR, MMU, ND, C>
 where
     ND: NonDeterminismCSRSource<MS>,
     MS: MemorySource,
     TR: Tracer<C>,
     MMU: MMUImplementation<MS, TR, C>,
-    C: MachineConfig, 
+    C: MachineConfig,
 {
-    fn cycle(
-        &mut self,
-    ) {
+    fn cycle(&mut self) {
         self.state.cycle(
             &mut self.memory_source,
             &mut self.memory_tracer,
@@ -124,7 +112,7 @@ where
             &mut self.memory_source,
             &mut self.memory_tracer,
             &mut self.mmu,
-            cycle
+            cycle,
         )
     }
 }
@@ -466,7 +454,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         };
 
         let state = RiscV32State {
-            observable: RiscV32ObservableState { 
+            observable: RiscV32ObservableState {
                 registers: std::array::from_fn(|i| if i > 0 { rng.gen() } else { 0 }),
                 pc: initial_pc,
             },
@@ -1564,12 +1552,18 @@ impl<Config: MachineConfig> RiscV32State<Config> {
     pub fn pretty_dump(&self) {
         println!(
             "PC = 0x{:08x}, RA = 0x{:08x}, SP = 0x{:08x}, GP = 0x{:08x}",
-            self.observable.pc, 
+            self.observable.pc,
             self.observable.registers[1],
             self.observable.registers[2],
             self.observable.registers[3]
         );
-        for chunk in self.observable.registers.iter().enumerate().array_chunks::<4>() {
+        for chunk in self
+            .observable
+            .registers
+            .iter()
+            .enumerate()
+            .array_chunks::<4>()
+        {
             for (idx, reg) in chunk.iter() {
                 print!("x{:02} = 0x{:08x}, ", idx, reg);
             }

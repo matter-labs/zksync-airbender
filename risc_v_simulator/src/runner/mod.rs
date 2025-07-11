@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::abstractions::memory::MemorySource;
+use crate::abstractions::memory::VectorMemoryImpl;
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::non_determinism::QuasiUARTSource;
 use crate::cycle::state::RiscV32MachineV1;
@@ -11,14 +12,13 @@ use crate::mmu::NoMMU;
 use crate::setup::BaselineWithND;
 use crate::setup::DefaultSetup;
 use crate::sim::BinarySource;
-use crate::sim::RiscV32MachineSetup;
-use crate::sim::RunResult;
 use crate::sim::ProfilerConfig;
 use crate::sim::RiscV32Machine;
+use crate::sim::RiscV32MachineSetup;
+use crate::sim::RunResult;
 use crate::sim::RunResultMeasurements;
 use crate::sim::Simulator;
 use crate::sim::SimulatorConfig;
-use crate::{abstractions::memory::VectorMemoryImpl};
 
 pub const DEFAULT_ENTRY_POINT: u32 = 0x01000000;
 pub const CUSTOM_ENTRY_POINT: u32 = 0;
@@ -49,8 +49,7 @@ pub fn run_simple_with_entry_point_and_non_determimism_source<
     config: SimulatorConfig,
     non_determinism_source: S,
 ) -> RunResult<BaselineWithND<S, IMStandardIsaConfig>> {
-    run_simple_with_entry_point_and_non_determimism_source_for_config::<
-        S, IMStandardIsaConfig>(
+    run_simple_with_entry_point_and_non_determimism_source_for_config::<S, IMStandardIsaConfig>(
         config,
         non_determinism_source,
     )
@@ -63,21 +62,14 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     config: SimulatorConfig,
     non_determinism_source: S,
 ) -> RunResult<BaselineWithND<S, C>> {
-
     let setup = BaselineWithND::<_, C>::new(non_determinism_source);
 
-    let mut sim = Simulator::<_, C>::new(
-        config,
-        setup
-    );
+    let mut sim = Simulator::<_, C>::new(config, setup);
 
     sim.run(|_, _| {}, |_, _| {})
 }
 
-pub fn run_simple_for_num_cycles<
-    S: NonDeterminismCSRSource<VectorMemoryImpl>,
-    C: MachineConfig
-> (
+pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C: MachineConfig>(
     binary: &[u8],
     entry_point: u32,
     cycles: usize,
@@ -86,21 +78,14 @@ pub fn run_simple_for_num_cycles<
     let setup = BaselineWithND::<_, C>::new(non_determinism_source);
 
     let mut sim = Simulator::<_, C>::new(
-        SimulatorConfig::new(
-            BinarySource::Slice(binary),
-            entry_point,
-            cycles,
-            None
-        ),
+        SimulatorConfig::new(BinarySource::Slice(binary), entry_point, cycles, None),
         setup,
     );
 
     let exec = sim.run(|_, _| {}, |_, _| {});
 
-
     exec
 }
-
 
 // pub fn run_simple_with_entry_point_with_delegation_and_non_determimism_source<
 //     S: NonDeterminismCSRSource<VectorMemoryImpl>,
@@ -133,27 +118,24 @@ pub fn run_simple_for_num_cycles<
 //     run_simulator_with_traces_for_config(config)
 // }
 
-pub fn run_simulator_with_traces_for_config<
-    C: MachineConfig
-> (
+pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
     config: SimulatorConfig,
 ) -> RunResult<DefaultSetup> {
     let setup = DefaultSetup::default();
 
     let mut state_tracer = StateTracer::new_for_num_cycles(config.cycles);
 
-    let mut sim = Simulator::<DefaultSetup, C>::new(
-        config,
-        setup,
-    );
-
+    let mut sim = Simulator::<DefaultSetup, C>::new(config, setup);
 
     state_tracer.insert(0, sim.machine.state().clone());
 
     let exec = sim.run(
         |_, _| {},
         |sim, cycle| {
-            println!("mtvec: {:?}", sim.machine.state.machine_mode_trap_data.setup.tvec);
+            println!(
+                "mtvec: {:?}",
+                sim.machine.state.machine_mode_trap_data.setup.tvec
+            );
             state_tracer.insert(cycle + 1, sim.machine.state().clone());
         },
     );

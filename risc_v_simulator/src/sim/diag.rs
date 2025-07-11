@@ -1,4 +1,8 @@
-use crate::{abstractions::non_determinism::NonDeterminismCSRSource, cycle::{state::RiscV32ObservableState, MachineConfig}, sim::RiscV32MachineSetup};
+use crate::{
+    abstractions::non_determinism::NonDeterminismCSRSource,
+    cycle::{state::RiscV32ObservableState, MachineConfig},
+    sim::RiscV32MachineSetup,
+};
 use std::{
     collections::HashMap,
     hash::Hasher,
@@ -20,12 +24,12 @@ use object::{File, Object, ObjectSection};
 
 use crate::{
     abstractions::{mem_read, memory::MemorySource, tracer::Tracer},
-    cycle::{ status_registers::TrapReason},
+    cycle::status_registers::TrapReason,
     mmu::MMUImplementation,
     qol::PipeOp as _,
 };
 
-use super::{ RiscV32Machine, SimulatorConfig};
+use super::{RiscV32Machine, SimulatorConfig};
 
 #[derive(Default, Debug, Clone)]
 pub struct ProfilerStats {
@@ -85,16 +89,12 @@ impl Profiler {
         // MS: MemorySource,
         // TR: Tracer<C>,
         // MMU: MMUImplementation<MS, TR, C>,
-        
-        C: MachineConfig, S: RiscV32MachineSetup
+        C: MachineConfig,
+        S: RiscV32MachineSetup,
     {
         if cycle % self.frequency_recip == 0 {
             self.stats.samples_total += 1;
-            let st = machine.collect_stacktrace(
-                &self.symbol_info,
-                &mut self.dwarf_cache,
-                cycle,
-            );
+            let st = machine.collect_stacktrace(&self.symbol_info, &mut self.dwarf_cache, cycle);
             // self.collect_stacktrace(state, memory_source, memory_tracer, mmu, cycle);
         }
     }
@@ -331,9 +331,7 @@ impl SymbolInfo {
 
             match object.section_by_name(name) {
                 Some(section) => match section.uncompressed_data().unwrap() {
-                    std::borrow::Cow::Borrowed(section) => {
-                        Ok(EndianSlice::new(section, endian))
-                    }
+                    std::borrow::Cow::Borrowed(section) => Ok(EndianSlice::new(section, endian)),
                     std::borrow::Cow::Owned(_) => {
                         unreachable!("We're following the borrowed path.")
                     }
@@ -443,40 +441,35 @@ impl SymbolInfo {
                     }
                     _ => {}
                 },
-                gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
-                    match attr.value() {
-                        gimli::AttributeValue::UnitRef(other_offset) => {
-                            let mut cursor = unit.entries_at_offset(other_offset).unwrap();
-                            cursor.next_entry().unwrap();
-                            let die2 = cursor.current().unwrap();
+                gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => match attr.value() {
+                    gimli::AttributeValue::UnitRef(other_offset) => {
+                        let mut cursor = unit.entries_at_offset(other_offset).unwrap();
+                        cursor.next_entry().unwrap();
+                        let die2 = cursor.current().unwrap();
 
-                            let mut attrs = die2.attrs();
+                        let mut attrs = die2.attrs();
 
-                            while let Ok(Some(attr)) = attrs.next() {
-                                println!("      {:x?} -> {:x?}", attr.name(), attr.value());
+                        while let Ok(Some(attr)) = attrs.next() {
+                            println!("      {:x?} -> {:x?}", attr.name(), attr.value());
 
-                                match attr.name() {
-                                    gimli::DW_AT_linkage_name | gimli::DW_AT_name => {
-                                        let n = attr.value();
+                            match attr.name() {
+                                gimli::DW_AT_linkage_name | gimli::DW_AT_name => {
+                                    let n = attr.value();
 
-                                        match n {
-                                            gimli::AttributeValue::DebugStrRef(n) => {
-                                                let s = dw.string(n).unwrap();
-                                                println!(
-                                                    "         value: {}",
-                                                    s.to_string_lossy()
-                                                );
-                                            }
-                                            _ => {}
+                                    match n {
+                                        gimli::AttributeValue::DebugStrRef(n) => {
+                                            let s = dw.string(n).unwrap();
+                                            println!("         value: {}", s.to_string_lossy());
                                         }
+                                        _ => {}
                                     }
-                                    _ => {}
-                                };
-                            }
+                                }
+                                _ => {}
+                            };
                         }
-                        _ => {}
                     }
-                }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -624,9 +617,7 @@ impl SymbolInfo {
                             while let Ok(Some(attr)) = attrs.next() {
                                 match attr.name() {
                                     gimli::DW_AT_noreturn if epilogue_begin.is_some() => {
-                                        panic!(
-                                        "Non returning functions shouln't have an epilogue."
-                                    )
+                                        panic!("Non returning functions shouln't have an epilogue.")
                                     }
                                     gimli::DW_AT_noreturn => no_return = true,
                                     _ => (),
@@ -635,11 +626,8 @@ impl SymbolInfo {
 
                             let r = FrameInfo {
                                 prologue_end: prologue_end.expect(
-                                    format!(
-                                        "A function must have a prologue. 0x{:08x}",
-                                        address
-                                    )
-                                    .as_str(),
+                                    format!("A function must have a prologue. 0x{:08x}", address)
+                                        .as_str(),
                                 ),
                                 epilogue_begin: epilogue_begin.unwrap_or_else(|| u64::MAX),
                                 no_return,
@@ -735,130 +723,125 @@ impl StacktraceSet {
 }
 
 pub(crate) fn collect_stacktrace<MS, TR, MMU, C>(
-        symbol_info: &SymbolInfo,
-        dwarf_cache: &mut DwarfCache,
-        state: &RiscV32ObservableState,
-        memory_source: &mut MS,
-        memory_tracer: &mut TR,
-        mmu: &mut MMU,
-        cycle: usize,
-    ) -> StacktraceCollectionResult
-    where
-        MS: MemorySource,
-        TR: Tracer<C>,
-        MMU: MMUImplementation<MS, TR, C>,
-        C: MachineConfig,
-    {
-        let mut callstack = Vec::with_capacity(6);
+    symbol_info: &SymbolInfo,
+    dwarf_cache: &mut DwarfCache,
+    state: &RiscV32ObservableState,
+    memory_source: &mut MS,
+    memory_tracer: &mut TR,
+    mmu: &mut MMU,
+    cycle: usize,
+) -> StacktraceCollectionResult
+where
+    MS: MemorySource,
+    TR: Tracer<C>,
+    MMU: MMUImplementation<MS, TR, C>,
+    C: MachineConfig,
+{
+    let mut callstack = Vec::with_capacity(6);
 
-        // Current frame
-        callstack.push(state.pc as u64);
+    // Current frame
+    callstack.push(state.pc as u64);
 
-        let mut fp = state.registers[8];
+    let mut fp = state.registers[8];
 
-        if fp == 0 {
-            // self.stats.samples_skipped += 1;
-            return StacktraceCollectionResult::Skipped;
-        }
-
-        loop {
-            let mut trap = TrapReason::NoTrap;
-
-            let fpp = mmu.map_virtual_to_physical(
-                fp,
-                crate::cycle::state::Mode::Machine,
-                crate::abstractions::memory::AccessType::MemLoad,
-                memory_source,
-                memory_tracer,
-                &mut trap,
-            );
-
-            // TODO: remove once the issue with non complying functions is solved.
-            if fpp < 8 {
-                break;
-            }
-
-            let addr = mem_read::<_, _, _>(
-                memory_source,
-                memory_tracer,
-                fpp - 4,
-                size_of::<u32>() as u32,
-                crate::abstractions::memory::AccessType::MemLoad,
-                &mut trap,
-            );
-
-            let next = mem_read::<_, _, _>(
-                memory_source,
-                memory_tracer,
-                fpp - 8,
-                size_of::<u32>() as u32,
-                crate::abstractions::memory::AccessType::MemLoad,
-                &mut trap,
-            );
-
-            // TODO: Remove once the issue with non complying functions is solved.
-            if addr < 4 {
-                break;
-            }
-            if next as u64 == fpp {
-                break;
-            }
-            if addr == 0 {
-                break;
-            }
-
-            // Subbing one instruction because the frame's return address point to instruction
-            // that follows the call, not the call itself. In case of inlining this can be
-            // several frames away.
-            let addr = addr - 4;
-
-            callstack.push(addr as u64);
-
-            fp = next;
-        }
-
-        let mut stackframes = Vec::with_capacity(8);
-
-        for (i, addr) in callstack.iter().enumerate() {
-            let r = symbol_info.get_address_frames(dwarf_cache, *addr);
-
-            let (frames, section_offset) = match r {
-                Some(r) => r,
-                // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
-                None => break,
-            };
-
-            for frame in frames {
-                let offset = frame.dw_die_offset.unwrap();
-                stackframes.push(FrameKey {
-                    section_offset,
-                    unit_offset: offset,
-                });
-
-                if i == 0
-                    && false
-                        == symbol_info.is_address_traceable(
-                            dwarf_cache,
-                            state.pc as u64,
-                            &frame,
-                        )
-                {
-                    // We're in a service code.
-                    // self.stats.samples_service += 1;
-                    return StacktraceCollectionResult::ServiceCode;
-                }
-            }
-        }
-
-        if stackframes.len() == 0 {
-            // self.stats.samples_failed += 1;
-            return StacktraceCollectionResult::Failed;
-        }
-        // self.stats.samples_success += 1;
-
-        let stacktrace = Stacktrace::new(stackframes);
-
-        StacktraceCollectionResult::UserCode(stacktrace)
-
-        // self.stacktraces.absorb(stacktrace);
+    if fp == 0 {
+        // self.stats.samples_skipped += 1;
+        return StacktraceCollectionResult::Skipped;
     }
+
+    loop {
+        let mut trap = TrapReason::NoTrap;
+
+        let fpp = mmu.map_virtual_to_physical(
+            fp,
+            crate::cycle::state::Mode::Machine,
+            crate::abstractions::memory::AccessType::MemLoad,
+            memory_source,
+            memory_tracer,
+            &mut trap,
+        );
+
+        // TODO: remove once the issue with non complying functions is solved.
+        if fpp < 8 {
+            break;
+        }
+
+        let addr = mem_read::<_, _, _>(
+            memory_source,
+            memory_tracer,
+            fpp - 4,
+            size_of::<u32>() as u32,
+            crate::abstractions::memory::AccessType::MemLoad,
+            &mut trap,
+        );
+
+        let next = mem_read::<_, _, _>(
+            memory_source,
+            memory_tracer,
+            fpp - 8,
+            size_of::<u32>() as u32,
+            crate::abstractions::memory::AccessType::MemLoad,
+            &mut trap,
+        );
+
+        // TODO: Remove once the issue with non complying functions is solved.
+        if addr < 4 {
+            break;
+        }
+        if next as u64 == fpp {
+            break;
+        }
+        if addr == 0 {
+            break;
+        }
+
+        // Subbing one instruction because the frame's return address point to instruction
+        // that follows the call, not the call itself. In case of inlining this can be
+        // several frames away.
+        let addr = addr - 4;
+
+        callstack.push(addr as u64);
+
+        fp = next;
+    }
+
+    let mut stackframes = Vec::with_capacity(8);
+
+    for (i, addr) in callstack.iter().enumerate() {
+        let r = symbol_info.get_address_frames(dwarf_cache, *addr);
+
+        let (frames, section_offset) = match r {
+            Some(r) => r,
+            // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
+            None => break,
+        };
+
+        for frame in frames {
+            let offset = frame.dw_die_offset.unwrap();
+            stackframes.push(FrameKey {
+                section_offset,
+                unit_offset: offset,
+            });
+
+            if i == 0
+                && false == symbol_info.is_address_traceable(dwarf_cache, state.pc as u64, &frame)
+            {
+                // We're in a service code.
+                // self.stats.samples_service += 1;
+                return StacktraceCollectionResult::ServiceCode;
+            }
+        }
+    }
+
+    if stackframes.len() == 0 {
+        // self.stats.samples_failed += 1;
+        return StacktraceCollectionResult::Failed;
+    }
+    // self.stats.samples_success += 1;
+
+    let stacktrace = Stacktrace::new(stackframes);
+
+    StacktraceCollectionResult::UserCode(stacktrace)
+
+    // self.stacktraces.absorb(stacktrace);
+}

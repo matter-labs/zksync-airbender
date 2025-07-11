@@ -626,29 +626,26 @@ fn run_binary(
 
     let registers = match machine {
         Machine::Standard => {
-            let result =
-                run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                    _,
-                    IMStandardIsaConfig,
-                >(config, non_determinism_source);
-          
+            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
+                _,
+                IMStandardIsaConfig,
+            >(config, non_determinism_source);
+
             result.state.registers
         }
         Machine::Reduced => {
-            let result =
-                run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                    _,
-                    IWithoutByteAccessIsaConfigWithDelegation,
-                >(config, non_determinism_source);
+            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
+                _,
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(config, non_determinism_source);
 
             result.state.registers
         }
         Machine::ReducedFinal => {
-            let result =
-                run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                    _,
-                    IWithoutByteAccessIsaConfig,
-                >(config, non_determinism_source);
+            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
+                _,
+                IWithoutByteAccessIsaConfig,
+            >(config, non_determinism_source);
 
             result.state.registers
         }
