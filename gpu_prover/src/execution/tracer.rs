@@ -307,7 +307,7 @@ impl<
             return;
         }
         let mut element = EMPTY_SINGLE_CYCLE_TRACING_DATA;
-        element.pc = current_state.pc;
+        element.pc = current_state.observable.pc;
         unsafe {
             self.cycle_tracing_data
                 .per_cycle_data
@@ -331,7 +331,7 @@ impl<
             return;
         }
         let mut element = EMPTY_SINGLE_CYCLE_TRACING_DATA;
-        element.pc = current_state.pc;
+        element.pc = current_state.observable.pc;
         unsafe {
             self.cycle_tracing_data
                 .per_cycle_data
