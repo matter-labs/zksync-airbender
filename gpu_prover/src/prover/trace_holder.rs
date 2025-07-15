@@ -19,6 +19,7 @@ use fft::GoodAllocator;
 use field::Field;
 use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use std::mem::size_of;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
@@ -265,7 +266,6 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         ),
         stream,
     )?;
-    let mut reduce_result = context.alloc(columns_count)?;
     let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
         get_batch_reduce_with_adaptive_parallelism_temp_storage::<BF>(
             ReduceOperation::Sum,
@@ -273,32 +273,32 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
             domain_size,
             context.get_device_properties(),
         )?;
-    let mut cub_scratch = context.alloc(cub_scratch_bytes)?;
-    let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
-        let d_alloc = context.alloc(batch_reduce_intermediate_elems)?;
-        Some(d_alloc)
-    } else {
-        None
-    };
+    println!("batch_reduce_intermediate_elems {} columns_count {} cub_scratch_bytes {}",
+        batch_reduce_intermediate_elems, columns_count, cub_scratch_bytes);
+    let mut scratch_bytes_alloc = context.alloc(
+        size_of::<BF>() * (batch_reduce_intermediate_elems + columns_count) + cub_scratch_bytes,
+    )?;
+    let (batch_reduce_intermediates_scratch, scratch_bytes) =
+        scratch_bytes_alloc.split_at_mut(size_of::<BF>() * batch_reduce_intermediate_elems);
+    let batch_reduce_intermediates_scratch =
+        unsafe { batch_reduce_intermediates_scratch.transmute_mut::<BF>() };
     let maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
-        if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
-            Some(d_alloc)
+        if batch_reduce_intermediate_elems > 0 {
+            Some(batch_reduce_intermediates_scratch)
         } else {
             None
         };
+    let (reduce_result, cub_scratch) = scratch_bytes.split_at_mut(size_of::<BF>() * columns_count);
+    let reduce_result = unsafe { reduce_result.transmute_mut::<BF>() };
     batch_reduce_with_adaptive_parallelism::<BF>(
         ReduceOperation::Sum,
-        &mut cub_scratch,
+        cub_scratch,
         maybe_batch_reduce_intermediates,
         &DeviceMatrix::new(&evaluations[0..columns_count * domain_size], domain_size),
-        &mut reduce_result,
+        reduce_result,
         stream,
         context.get_device_properties(),
     )?;
-    context.free(cub_scratch)?;
-    if let Some(alloc) = maybe_batch_reduce_intermediates_alloc {
-        context.free(alloc)?;
-    };
     neg(
         &DeviceMatrix::new(&reduce_result, 1),
         &mut DeviceMatrixChunkMut::new(
@@ -309,7 +309,7 @@ pub(crate) fn make_evaluations_sum_to_zero<C: ProverContext>(
         ),
         stream,
     )?;
-    context.free(reduce_result)?;
+    context.free(scratch_bytes_alloc)?;
     if padded_to_even {
         set_to_zero(&mut evaluations[columns_count << log_domain_size..], stream)?;
     }
