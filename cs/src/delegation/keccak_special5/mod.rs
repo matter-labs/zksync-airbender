@@ -13,7 +13,6 @@ use core::array::from_fn;
 use crate::cs::witness_placer::WitnessTypeSet;
 use crate::cs::witness_placer::WitnessComputationalU8;
 use crate::cs::witness_placer::WitnessComputationalField;
-use crate::cs::witness_placer::WitnessMask;
 
 // INFO:
 // - 5 "precompiles" (ops) packed into one circuit
@@ -333,27 +332,26 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     let [p3_tmp1, p3_tmp2, _] = state_tmps;
     let [p4_tmp1, p4_tmp2, _] = state_tmps;
 
-    // UGLY WORKAROUND: IN ORDER TO ALLOW USING CONDITIONAL ASSIGNMENT
-    cs.set_values(move |placer: &mut CS::WitnessPlacer| {
-        let u32_zero = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
-        let u1_false = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-        placer.conditionally_assign_u32(p0_tmp3.low32.0.map(|x| x.get_variable()), &u1_false, &u32_zero);
-        placer.conditionally_assign_u32(p0_tmp3.high32.0.map(|x| x.get_variable()), &u1_false, &u32_zero);
-    });
-
-    // WORKAROUND: THE SECOND PRECOMPILE CONDITIONALLY NEEDS OUTPUTS TO BE ASSIGNED BEFOREHAND
+    // set unconditional out+tmp u64 results
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        let rotl1 = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
-            let low32_value = u64_value[0].shl(1).overflowing_add(&u64_value[1].shr(31)).0;
-            let high32_value = u64_value[1].shl(1).overflowing_add(&u64_value[0].shr(31)).0;
+        let rotl = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], rot_const: u32| {
+            // WATCH OUT: U3::shr needs to behave like rust u32::unbounded_shr, otherwise rust's u32>>32 does not behave well
+            let rot_const_mod32 = rot_const % 32;
+            let [low32_value, high32_value];
+            if rot_const < 32 {
+                low32_value = u64_value[0].shl(rot_const_mod32).overflowing_add(&u64_value[1].shr(32 - rot_const_mod32)).0;
+                high32_value = u64_value[1].shl(rot_const_mod32).overflowing_add(&u64_value[0].shr(32 - rot_const_mod32)).0;
+            } else {
+                low32_value = u64_value[1].shl(rot_const_mod32).overflowing_add(&u64_value[0].shr(32 - rot_const_mod32)).0;
+                high32_value = u64_value[0].shl(rot_const_mod32).overflowing_add(&u64_value[1].shr(32 - rot_const_mod32)).0;
+            }
             [low32_value, high32_value]
         };
-        let xor = |placer: &mut CS::WitnessPlacer, a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
-            let xoru8 = |placer: &mut CS::WitnessPlacer, au8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8, bu8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8| {
+        let binop = |placer: &mut CS::WitnessPlacer, a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], table_id_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16| {
+            let binopu8 = |placer: &mut CS::WitnessPlacer, au8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8, bu8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8| {
                 let au8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(au8_value.widen().widen());
                 let bu8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(bu8_value.widen().widen());
-                let table_id = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
-                let [outu8_field] = placer.lookup(&[au8_field, bu8_field], &table_id);
+                let [outu8_field] = placer.lookup(&[au8_field, bu8_field], table_id_value);
                 let outu8_value = outu8_field.as_integer().truncate().truncate();
                 outu8_value
             };
@@ -383,39 +381,177 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             let bu8_values = tou8(b_value);
             let mut outu8_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8] = from_fn(|_| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0));
             for i in 0..8 {
-                outu8_values[i] = xoru8(placer, &au8_values[i], &bu8_values[i]);
+                outu8_values[i] = binopu8(placer, &au8_values[i], &bu8_values[i]);
             }
             fromu8(outu8_values)
         };
-        let is_columnmix_value = placer.get_boolean(is_columnmix.get_variable().unwrap());
-        let p1_25_value = [placer.get_u32_from_u16_parts(p1_25.low32.0.map(|x| x.get_variable())), placer.get_u32_from_u16_parts(p1_25.high32.0.map(|x| x.get_variable()))];
-        let p1_26_value = [placer.get_u32_from_u16_parts(p1_26.low32.0.map(|x| x.get_variable())), placer.get_u32_from_u16_parts(p1_26.high32.0.map(|x| x.get_variable()))];
-        let p1_27_value = [placer.get_u32_from_u16_parts(p1_27.low32.0.map(|x| x.get_variable())), placer.get_u32_from_u16_parts(p1_27.high32.0.map(|x| x.get_variable()))];
-        let p1_28_value = [placer.get_u32_from_u16_parts(p1_28.low32.0.map(|x| x.get_variable())), placer.get_u32_from_u16_parts(p1_28.high32.0.map(|x| x.get_variable()))];
-        let p1_29_value = [placer.get_u32_from_u16_parts(p1_29.low32.0.map(|x| x.get_variable())), placer.get_u32_from_u16_parts(p1_29.high32.0.map(|x| x.get_variable()))];
-        let p1_25_new_value = xor(placer, &p1_25_value, &rotl1(&p1_27_value));
-        let p1_26_new_value = xor(placer, &p1_26_value, &rotl1(&p1_28_value));
-        let p1_27_new_value = xor(placer, &p1_27_value, &rotl1(&p1_29_value));
-        let p1_28_new_value = xor(placer, &p1_28_value, &rotl1(&p1_25_value));
-        let p1_29_new_value = xor(placer, &p1_29_value, &rotl1(&p1_26_value));
-        placer.conditionally_assign_u32(p1_25_new.low32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_25_new_value[0]);
-        placer.conditionally_assign_u32(p1_25_new.high32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_25_new_value[1]);
+        let zero_u64 = [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0), <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0)];
         
-        placer.conditionally_assign_u32(p1_26_new.low32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_26_new_value[0]);
-        placer.conditionally_assign_u32(p1_26_new.high32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_26_new_value[1]);
-        
-        placer.conditionally_assign_u32(p1_27_new.low32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_27_new_value[0]);
-        placer.conditionally_assign_u32(p1_27_new.high32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_27_new_value[1]);
-        
-        placer.conditionally_assign_u32(p1_28_new.low32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_28_new_value[0]);
-        placer.conditionally_assign_u32(p1_28_new.high32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_28_new_value[1]);
-        
-        placer.conditionally_assign_u32(p1_29_new.low32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_29_new_value[0]);
-        placer.conditionally_assign_u32(p1_29_new.high32.0.map(|x| x.get_variable()), &is_columnmix_value, &p1_29_new_value[1]);
+        let state_input_values = state_inputs.map(|x| [placer.get_u32_from_u16_parts(x.low32.0.map(|y| y.get_variable())), placer.get_u32_from_u16_parts(x.high32.0.map(|y| y.get_variable()))] );
+        let (state_output_values, state_tmp_values) = {
+            let (p0_state_output_values, p0_tmp_values) = {
+                let [idx0_value, idx5_value, idx10_value, idx15_value, idx20_value, _idcol_value] = state_input_values.clone();
+                let idx0_new_value = {
+                    let table_xor_iota_id_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::XorSpecialIota.to_table_id() as u16);
+                    let round_constant_control_reg_value = [placer.get_u32_from_u16_parts(p0_round_constant_control_reg.low32.0.map(|y| y.get_variable())), placer.get_u32_from_u16_parts(p0_round_constant_control_reg.high32.0.map(|y| y.get_variable()))];
+                    binop(placer, &idx0_value, &round_constant_control_reg_value, &table_xor_iota_id_value)
+                };
+                let idx5_new_value = idx5_value.clone();
+                let idx10_new_value = idx10_value.clone();
+                let idx15_new_value = idx15_value.clone();
+                let idx20_new_value = idx20_value.clone();
+                let table_xor_id_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
+                let tmp1_value = binop(placer, &idx0_new_value, &idx5_value, &table_xor_id_value);
+                let tmp2_value = binop(placer, &tmp1_value, &idx10_value, &table_xor_id_value);
+                let tmp3_value = binop(placer, &tmp2_value, &idx15_value, &table_xor_id_value);
+                let idcol_new_value = binop(placer, &tmp3_value, &idx20_value, &table_xor_id_value);
+                (
+                    [idx0_new_value, idx5_new_value, idx10_new_value, idx15_new_value, idx20_new_value, idcol_new_value], 
+                    [tmp1_value, tmp2_value, tmp3_value]
+                )
+            };
+            let (p1_state_output_values, p1_tmp_values) = {
+                let [i25_value, i26_value, i27_value, i28_value, i29_value, i0_value] = state_input_values.clone();
+                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
+                let i25_new_value = binop(placer, &i25_value, &rotl(&i27_value, 1), &table_id_xor_value);
+                let i26_new_value = binop(placer, &i26_value, &rotl(&i28_value, 1), &table_id_xor_value);
+                let i27_new_value = binop(placer, &i27_value, &rotl(&i29_value, 1), &table_id_xor_value);
+                let i28_new_value = binop(placer, &i28_value, &rotl(&i25_value, 1), &table_id_xor_value);
+                let i29_new_value = binop(placer, &i29_value, &rotl(&i26_value, 1), &table_id_xor_value);
+                let i0_new_value = i0_value.clone();
+                (
+                    [i25_new_value, i26_new_value, i27_new_value, i28_new_value, i29_new_value, i0_new_value],
+                    [zero_u64.clone(), zero_u64.clone(), zero_u64.clone()]
+                )
+            };
+            let (p2_state_output_values, p2_tmp_values) = {
+                let [idx0_value, idx5_value, idx10_value, idx15_value, idx20_value, idcol_value] = state_input_values.clone();
+                let iter_values = iter_bitmask.map(|x| placer.get_boolean(x.get_variable().unwrap()));
+                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
+                let idx0_new_value = {
+                    let mut idx0_new_value = binop(placer, &idx0_value, &idcol_value, &table_id_xor_value);
+                    for (iter_value, rot_const) in iter_values.iter().zip([0,1,62,28,27]) {
+                        let possible_rotation_value = rotl(&idx0_new_value, rot_const);
+                        idx0_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
+                        idx0_new_value[1].assign_masked(iter_value, &possible_rotation_value[1]);
+                    }
+                    idx0_new_value
+                };
+                let idx5_new_value = {
+                    let mut idx5_new_value = binop(placer, &idx5_value, &idcol_value, &table_id_xor_value);
+                    for (iter_value, rot_const) in iter_values.iter().zip([36,44,6,55,20]) {
+                        let possible_rotation_value = rotl(&idx5_new_value, rot_const);
+                        idx5_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
+                        idx5_new_value[1].assign_masked(iter_value, &possible_rotation_value[1]);
+                    }
+                    idx5_new_value
+                };
+                let idx10_new_value = {
+                    let mut idx10_new_value = binop(placer, &idx10_value, &idcol_value, &table_id_xor_value);
+                    for (iter_value, rot_const) in iter_values.iter().zip([3,10,43,25,39]) {
+                        let possible_rotation_value = rotl(&idx10_new_value, rot_const);
+                        idx10_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
+                        idx10_new_value[1].assign_masked(iter_value, &possible_rotation_value[1]);
+                    }
+                    idx10_new_value
+                };
+                let idx15_new_value = {
+                    let mut idx15_new_value = binop(placer, &idx15_value, &idcol_value, &table_id_xor_value);
+                    for (iter_value, rot_const) in iter_values.iter().zip([41,45,15,21,8]) {
+                        let possible_rotation_value = rotl(&idx15_new_value, rot_const);
+                        idx15_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
+                        idx15_new_value[1].assign_masked(iter_value, &possible_rotation_value[1]);
+                    }
+                    idx15_new_value
+                };
+                let idx20_new_value = {
+                    let mut idx20_new_value = binop(placer, &idx20_value, &idcol_value, &table_id_xor_value);
+                    for (iter_value, rot_const) in iter_values.iter().zip([18,2,61,56,14]) {
+                        let possible_rotation_value = rotl(&idx20_new_value, rot_const);
+                        idx20_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
+                        idx20_new_value[1].assign_masked(iter_value, &possible_rotation_value[1]);
+                    }
+                    idx20_new_value
+                };
+                let idcol_new_value = idcol_value.clone();
+                (
+                    [idx0_new_value, idx5_new_value, idx10_new_value, idx15_new_value, idx20_new_value, idcol_new_value],
+                    [zero_u64.clone(), zero_u64.clone(), zero_u64.clone()]
+                )
+            };
+            let (p3_state_output_values, p3_tmp_values) = {
+                let [idx1_value, idx2_value, idx3_value, idx4_value, _i25_value, _i26_value] = state_input_values.clone();
+                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
+                let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
+                let tmp1_value = binop(placer, &idx2_value, &idx3_value, &table_id_andn_value);
+                let idx1_new_value = binop(placer, &idx1_value, &tmp1_value, &table_id_xor_value);
+                let tmp2_value = binop(placer, &idx3_value, &idx4_value, &table_id_andn_value);
+                let idx2_new_value = binop(placer, &idx2_value, &tmp2_value, &table_id_xor_value);
+                let idx3_new_value = idx3_value.clone();
+                let idx4_new_value = idx4_value.clone();
+                let i25_new_value = binop(placer, &idx1_value, &idx2_value, &table_id_andn_value);
+                let i26_new_value = idx1_value.clone();
+                (
+                    [idx1_new_value, idx2_new_value, idx3_new_value, idx4_new_value, i25_new_value, i26_new_value],
+                    [tmp1_value, tmp2_value, zero_u64.clone()]
+                )
+            };
+            let (p4_state_output_values, p4_tmp_values) = {
+                let [idx0_value, idx3_value, idx4_value, i25_value, i26_value, _i27_value] = state_input_values;
+                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
+                let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
+                let idx0_new_value = binop(placer, &idx0_value, &i25_value, &table_id_xor_value);
+                let tmp1_value = binop(placer, &idx4_value, &idx0_value, &table_id_andn_value);
+                let idx3_new_value = binop(placer, &idx3_value, &tmp1_value, &table_id_xor_value);
+                let tmp2_value = binop(placer, &idx0_value, &i26_value, &table_id_andn_value);
+                let idx4_new_value = binop(placer, &idx4_value, &tmp2_value, &table_id_xor_value);
+                let i25_new_value = i25_value.clone();
+                let i26_new_value = i26_value.clone();
+                let i27_new_value = idx0_new_value.clone();
+                (
+                    [idx0_new_value, idx3_new_value, idx4_new_value, i25_new_value, i26_new_value, i27_new_value],
+                    [tmp1_value, tmp2_value, zero_u64.clone()]
+                )
+            };
+            let flag_values = precompile_bitmask.map(|x| placer.get_boolean(x.get_variable().unwrap()));
+            let mut state_output_values: [_; 6] = from_fn(|_| zero_u64.clone());
+            let mut state_tmp_values: [_; 3] = from_fn(|_| zero_u64.clone());
+            for i in 0..6 {
+                state_output_values[i][0].assign_masked(&flag_values[0], &p0_state_output_values[i][0]);
+                state_output_values[i][1].assign_masked(&flag_values[0], &p0_state_output_values[i][1]);
+                state_output_values[i][0].assign_masked(&flag_values[1], &p1_state_output_values[i][0]);
+                state_output_values[i][1].assign_masked(&flag_values[1], &p1_state_output_values[i][1]);
+                state_output_values[i][0].assign_masked(&flag_values[2], &p2_state_output_values[i][0]);
+                state_output_values[i][1].assign_masked(&flag_values[2], &p2_state_output_values[i][1]);
+                state_output_values[i][0].assign_masked(&flag_values[3], &p3_state_output_values[i][0]);
+                state_output_values[i][1].assign_masked(&flag_values[3], &p3_state_output_values[i][1]);
+                state_output_values[i][0].assign_masked(&flag_values[4], &p4_state_output_values[i][0]);
+                state_output_values[i][1].assign_masked(&flag_values[4], &p4_state_output_values[i][1]);
+            }
+            for i in 0..3 {
+                state_tmp_values[i][0].assign_masked(&flag_values[0], &p0_tmp_values[i][0]);
+                state_tmp_values[i][1].assign_masked(&flag_values[0], &p0_tmp_values[i][1]);
+                state_tmp_values[i][0].assign_masked(&flag_values[1], &p1_tmp_values[i][0]);
+                state_tmp_values[i][1].assign_masked(&flag_values[1], &p1_tmp_values[i][1]);
+                state_tmp_values[i][0].assign_masked(&flag_values[2], &p2_tmp_values[i][0]);
+                state_tmp_values[i][1].assign_masked(&flag_values[2], &p2_tmp_values[i][1]);
+                state_tmp_values[i][0].assign_masked(&flag_values[3], &p3_tmp_values[i][0]);
+                state_tmp_values[i][1].assign_masked(&flag_values[3], &p3_tmp_values[i][1]);
+                state_tmp_values[i][0].assign_masked(&flag_values[4], &p4_tmp_values[i][0]);
+                state_tmp_values[i][1].assign_masked(&flag_values[4], &p4_tmp_values[i][1]);
+            }
+            (state_output_values, state_tmp_values)
+        };
+        for (state_output, state_output_value) in state_outputs.into_iter().zip(state_output_values) {
+            placer.assign_u32_from_u16_parts(state_output.low32.0.map(|x| x.get_variable()), &state_output_value[0]);
+            placer.assign_u32_from_u16_parts(state_output.high32.0.map(|x| x.get_variable()), &state_output_value[1]);
+        }
+        for (state_tmp, state_tmp_value) in state_tmps.into_iter().zip(state_tmp_values) {
+            placer.assign_u32_from_u16_parts(state_tmp.low32.0.map(|x| x.get_variable()), &state_tmp_value[0]);
+            placer.assign_u32_from_u16_parts(state_tmp.high32.0.map(|x| x.get_variable()), &state_tmp_value[1]);
+        } 
     };
     cs.set_values(value_fn);
-    // println!("\t28': {:?}", p1_28_new.get_value_unsigned(cs));
-    // println!("\t.  : {:?}", p1_28_new.get_value_chunks_unsigned(cs));
 
     // STEP2: WE PERFORM EQUIVALENT OF 5 XORS + ROTATION (a, b, c)
     // dbg!(control, precompile_bitmask, iter_bitmask, state_inputs, state_outputs, state_tmps);
@@ -497,6 +633,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         ]);
 
     // WE ALSO CANNOT FORGET TO COPY OVER UNTOUCHED VALUES BACK TO THEIR RAM ARGUMENT WRITE-SET
+    println!("\tfinal copies..");
     enforce_copies(cs, 
         precompile_flags, 
         [
@@ -520,61 +657,8 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
     let in1_u8 = LongRegisterDecomposition::new(cs);
     let in2_u8 = LongRegisterDecomposition::new(cs);
 
-    // WORKAROUND: THE SECOND PRECOMPILE CONDITIONALLY NEEDS INPUT u8 CHUNKS TO BE ASSIGNED BEFOREHAND
-
-    // first set in1/in2 u8 decompositions + conditional out u64 results
+    // just set in1/in2 u8 decompositions
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        let rotl = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], rot_const: u32| {
-            // WATCH OUT: U3::shr needs to behave like rust u32::unbounded_shr, otherwise rust's u32>>32 does not behave well
-            let rot_const_mod32 = rot_const % 32;
-            let [low32_value, high32_value];
-            if rot_const < 32 {
-                low32_value = u64_value[0].shl(rot_const_mod32).overflowing_add(&u64_value[1].shr(32 - rot_const_mod32)).0;
-                high32_value = u64_value[1].shl(rot_const_mod32).overflowing_add(&u64_value[0].shr(32 - rot_const_mod32)).0;
-            } else {
-                low32_value = u64_value[1].shl(rot_const_mod32).overflowing_add(&u64_value[0].shr(32 - rot_const_mod32)).0;
-                high32_value = u64_value[0].shl(rot_const_mod32).overflowing_add(&u64_value[1].shr(32 - rot_const_mod32)).0;
-            }
-            [low32_value, high32_value]
-        };
-        let binop = |placer: &mut CS::WitnessPlacer, a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], table_id_value: <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16| {
-            let binopu8 = |placer: &mut CS::WitnessPlacer, au8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8, bu8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8| {
-                let au8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(au8_value.widen().widen());
-                let bu8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(bu8_value.widen().widen());
-                let [outu8_field] = placer.lookup(&[au8_field, bu8_field], &table_id_value);
-                let outu8_value = outu8_field.as_integer().truncate().truncate();
-                outu8_value
-            };
-            let tou8 = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
-                let zerou8 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
-                let mut chunks: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8] = from_fn(|_| zerou8.clone());
-                chunks[0] = u64_value[0].truncate().truncate();
-                chunks[1] = u64_value[0].truncate().shr(8).truncate();
-                chunks[2] = u64_value[0].shr(16).truncate().truncate();
-                chunks[3] = u64_value[0].shr(16).truncate().shr(8).truncate();
-                chunks[4] = u64_value[1].truncate().truncate();
-                chunks[5] = u64_value[1].truncate().shr(8).truncate();
-                chunks[6] = u64_value[1].shr(16).truncate().truncate();
-                chunks[7] = u64_value[1].shr(16).truncate().shr(8).truncate();
-                chunks
-            };
-            let fromu8 = |u8_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8]| {
-                let low32_low16 = u8_values[0].widen().overflowing_add(&u8_values[1].widen().shl(8)).0;
-                let low32_high16 = u8_values[2].widen().overflowing_add(&u8_values[3].widen().shl(8)).0;
-                let high32_low16 = u8_values[4].widen().overflowing_add(&u8_values[5].widen().shl(8)).0;
-                let high32_high16 = u8_values[6].widen().overflowing_add(&u8_values[7].widen().shl(8)).0;
-                let low32 = low32_low16.widen().overflowing_add(&low32_high16.widen().shl(16)).0;
-                let high32 = high32_low16.widen().overflowing_add(&high32_high16.widen().shl(16)).0;
-                [low32, high32]
-            };
-            let au8_values = tou8(a_value);
-            let bu8_values = tou8(b_value);
-            let mut outu8_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8] = from_fn(|_| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0));
-            for i in 0..8 {
-                outu8_values[i] = binopu8(placer, &au8_values[i], &bu8_values[i]);
-            }
-            fromu8(outu8_values)
-        };
         let zero_u32 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
         let mut in1_low32_value = zero_u32.clone();
         let mut in1_high32_value = zero_u32.clone();
@@ -593,17 +677,6 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
             in2_low32_value.assign_masked(&flag_value, &possible_in2_low32_value);
             in2_high32_value.assign_masked(&flag_value, &possible_in2_high32_value);
             table_id_value.assign_masked(&flag_value, &possible_table_id_value);
-        }
-        let [mut out_low32_value, mut out_high32_value] = binop(placer, &[in1_low32_value.clone(), in1_high32_value.clone()], &[in2_low32_value.clone(), in2_high32_value.clone()], table_id_value);
-        let is_columnmix = precompile_flags[1];
-        for (flag, rot_const) in precompile_rotation_flags.into_iter().zip(precompile_rotation_constants) {
-            // SECOND PRECOMPILE OUTPUTS HAVE ALREADY BEEN SET
-            if flag != is_columnmix {  
-                let flag_value = placer.get_boolean(flag.get_variable().unwrap());
-                let [possible_rot_low32_value, possible_rot_high32_value] = rotl(&[out_low32_value.clone(), out_high32_value.clone()], rot_const as u32);
-                out_low32_value.assign_masked(&flag_value, &possible_rot_low32_value);
-                out_high32_value.assign_masked(&flag_value, &possible_rot_high32_value);
-            }
         }
         // now can assign
         let zero_u8 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
@@ -647,14 +720,6 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
         placer.assign_u8(in2_u8.high32[1].get_variable(), &in2_u8_values[5]);
         placer.assign_u8(in2_u8.high32[2].get_variable(), &in2_u8_values[6]);
         placer.assign_u8(in2_u8.high32[3].get_variable(), &in2_u8_values[7]);
-        for (flag, (_, _, possible_out)) in precompile_flags.into_iter().zip(input_output_candidates) {
-            // SECOND PRECOMPILE OUTPUTS HAVE ALREADY BEEN SET
-            if flag != is_columnmix {
-                let flag_value = placer.get_boolean(flag.get_variable().unwrap());
-                placer.conditionally_assign_u32(possible_out.low32.0.map(|x| x.get_variable()), &flag_value, &out_low32_value);
-                placer.conditionally_assign_u32(possible_out.high32.0.map(|x| x.get_variable()), &flag_value, &out_high32_value);
-            }
-        }
     };
     cs.set_values(value_fn);
     
@@ -774,21 +839,9 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
 }
 
 fn enforce_copies<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [Boolean; 5], input_output_candidates: [&'static[(LongRegister<F>, LongRegister<F>)]; 5]) {
-    let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        for (flag, candidates) in precompile_flags.into_iter().zip(input_output_candidates) {
-            let flag_value = placer.get_boolean(flag.get_variable().unwrap());
-            for (in_u64, out_u64) in candidates.iter() {
-                let in_low32_value = placer.get_u32_from_u16_parts(in_u64.low32.0.map(|x| x.get_variable()));
-                let in_high32_value = placer.get_u32_from_u16_parts(in_u64.high32.0.map(|x| x.get_variable()));
-                placer.conditionally_assign_u32(out_u64.low32.0.map(|x| x.get_variable()), &flag_value, &in_low32_value);
-                placer.conditionally_assign_u32(out_u64.high32.0.map(|x| x.get_variable()), &flag_value, &in_high32_value);
-            }
-        }
-    };
-    cs.set_values(value_fn);
-
     for (flag, candidates) in precompile_flags.into_iter().zip(input_output_candidates) {
         for (in_u64, out_u64) in candidates {
+            // dbg!(in_u64, out_u64, flag);
             cs.add_constraint(Constraint::from(flag)*(Term::from(in_u64.low32.0[0]) - Term::from(out_u64.low32.0[0])));
             cs.add_constraint(Constraint::from(flag)*(Term::from(in_u64.low32.0[1]) - Term::from(out_u64.low32.0[1])));
             cs.add_constraint(Constraint::from(flag)*(Term::from(in_u64.high32.0[0]) - Term::from(out_u64.high32.0[0])));

@@ -390,7 +390,7 @@ fn chi_nopi(state: &mut [u64; STATE_AND_SCRATCH_WORDS], round: usize) {
             state[idx3] = state[idx3] ^ (!state[idx4] & state[idx0]);
             state[idx4] = state[idx4] ^ (!state[idx0] & state[26]);
             state[idx0] = state[idx0] ^ state[25];
-            state[27] = state[idx0]; // dummy, just for making circuits even
+            state[27] = state[idx0]; // dummy, just for making circuits even (NEW idx0 !!)
         }
         #[cfg(target_arch = "riscv32")] unsafe {
             let _ = PERMUTATIONS_ADJUSTED; // this is embedded into circuit based on control
