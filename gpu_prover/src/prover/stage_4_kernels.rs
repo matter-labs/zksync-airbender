@@ -103,7 +103,6 @@ cuda_kernel!(
     num_stage_2_e4_cols: u32,
     process_shuffle_ram_init: bool,
     memory_lazy_init_addresses_cols_start: u32,
-    stage_2_memory_grand_product_offset: u32,
     log_n: u32,
     bit_reversed: bool,
 );
@@ -349,6 +348,7 @@ pub fn compute_deep_quotient_on_main_domain(
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
     let num_witness_terms = num_witness_cols + num_witness_terms_at_z_omega;
     let stage_2_memory_grand_product_offset = get_grand_product_col(circuit, cached_data);
+    assert_eq!(stage_2_memory_grand_product_offset, num_stage_2_e4_cols - 1);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();
@@ -394,7 +394,6 @@ pub fn compute_deep_quotient_on_main_domain(
         num_stage_2_e4_cols as u32,
         cached_data.process_shuffle_ram_init,
         memory_lazy_init_addresses_cols_start as u32,
-        stage_2_memory_grand_product_offset as u32,
         log_n,
         bit_reversed,
     );
