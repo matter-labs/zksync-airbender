@@ -175,14 +175,15 @@ pub fn batch_reduce<T: Reduce>(
 // Batch reduce with adaptive parallelism is meant to optimize
 // common production cases where we know the matrix is contiguous
 // and column length is a large power of 2.
+const ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK: usize = 256;
+
 fn get_segments_per_col(
     batch_size: usize,
     num_items: usize,
     device_properties: &DeviceProperties,
 ) -> usize {
-    const MIN_ELEMS_PER_BLOCK: usize = 256;
     assert!(num_items.is_power_of_two());
-    assert!(num_items >= MIN_ELEMS_PER_BLOCK);
+    assert!(num_items >= ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK);
     let sm_count = device_properties.sm_count;
     // Heuristic: assume 2 blocks per SM is enough to saturate
     const TARGET_BLOCKS_PER_SM: usize = 2;
@@ -192,7 +193,7 @@ fn get_segments_per_col(
     }
     let target_blocks_per_col = min_blocks.div_ceil(batch_size);
     assert!(target_blocks_per_col >= 2);
-    let block_chunks_per_col = num_items / MIN_ELEMS_PER_BLOCK;
+    let block_chunks_per_col = num_items / ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK;
     if block_chunks_per_col <= target_blocks_per_col {
         // it's still possible for this to be 1 here, e.g. for a matrix
         // with 256 rows and a small number of columns.
@@ -224,10 +225,20 @@ fn get_batch_reduce_with_adaptive_parallelism_temp_storage_internal<T: Reduce>(
             segments_per_col,
         ));
     }
+    let batch_size_first_phase = batch_size * segments_per_col;
+    let num_items_first_phase = num_items / segments_per_col;
+    // double-check that segments_per_col evenly divides num_items
+    assert_eq!(num_items, num_items_first_phase * segments_per_col);
+    // double-check that num_items_first_phase is a multiple of
+    // ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK
+    assert_eq!(
+        num_items_first_phase & (ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK - 1),
+        0
+    );
     let cub_scratch_first_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>(
         operation,
-        (batch_size * segments_per_col) as i32,
-        (num_items / segments_per_col) as i32,
+        batch_size_first_phase as i32,
+        num_items_first_phase as i32,
     )?;
     let cub_scratch_second_phase_bytes = get_batch_reduce_temp_storage_bytes::<T>(
         operation,
@@ -306,7 +317,7 @@ pub fn batch_reduce_with_adaptive_parallelism<T: Reduce>(
             stream,
         );
     }
-    let first_phase_result = d_intermediates.unwrap();
+    let first_phase_result = d_intermediates.expect("segments_per_col > 0 requires intermediates");
     assert_eq!(first_phase_result.len(), intermediate_elems);
     batch_reduce(
         operation,
