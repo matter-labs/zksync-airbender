@@ -9,7 +9,6 @@ use crate::cs::witness_placer::{
 use crate::one_row_compiler::Variable;
 use ::field::PrimeField;
 use core::fmt::Debug;
-use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
@@ -113,11 +112,11 @@ pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
 impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
     pub fn bit_width(&self) -> u32 {
         match self {
-            Self::U8Place(_place) => 8u32,
-            Self::U16Place(_place) => 16u32,
+            Self::U8Place(..) => 8u32,
+            Self::U16Place(..) => 16u32,
             // the rest is recursive
-            Self::U32FromMask(_inner) => 32u32,
-            Self::U32FromField(_inner) => 32u32,
+            Self::U32FromMask(..) => 32u32,
+            Self::U32FromField(..) => 32u32,
             Self::TruncateFromU32(inner) => {
                 assert_eq!(inner.bit_width(), 32);
                 16u32
@@ -138,9 +137,9 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 assert_eq!(inner.bit_width(), 32);
                 32u32
             }
-            Self::U32OracleValue { placeholder: _ } => 32,
-            Self::U16OracleValue { placeholder: _ } => 16,
-            Self::U8OracleValue { placeholder: _ } => 8,
+            Self::U32OracleValue { .. } => 32,
+            Self::U16OracleValue { .. } => 16,
+            Self::U8OracleValue { .. } => 8,
             // Binops
             Self::WrappingAdd { lhs, rhs }
             | Self::WrappingSub { lhs, rhs }
@@ -206,99 +205,16 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
         }
     }
 
-    pub fn report_origins(
-        &self,
-        dst: &mut BTreeSet<Variable>,
-        oracles: &mut BTreeSet<(Placeholder, usize)>,
-        lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
-    ) {
-        match self {
-            Self::U8Place(place) => {
-                dst.insert(*place);
-            }
-            Self::U16Place(place) => {
-                dst.insert(*place);
-            }
-            // the rest is recursive
-            Self::U32FromMask(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::U32FromField(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::U32OracleValue { placeholder } => {
-                oracles.insert((*placeholder, 0));
-            }
-            Self::U16OracleValue { placeholder } => {
-                oracles.insert((*placeholder, 0));
-            }
-            Self::U8OracleValue { placeholder } => {
-                oracles.insert((*placeholder, 0));
-            }
-            Self::WidenFromU8(inner)
-            | Self::WidenFromU16(inner)
-            | Self::TruncateFromU16(inner)
-            | Self::TruncateFromU32(inner)
-            | Self::I32FromU32(inner)
-            | Self::U32FromI32(inner)
-            | Self::WrappingShl { lhs: inner, .. }
-            | Self::WrappingShr { lhs: inner, .. } => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            // Binops
-            Self::WrappingAdd { lhs, rhs }
-            | Self::WrappingSub { lhs, rhs }
-            | Self::MulLow { lhs, rhs }
-            | Self::MulHigh { lhs, rhs }
-            | Self::DivAssumeNonzero { lhs, rhs }
-            | Self::RemAssumeNonzero { lhs, rhs }
-            | Self::SignedDivAssumeNonzeroNoOverflowBits { lhs, rhs }
-            | Self::SignedRemAssumeNonzeroNoOverflowBits { lhs, rhs }
-            | Self::SignedMulLowBits { lhs, rhs }
-            | Self::SignedMulHighBits { lhs, rhs }
-            | Self::SignedByUnsignedMulLowBits { lhs, rhs }
-            | Self::SignedByUnsignedMulHighBits { lhs, rhs } => {
-                lhs.report_origins(dst, oracles, lookup_fn);
-                rhs.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::AddProduct {
-                additive_term,
-                mul_0,
-                mul_1,
-            } => {
-                additive_term.report_origins(dst, oracles, lookup_fn);
-                mul_0.report_origins(dst, oracles, lookup_fn);
-                mul_1.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::Select {
-                selector,
-                if_true,
-                if_false,
-            } => {
-                selector.report_origins(dst, oracles, lookup_fn);
-                if_true.report_origins(dst, oracles, lookup_fn);
-                if_false.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::LowestBits { value, .. } => {
-                value.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::ConstantU8(..) | Self::ConstantU16(..) | Self::ConstantU32(..) => {}
-            Self::U8SubExpression(..) | Self::U16SubExpression(..) | Self::U32SubExpression(..) => {
-                unreachable!("must not be used after subexpression elimination")
-            }
-        }
-    }
-
     pub fn make_subexpressions(
         &mut self,
         set: &mut SubexpressionsMapper<F>,
         lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
     ) {
         match self {
-            Self::U8Place(_place) => {
+            Self::U8Place(..) => {
                 // nothing
             }
-            Self::U16Place(_place) => {
+            Self::U16Place(..) => {
                 // nothing
             }
             // the rest is recursive
@@ -310,13 +226,13 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_field_subexprs(inner);
             }
-            Self::U32OracleValue { placeholder: _ } => {
+            Self::U32OracleValue { .. } => {
                 // nothing
             }
-            Self::U16OracleValue { placeholder: _ } => {
+            Self::U16OracleValue { .. } => {
                 // nothing
             }
-            Self::U8OracleValue { placeholder: _ } => {
+            Self::U8OracleValue { .. } => {
                 // nothing
             }
             Self::WidenFromU8(inner)

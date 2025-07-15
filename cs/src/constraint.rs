@@ -297,9 +297,19 @@ impl<F: PrimeField> From<Num<F>> for Constraint<F> {
     }
 }
 impl<F: PrimeField> From<Boolean> for Constraint<F> {
+    #[track_caller]
     fn from(value: Boolean) -> Self {
-        let term = Term::<F>::from(value);
-        Constraint { terms: vec![term] }
+        match value {
+            Boolean::Not(var) => {
+                let one = Term::<F>::from(1);
+                let term = Term::<F>::from(var);
+                one - term
+            }
+            _ => {
+                let term = Term::<F>::from(value);
+                Constraint { terms: vec![term] }
+            }
+        }
     }
 }
 impl<F: PrimeField> From<Term<F>> for Constraint<F> {

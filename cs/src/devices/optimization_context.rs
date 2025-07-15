@@ -2,15 +2,7 @@ use super::utils::*;
 use crate::constraint::Constraint;
 use crate::constraint::*;
 use crate::cs::circuit::*;
-use crate::cs::utils::{
-    collapse_max_quadratic_constraint_into, mask_by_boolean_into_accumulator_constraint,
-};
-use crate::cs::witness_placer::cs_debug_evaluator::witness_early_branch_if_possible;
-use crate::cs::witness_placer::WitnessTypeSet;
-use crate::cs::witness_placer::{
-    WitnessComputationCore, WitnessComputationalInteger, WitnessComputationalU16,
-    WitnessComputationalU32, WitnessPlacer,
-};
+use crate::cs::witness_placer::*;
 use crate::definitions::*;
 use crate::one_row_compiler::LookupInput;
 use crate::types::*;
@@ -19,11 +11,11 @@ use core::array::from_fn;
 
 use super::risc_v_types::ExecutorOperation;
 
-struct AddSubRelation<F: PrimeField> {
-    exec_flag: Boolean,
-    a: Register<F>,
-    b: Register<F>,
-    c: Register<F>,
+pub(crate) struct AddSubRelation<F: PrimeField> {
+    pub(crate) exec_flag: Boolean,
+    pub(crate) a: Register<F>,
+    pub(crate) b: Register<F>,
+    pub(crate) c: Register<F>,
 }
 
 // all range checks are of LIMB_WIDTH_SIZE
@@ -67,7 +59,7 @@ struct LookupRelation<F: PrimeField> {
 // to avoid unsatisfiable constraint if the branch is not taken
 // Overall, it reduced a number of the variable in the circuit
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct OptCtxIndexers {
     pub register_allocation_indexer: usize,
     pub add_sub_indexer: usize,
@@ -671,6 +663,28 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
         (res, of_flag)
     }
 
+    #[track_caller]
+    pub(crate) fn append_add_sub_relation_raw(
+        &mut self,
+        cs: &mut CS,
+        relation: AddSubRelation<F>,
+    ) -> Boolean {
+        assert!(self.indexers.add_sub_indexer <= self.add_sub_ofs.len());
+        let of_flag = if self.indexers.add_sub_indexer < self.add_sub_ofs.len() {
+            self.add_sub_ofs[self.indexers.add_sub_indexer]
+        } else {
+            let of = cs.add_boolean_variable();
+            self.add_sub_ofs.push(of);
+            of
+        };
+
+        self.add_sub_relations
+            .push((self.indexers.add_sub_indexer, relation));
+        self.indexers.add_sub_indexer += 1;
+
+        of_flag
+    }
+
     fn append_lookup_relation_inner<const M: usize, const N: usize>(
         &mut self,
         inputs: &[LookupInput<F>; M],
@@ -752,6 +766,769 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
         outputs
     }
 
+    pub fn enforce_mul_relation(
+        cs: &mut CS,
+        op1: Register<F>,
+        op1_sign: Num<F>,
+        op2: Register<F>,
+        op2_sign: Num<F>,
+        additive_term: Register<F>,
+        additive_term_sign: Num<F>,
+        mul_low: Register<F>,
+        mul_high: Register<F>,
+    ) {
+        #[allow(deprecated)]
+        let op1_decomposition = RegisterDecomposition::parse_reg::<CS>(cs, op1).u8_decomposition;
+
+        #[allow(deprecated)]
+        let op2_decomposition = RegisterDecomposition::parse_reg::<CS>(cs, op2).u8_decomposition;
+
+        const NUM_BYTES: usize = 4;
+        const NUM_BYTES_DOUBLED: usize = 8;
+
+        // https://faculty-web.msoe.edu/johnsontimoj/Common/FILES/binary_multiplication.pdf
+        // In 2’s complement you must sign extend to the product bit width
+        let op1_sign_t = match op1_sign {
+            Num::Var(op1_sign_var) => Term::from((F::from_u64_unchecked(0xff), op1_sign_var)),
+            Num::Constant(op1_sign_constant) => {
+                if op1_sign_constant == F::ONE {
+                    Term::from(0xff)
+                } else if op1_sign_constant == F::ZERO {
+                    Term::from(0)
+                } else {
+                    unreachable!()
+                }
+            }
+        };
+
+        let op2_sign_t = match op2_sign {
+            Num::Var(op2_sign_var) => Term::from((F::from_u64_unchecked(0xff), op2_sign_var)),
+            Num::Constant(op2_sign_constant) => {
+                if op2_sign_constant == F::ONE {
+                    Term::from(0xff)
+                } else if op2_sign_constant == F::ZERO {
+                    Term::from(0)
+                } else {
+                    unreachable!()
+                }
+            }
+        };
+
+        let op1_t: [Term<F>; NUM_BYTES_DOUBLED] = std::array::from_fn(|idx: usize| {
+            if idx < NUM_BYTES {
+                Term::from(op1_decomposition[idx])
+            } else {
+                op1_sign_t
+            }
+        });
+        let op2_t: [Term<F>; NUM_BYTES_DOUBLED] = std::array::from_fn(|idx: usize| {
+            if idx < NUM_BYTES {
+                Term::from(op2_decomposition[idx])
+            } else {
+                op2_sign_t
+            }
+        });
+
+        let add_term_t = additive_term.get_terms();
+        let mul_low_t = mul_low.get_terms();
+        let mul_high_t = mul_high.get_terms();
+
+        // low[0] + carry_out = a[0] * b[0] + a[1] * b[0] + a[0] * b[1] + rem[0]
+        // carry_out is at most 16-bits long
+        // low[1] + carry_out = a[1] * b[1] + a[0] * b[2] + a[2] * b[0] + a[3] * b[0] + a[2] * b[1] +
+        // a[1] * b[2] + a[0] * b[3] + rem[1] + carry_in (and so on...)
+
+        let byte_shift_t = Term::<F>::from(1 << 8);
+
+        let sign_term = match additive_term_sign {
+            Num::Var(add_term_sign_var) => {
+                Term::from((F::from_u64_unchecked(0xffff), add_term_sign_var))
+            }
+            Num::Constant(op2_sign_constant) => {
+                if op2_sign_constant == F::ONE {
+                    Term::from(0xffff)
+                } else if op2_sign_constant == F::ZERO {
+                    Term::from(0)
+                } else {
+                    unreachable!()
+                }
+            }
+        };
+
+        // we manually unroll it to handle range checks with specific ranges
+
+        // Important thing to consider here: we will encounter range checks for 9, 10 and 2x11 for signed case,
+        // and 2x9 and 10 for unsigned. Let's consider a tradeoff:
+        // - doing range checks with booleans and 8-bit chunks requires:
+        //  - effectively 1 witness column for 8-bit chunk, and 2 stage-2 columns
+        //  - 1 boolean by itself
+        //  - total cost for signed is 4 * (1 + 2) + 1 + 2 + 2*3 = 21 columns everywhere
+        //  - total cost for unsigned is 3 * (1 + 2) + 1*2 + 2 = 13 columns everywhere
+        // - if we do explicit checks
+        //  - 4 * (1 + 4) = 20 variables for signed case
+        //  - 3 * (1 + 4) = 15 variables for unsigned case
+        // So it's almost one for another, and we will stick with booleans
+
+        // lowest 16 bits
+        let carry = {
+            // set values before constraint
+
+            // max range here is (2^8 - 1) * (2^8 - 1) + 2 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) = 33423360 < 2^25
+            // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed into 1 boolean and one 8-bit variable
+            let bit = cs.add_boolean_variable();
+            let byte = cs.add_variable();
+            cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
+
+            {
+                let byte_var = byte;
+                let bit_var = bit.get_variable().unwrap();
+
+                let op1_0 = op1_t[0].get_variable().unwrap();
+                let op1_1 = op1_t[1].get_variable().unwrap();
+                let op2_0 = op2_t[0].get_variable().unwrap();
+                let op2_1 = op2_t[1].get_variable().unwrap();
+                let add_term_t_low = add_term_t[0].get_variable().unwrap();
+                let mul_low_t_low = mul_low_t[0].get_variable().unwrap();
+                let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                    use crate::cs::witness_placer::WitnessComputationalU8;
+
+                    let op1_0 = placer.get_u8(op1_0).widen().widen();
+                    let op1_1 = placer.get_u8(op1_1).widen().widen();
+                    let op2_0 = placer.get_u8(op2_0).widen().widen();
+                    let op2_1 = placer.get_u8(op2_1).widen().widen();
+                    let additive_term = placer.get_u16(add_term_t_low).widen();
+                    let multiplicative_dest = placer.get_u16(mul_low_t_low).widen();
+
+                    let mut value = op1_0.wrapping_product(&op2_0);
+                    value.add_assign(&op1_0.wrapping_product(&op2_1).shl(8));
+                    value.add_assign(&op1_1.wrapping_product(&op2_0).shl(8));
+
+                    value.add_assign(&additive_term);
+                    value.sub_assign(&multiplicative_dest);
+
+                    value = value.shr(16);
+                    let byte = value.truncate().truncate();
+                    value = value.shr(8);
+                    let bit = value.get_bit(0);
+
+                    placer.assign_u8(byte_var, &byte);
+                    placer.assign_mask(bit_var, &bit);
+                };
+
+                cs.set_values(value_fn);
+            }
+
+            let mut cnstr = Constraint::empty();
+            cnstr = cnstr + op1_t[0] * op2_t[0];
+            cnstr = cnstr + op1_t[0] * op2_t[1] * byte_shift_t;
+            cnstr = cnstr + op1_t[1] * op2_t[0] * byte_shift_t;
+            cnstr += add_term_t[0];
+            cnstr -= mul_low_t[0];
+
+            cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
+            cnstr -= Term::from((F::from_u64_unchecked(1 << 24), bit.get_variable().unwrap()));
+
+            cs.add_constraint(cnstr);
+
+            [(byte, 0), (bit.get_variable().unwrap(), 8)]
+        };
+
+        // bits 16-32
+        let carry = {
+            assert_eq!(carry.len(), 2);
+
+            // max range here is 3 * (2^8 - 1) * (2^8 - 1) + 4 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^9 - 1) = 66846721 < 2^26
+            // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
+            let bit_0 = cs.add_boolean_variable();
+            let bit_1 = cs.add_boolean_variable();
+            let byte = cs.add_variable();
+            cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
+
+            // set values before constraint
+            {
+                let byte_var = byte;
+                let bit_0_var = bit_0.get_variable().unwrap();
+                let bit_1_var = bit_1.get_variable().unwrap();
+
+                let op1_0 = op1_t[0].get_variable().unwrap();
+                let op1_1 = op1_t[1].get_variable().unwrap();
+                let op1_2 = op1_t[2].get_variable().unwrap();
+                let op1_3 = op1_t[3].get_variable().unwrap();
+                let op2_0 = op2_t[0].get_variable().unwrap();
+                let op2_1 = op2_t[1].get_variable().unwrap();
+                let op2_2 = op2_t[2].get_variable().unwrap();
+                let op2_3 = op2_t[3].get_variable().unwrap();
+                let add_term_t_high = add_term_t[1].get_variable().unwrap();
+                let mul_low_t_high = mul_low_t[1].get_variable().unwrap();
+
+                let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                    use crate::cs::witness_placer::*;
+
+                    let op1_0 = placer.get_u8(op1_0).widen().widen();
+                    let op1_1 = placer.get_u8(op1_1).widen().widen();
+                    let op1_2 = placer.get_u8(op1_2).widen().widen();
+                    let op1_3 = placer.get_u8(op1_3).widen().widen();
+                    let op2_0 = placer.get_u8(op2_0).widen().widen();
+                    let op2_1 = placer.get_u8(op2_1).widen().widen();
+                    let op2_2 = placer.get_u8(op2_2).widen().widen();
+                    let op2_3 = placer.get_u8(op2_3).widen().widen();
+
+                    let additive_term = placer.get_u16(add_term_t_high).widen();
+                    let multiplicative_dest = placer.get_u16(mul_low_t_high).widen();
+
+                    let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
+                    let prev_carry_bit = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                        placer.get_boolean(carry[1].0),
+                    );
+
+                    let mut value = prev_carry_byte;
+                    value.add_assign(&prev_carry_bit.shl(8));
+
+                    value.add_assign(&op1_0.wrapping_product(&op2_2));
+                    value.add_assign(&op1_0.wrapping_product(&op2_3).shl(8));
+
+                    value.add_assign(&op1_1.wrapping_product(&op2_1));
+                    value.add_assign(&op1_1.wrapping_product(&op2_2).shl(8));
+
+                    value.add_assign(&op1_2.wrapping_product(&op2_0));
+                    value.add_assign(&op1_2.wrapping_product(&op2_1).shl(8));
+
+                    value.add_assign(&op1_3.wrapping_product(&op2_0).shl(8));
+
+                    value.add_assign(&additive_term);
+                    value.sub_assign(&multiplicative_dest);
+
+                    value = value.shr(16);
+                    let byte = value.truncate().truncate();
+                    value = value.shr(8);
+                    let bit_0 = value.get_bit(0);
+                    let bit_1 = value.get_bit(1);
+
+                    placer.assign_u8(byte_var, &byte);
+                    placer.assign_mask(bit_0_var, &bit_0);
+                    placer.assign_mask(bit_1_var, &bit_1);
+                };
+
+                cs.set_values(value_fn);
+            }
+
+            let mut cnstr = Constraint::empty();
+            cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
+            cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
+
+            cnstr = cnstr + op1_t[0] * op2_t[2];
+            cnstr = cnstr + op1_t[0] * op2_t[3] * byte_shift_t;
+            cnstr = cnstr + op1_t[1] * op2_t[1];
+            cnstr = cnstr + op1_t[1] * op2_t[2] * byte_shift_t;
+            cnstr = cnstr + op1_t[2] * op2_t[0];
+            cnstr = cnstr + op1_t[2] * op2_t[1] * byte_shift_t;
+            cnstr = cnstr + op1_t[3] * op2_t[0] * byte_shift_t;
+            cnstr += add_term_t[1];
+            cnstr -= mul_low_t[1];
+
+            cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
+            cnstr -= Term::from((
+                F::from_u64_unchecked(1 << 24),
+                bit_0.get_variable().unwrap(),
+            ));
+            cnstr -= Term::from((
+                F::from_u64_unchecked(1 << 25),
+                bit_1.get_variable().unwrap(),
+            ));
+
+            cs.add_constraint(cnstr);
+
+            [
+                (byte, 0),
+                (bit_0.get_variable().unwrap(), 8),
+                (bit_1.get_variable().unwrap(), 9),
+            ]
+        };
+
+        // for next terms we can have two options - if we support signed cases (so all signs are variable),
+        // and if not - all are constants
+
+        match (additive_term_sign, op1_sign, op2_sign) {
+            (
+                Num::Var(additive_term_sign_variable),
+                Num::Var(op1_sign_variable),
+                Num::Var(op2_sign_variable),
+            ) => {
+                // bits 32-48
+                let carry = {
+                    assert_eq!(carry.len(), 3);
+
+                    // max range here is 6 * (2^8 - 1) * (2^8 - 1) + 5 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^10 - 1) = 83688708 < 2^27
+                    // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
+                    let bit_0 = cs.add_boolean_variable();
+                    let bit_1 = cs.add_boolean_variable();
+                    let bit_2 = cs.add_boolean_variable();
+                    let byte = cs.add_variable();
+                    cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
+
+                    // always try to set values before constraint, so we can have lazy checks
+                    {
+                        let byte_var = byte;
+                        let bit_0_var = bit_0.get_variable().unwrap();
+                        let bit_1_var = bit_1.get_variable().unwrap();
+                        let bit_2_var = bit_2.get_variable().unwrap();
+
+                        let op1_0 = op1_t[0].get_variable().unwrap();
+                        let op1_1 = op1_t[1].get_variable().unwrap();
+                        let op1_2 = op1_t[2].get_variable().unwrap();
+                        let op1_3 = op1_t[3].get_variable().unwrap();
+                        let op2_0 = op2_t[0].get_variable().unwrap();
+                        let op2_1 = op2_t[1].get_variable().unwrap();
+                        let op2_2 = op2_t[2].get_variable().unwrap();
+                        let op2_3 = op2_t[3].get_variable().unwrap();
+                        let mul_high_t_low = mul_high_t[0].get_variable().unwrap();
+
+                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                            use crate::cs::witness_placer::*;
+
+                            let op1_0 = placer.get_u8(op1_0).widen().widen();
+                            let op1_1 = placer.get_u8(op1_1).widen().widen();
+                            let op1_2 = placer.get_u8(op1_2).widen().widen();
+                            let op1_3 = placer.get_u8(op1_3).widen().widen();
+                            let op2_0 = placer.get_u8(op2_0).widen().widen();
+                            let op2_1 = placer.get_u8(op2_1).widen().widen();
+                            let op2_2 = placer.get_u8(op2_2).widen().widen();
+                            let op2_3 = placer.get_u8(op2_3).widen().widen();
+
+                            let byte_sign_ext =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xff);
+                            let word_sign_ext =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xffff);
+
+                            let op1_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(op1_sign_variable),
+                                )
+                                .wrapping_product(&byte_sign_ext);
+                            let op2_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(op2_sign_variable),
+                                )
+                                .wrapping_product(&byte_sign_ext);
+
+                            let additive_term_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(additive_term_sign_variable),
+                                )
+                                .wrapping_product(&word_sign_ext);
+
+                            let multiplicative_dest = placer.get_u16(mul_high_t_low).widen();
+
+                            let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
+                            let prev_carry_bit_0 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[1].0),
+                                );
+                            let prev_carry_bit_1 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[2].0),
+                                );
+
+                            let mut value = prev_carry_byte;
+                            value.add_assign(&prev_carry_bit_0.shl(8));
+                            value.add_assign(&prev_carry_bit_1.shl(9));
+
+                            // [0] * [4]
+                            value.add_assign(&op1_0.wrapping_product(&op2_sign));
+                            // [0] * [5]
+                            value.add_assign(&op1_0.wrapping_product(&op2_sign).shl(8));
+
+                            // [1] * [3]
+                            value.add_assign(&op1_1.wrapping_product(&op2_3));
+                            // [1] * [4]
+                            value.add_assign(&op1_1.wrapping_product(&op2_sign).shl(8));
+
+                            // [2] * [2]
+                            value.add_assign(&op1_2.wrapping_product(&op2_2));
+                            // [2] * [3]
+                            value.add_assign(&op1_2.wrapping_product(&op2_3).shl(8));
+
+                            // [3] * [1]
+                            value.add_assign(&op1_3.wrapping_product(&op2_1));
+                            // [3] * [2]
+                            value.add_assign(&op1_3.wrapping_product(&op2_2).shl(8));
+
+                            // [4] * [0]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_0));
+                            // [4] * [1]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_1).shl(8));
+
+                            // [5] * [0]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_0).shl(8));
+
+                            value.add_assign(&additive_term_sign);
+                            value.sub_assign(&multiplicative_dest);
+
+                            value = value.shr(16);
+                            let byte = value.truncate().truncate();
+                            value = value.shr(8);
+                            let bit_0 = value.get_bit(0);
+                            let bit_1 = value.get_bit(1);
+                            let bit_2 = value.get_bit(2);
+
+                            placer.assign_u8(byte_var, &byte);
+                            placer.assign_mask(bit_0_var, &bit_0);
+                            placer.assign_mask(bit_1_var, &bit_1);
+                            placer.assign_mask(bit_2_var, &bit_2);
+                        };
+
+                        cs.set_values(value_fn);
+                    }
+
+                    let mut cnstr = Constraint::empty();
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
+
+                    cnstr = cnstr + op1_t[0] * op2_t[4];
+                    cnstr = cnstr + op1_t[0] * op2_t[5] * byte_shift_t;
+                    cnstr = cnstr + op1_t[1] * op2_t[3];
+                    cnstr = cnstr + op1_t[1] * op2_t[4] * byte_shift_t;
+                    cnstr = cnstr + op1_t[2] * op2_t[2];
+                    cnstr = cnstr + op1_t[2] * op2_t[3] * byte_shift_t;
+                    cnstr = cnstr + op1_t[3] * op2_t[1];
+                    cnstr = cnstr + op1_t[3] * op2_t[2] * byte_shift_t;
+                    cnstr = cnstr + op1_t[4] * op2_t[0];
+                    cnstr = cnstr + op1_t[4] * op2_t[1] * byte_shift_t;
+                    cnstr = cnstr + op1_t[5] * op2_t[0] * byte_shift_t;
+                    cnstr += sign_term;
+                    cnstr -= mul_high_t[0];
+
+                    cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 24),
+                        bit_0.get_variable().unwrap(),
+                    ));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 25),
+                        bit_1.get_variable().unwrap(),
+                    ));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 26),
+                        bit_2.get_variable().unwrap(),
+                    ));
+
+                    cs.add_constraint(cnstr);
+
+                    [
+                        (byte, 0),
+                        (bit_0.get_variable().unwrap(), 8),
+                        (bit_1.get_variable().unwrap(), 9),
+                        (bit_2.get_variable().unwrap(), 10),
+                    ]
+                };
+                // because effectively we multiply double-width (even though we make it truncating),
+                // we still need to "propagate" carry by range checking it and discarding
+                {
+                    assert_eq!(carry.len(), 4);
+
+                    // max range here is 7 * (2^8 - 1) * (2^8 - 1) + 8 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^11 - 1) = 133693957 < 2^27
+                    // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
+                    let bit_0 = cs.add_boolean_variable();
+                    let bit_1 = cs.add_boolean_variable();
+                    let bit_2 = cs.add_boolean_variable();
+                    let byte = cs.add_variable();
+                    cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
+
+                    {
+                        let byte_var = byte;
+                        let bit_0_var = bit_0.get_variable().unwrap();
+                        let bit_1_var = bit_1.get_variable().unwrap();
+                        let bit_2_var = bit_2.get_variable().unwrap();
+
+                        let op1_0 = op1_t[0].get_variable().unwrap();
+                        let op1_1 = op1_t[1].get_variable().unwrap();
+                        let op1_2 = op1_t[2].get_variable().unwrap();
+                        let op1_3 = op1_t[3].get_variable().unwrap();
+                        let op2_0 = op2_t[0].get_variable().unwrap();
+                        let op2_1 = op2_t[1].get_variable().unwrap();
+                        let op2_2 = op2_t[2].get_variable().unwrap();
+                        let op2_3 = op2_t[3].get_variable().unwrap();
+                        let mul_high_t_high = mul_high_t[1].get_variable().unwrap();
+
+                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                            use crate::cs::witness_placer::*;
+
+                            let op1_0 = placer.get_u8(op1_0).widen().widen();
+                            let op1_1 = placer.get_u8(op1_1).widen().widen();
+                            let op1_2 = placer.get_u8(op1_2).widen().widen();
+                            let op1_3 = placer.get_u8(op1_3).widen().widen();
+                            let op2_0 = placer.get_u8(op2_0).widen().widen();
+                            let op2_1 = placer.get_u8(op2_1).widen().widen();
+                            let op2_2 = placer.get_u8(op2_2).widen().widen();
+                            let op2_3 = placer.get_u8(op2_3).widen().widen();
+
+                            let byte_sign_ext =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xff);
+                            let word_sign_ext =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xffff);
+
+                            let op1_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(op1_sign_variable),
+                                )
+                                .wrapping_product(&byte_sign_ext);
+                            let op2_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(op2_sign_variable),
+                                )
+                                .wrapping_product(&byte_sign_ext);
+
+                            let additive_term_sign =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(additive_term_sign_variable),
+                                )
+                                .wrapping_product(&word_sign_ext);
+
+                            let multiplicative_dest = placer.get_u16(mul_high_t_high).widen();
+
+                            let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
+                            let prev_carry_bit_0 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[1].0),
+                                );
+                            let prev_carry_bit_1 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[2].0),
+                                );
+                            let prev_carry_bit_2 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[3].0),
+                                );
+
+                            let mut value = prev_carry_byte;
+                            value.add_assign(&prev_carry_bit_0.shl(8));
+                            value.add_assign(&prev_carry_bit_1.shl(9));
+                            value.add_assign(&prev_carry_bit_2.shl(10));
+
+                            // [0] * [6]
+                            value.add_assign(&op1_0.wrapping_product(&op2_sign));
+                            // [0] * [7]
+                            value.add_assign(&op1_0.wrapping_product(&op2_sign).shl(8));
+
+                            // [1] * [5]
+                            value.add_assign(&op1_1.wrapping_product(&op2_sign));
+                            // [1] * [6]
+                            value.add_assign(&op1_1.wrapping_product(&op2_sign).shl(8));
+
+                            // [2] * [4]
+                            value.add_assign(&op1_2.wrapping_product(&op2_sign));
+                            // [2] * [5]
+                            value.add_assign(&op1_2.wrapping_product(&op2_sign).shl(8));
+
+                            // [3] * [3]
+                            value.add_assign(&op1_3.wrapping_product(&op2_3));
+                            // [3] * [4]
+                            value.add_assign(&op1_3.wrapping_product(&op2_sign).shl(8));
+
+                            // [4] * [2]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_2));
+                            // [4] * [3]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_3).shl(8));
+
+                            // [5] * [1]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_1));
+                            // [5] * [2]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_2).shl(8));
+
+                            // [6] * [0]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_0));
+                            // [6] * [1]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_1).shl(8));
+
+                            // [7] * [0]
+                            value.add_assign(&op1_sign.wrapping_product(&op2_0).shl(8));
+
+                            value.add_assign(&additive_term_sign);
+                            value.sub_assign(&multiplicative_dest);
+
+                            value = value.shr(16);
+                            let byte = value.truncate().truncate();
+                            value = value.shr(8);
+                            let bit_0 = value.get_bit(0);
+                            let bit_1 = value.get_bit(1);
+                            let bit_2 = value.get_bit(2);
+
+                            placer.assign_u8(byte_var, &byte);
+                            placer.assign_mask(bit_0_var, &bit_0);
+                            placer.assign_mask(bit_1_var, &bit_1);
+                            placer.assign_mask(bit_2_var, &bit_2);
+                        };
+
+                        cs.set_values(value_fn);
+                    }
+
+                    let mut cnstr = Constraint::empty();
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[3].1), carry[3].0));
+
+                    cnstr = cnstr + op1_t[0] * op2_t[6];
+                    cnstr = cnstr + op1_t[0] * op2_t[7] * byte_shift_t;
+                    cnstr = cnstr + op1_t[1] * op2_t[5];
+                    cnstr = cnstr + op1_t[1] * op2_t[6] * byte_shift_t;
+                    cnstr = cnstr + op1_t[2] * op2_t[4];
+                    cnstr = cnstr + op1_t[2] * op2_t[5] * byte_shift_t;
+                    cnstr = cnstr + op1_t[3] * op2_t[3];
+                    cnstr = cnstr + op1_t[3] * op2_t[4] * byte_shift_t;
+                    cnstr = cnstr + op1_t[4] * op2_t[2];
+                    cnstr = cnstr + op1_t[4] * op2_t[3] * byte_shift_t;
+                    cnstr = cnstr + op1_t[5] * op2_t[1];
+                    cnstr = cnstr + op1_t[5] * op2_t[2] * byte_shift_t;
+                    cnstr = cnstr + op1_t[6] * op2_t[0];
+                    cnstr = cnstr + op1_t[6] * op2_t[1] * byte_shift_t;
+                    cnstr = cnstr + op1_t[7] * op2_t[0] * byte_shift_t;
+                    cnstr += sign_term;
+                    cnstr -= mul_high_t[1];
+
+                    cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 24),
+                        bit_0.get_variable().unwrap(),
+                    ));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 25),
+                        bit_1.get_variable().unwrap(),
+                    ));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 26),
+                        bit_2.get_variable().unwrap(),
+                    ));
+
+                    cs.add_constraint(cnstr);
+                }
+            }
+            (Num::Constant(a), Num::Constant(b), Num::Constant(c))
+                if a == F::ZERO && b == F::ZERO && c == F::ZERO =>
+            {
+                // we only support unsigned ops, so those terms are 0s
+                // bits 32-48
+                let carry = {
+                    assert_eq!(carry.len(), 3);
+
+                    // max range here is 3 * (2^8 - 1) * (2^8 - 1) + 2 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^10 - 1) = 33488898 < 2^25
+                    // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
+                    let bit_0 = cs.add_boolean_variable();
+                    let byte = cs.add_variable();
+                    cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
+
+                    {
+                        let byte_var = byte;
+                        let bit_0_var = bit_0.get_variable().unwrap();
+
+                        let op1_0 = op1_t[0].get_variable().unwrap();
+                        let op1_1 = op1_t[1].get_variable().unwrap();
+                        let op1_2 = op1_t[2].get_variable().unwrap();
+                        let op1_3 = op1_t[3].get_variable().unwrap();
+                        let op2_0 = op2_t[0].get_variable().unwrap();
+                        let op2_1 = op2_t[1].get_variable().unwrap();
+                        let op2_2 = op2_t[2].get_variable().unwrap();
+                        let op2_3 = op2_t[3].get_variable().unwrap();
+                        let mul_high_t_low = mul_high_t[0].get_variable().unwrap();
+
+                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                            use crate::cs::witness_placer::*;
+
+                            let _op1_0 = placer.get_u8(op1_0).widen().widen();
+                            let op1_1 = placer.get_u8(op1_1).widen().widen();
+                            let op1_2 = placer.get_u8(op1_2).widen().widen();
+                            let op1_3 = placer.get_u8(op1_3).widen().widen();
+                            let _op2_0 = placer.get_u8(op2_0).widen().widen();
+                            let op2_1 = placer.get_u8(op2_1).widen().widen();
+                            let op2_2 = placer.get_u8(op2_2).widen().widen();
+                            let op2_3 = placer.get_u8(op2_3).widen().widen();
+
+                            let multiplicative_dest = placer.get_u16(mul_high_t_low).widen();
+
+                            let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
+                            let prev_carry_bit_0 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[1].0),
+                                );
+                            let prev_carry_bit_1 =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
+                                    placer.get_boolean(carry[2].0),
+                                );
+
+                            let mut value = prev_carry_byte;
+                            value.add_assign(&prev_carry_bit_0.shl(8));
+                            value.add_assign(&prev_carry_bit_1.shl(9));
+
+                            // [1] * [3]
+                            value.add_assign(&op1_1.wrapping_product(&op2_3));
+
+                            // [2] * [2]
+                            value.add_assign(&op1_2.wrapping_product(&op2_2));
+                            // [2] * [3]
+                            value.add_assign(&op1_2.wrapping_product(&op2_3).shl(8));
+
+                            // [3] * [1]
+                            value.add_assign(&op1_3.wrapping_product(&op2_1));
+                            // [3] * [2]
+                            value.add_assign(&op1_3.wrapping_product(&op2_2).shl(8));
+
+                            value.sub_assign(&multiplicative_dest);
+
+                            value = value.shr(16);
+                            let byte = value.truncate().truncate();
+                            value = value.shr(8);
+                            let bit_0 = value.get_bit(0);
+
+                            placer.assign_u8(byte_var, &byte);
+                            placer.assign_mask(bit_0_var, &bit_0);
+                        };
+
+                        cs.set_values(value_fn);
+                    }
+
+                    let mut cnstr = Constraint::empty();
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
+
+                    cnstr = cnstr + op1_t[1] * op2_t[3];
+                    cnstr = cnstr + op1_t[2] * op2_t[2];
+                    cnstr = cnstr + op1_t[2] * op2_t[3] * byte_shift_t;
+                    cnstr = cnstr + op1_t[3] * op2_t[1];
+                    cnstr = cnstr + op1_t[3] * op2_t[2] * byte_shift_t;
+                    cnstr -= mul_high_t[0];
+
+                    cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
+                    cnstr -= Term::from((
+                        F::from_u64_unchecked(1 << 24),
+                        bit_0.get_variable().unwrap(),
+                    ));
+
+                    cs.add_constraint(cnstr);
+
+                    [(byte, 0), (bit_0.get_variable().unwrap(), 8)]
+                };
+                // and final bits just match into 0, we just need a constraint here and no decompositions
+                {
+                    assert_eq!(carry.len(), 2);
+
+                    let mut cnstr = Constraint::empty();
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
+                    cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
+
+                    cnstr = cnstr + op1_t[3] * op2_t[3];
+                    cnstr -= mul_high_t[1];
+
+                    cs.add_constraint(cnstr);
+                }
+            }
+            a @ _ => {
+                panic!("Combination of signs {:?} is not supported", a);
+            }
+        }
+    }
+
     pub fn enforce_all(&mut self, cs: &mut CS) {
         // we have 7 different types of relations to enforce
 
@@ -774,98 +1551,7 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             assert_eq!(flags.len(), b_s.len());
             assert_eq!(flags.len(), c_s.len());
 
-            let mut can_spec = true;
-            {
-                for el in a_s.iter().chain(b_s.iter()).chain(c_s.iter()) {
-                    for i in 0..2 {
-                        if let Num::Constant(..) = el.0[i] {
-                            can_spec = false;
-                        }
-                    }
-                }
-            }
-
-            // here is the trick: our all zeroes (for flags and similar) are satisfying witness for us,
-            // so we can merge selection (potentially dummy one) and enforcement of the relation. The only inconvenience is
-            // to set the value to the intermediate carry. Addition constraints are degree 1 over "what to add",
-            // so with selection - we have degree 2
-
-            if can_spec {
-                enforce_add_sub_relation(cs, self.add_sub_ofs[cur_index], &a_s, &b_s, &c_s, &flags);
-            } else {
-                let mut a_constraint_low = Constraint::empty();
-                let mut a_constraint_high = Constraint::empty();
-                let mut b_constraint_low = Constraint::empty();
-                let mut b_constraint_high = Constraint::empty();
-                let mut c_constraint_low = Constraint::empty();
-                let mut c_constraint_high = Constraint::empty();
-
-                let carry_out = self.add_sub_ofs[cur_index];
-
-                for (i, flag) in flags.iter().enumerate() {
-                    a_constraint_low = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &a_s[i].0[0],
-                        a_constraint_low,
-                    );
-                    a_constraint_high = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &a_s[i].0[1],
-                        a_constraint_high,
-                    );
-
-                    b_constraint_low = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &b_s[i].0[0],
-                        b_constraint_low,
-                    );
-                    b_constraint_high = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &b_s[i].0[1],
-                        b_constraint_high,
-                    );
-
-                    c_constraint_low = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &c_s[i].0[0],
-                        c_constraint_low,
-                    );
-                    c_constraint_high = mask_by_boolean_into_accumulator_constraint(
-                        flag,
-                        &c_s[i].0[1],
-                        c_constraint_high,
-                    );
-                }
-
-                let carry_intermediate = Boolean::new(cs);
-
-                let constraint_low = a_constraint_low + b_constraint_low - c_constraint_low;
-
-                let mut constraint_for_witness_eval = constraint_low.clone();
-                constraint_for_witness_eval
-                    .scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
-
-                collapse_max_quadratic_constraint_into(
-                    cs,
-                    constraint_for_witness_eval,
-                    carry_intermediate.get_variable().unwrap(),
-                );
-
-                let constraint_low = constraint_low
-                    - Term::<F>::from((
-                        F::from_u64_unchecked(1 << 16),
-                        carry_intermediate.get_variable().unwrap(),
-                    ));
-                cs.add_constraint(constraint_low);
-
-                let constraint_high = a_constraint_high + b_constraint_high - c_constraint_high
-                    + Term::<F>::from(carry_intermediate.get_variable().unwrap())
-                    - Term::<F>::from((
-                        F::from_u64_unchecked(1 << 16),
-                        carry_out.get_variable().unwrap(),
-                    ));
-                cs.add_constraint(constraint_high);
-            }
+            enforce_add_sub_relation(cs, self.add_sub_ofs[cur_index], &a_s, &b_s, &c_s, &flags);
 
             cur_index += 1;
         }
@@ -1111,770 +1797,17 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             let mul_low = Register::choose_from_orthogonal_variants::<CS>(cs, &flags, &mul_low_s);
             let mul_high = Register::choose_from_orthogonal_variants::<CS>(cs, &flags, &mul_high_s);
 
-            #[allow(deprecated)]
-            let op1_decomposition =
-                RegisterDecomposition::parse_reg::<CS>(cs, op1).u8_decomposition;
-            #[allow(deprecated)]
-            let op2_decomposition =
-                RegisterDecomposition::parse_reg::<CS>(cs, op2).u8_decomposition;
-
-            const NUM_BYTES: usize = 4;
-            const NUM_BYTES_DOUBLED: usize = 8;
-
-            // https://faculty-web.msoe.edu/johnsontimoj/Common/FILES/binary_multiplication.pdf
-            // In 2’s complement you must sign extend to the product bit width
-            let op1_sign_t = match op1_sign {
-                Num::Var(op1_sign_var) => Term::from((F::from_u64_unchecked(0xff), op1_sign_var)),
-                Num::Constant(op1_sign_constant) => {
-                    if op1_sign_constant == F::ONE {
-                        Term::from(0xff)
-                    } else if op1_sign_constant == F::ZERO {
-                        Term::from(0)
-                    } else {
-                        unreachable!()
-                    }
-                }
-            };
-
-            let op2_sign_t = match op2_sign {
-                Num::Var(op2_sign_var) => Term::from((F::from_u64_unchecked(0xff), op2_sign_var)),
-                Num::Constant(op2_sign_constant) => {
-                    if op2_sign_constant == F::ONE {
-                        Term::from(0xff)
-                    } else if op2_sign_constant == F::ZERO {
-                        Term::from(0)
-                    } else {
-                        unreachable!()
-                    }
-                }
-            };
-
-            let op1_t: [Term<F>; NUM_BYTES_DOUBLED] = std::array::from_fn(|idx: usize| {
-                if idx < NUM_BYTES {
-                    Term::from(op1_decomposition[idx])
-                } else {
-                    op1_sign_t
-                }
-            });
-            let op2_t: [Term<F>; NUM_BYTES_DOUBLED] = std::array::from_fn(|idx: usize| {
-                if idx < NUM_BYTES {
-                    Term::from(op2_decomposition[idx])
-                } else {
-                    op2_sign_t
-                }
-            });
-
-            let add_term_t = additive_term.get_terms();
-            let mul_low_t = mul_low.get_terms();
-            let mul_high_t = mul_high.get_terms();
-
-            // low[0] + carry_out = a[0] * b[0] + a[1] * b[0] + a[0] * b[1] + rem[0]
-            // carry_out is at most 16-bits long
-            // low[1] + carry_out = a[1] * b[1] + a[0] * b[2] + a[2] * b[0] + a[3] * b[0] + a[2] * b[1] +
-            // a[1] * b[2] + a[0] * b[3] + rem[1] + carry_in (and so on...)
-
-            let byte_shift_t = Term::<F>::from(1 << 8);
-
-            let sign_term = match add_term_sign {
-                Num::Var(add_term_sign_var) => {
-                    Term::from((F::from_u64_unchecked(0xffff), add_term_sign_var))
-                }
-                Num::Constant(op2_sign_constant) => {
-                    if op2_sign_constant == F::ONE {
-                        Term::from(0xffff)
-                    } else if op2_sign_constant == F::ZERO {
-                        Term::from(0)
-                    } else {
-                        unreachable!()
-                    }
-                }
-            };
-
-            // we manually unroll it to handle range checks with specific ranges
-
-            // Important thing to consider here: we will encounter range checks for 9, 10 and 2x11 for signed case,
-            // and 2x9 and 10 for unsigned. Let's consider a tradeoff:
-            // - doing range checks with booleans and 8-bit chunks requires:
-            //  - effectively 1 witness column for 8-bit chunk, and 2 stage-2 columns
-            //  - 1 boolean by itself
-            //  - total cost for signed is 4 * (1 + 2) + 1 + 2 + 2*3 = 21 columns everywhere
-            //  - total cost for unsigned is 3 * (1 + 2) + 1*2 + 2 = 13 columns everywhere
-            // - if we do explicit checks
-            //  - 4 * (1 + 4) = 20 variables for signed case
-            //  - 3 * (1 + 4) = 15 variables for unsigned case
-            // So it's almost one for another, and we will stick with booleans
-
-            // lowest 16 bits
-            let carry = {
-                // set values before constraint
-
-                // max range here is (2^8 - 1) * (2^8 - 1) + 2 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) = 33423360 < 2^25
-                // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed into 1 boolean and one 8-bit variable
-                let bit = cs.add_boolean_variable();
-                let byte = cs.add_variable();
-                cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
-
-                {
-                    let byte_var = byte;
-                    let bit_var = bit.get_variable().unwrap();
-
-                    let op1_0 = op1_t[0].get_variable().unwrap();
-                    let op1_1 = op1_t[1].get_variable().unwrap();
-                    let op2_0 = op2_t[0].get_variable().unwrap();
-                    let op2_1 = op2_t[1].get_variable().unwrap();
-                    let add_term_t_low = add_term_t[0].get_variable().unwrap();
-                    let mul_low_t_low = mul_low_t[0].get_variable().unwrap();
-                    let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                        use crate::cs::witness_placer::WitnessComputationalU8;
-
-                        let op1_0 = placer.get_u8(op1_0).widen().widen();
-                        let op1_1 = placer.get_u8(op1_1).widen().widen();
-                        let op2_0 = placer.get_u8(op2_0).widen().widen();
-                        let op2_1 = placer.get_u8(op2_1).widen().widen();
-                        let additive_term = placer.get_u16(add_term_t_low).widen();
-                        let multiplicative_dest = placer.get_u16(mul_low_t_low).widen();
-
-                        let mut value = op1_0.wrapping_product(&op2_0);
-                        value.add_assign(&op1_0.wrapping_product(&op2_1).shl(8));
-                        value.add_assign(&op1_1.wrapping_product(&op2_0).shl(8));
-
-                        value.add_assign(&additive_term);
-                        value.sub_assign(&multiplicative_dest);
-
-                        value = value.shr(16);
-                        let byte = value.truncate().truncate();
-                        value = value.shr(8);
-                        let bit = value.get_bit(0);
-
-                        placer.assign_u8(byte_var, &byte);
-                        placer.assign_mask(bit_var, &bit);
-                    };
-
-                    cs.set_values(value_fn);
-                }
-
-                let mut cnstr = Constraint::empty();
-                cnstr = cnstr + op1_t[0] * op2_t[0];
-                cnstr = cnstr + op1_t[0] * op2_t[1] * byte_shift_t;
-                cnstr = cnstr + op1_t[1] * op2_t[0] * byte_shift_t;
-                cnstr += add_term_t[0];
-                cnstr -= mul_low_t[0];
-
-                cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
-                cnstr -= Term::from((F::from_u64_unchecked(1 << 24), bit.get_variable().unwrap()));
-
-                cs.add_constraint(cnstr);
-
-                [(byte, 0), (bit.get_variable().unwrap(), 8)]
-            };
-
-            // bits 16-32
-            let carry = {
-                assert_eq!(carry.len(), 2);
-
-                // max range here is 3 * (2^8 - 1) * (2^8 - 1) + 4 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^9 - 1) = 66846721 < 2^26
-                // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
-                let bit_0 = cs.add_boolean_variable();
-                let bit_1 = cs.add_boolean_variable();
-                let byte = cs.add_variable();
-                cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
-
-                // set values before constraint
-                {
-                    let byte_var = byte;
-                    let bit_0_var = bit_0.get_variable().unwrap();
-                    let bit_1_var = bit_1.get_variable().unwrap();
-
-                    let op1_0 = op1_t[0].get_variable().unwrap();
-                    let op1_1 = op1_t[1].get_variable().unwrap();
-                    let op1_2 = op1_t[2].get_variable().unwrap();
-                    let op1_3 = op1_t[3].get_variable().unwrap();
-                    let op2_0 = op2_t[0].get_variable().unwrap();
-                    let op2_1 = op2_t[1].get_variable().unwrap();
-                    let op2_2 = op2_t[2].get_variable().unwrap();
-                    let op2_3 = op2_t[3].get_variable().unwrap();
-                    let add_term_t_high = add_term_t[1].get_variable().unwrap();
-                    let mul_low_t_high = mul_low_t[1].get_variable().unwrap();
-
-                    let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                        use crate::cs::witness_placer::*;
-
-                        let op1_0 = placer.get_u8(op1_0).widen().widen();
-                        let op1_1 = placer.get_u8(op1_1).widen().widen();
-                        let op1_2 = placer.get_u8(op1_2).widen().widen();
-                        let op1_3 = placer.get_u8(op1_3).widen().widen();
-                        let op2_0 = placer.get_u8(op2_0).widen().widen();
-                        let op2_1 = placer.get_u8(op2_1).widen().widen();
-                        let op2_2 = placer.get_u8(op2_2).widen().widen();
-                        let op2_3 = placer.get_u8(op2_3).widen().widen();
-
-                        let additive_term = placer.get_u16(add_term_t_high).widen();
-                        let multiplicative_dest = placer.get_u16(mul_low_t_high).widen();
-
-                        let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
-                        let prev_carry_bit =
-                            <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                placer.get_boolean(carry[1].0),
-                            );
-
-                        let mut value = prev_carry_byte;
-                        value.add_assign(&prev_carry_bit.shl(8));
-
-                        value.add_assign(&op1_0.wrapping_product(&op2_2));
-                        value.add_assign(&op1_0.wrapping_product(&op2_3).shl(8));
-
-                        value.add_assign(&op1_1.wrapping_product(&op2_1));
-                        value.add_assign(&op1_1.wrapping_product(&op2_2).shl(8));
-
-                        value.add_assign(&op1_2.wrapping_product(&op2_0));
-                        value.add_assign(&op1_2.wrapping_product(&op2_1).shl(8));
-
-                        value.add_assign(&op1_3.wrapping_product(&op2_0).shl(8));
-
-                        value.add_assign(&additive_term);
-                        value.sub_assign(&multiplicative_dest);
-
-                        value = value.shr(16);
-                        let byte = value.truncate().truncate();
-                        value = value.shr(8);
-                        let bit_0 = value.get_bit(0);
-                        let bit_1 = value.get_bit(1);
-
-                        placer.assign_u8(byte_var, &byte);
-                        placer.assign_mask(bit_0_var, &bit_0);
-                        placer.assign_mask(bit_1_var, &bit_1);
-                    };
-
-                    cs.set_values(value_fn);
-                }
-
-                let mut cnstr = Constraint::empty();
-                cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
-                cnstr += Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
-
-                cnstr = cnstr + op1_t[0] * op2_t[2];
-                cnstr = cnstr + op1_t[0] * op2_t[3] * byte_shift_t;
-                cnstr = cnstr + op1_t[1] * op2_t[1];
-                cnstr = cnstr + op1_t[1] * op2_t[2] * byte_shift_t;
-                cnstr = cnstr + op1_t[2] * op2_t[0];
-                cnstr = cnstr + op1_t[2] * op2_t[1] * byte_shift_t;
-                cnstr = cnstr + op1_t[3] * op2_t[0] * byte_shift_t;
-                cnstr += add_term_t[1];
-                cnstr -= mul_low_t[1];
-
-                cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
-                cnstr -= Term::from((
-                    F::from_u64_unchecked(1 << 24),
-                    bit_0.get_variable().unwrap(),
-                ));
-                cnstr -= Term::from((
-                    F::from_u64_unchecked(1 << 25),
-                    bit_1.get_variable().unwrap(),
-                ));
-
-                cs.add_constraint(cnstr);
-
-                [
-                    (byte, 0),
-                    (bit_0.get_variable().unwrap(), 8),
-                    (bit_1.get_variable().unwrap(), 9),
-                ]
-            };
-
-            // for next terms we can have two options - if we support signed cases (so all signs are variable),
-            // and if not - all are constants
-
-            match (add_term_sign, op1_sign, op2_sign) {
-                (
-                    Num::Var(additive_term_sign_variable),
-                    Num::Var(op1_sign_variable),
-                    Num::Var(op2_sign_variable),
-                ) => {
-                    // bits 32-48
-                    let carry = {
-                        assert_eq!(carry.len(), 3);
-
-                        // max range here is 6 * (2^8 - 1) * (2^8 - 1) + 5 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^10 - 1) = 83688708 < 2^27
-                        // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
-                        let bit_0 = cs.add_boolean_variable();
-                        let bit_1 = cs.add_boolean_variable();
-                        let bit_2 = cs.add_boolean_variable();
-                        let byte = cs.add_variable();
-                        cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
-
-                        // always try to set values before constraint, so we can have lazy checks
-                        {
-                            let byte_var = byte;
-                            let bit_0_var = bit_0.get_variable().unwrap();
-                            let bit_1_var = bit_1.get_variable().unwrap();
-                            let bit_2_var = bit_2.get_variable().unwrap();
-
-                            let op1_0 = op1_t[0].get_variable().unwrap();
-                            let op1_1 = op1_t[1].get_variable().unwrap();
-                            let op1_2 = op1_t[2].get_variable().unwrap();
-                            let op1_3 = op1_t[3].get_variable().unwrap();
-                            let op2_0 = op2_t[0].get_variable().unwrap();
-                            let op2_1 = op2_t[1].get_variable().unwrap();
-                            let op2_2 = op2_t[2].get_variable().unwrap();
-                            let op2_3 = op2_t[3].get_variable().unwrap();
-                            let mul_high_t_low = mul_high_t[0].get_variable().unwrap();
-
-                            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                                use crate::cs::witness_placer::*;
-
-                                let op1_0 = placer.get_u8(op1_0).widen().widen();
-                                let op1_1 = placer.get_u8(op1_1).widen().widen();
-                                let op1_2 = placer.get_u8(op1_2).widen().widen();
-                                let op1_3 = placer.get_u8(op1_3).widen().widen();
-                                let op2_0 = placer.get_u8(op2_0).widen().widen();
-                                let op2_1 = placer.get_u8(op2_1).widen().widen();
-                                let op2_2 = placer.get_u8(op2_2).widen().widen();
-                                let op2_3 = placer.get_u8(op2_3).widen().widen();
-
-                                let byte_sign_ext =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xff);
-                                let word_sign_ext =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xffff);
-
-                                let op1_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(op1_sign_variable),
-                                    )
-                                    .wrapping_product(&byte_sign_ext);
-                                let op2_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(op2_sign_variable),
-                                    )
-                                    .wrapping_product(&byte_sign_ext);
-
-                                let additive_term_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(additive_term_sign_variable),
-                                    )
-                                    .wrapping_product(&word_sign_ext);
-
-                                let multiplicative_dest = placer.get_u16(mul_high_t_low).widen();
-
-                                let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
-                                let prev_carry_bit_0 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[1].0),
-                                    );
-                                let prev_carry_bit_1 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[2].0),
-                                    );
-
-                                let mut value = prev_carry_byte;
-                                value.add_assign(&prev_carry_bit_0.shl(8));
-                                value.add_assign(&prev_carry_bit_1.shl(9));
-
-                                // [0] * [4]
-                                value.add_assign(&op1_0.wrapping_product(&op2_sign));
-                                // [0] * [5]
-                                value.add_assign(&op1_0.wrapping_product(&op2_sign).shl(8));
-
-                                // [1] * [3]
-                                value.add_assign(&op1_1.wrapping_product(&op2_3));
-                                // [1] * [4]
-                                value.add_assign(&op1_1.wrapping_product(&op2_sign).shl(8));
-
-                                // [2] * [2]
-                                value.add_assign(&op1_2.wrapping_product(&op2_2));
-                                // [2] * [3]
-                                value.add_assign(&op1_2.wrapping_product(&op2_3).shl(8));
-
-                                // [3] * [1]
-                                value.add_assign(&op1_3.wrapping_product(&op2_1));
-                                // [3] * [2]
-                                value.add_assign(&op1_3.wrapping_product(&op2_2).shl(8));
-
-                                // [4] * [0]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_0));
-                                // [4] * [1]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_1).shl(8));
-
-                                // [5] * [0]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_0).shl(8));
-
-                                value.add_assign(&additive_term_sign);
-                                value.sub_assign(&multiplicative_dest);
-
-                                value = value.shr(16);
-                                let byte = value.truncate().truncate();
-                                value = value.shr(8);
-                                let bit_0 = value.get_bit(0);
-                                let bit_1 = value.get_bit(1);
-                                let bit_2 = value.get_bit(2);
-
-                                placer.assign_u8(byte_var, &byte);
-                                placer.assign_mask(bit_0_var, &bit_0);
-                                placer.assign_mask(bit_1_var, &bit_1);
-                                placer.assign_mask(bit_2_var, &bit_2);
-                            };
-
-                            cs.set_values(value_fn);
-                        }
-
-                        let mut cnstr = Constraint::empty();
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
-
-                        cnstr = cnstr + op1_t[0] * op2_t[4];
-                        cnstr = cnstr + op1_t[0] * op2_t[5] * byte_shift_t;
-                        cnstr = cnstr + op1_t[1] * op2_t[3];
-                        cnstr = cnstr + op1_t[1] * op2_t[4] * byte_shift_t;
-                        cnstr = cnstr + op1_t[2] * op2_t[2];
-                        cnstr = cnstr + op1_t[2] * op2_t[3] * byte_shift_t;
-                        cnstr = cnstr + op1_t[3] * op2_t[1];
-                        cnstr = cnstr + op1_t[3] * op2_t[2] * byte_shift_t;
-                        cnstr = cnstr + op1_t[4] * op2_t[0];
-                        cnstr = cnstr + op1_t[4] * op2_t[1] * byte_shift_t;
-                        cnstr = cnstr + op1_t[5] * op2_t[0] * byte_shift_t;
-                        cnstr += sign_term;
-                        cnstr -= mul_high_t[0];
-
-                        cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 24),
-                            bit_0.get_variable().unwrap(),
-                        ));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 25),
-                            bit_1.get_variable().unwrap(),
-                        ));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 26),
-                            bit_2.get_variable().unwrap(),
-                        ));
-
-                        cs.add_constraint(cnstr);
-
-                        [
-                            (byte, 0),
-                            (bit_0.get_variable().unwrap(), 8),
-                            (bit_1.get_variable().unwrap(), 9),
-                            (bit_2.get_variable().unwrap(), 10),
-                        ]
-                    };
-                    // because effectively we multiply double-width (even though we make it truncating),
-                    // we still need to "propagate" carry by range checking it and discarding
-                    {
-                        assert_eq!(carry.len(), 4);
-
-                        // max range here is 7 * (2^8 - 1) * (2^8 - 1) + 8 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^16 - 1) + (2^11 - 1) = 133693957 < 2^27
-                        // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
-                        let bit_0 = cs.add_boolean_variable();
-                        let bit_1 = cs.add_boolean_variable();
-                        let bit_2 = cs.add_boolean_variable();
-                        let byte = cs.add_variable();
-                        cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
-
-                        {
-                            let byte_var = byte;
-                            let bit_0_var = bit_0.get_variable().unwrap();
-                            let bit_1_var = bit_1.get_variable().unwrap();
-                            let bit_2_var = bit_2.get_variable().unwrap();
-
-                            let op1_0 = op1_t[0].get_variable().unwrap();
-                            let op1_1 = op1_t[1].get_variable().unwrap();
-                            let op1_2 = op1_t[2].get_variable().unwrap();
-                            let op1_3 = op1_t[3].get_variable().unwrap();
-                            let op2_0 = op2_t[0].get_variable().unwrap();
-                            let op2_1 = op2_t[1].get_variable().unwrap();
-                            let op2_2 = op2_t[2].get_variable().unwrap();
-                            let op2_3 = op2_t[3].get_variable().unwrap();
-                            let mul_high_t_high = mul_high_t[1].get_variable().unwrap();
-
-                            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                                use crate::cs::witness_placer::*;
-
-                                let op1_0 = placer.get_u8(op1_0).widen().widen();
-                                let op1_1 = placer.get_u8(op1_1).widen().widen();
-                                let op1_2 = placer.get_u8(op1_2).widen().widen();
-                                let op1_3 = placer.get_u8(op1_3).widen().widen();
-                                let op2_0 = placer.get_u8(op2_0).widen().widen();
-                                let op2_1 = placer.get_u8(op2_1).widen().widen();
-                                let op2_2 = placer.get_u8(op2_2).widen().widen();
-                                let op2_3 = placer.get_u8(op2_3).widen().widen();
-
-                                let byte_sign_ext =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xff);
-                                let word_sign_ext =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0xffff);
-
-                                let op1_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(op1_sign_variable),
-                                    )
-                                    .wrapping_product(&byte_sign_ext);
-                                let op2_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(op2_sign_variable),
-                                    )
-                                    .wrapping_product(&byte_sign_ext);
-
-                                let additive_term_sign =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(additive_term_sign_variable),
-                                    )
-                                    .wrapping_product(&word_sign_ext);
-
-                                let multiplicative_dest = placer.get_u16(mul_high_t_high).widen();
-
-                                let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
-                                let prev_carry_bit_0 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[1].0),
-                                    );
-                                let prev_carry_bit_1 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[2].0),
-                                    );
-                                let prev_carry_bit_2 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[3].0),
-                                    );
-
-                                let mut value = prev_carry_byte;
-                                value.add_assign(&prev_carry_bit_0.shl(8));
-                                value.add_assign(&prev_carry_bit_1.shl(9));
-                                value.add_assign(&prev_carry_bit_2.shl(10));
-
-                                // [0] * [6]
-                                value.add_assign(&op1_0.wrapping_product(&op2_sign));
-                                // [0] * [7]
-                                value.add_assign(&op1_0.wrapping_product(&op2_sign).shl(8));
-
-                                // [1] * [5]
-                                value.add_assign(&op1_1.wrapping_product(&op2_sign));
-                                // [1] * [6]
-                                value.add_assign(&op1_1.wrapping_product(&op2_sign).shl(8));
-
-                                // [2] * [4]
-                                value.add_assign(&op1_2.wrapping_product(&op2_sign));
-                                // [2] * [5]
-                                value.add_assign(&op1_2.wrapping_product(&op2_sign).shl(8));
-
-                                // [3] * [3]
-                                value.add_assign(&op1_3.wrapping_product(&op2_3));
-                                // [3] * [4]
-                                value.add_assign(&op1_3.wrapping_product(&op2_sign).shl(8));
-
-                                // [4] * [2]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_2));
-                                // [4] * [3]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_3).shl(8));
-
-                                // [5] * [1]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_1));
-                                // [5] * [2]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_2).shl(8));
-
-                                // [6] * [0]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_0));
-                                // [6] * [1]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_1).shl(8));
-
-                                // [7] * [0]
-                                value.add_assign(&op1_sign.wrapping_product(&op2_0).shl(8));
-
-                                value.add_assign(&additive_term_sign);
-                                value.sub_assign(&multiplicative_dest);
-
-                                value = value.shr(16);
-                                let byte = value.truncate().truncate();
-                                value = value.shr(8);
-                                let bit_0 = value.get_bit(0);
-                                let bit_1 = value.get_bit(1);
-                                let bit_2 = value.get_bit(2);
-
-                                placer.assign_u8(byte_var, &byte);
-                                placer.assign_mask(bit_0_var, &bit_0);
-                                placer.assign_mask(bit_1_var, &bit_1);
-                                placer.assign_mask(bit_2_var, &bit_2);
-                            };
-
-                            cs.set_values(value_fn);
-                        }
-
-                        let mut cnstr = Constraint::empty();
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[3].1), carry[3].0));
-
-                        cnstr = cnstr + op1_t[0] * op2_t[6];
-                        cnstr = cnstr + op1_t[0] * op2_t[7] * byte_shift_t;
-                        cnstr = cnstr + op1_t[1] * op2_t[5];
-                        cnstr = cnstr + op1_t[1] * op2_t[6] * byte_shift_t;
-                        cnstr = cnstr + op1_t[2] * op2_t[4];
-                        cnstr = cnstr + op1_t[2] * op2_t[5] * byte_shift_t;
-                        cnstr = cnstr + op1_t[3] * op2_t[3];
-                        cnstr = cnstr + op1_t[3] * op2_t[4] * byte_shift_t;
-                        cnstr = cnstr + op1_t[4] * op2_t[2];
-                        cnstr = cnstr + op1_t[4] * op2_t[3] * byte_shift_t;
-                        cnstr = cnstr + op1_t[5] * op2_t[1];
-                        cnstr = cnstr + op1_t[5] * op2_t[2] * byte_shift_t;
-                        cnstr = cnstr + op1_t[6] * op2_t[0];
-                        cnstr = cnstr + op1_t[6] * op2_t[1] * byte_shift_t;
-                        cnstr = cnstr + op1_t[7] * op2_t[0] * byte_shift_t;
-                        cnstr += sign_term;
-                        cnstr -= mul_high_t[1];
-
-                        cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 24),
-                            bit_0.get_variable().unwrap(),
-                        ));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 25),
-                            bit_1.get_variable().unwrap(),
-                        ));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 26),
-                            bit_2.get_variable().unwrap(),
-                        ));
-
-                        cs.add_constraint(cnstr);
-                    }
-                }
-                (Num::Constant(a), Num::Constant(b), Num::Constant(c))
-                    if a == F::ZERO && b == F::ZERO && c == F::ZERO =>
-                {
-                    // we only support unsigned ops, so those terms are 0s
-                    // bits 32-48
-                    let carry = {
-                        assert_eq!(carry.len(), 3);
-
-                        // max range here is 3 * (2^8 - 1) * (2^8 - 1) + 2 * 2^8 * (2^8 - 1) * (2^8 - 1) + (2^10 - 1) = 33488898 < 2^25
-                        // we expect lowest 16 bits to cancel completely, so we prove that it can be decomposed
-                        let bit_0 = cs.add_boolean_variable();
-                        let byte = cs.add_variable();
-                        cs.require_invariant(byte, Invariant::RangeChecked { width: 8 });
-
-                        {
-                            let byte_var = byte;
-                            let bit_0_var = bit_0.get_variable().unwrap();
-
-                            let op1_0 = op1_t[0].get_variable().unwrap();
-                            let op1_1 = op1_t[1].get_variable().unwrap();
-                            let op1_2 = op1_t[2].get_variable().unwrap();
-                            let op1_3 = op1_t[3].get_variable().unwrap();
-                            let op2_0 = op2_t[0].get_variable().unwrap();
-                            let op2_1 = op2_t[1].get_variable().unwrap();
-                            let op2_2 = op2_t[2].get_variable().unwrap();
-                            let op2_3 = op2_t[3].get_variable().unwrap();
-                            let mul_high_t_low = mul_high_t[0].get_variable().unwrap();
-
-                            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                                use crate::cs::witness_placer::*;
-
-                                let _op1_0 = placer.get_u8(op1_0).widen().widen();
-                                let op1_1 = placer.get_u8(op1_1).widen().widen();
-                                let op1_2 = placer.get_u8(op1_2).widen().widen();
-                                let op1_3 = placer.get_u8(op1_3).widen().widen();
-                                let _op2_0 = placer.get_u8(op2_0).widen().widen();
-                                let op2_1 = placer.get_u8(op2_1).widen().widen();
-                                let op2_2 = placer.get_u8(op2_2).widen().widen();
-                                let op2_3 = placer.get_u8(op2_3).widen().widen();
-
-                                let multiplicative_dest = placer.get_u16(mul_high_t_low).widen();
-
-                                let prev_carry_byte = placer.get_u8(carry[0].0).widen().widen();
-                                let prev_carry_bit_0 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[1].0),
-                                    );
-                                let prev_carry_bit_1 =
-                                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(
-                                        placer.get_boolean(carry[2].0),
-                                    );
-
-                                let mut value = prev_carry_byte;
-                                value.add_assign(&prev_carry_bit_0.shl(8));
-                                value.add_assign(&prev_carry_bit_1.shl(9));
-
-                                // [1] * [3]
-                                value.add_assign(&op1_1.wrapping_product(&op2_3));
-
-                                // [2] * [2]
-                                value.add_assign(&op1_2.wrapping_product(&op2_2));
-                                // [2] * [3]
-                                value.add_assign(&op1_2.wrapping_product(&op2_3).shl(8));
-
-                                // [3] * [1]
-                                value.add_assign(&op1_3.wrapping_product(&op2_1));
-                                // [3] * [2]
-                                value.add_assign(&op1_3.wrapping_product(&op2_2).shl(8));
-
-                                value.sub_assign(&multiplicative_dest);
-
-                                value = value.shr(16);
-                                let byte = value.truncate().truncate();
-                                value = value.shr(8);
-                                let bit_0 = value.get_bit(0);
-
-                                placer.assign_u8(byte_var, &byte);
-                                placer.assign_mask(bit_0_var, &bit_0);
-                            };
-
-                            cs.set_values(value_fn);
-                        }
-
-                        let mut cnstr = Constraint::empty();
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[2].1), carry[2].0));
-
-                        cnstr = cnstr + op1_t[1] * op2_t[3];
-                        cnstr = cnstr + op1_t[2] * op2_t[2];
-                        cnstr = cnstr + op1_t[2] * op2_t[3] * byte_shift_t;
-                        cnstr = cnstr + op1_t[3] * op2_t[1];
-                        cnstr = cnstr + op1_t[3] * op2_t[2] * byte_shift_t;
-                        cnstr -= mul_high_t[0];
-
-                        cnstr -= Term::from((F::from_u64_unchecked(1 << 16), byte));
-                        cnstr -= Term::from((
-                            F::from_u64_unchecked(1 << 24),
-                            bit_0.get_variable().unwrap(),
-                        ));
-
-                        cs.add_constraint(cnstr);
-
-                        [(byte, 0), (bit_0.get_variable().unwrap(), 8)]
-                    };
-                    // and final bits just match into 0, we just need a constraint here and no decompositions
-                    {
-                        assert_eq!(carry.len(), 2);
-
-                        let mut cnstr = Constraint::empty();
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[0].1), carry[0].0));
-                        cnstr +=
-                            Term::from((F::from_u64_unchecked(1u64 << carry[1].1), carry[1].0));
-
-                        cnstr = cnstr + op1_t[3] * op2_t[3];
-                        cnstr -= mul_high_t[1];
-
-                        cs.add_constraint(cnstr);
-                    }
-                }
-                a @ _ => {
-                    panic!("Combination of signs {:?} is not supported", a);
-                }
-            }
+            Self::enforce_mul_relation(
+                cs,
+                op1,
+                op1_sign,
+                op2,
+                op2_sign,
+                additive_term,
+                add_term_sign,
+                mul_low,
+                mul_high,
+            );
 
             cur_index += 1;
         }

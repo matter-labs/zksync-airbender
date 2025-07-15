@@ -2,6 +2,7 @@ use one_row_compiler::LookupInput;
 
 use super::*;
 use crate::devices::diffs::PC_INC_STEP;
+use crate::machine::ops::*;
 use crate::tables::*;
 
 pub fn assert_no_unimp<F: PrimeField, C: Circuit<F>>(_cs: &mut C, _next_opcode: Register<F>) {
@@ -127,16 +128,140 @@ pub fn calculate_pc_next_no_overflows<F: PrimeField, CS: Circuit<F>>(
     pc_next
 }
 
-// pub fn read_from_mem<F: PrimeField, C: Circuit<F>>(
-//     cs: &mut C,
-//     _addr: Register<F>,
-//     opt_ctx: &mut OptimizationContext<F, C>,
-//     exec_flag: Boolean,
-// ) -> RegisterDecomposition<F> {
-//     let mem_slot = Register::new_from_placeholder::<C>(cs, Placeholder::MemSlot);
-//     let res = RegisterDecomposition::split_reg_with_opt_ctx(cs, mem_slot, opt_ctx, exec_flag);
-//     res
-// }
+pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
+    circuit: &mut CS,
+    pc: Register<F>,
+    pc_next: Register<F>,
+) {
+    // Input invariant: PC % 4 == 0, preserved as:
+    // - initial PC is valid % 4
+    // - jumps and branches check for alignemnts
+
+    // check if PC_LOW + 4 is exactly 2^16, and then select
+
+    let carry_var = {
+        let pc_low_var = pc.0[0].get_variable();
+        let pc_next_low_var = pc_next.0[0].get_variable();
+
+        // (var - var2) * zero_flag = 0;
+        // (var - var2) * var_inv = 1 - zero_flag;
+        let var_inv = circuit.add_variable();
+        let low_eq_flag = circuit.add_boolean_variable();
+        let low_eq_flag_var = low_eq_flag.get_variable().unwrap();
+
+        circuit.add_constraint(
+            (Term::from(pc_low_var) + Term::from(PC_INC_STEP) - Term::from(1 << 16))
+                * Term::from(low_eq_flag),
+        );
+        circuit.add_constraint(
+            (Term::from(pc_low_var) + Term::from(PC_INC_STEP) - Term::from(1 << 16))
+                * Term::from(var_inv)
+                + Term::from(low_eq_flag)
+                - Term::from(1),
+        );
+
+        // then select - just make a constraint - if equal then 0, otherwise - result of addition
+        circuit.add_constraint(
+            (Term::from(1) - Term::from(low_eq_flag))
+                * (Term::from(pc_low_var) + Term::from(PC_INC_STEP))
+                - Term::from(pc_next_low_var),
+        );
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            use crate::cs::witness_placer::*;
+
+            let pc_low = placer.get_u16(pc_low_var);
+            let step = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(PC_INC_STEP as u16);
+            let (maybe_next_pc_low, of) = pc_low.overflowing_add(&step);
+            // if we have overflow, then it's equal indeed
+            placer.assign_mask(low_eq_flag_var, &of);
+
+            // actually assign a value for next PC
+            let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let selected_pc_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &of,
+                &zero,
+                &maybe_next_pc_low,
+            );
+            placer.assign_u16(pc_next_low_var, &selected_pc_value);
+
+            let mut tmp =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(pc_low.widen());
+            tmp.add_assign(&<CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                F::from_u64_unchecked(PC_INC_STEP),
+            ));
+            tmp.sub_assign(&<CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                F::from_u64_unchecked(1 << 16),
+            ));
+            let tmp = tmp.inverse_or_zero();
+            placer.assign_field(var_inv, &tmp);
+        };
+        circuit.set_values(value_fn);
+
+        low_eq_flag_var
+    };
+
+    // now effectively the same, but with variable instead of constant step
+    let pc_high_var = pc.0[1].get_variable();
+    let pc_next_high_var = pc_next.0[1].get_variable();
+
+    {
+        // (var - var2) * zero_flag = 0;
+        // (var - var2) * var_inv = 1 - zero_flag;
+        let var_inv = circuit.add_variable();
+        let eq_flag = circuit.add_boolean_variable();
+        let eq_flag_var = eq_flag.get_variable().unwrap();
+
+        circuit.add_constraint(
+            (Term::from(pc_high_var) + Term::from(carry_var) - Term::from(1 << 16))
+                * Term::from(eq_flag),
+        );
+        circuit.add_constraint(
+            (Term::from(pc_high_var) + Term::from(carry_var) - Term::from(1 << 16))
+                * Term::from(var_inv)
+                + Term::from(eq_flag)
+                - Term::from(1),
+        );
+
+        // then select - just make a constraint
+        circuit.add_constraint(
+            (Term::from(1) - Term::from(eq_flag))
+                * (Term::from(pc_high_var) + Term::from(carry_var))
+                - Term::from(pc_next_high_var),
+        );
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            use crate::cs::witness_placer::*;
+
+            let pc_high = placer.get_u16(pc_high_var);
+            let step = placer.get_u16(carry_var);
+            let (maybe_next_pc_high, of) = pc_high.overflowing_add(&step);
+            // if we have overflow, then it's equal indeed
+            placer.assign_mask(eq_flag_var, &of);
+
+            // actually assign a value for next PC
+            let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let selected_pc_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &of,
+                &zero,
+                &maybe_next_pc_high,
+            );
+            placer.assign_u16(pc_next_high_var, &selected_pc_value);
+
+            let mut tmp =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(pc_high.widen());
+            tmp.add_assign(
+                &<CS::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(step.widen()),
+            );
+            tmp.sub_assign(&<CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                F::from_u64_unchecked(1 << 16),
+            ));
+            let tmp = tmp.inverse_or_zero();
+            placer.assign_field(var_inv, &tmp);
+        };
+        circuit.set_values(value_fn);
+    }
+}
 
 #[allow(deprecated)]
 pub fn read_from_shuffle_ram_or_bytecode_with_ctx<F: PrimeField, C: Circuit<F>>(
@@ -329,6 +454,75 @@ pub(crate) fn get_rs1_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     (value, query)
 }
 
+pub(crate) fn get_rs2_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
+    cs: &mut C,
+    reg_encoding: Num<F>,
+    bytecode_is_in_rom_only: bool,
+) -> (Register<F>, ShuffleRamMemQuery) {
+    // NOTE: since we use a value from read set, it means we do not need range check
+    let (mut local_timestamp_in_cycle, placeholder) =
+        (RS2_LOAD_LOCAL_TIMESTAMP, Placeholder::SecondRegMem);
+    if bytecode_is_in_rom_only == false {
+        local_timestamp_in_cycle += 1;
+    }
+
+    // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
+    // so any reads will have to be range-checked
+    let value = Register::new_unchecked_from_placeholder::<C>(cs, placeholder);
+
+    // registers live in their separate address space
+    let query = form_mem_op_for_register_only(local_timestamp_in_cycle, reg_encoding, value, value);
+
+    (value, query)
+}
+
+pub(crate) fn set_rd_with_mask_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
+    cs: &mut C,
+    reg_encoding: Num<F>,
+    write_value: Register<F>,
+    reg_is_x0: Boolean,
+    bytecode_is_in_rom_only: bool,
+) -> ShuffleRamMemQuery {
+    let local_timestamp_in_cycle = if bytecode_is_in_rom_only {
+        RD_STORE_LOCAL_TIMESTAMP
+    } else {
+        RD_STORE_LOCAL_TIMESTAMP + 1
+    };
+    let read_value =
+        Register::new_unchecked_from_placeholder(cs, Placeholder::WriteRdReadSetWitness);
+    let masked_write_value = write_value.mask(cs, reg_is_x0.toggle());
+    let query = form_mem_op_for_register_only(
+        local_timestamp_in_cycle,
+        reg_encoding,
+        read_value,
+        masked_write_value,
+    );
+
+    query
+}
+
+pub(crate) fn set_rd_without_mask_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
+    cs: &mut C,
+    reg_encoding: Num<F>,
+    write_value: Register<F>,
+    bytecode_is_in_rom_only: bool,
+) -> ShuffleRamMemQuery {
+    let local_timestamp_in_cycle = if bytecode_is_in_rom_only {
+        RD_STORE_LOCAL_TIMESTAMP
+    } else {
+        RD_STORE_LOCAL_TIMESTAMP + 1
+    };
+    let read_value =
+        Register::new_unchecked_from_placeholder(cs, Placeholder::WriteRdReadSetWitness);
+    let query = form_mem_op_for_register_only(
+        local_timestamp_in_cycle,
+        reg_encoding,
+        read_value,
+        write_value,
+    );
+    query
+}
+
 #[allow(dead_code)]
 pub(crate) struct RS2ShuffleRamQueryCandidate<F: PrimeField> {
     pub(crate) rs2: Constraint<F>,
@@ -461,4 +655,258 @@ pub fn form_mem_op_for_register_only<F: PrimeField>(
         read_value: read_value.0.map(|el| el.get_variable()),
         write_value: write_value.0.map(|el| el.get_variable()),
     }
+}
+
+pub fn get_sign_bit_from_orthogonal_terms<F: PrimeField, CS: Circuit<F>, const N: usize>(
+    cs: &mut CS,
+    orthoflags: [Boolean; N],
+    orthoxs: [Variable; N],
+) -> Boolean {
+    let underflow = cs.add_boolean_variable();
+    let out = cs.add_variable_with_range_check(16);
+
+    let value_vars = orthoflags
+        .iter()
+        .zip(orthoxs.iter())
+        .map(|(&b, &x)| (b, x))
+        .collect::<Vec<(Boolean, Variable)>>();
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::*;
+        let mut input_v = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+        for (b, x) in &value_vars {
+            let b_v = placer.get_boolean(b.get_variable().unwrap());
+            let x_v = placer.get_u16(*x);
+            input_v.assign_masked(&b_v, &x_v);
+        }
+        let highest_v = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(1 << 15);
+        let (out_v, underflow_v) = input_v.overflowing_sub(&highest_v);
+        placer.assign_mask(underflow.get_variable().unwrap(), &underflow_v);
+        placer.assign_u16(out.get_variable(), &out_v);
+    };
+    cs.set_values(value_fn);
+
+    let mut input = Constraint::empty();
+    for (&b, &x) in orthoflags.iter().zip(orthoxs.iter()) {
+        input = input + Term::from(b) * Term::from(x);
+    }
+    cs.add_constraint(
+        (input - Term::from(1 << 15))
+            - (Constraint::from(out) - Term::from(1 << 16) * Term::from(underflow)),
+    );
+    underflow.toggle()
+}
+
+pub fn get_sign_bit_masked<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    x: Variable,
+    mask: Boolean,
+) -> Boolean {
+    let not_underflow = cs.add_boolean_variable();
+    let underflow = not_underflow.toggle();
+    let out = cs.add_variable_with_range_check(16);
+
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::*;
+        let x_v = placer.get_u16(x);
+        let mask_v = match mask {
+            Boolean::Is(var) => placer.get_boolean(var),
+            Boolean::Not(var) => placer.get_boolean(var).negate(),
+            Boolean::Constant(c) => {
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(c)
+            }
+        };
+        let (out_v_masked, underflow_v_masked) = {
+            let highest_v = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(1 << 15);
+            let (out_v, underflow_v) = x_v.overflowing_sub(&highest_v);
+            let out_v_masked =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(&mask_v, &out_v, &x_v);
+            let underflow_v_masked = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                &mask_v,
+                &underflow_v,
+                &mask_v.negate(),
+            );
+            (out_v_masked, underflow_v_masked)
+        };
+        let not_underflow_v_masked = underflow_v_masked.negate();
+        placer.assign_mask(
+            not_underflow.get_variable().unwrap(),
+            &not_underflow_v_masked,
+        );
+        placer.assign_u16(out.get_variable(), &out_v_masked);
+    };
+    cs.set_values(value_fn);
+
+    cs.add_constraint_allow_explicit_linear(
+        (Constraint::from(x)
+            - Term::from(1 << 15) * Constraint::from(mask)
+            - Term::from(1 << 16) * Constraint::from(mask.toggle()))
+            - (Constraint::from(out) - Term::from(1 << 16) * Constraint::from(underflow)),
+    );
+    underflow.toggle()
+}
+
+pub fn get_reg_add_and_overflow<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    a: Register<F>,
+    b: Register<F>,
+) -> (Register<F>, Boolean) {
+    let c = Register::new(cs);
+    // We do not need to make intermediate carry at all, so we can just re-express it
+    // as constraint, and require booleanity
+    let of = Boolean::new(cs);
+
+    let [a_low, a_high] = a.0.map(|x| x.get_variable());
+    let [b_low, b_high] = b.0.map(|x| x.get_variable());
+    let [c_low, c_high] = c.0.map(|x| x.get_variable());
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::*;
+        let a_value = placer.get_u32_from_u16_parts([a_low, a_high]);
+        let b_value = placer.get_u32_from_u16_parts([b_low, b_high]);
+
+        let (c_value, of_value) = a_value.overflowing_add(&b_value);
+        placer.assign_u32_from_u16_parts([c_low, c_high], &c_value);
+        placer.assign_mask(of.get_variable().unwrap(), &of_value);
+    };
+    cs.set_values(value_fn);
+
+    let mut carry_constraint = Constraint::from(a_low) + Term::from(b_low) - Term::from(c_low);
+    carry_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
+
+    let bool_constraint = carry_constraint.clone() * (carry_constraint.clone() - Term::from(1));
+    cs.add_constraint(bool_constraint);
+
+    cs.add_constraint_allow_explicit_linear(
+        carry_constraint + Term::from(a_high) + Term::from(b_high)
+            - (Constraint::from(c_high) + Term::from(1 << 16) * Term::from(of)),
+    );
+    (c, of)
+}
+
+pub fn get_reg_sub_and_underflow<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    a: Register<F>,
+    b: Register<F>,
+) -> (Register<F>, Boolean) {
+    let c = Register::new(cs);
+    // We do not need to make intermediate carry at all, so we can just re-express it
+    // as constraint, and require booleanity
+    let uf = Boolean::new(cs);
+
+    let [a_low, a_high] = a.0.map(|x| x.get_variable());
+    let [b_low, b_high] = b.0.map(|x| x.get_variable());
+    let [c_low, c_high] = c.0.map(|x| x.get_variable());
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::*;
+        let a_value = placer.get_u32_from_u16_parts([a_low, a_high]);
+        let b_value = placer.get_u32_from_u16_parts([b_low, b_high]);
+
+        let (c_value, uf_value) = a_value.overflowing_sub(&b_value);
+        placer.assign_u32_from_u16_parts([c_low, c_high], &c_value);
+        placer.assign_mask(uf.get_variable().unwrap(), &uf_value);
+    };
+    cs.set_values(value_fn);
+
+    // a - b == c - 2^16 uf --> 2^16 uf == c - a + b
+    let mut carry_constraint = Constraint::from(c_low) - Term::from(a_low) + Term::from(b_low);
+    carry_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
+
+    let bool_constraint = carry_constraint.clone() * (carry_constraint.clone() - Term::from(1));
+    cs.add_constraint(bool_constraint);
+
+    cs.add_constraint_allow_explicit_linear(
+        Constraint::from(a_high)
+            - Term::from(b_high)
+            - carry_constraint
+            - (Constraint::from(c_high) - Term::from(1 << 16) * Term::from(uf)),
+    );
+    (c, uf)
+}
+
+pub fn choose_reg_add_sub_and_overflow<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    is_add: Boolean,
+    a: Register<F>,
+    b: Register<F>,
+) -> (Register<F>, Boolean) {
+    let c = Register::new(cs);
+    let of_low = Boolean::new(cs);
+    let of_high = Boolean::new(cs);
+
+    let [a_low, a_high] = a.0.map(|x| x.get_variable());
+    let [b_low, b_high] = b.0.map(|x| x.get_variable());
+    let [c_low, c_high] = c.0.map(|x| x.get_variable());
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::*;
+        let is_add_value = match is_add {
+            Boolean::Is(var) => placer.get_boolean(var),
+            Boolean::Not(var) => placer.get_boolean(var).negate(),
+            Boolean::Constant(c) => {
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(c)
+            }
+        };
+        let a_low_value = placer.get_u16(a_low);
+        let b_low_value = placer.get_u16(b_low);
+        let (c_low_value, of_low_value) = {
+            let (cadd_low_value, ofadd_low_value) = a_low_value.overflowing_add(&b_low_value);
+            let (csub_low_value, ofsub_low_value) = a_low_value.overflowing_sub(&b_low_value);
+            let c_low_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &is_add_value,
+                &cadd_low_value,
+                &csub_low_value,
+            );
+            let of_low_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_add_value,
+                    &ofadd_low_value,
+                    &ofsub_low_value,
+                ); // bit ridiculous
+            (c_low_value, of_low_value)
+        };
+        let a_high_value = placer.get_u16(a_high);
+        let b_high_value = placer.get_u16(b_high);
+        let (c_high_value, of_high_value) = {
+            let (cadd_high_value, ofadd_high_value) =
+                a_high_value.overflowing_add_with_carry(&b_high_value, &of_low_value);
+            let (csub_high_value, ofsub_high_value) =
+                a_high_value.overflowing_sub_with_borrow(&b_high_value, &of_low_value);
+            let c_high_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                    &is_add_value,
+                    &cadd_high_value,
+                    &csub_high_value,
+                );
+            let of_high_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_add_value,
+                    &ofadd_high_value,
+                    &ofsub_high_value,
+                ); // bit ridiculous
+            (c_high_value, of_high_value)
+        };
+        placer.assign_u16(c_low, &c_low_value);
+        placer.assign_u16(c_high, &c_high_value);
+        placer.assign_mask(of_low.get_variable().unwrap(), &of_low_value);
+        placer.assign_mask(of_high.get_variable().unwrap(), &of_high_value);
+    };
+    cs.set_values(value_fn);
+
+    let is_sub = is_add.toggle();
+    cs.add_constraint(
+        Constraint::from(is_add) * Term::from(a_low)
+            + Constraint::from(is_sub) * Term::from(c_low)
+            + Term::from(b_low)
+            - (Constraint::from(is_add) * Term::from(c_low)
+                + Constraint::from(is_sub) * Term::from(a_low)
+                + Term::from(1 << 16) * Term::from(of_low)),
+    );
+    cs.add_constraint(
+        Constraint::from(is_add) * Term::from(a_high)
+            + Constraint::from(is_sub) * Term::from(c_high)
+            + Term::from(b_high)
+            + Term::from(of_low)
+            - (Constraint::from(is_add) * Term::from(c_high)
+                + Constraint::from(is_sub) * Term::from(a_high)
+                + Term::from(1 << 16) * Term::from(of_high)),
+    );
+    (c, of_high)
 }

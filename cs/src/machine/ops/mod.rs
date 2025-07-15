@@ -6,13 +6,14 @@ pub mod conditional;
 pub mod constants;
 pub mod csr;
 pub mod jump;
-pub mod lui_auipc;
-// pub mod memory;
 pub mod load;
+pub mod lui_auipc;
 pub mod mop;
 pub mod mul_div;
 pub mod shift;
 pub mod store;
+
+pub mod unrolled;
 
 pub mod common_impls;
 

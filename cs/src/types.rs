@@ -592,8 +592,29 @@ impl Boolean {
                         Boolean::Is(new_var)
                     }
 
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
+                    &Boolean::Not(cond) => {
+                        // new_var = flag * b + (1-flag) * a
+                        let new_var = cs.add_variable();
+
+                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                            use crate::cs::witness_placer::*;
+                            let mask = placer.get_boolean(cond).negate();
+                            let selection_result =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                                    &mask,
+                                    &placer.get_boolean(a),
+                                    &placer.get_boolean(b),
+                                );
+                            placer.assign_mask(new_var, &selection_result);
+                        };
+                        cs.set_values(value_fn);
+
+                        cs.add_constraint(
+                            Constraint::from(new_var)
+                                - (Term::from(cond) * Term::from(b)
+                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
+                        );
+                        Boolean::Is(new_var)
                     }
                 }
             }

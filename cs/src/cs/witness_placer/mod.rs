@@ -1,9 +1,8 @@
-use crate::definitions::Variable;
+use super::placeholder::Placeholder;
+use crate::definitions::*;
 use core::fmt::Debug;
 use field::{Field, PrimeField};
 use std::any::Any;
-
-use super::placeholder::Placeholder;
 
 pub mod cs_debug_evaluator;
 pub mod graph_description;
@@ -394,6 +393,9 @@ pub trait WitnessPlacer<F: PrimeField>: WitnessTypeSet<F> {
     ) -> [Self::Field; N];
 
     fn lookup_enforce<const M: usize>(&mut self, inputs: &[Self::Field; M], table_id: &Self::U16);
+
+    fn assume_assigned(&mut self, variable: Variable);
+    fn spec_decoder_relation(&mut self, pc: [Variable; 2], decoder_data: &DecoderData<F>);
 }
 
 pub trait WitnessMask: 'static + Sized + Clone + Debug {
@@ -910,5 +912,24 @@ impl WitnessComputationalI32 for i32 {
 
         (q, r)
         // divident.div_rem(*divisor)
+    }
+}
+
+pub fn witness_early_branch_if_possible<
+    F: PrimeField,
+    W: WitnessPlacer<F>,
+    T: WitnessResolutionDescription<F, W>,
+>(
+    branch_mask: W::Mask,
+    placer: &mut W,
+    node: &T,
+) {
+    if W::CAN_BRANCH {
+        if W::branch(&branch_mask) {
+            node.evaluate(placer);
+        }
+    } else {
+        // we should use conditional assignment anyway
+        node.evaluate(placer);
     }
 }

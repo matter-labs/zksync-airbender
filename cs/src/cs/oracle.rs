@@ -4,6 +4,18 @@ use crate::definitions::TimestampScalar;
 
 use super::placeholder::Placeholder;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ExecutorFamilyDecoderData {
+    pub imm: u32,
+    pub rs1_index: u8,
+    pub rs2_index: u8,
+    pub rd_index: u8,
+    pub rd_is_zero: bool,
+    pub funct3: u8,
+    pub funct7: Option<u8>,
+    pub opcode_family_bits: u8,
+}
+
 pub trait Oracle<F: PrimeField>: Send + Sync {
     fn get_witness_from_placeholder(
         &self,
@@ -38,4 +50,9 @@ pub trait Oracle<F: PrimeField>: Send + Sync {
         placeholder: Placeholder,
         trace_row: usize,
     ) -> TimestampScalar;
+
+    fn get_executor_family_data(&self, trace_row: usize) -> ExecutorFamilyDecoderData {
+        let _ = trace_row;
+        unimplemented!("unimplemented by default")
+    }
 }

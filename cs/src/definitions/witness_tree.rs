@@ -6,6 +6,7 @@ pub struct WitnessSubtree<F: PrimeField> {
     // in the prover
     pub multiplicities_columns_for_range_check_16: ColumnSet<1>,
     pub multiplicities_columns_for_timestamp_range_check: ColumnSet<1>,
+    pub multiplicities_columns_for_decoder_in_executor_families: ColumnSet<1>,
     pub multiplicities_columns_for_generic_lookup: ColumnSet<1>,
     pub range_check_8_columns: ColumnSet<1>,
     pub range_check_16_columns: ColumnSet<1>,

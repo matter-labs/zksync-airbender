@@ -4,6 +4,7 @@ use field::PrimeField;
 pub const NUM_INSTRUCTION_TYPES: usize = 6;
 pub const CSR_ENCODING_BITLEN: usize = 12;
 
+// NOTE: Order of variants is important as we use it in circuits
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum InstructionType {
@@ -13,6 +14,39 @@ pub enum InstructionType {
     BType,
     UType,
     JType,
+}
+
+impl InstructionType {
+    pub fn parse_imm(&self, opcode: u32, avoid_i_type_sign_extend: bool) -> u32 {
+        use crate::one_row_compiler::*;
+
+        match self {
+            InstructionType::RType => 0,
+            InstructionType::IType => {
+                let mut imm = i_type_imm_bits(opcode);
+                if avoid_i_type_sign_extend == false {
+                    sign_extend(&mut imm, 12);
+                }
+                imm
+            }
+            InstructionType::JType => {
+                let mut imm = j_type_imm_bits(opcode);
+                sign_extend(&mut imm, 21);
+                imm
+            }
+            InstructionType::UType => u_type_imm_bits(opcode),
+            InstructionType::BType => {
+                let mut imm = b_type_imm_bits(opcode);
+                sign_extend(&mut imm, 13);
+                imm
+            }
+            InstructionType::SType => {
+                let mut imm = s_type_imm_bits(opcode);
+                sign_extend(&mut imm, 12);
+                imm
+            }
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]

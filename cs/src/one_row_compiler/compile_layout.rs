@@ -2,10 +2,10 @@ use delegation::*;
 
 use super::*;
 
-struct ShuffleRamTimestampComparisonPartialData {
-    intermediate_borrow: Variable,
-    read_timestamp: [Variable; 2],
-    local_timestamp_in_cycle: usize,
+pub(crate) struct ShuffleRamTimestampComparisonPartialData {
+    pub(crate) intermediate_borrow: Variable,
+    pub(crate) read_timestamp: [Variable; 2],
+    pub(crate) local_timestamp_in_cycle: usize,
 }
 
 struct DelegationMemoryAccessesAuxVars {
@@ -60,11 +60,14 @@ impl<F: PrimeField> OneRowCompiler<F> {
             substitutions,
             delegated_computation_requests,
             degegated_request_to_process,
-            batched_memory_accesses,
             register_and_indirect_memory_accesses,
+            decoder_machine_state,
+            executor_machine_state,
         } = circuit_output;
 
         assert!(trace_len_log2 > TIMESTAMP_COLUMNS_NUM_BITS as usize);
+        assert!(decoder_machine_state.is_none());
+        assert!(executor_machine_state.is_none());
 
         if FOR_DELEGATION {
             assert!(state_input.is_empty());
@@ -73,15 +76,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             assert!(linked_variables.is_empty());
             assert!(degegated_request_to_process.is_some());
             assert!(delegated_computation_requests.is_empty());
-            assert!(
-                batched_memory_accesses.len() > 0
-                    || register_and_indirect_memory_accesses.len() > 0
-            );
-
-            assert!(
-                batched_memory_accesses.is_empty(),
-                "batched RAM accesses are deprecated"
-            );
+            assert!(register_and_indirect_memory_accesses.len() > 0);
 
             for el in lookups.iter() {
                 let LookupQueryTableType::Constant(table_type) = el.table else {
@@ -98,7 +93,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
             assert_eq!(shuffle_ram_queries.len(), 3);
             assert!(linked_variables.is_empty());
             assert!(degegated_request_to_process.is_none());
-            assert!(batched_memory_accesses.is_empty());
             assert!(register_and_indirect_memory_accesses.is_empty());
         }
 
@@ -115,8 +109,14 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // we can immediately make setup layout
         let need_timestamps = !FOR_DELEGATION;
-        let setup_layout =
-            SetupLayout::layout_for_lookup_size(total_tables_size, trace_len, need_timestamps);
+        let setup_layout = SetupLayout::layout_for_lookup_size(
+            total_tables_size,
+            trace_len,
+            true,
+            true,
+            need_timestamps,
+            false,
+        );
 
         assert!(
             delegated_computation_requests.len() <= 1,
@@ -137,9 +137,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         // as a byproduct we will also create a map of witness generation functions
         let mut layout = BTreeMap::<Variable, ColumnAddress>::new();
 
-        const SHIFT_16: u64 = 1 << 16;
-
-        let mut shuffle_ram_extra_range_check_16_partial_sets = vec![];
+        let mut shuffle_ram_timestamp_range_check_partial_sets = vec![];
         // These expressions mix variables between memory and witness subtree (e.g boolean carries),
         // and so we will compile it later when booleans are allocated
         let mut timestamp_range_check_expressions_to_compile = vec![];
@@ -327,7 +325,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
                     assert!(
                         indirects_alignment_log2 >= std::mem::align_of::<u32>().trailing_zeros()
                     );
-
                     // and we also enforce that pointer is aligned, by performing an extra range-check over shifted one
                     let mut compiled_linear_terms = vec![];
                     let place = ColumnAddress::MemorySubtree(
@@ -571,6 +568,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 delegation_processor_layout: Some(delegation_processor_layout),
                 batched_ram_accesses: vec![],
                 register_and_indirect_accesses,
+                machine_state_layout: None,
+                intermediate_state_layout: None,
                 total_width: memory_tree_offset,
             };
 
@@ -711,7 +710,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                     read_timestamp: [read_timestamp_low, read_timestamp_high],
                     local_timestamp_in_cycle: memory_query.local_timestamp_in_cycle,
                 };
-                shuffle_ram_extra_range_check_16_partial_sets.push(partial_data);
+                shuffle_ram_timestamp_range_check_partial_sets.push(partial_data);
 
                 let set = borrow_var;
                 memory_timestamp_comparison_sets.push(set);
@@ -835,7 +834,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
                 let DelegatedComputationRequest {
                     execute,
-                    degegation_type,
+                    delegation_type,
                     memory_offset_high,
                 } = request;
 
@@ -847,7 +846,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 );
                 let delegation_type = layout_memory_subtree_variable(
                     &mut memory_tree_offset,
-                    degegation_type,
+                    delegation_type,
                     &mut all_variables_to_place,
                     &mut layout,
                 );
@@ -883,6 +882,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 delegation_processor_layout: None,
                 batched_ram_accesses: vec![],
                 register_and_indirect_accesses: vec![],
+                machine_state_layout: None,
+                intermediate_state_layout: None,
                 total_width: memory_tree_offset,
             };
 
@@ -918,76 +919,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup,
         );
 
-        for range_check in range_check_expressions.iter() {
-            let RangeCheckQuery { input, width } = range_check;
-            let LookupInput::Variable(..) = input else {
-                unimplemented!()
-            };
-            assert!(
-                *width == LARGE_RANGE_CHECK_TABLE_WIDTH || *width == SMALL_RANGE_CHECK_TABLE_WIDTH
-            );
-        }
-
-        // We will place 8-bit range check variables, and then 16-bit ones
-
-        let range_check_8_iter = range_check_expressions
-            .iter()
-            .filter(|el| el.width == SMALL_RANGE_CHECK_TABLE_WIDTH);
-        let range_check_16_iter = range_check_expressions
-            .iter()
-            .filter(|el| el.width == LARGE_RANGE_CHECK_TABLE_WIDTH);
-
-        let num_range_check_8 = range_check_8_iter.clone().count();
-        let num_range_check_16 = range_check_16_iter.clone().count();
-
-        let range_check_8_columns: ColumnSet<1> =
-            ColumnSet::layout_at(&mut witness_tree_offset, num_range_check_8);
-        let range_check_8_columns_it = range_check_8_columns.iter();
-
-        for (input, mut layout_part) in range_check_8_iter.zip(range_check_8_columns_it) {
-            let LookupInput::Variable(input) = input.input else {
-                unimplemented!()
-            };
-            let offset = layout_part.next().unwrap();
-            let _place = layout_witness_subtree_variable_at_column(
-                offset,
-                input,
+        let (range_check_8_columns, range_check_16_columns, range_check_16_lookup_expressions) =
+            allocate_range_check_expressions(
+                trace_len,
+                compiled_extra_range_check_16_expressions,
+                &range_check_expressions,
+                &mut witness_tree_offset,
                 &mut all_variables_to_place,
                 &mut layout,
             );
-        }
-
-        // range checks 16 deserve their own treatment and own table, and for lookups over explicit variables
-        // we just layout those continuously in the row. We will also declare formal lookup expressions over them,
-        // as below we will declare less-trivial range-check 16 expressions
-
-        let mut range_check_16_lookup_expressions = vec![];
-
-        // TODO
-        // we may have special case where we required invariant for some variable, that would end up in
-        // memory columns, but we do NOT handle it yet and will panic on it below
-
-        let range_check_16_columns: ColumnSet<1> =
-            ColumnSet::layout_at(&mut witness_tree_offset, num_range_check_16);
-
-        for (range_check, layout_part) in range_check_16_iter.zip(range_check_16_columns.iter()) {
-            let RangeCheckQuery { input, .. } = range_check;
-            let LookupInput::Variable(variable) = input else {
-                unimplemented!()
-            };
-            let mut layout_part = layout_part;
-            let offset = layout_part.next().unwrap();
-            let place = layout_witness_subtree_variable_at_column(
-                offset,
-                *variable,
-                &mut all_variables_to_place,
-                &mut layout,
-            );
-            let lookup_expr = LookupExpression::Variable(place);
-            range_check_16_lookup_expressions.push(lookup_expr)
-        }
-
-        range_check_16_lookup_expressions.extend(compiled_extra_range_check_16_expressions);
 
         // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
 
@@ -1041,569 +981,52 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // after we placed booleans, we can finally compiled lookup expressions, and other compiler-provided things like timestamp comparisons
 
-        // width 3 tables
+        // width 3 lookup
 
-        let mut width_3_lookups = vec![];
+        let width_3_lookups = allocate_width_3_lookups(
+            trace_len,
+            lookups,
+            &mut witness_tree_offset,
+            &mut all_variables_to_place,
+            &mut layout,
+        );
 
-        for lookup_query in lookups {
-            let LookupQuery { row, table } = lookup_query;
-            assert_eq!(row.len(), 3);
-
-            let mut input_columns = Vec::with_capacity(3);
-            for el in row.into_iter() {
-                match el {
-                    LookupInput::Variable(single_var) => {
-                        let place = if let Some(place) = layout.get(&single_var) {
-                            // it's already placed
-                            *place
-                        } else {
-                            let column = layout_witness_subtree_variable(
-                                &mut witness_tree_offset,
-                                single_var,
-                                &mut all_variables_to_place,
-                                &mut layout,
-                            );
-                            let place = ColumnAddress::WitnessSubtree(column.start);
-
-                            place
-                        };
-
-                        let lookup_expr = LookupExpression::Variable(place);
-                        input_columns.push(lookup_expr);
-                    }
-                    LookupInput::Expression {
-                        linear_terms,
-                        constant_coeff,
-                    } => {
-                        // place all of them
-                        let mut compiled_linear_terms = vec![];
-                        for (coeff, var) in linear_terms.iter() {
-                            let place = if let Some(place) = layout.get(var) {
-                                // it's already placed
-                                *place
-                            } else {
-                                let column = layout_witness_subtree_variable(
-                                    &mut witness_tree_offset,
-                                    *var,
-                                    &mut all_variables_to_place,
-                                    &mut layout,
-                                );
-                                let place = ColumnAddress::WitnessSubtree(column.start);
-
-                                place
-                            };
-                            compiled_linear_terms.push((*coeff, place));
-                        }
-                        let compiled_constraint = CompiledDegree1Constraint {
-                            linear_terms: compiled_linear_terms.into_boxed_slice(),
-                            constant_term: constant_coeff,
-                        };
-                        let lookup_expr = LookupExpression::Expression(compiled_constraint);
-                        input_columns.push(lookup_expr);
-                    }
-                }
-            }
-
-            let table_index = match table {
-                LookupQueryTableType::Constant(constant) => TableIndex::Constant(constant),
-                LookupQueryTableType::Variable(variable) => {
-                    let column = layout_witness_subtree_variable(
-                        &mut witness_tree_offset,
-                        variable,
-                        &mut all_variables_to_place,
-                        &mut layout,
-                    );
-                    let place = ColumnAddress::WitnessSubtree(column.start);
-                    TableIndex::Variable(place)
-                }
-            };
-
-            let lookup = LookupSetDescription {
-                input_columns: input_columns.try_into().unwrap(),
-                table_index,
-            };
-            width_3_lookups.push(lookup);
-        }
-
-        let total_generic_lookups = width_3_lookups.len() as u64 * trace_len as u64;
-        assert!(total_generic_lookups < F::CHARACTERISTICS, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS);
-
-        let mut compiled_timestamp_comparison_expressions = vec![];
-
-        // we already have enough information to compile range check expressions that are left from memory accesses layout
-        for input in timestamp_range_check_expressions_to_compile.into_iter() {
-            let LookupInput::Expression {
-                linear_terms,
-                constant_coeff,
-            } = input
-            else {
-                panic!()
-            };
-            // place all of them
-            let mut compiled_linear_terms = vec![];
-            for (coeff, var) in linear_terms.iter() {
-                let place = layout
-                    .get(var)
-                    .copied()
-                    .expect("all variables must be already placed");
-                compiled_linear_terms.push((*coeff, place));
-            }
-            let compiled_constraint = CompiledDegree1Constraint {
-                linear_terms: compiled_linear_terms.into_boxed_slice(),
-                constant_term: constant_coeff,
-            };
-            let lookup_expr = LookupExpression::Expression(compiled_constraint);
-            compiled_timestamp_comparison_expressions.push(lookup_expr);
-        }
-
-        let offset_for_special_shuffle_ram_timestamps_range_check_expressions = {
-            // timestamps deserve separate range checks for shuffle RAM in the main circuit,
-            // as those also take contribution from circuit index in the sequence
-
-            // NOTE: these expressions are separate, as we will have to add to them a circuit sequence constant
-            // that comes during the proving only
-
-            let offset_for_special_shuffle_ram_timestamps_range_check_expressions =
-                compiled_timestamp_comparison_expressions.len();
-
-            for data in shuffle_ram_extra_range_check_16_partial_sets.into_iter() {
-                let ShuffleRamTimestampComparisonPartialData {
-                    intermediate_borrow,
-                    read_timestamp,
-                    local_timestamp_in_cycle,
-                } = data;
-                let [read_low, read_high] = read_timestamp;
-                // we know all the places, but will have to manually compile it into degree-1 constraint
-
-                // low part
-                {
-                    let mut compiled_linear_terms = vec![];
-                    let borrow_place = *layout.get(&intermediate_borrow).unwrap();
-                    compiled_linear_terms.push((
-                        F::from_u64_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS),
-                        borrow_place,
-                    ));
-                    let read_low_place = *layout.get(&read_low).unwrap();
-                    compiled_linear_terms.push((F::ONE, read_low_place));
-
-                    // have to manually create write low place
-                    let write_low_place =
-                        ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start());
-                    compiled_linear_terms.push((F::MINUS_ONE, write_low_place));
-
-                    // and we also have a constant of `- in cycle local write`
-                    let mut constant_coeff = F::from_u64_unchecked(local_timestamp_in_cycle as u64);
-                    constant_coeff.negate();
-
-                    let compiled_constraint = CompiledDegree1Constraint {
-                        linear_terms: compiled_linear_terms.into_boxed_slice(),
-                        constant_term: constant_coeff,
-                    };
-                    let lookup_expr = LookupExpression::Expression(compiled_constraint);
-                    compiled_timestamp_comparison_expressions.push(lookup_expr);
-                }
-                // and almost the same for high part
-                {
-                    let mut compiled_linear_terms = vec![];
-                    let read_high_place = *layout.get(&read_high).unwrap();
-                    compiled_linear_terms.push((F::ONE, read_high_place));
-
-                    let write_high_place = ColumnAddress::SetupSubtree(
-                        setup_layout.timestamp_setup_columns.start() + 1,
-                    );
-                    compiled_linear_terms.push((F::MINUS_ONE, write_high_place));
-
-                    // subtract borrow
-                    let borrow_place = *layout.get(&intermediate_borrow).unwrap();
-                    compiled_linear_terms.push((F::MINUS_ONE, borrow_place));
-
-                    let constant_coeff = F::from_u64_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS);
-                    let compiled_constraint = CompiledDegree1Constraint {
-                        linear_terms: compiled_linear_terms.into_boxed_slice(),
-                        constant_term: constant_coeff,
-                    };
-                    let lookup_expr = LookupExpression::Expression(compiled_constraint);
-                    compiled_timestamp_comparison_expressions.push(lookup_expr);
-                }
-            }
-
-            offset_for_special_shuffle_ram_timestamps_range_check_expressions
-        };
-
-        #[cfg(feature = "debug_logs")]
-        {
-            dbg!(range_check_16_lookup_expressions.len());
-        }
-
-        let total_lookups_for_range_checks_16 =
-            range_check_16_lookup_expressions.len() as u64 * trace_len as u64;
-        assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS);
-
-        let total_timestamp_range_check_lookups =
-            compiled_timestamp_comparison_expressions.len() as u64 * trace_len as u64;
-        assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS);
+        let (
+            offset_for_special_shuffle_ram_timestamps_range_check_expressions,
+            timestamp_range_check_lookup_expressions,
+        ) = compile_timestamp_range_check_expressions::<F, true>(
+            trace_len,
+            timestamp_range_check_expressions_to_compile,
+            shuffle_ram_timestamp_range_check_partial_sets,
+            &layout,
+            &setup_layout,
+            None,
+        );
 
         // now check if there exist any variables that are
         // - not yet placed (so - not lookup ins/outs)
         // - can be expressed via linear constraint
         // - can be substituted into other places
 
-        // TODO: make multiple runs
-        let optimized_out_variables = {
-            let initial_len = all_variables_to_place.len();
-            let mut optimized_out_variables = vec![];
-            let mut tried_variables = BTreeSet::new();
-            'outer: loop {
-                // we will try to remove every variable in there
-                let mut to_remove: Option<(Variable, Vec<usize>, Vec<usize>)> = None;
-                for variable in all_variables_to_place.iter() {
-                    if optimized_out_variables.contains(variable) {
-                        continue;
-                    }
-
-                    if tried_variables.contains(variable) {
-                        continue;
-                    }
-
-                    // we need
-                    // - some "defining" constraint where variable comes as the first degree
-                    // - potentially other constraints that contain such variable
-                    let mut defining_constraints = vec![];
-
-                    for (constraint_id, (constraint, prevent_optimizations)) in
-                        constraints.iter().enumerate()
-                    {
-                        if *prevent_optimizations {
-                            continue;
-                        }
-                        if constraint.degree() > 1 {
-                            continue;
-                        }
-                        if constraint.degree_for_var(variable) == 0 {
-                            continue;
-                        }
-                        defining_constraints.push((constraint_id, constraint));
-                    }
-
-                    // check if variable is not a placeholder
-                    for (_, v) in substitutions.iter() {
-                        if v == variable {
-                            continue 'outer;
-                        }
-                    }
-
-                    // it also can not be state input or output
-                    if state_input.contains(&variable) {
-                        continue;
-                    }
-
-                    if state_output.contains(&variable) {
-                        continue;
-                    }
-
-                    if defining_constraints.len() > 0 {
-                        let mut occurrences = vec![];
-
-                        for (constraint_id, (constraint, _)) in constraints.iter().enumerate() {
-                            if constraint.contains_var(variable)
-                                && constraint.degree_for_var(variable) < 2
-                            {
-                                occurrences.push((constraint_id, constraint));
-                            }
-                        }
-
-                        if occurrences.len() > 1 {
-                            // defining constraint will be here too
-                            to_remove = Some((
-                                *variable,
-                                defining_constraints.iter().map(|el| el.0).collect(),
-                                occurrences.iter().map(|el| el.0).collect(),
-                            ));
-                            break;
-                        }
-                    }
-                }
-
-                //     println!("===============================================");
-                //     println!("Can try to optimize out variable {:?}", variable);
-                //     for (_, el) in defining_constraints.into_iter() {
-                //         println!("Can be defined via {:?}", el);
-                //     }
-                //     println!("-----------------------------------------------");
-                //     for (_, el) in occurrences.into_iter() {
-                //         println!("Can be substituted into {:?}", el);
-                //     }
-                //     println!("===============================================");
-
-                //     candidates.insert(*variable);
-                // }
-
-                if to_remove.is_none() {
-                    break 'outer;
-                }
-
-                let Some((variable_to_optimize_out, defining_constraints, occurrences)) = to_remove
-                else {
-                    panic!();
-                };
-
-                let mut optimized_out_params = None;
-
-                for defining_constraint_idx in defining_constraints.into_iter() {
-                    // for now there is no heuristics to prefer one defining constraint over another,
-                    // but let's try all
-
-                    let defining_constraint = constraints[defining_constraint_idx].0.clone();
-                    // now we should rewrite it to factor out linear term
-                    let mut expression =
-                        defining_constraint.express_variable(variable_to_optimize_out);
-                    expression.normalize();
-
-                    #[cfg(feature = "debug_logs")]
-                    {
-                        println!("===============================================");
-                        println!(
-                            "Will try to optimize out the variable {:?} using constraint {:?}",
-                            variable_to_optimize_out, &defining_constraint
-                        );
-                        println!(
-                            "Expression for variable {:?} is degree {} = {:?}",
-                            variable_to_optimize_out,
-                            expression.degree(),
-                            &expression
-                        );
-                    }
-
-                    let mut can_be_optimized_out = true;
-                    let mut replacement_constraints = vec![];
-                    // now we should walk over other constraints and rewrite them
-                    for occurrence_constraint_idx in occurrences.iter().copied() {
-                        if occurrence_constraint_idx == defining_constraint_idx {
-                            continue;
-                        }
-
-                        let existing_constraint = constraints[occurrence_constraint_idx].0.clone();
-                        let rewritten_constraint = existing_constraint
-                            .clone()
-                            .substitute_variable(variable_to_optimize_out, expression.clone());
-                        #[cfg(feature = "debug_logs")]
-                        {
-                            println!("-----------------------------------------------");
-                            println!(
-                                "Will try to rewrite {:?} as {:?}",
-                                &existing_constraint, &rewritten_constraint
-                            );
-                        }
-
-                        if rewritten_constraint.degree() > 2 {
-                            #[cfg(feature = "debug_logs")]
-                            {
-                                println!(
-                                    "Resultring constraint {:?} is of degree {}",
-                                    &rewritten_constraint,
-                                    rewritten_constraint.degree()
-                                );
-                            }
-                            can_be_optimized_out = false;
-                            break;
-                        } else {
-                            replacement_constraints
-                                .push((occurrence_constraint_idx, rewritten_constraint));
-                        }
-                    }
-
-                    #[cfg(feature = "debug_logs")]
-                    {
-                        println!("-----------------------------------------------");
-                    }
-                    if can_be_optimized_out {
-                        optimized_out_params =
-                            Some((defining_constraint_idx, replacement_constraints));
-                    } else {
-                        tried_variables.insert(variable_to_optimize_out);
-                    }
-                }
-
-                if let Some((defining_constraint_idx, replacement_constraints)) =
-                    optimized_out_params
-                {
-                    #[cfg(feature = "debug_logs")]
-                    {
-                        println!(
-                            "Successfully removed variable {:?}",
-                            variable_to_optimize_out
-                        );
-                    }
-                    let existed = all_variables_to_place.remove(&variable_to_optimize_out);
-                    assert!(existed);
-                    optimized_out_variables.push(variable_to_optimize_out);
-                    // now we should carefully remove all the constraints
-                    let mut removal_set = BTreeMap::new();
-                    removal_set.insert(defining_constraint_idx, None);
-                    for (k, v) in replacement_constraints.into_iter() {
-                        removal_set.insert(k, Some(v));
-                    }
-
-                    let mut new_constraints = vec![];
-                    for (idx, constraint) in std::mem::replace(&mut constraints, vec![])
-                        .into_iter()
-                        .enumerate()
-                    {
-                        if let Some(replacement) = removal_set.get(&idx) {
-                            let mut constraint = constraint;
-                            if let Some(replacement) = replacement {
-                                constraint.0 = replacement.clone();
-                                new_constraints.push(constraint);
-                            } else {
-                                // just remove
-                            }
-                        } else {
-                            new_constraints.push(constraint);
-                        }
-                    }
-
-                    constraints = new_constraints;
-                } else {
-                    #[cfg(feature = "debug_logs")]
-                    {
-                        println!("Can not remove variable {:?}", variable_to_optimize_out);
-                    }
-                }
-                #[cfg(feature = "debug_logs")]
-                {
-                    println!("===============================================");
-                }
-            }
-
-            #[cfg(feature = "debug_logs")]
-            {
-                dbg!(optimized_out_variables.len());
-            }
-            // dbg!(&optimized_out_variables);
-
-            assert_eq!(
-                initial_len,
-                optimized_out_variables.len() + all_variables_to_place.len()
-            );
-
-            optimized_out_variables
-        };
-
-        #[cfg(feature = "debug_logs")]
-        {
-            println!(
-                "{} variables were optimized out via linear constraint substitution",
-                optimized_out_variables.len()
-            );
-        }
+        let (optimized_out_variables, constraints) = optimize_out_linear_constraints(
+            &state_input,
+            &state_output,
+            &substitutions,
+            constraints,
+            &mut all_variables_to_place,
+        );
 
         let scratch_space_size_for_witness_gen = optimized_out_variables.len();
 
-        // those can be placed into scratch space right now
-        let mut optimized_out_offset = 0;
-        for var in optimized_out_variables.into_iter() {
-            layout.insert(var, ColumnAddress::OptimizedOut(optimized_out_offset));
-            optimized_out_offset += 1;
-        }
-
-        let mut scratch_space_columns_start = witness_tree_offset;
-        let scratch_space_columns_range = ColumnSet::layout_at(
-            &mut scratch_space_columns_start,
-            all_variables_to_place.len(),
+        let scratch_space_columns_range = layout_scratch_space(
+            &mut compiled_quadratic_terms,
+            &mut compiled_linear_terms,
+            optimized_out_variables,
+            constraints,
+            &mut witness_tree_offset,
+            all_variables_to_place,
+            &mut layout,
         );
-
-        // and then we will just place all other variable
-        for variable in all_variables_to_place.into_iter() {
-            layout.insert(variable, ColumnAddress::WitnessSubtree(witness_tree_offset));
-            witness_tree_offset += 1;
-        }
-
-        assert_eq!(
-            scratch_space_columns_range.full_range().end,
-            witness_tree_offset
-        );
-
-        for (constraint, _) in constraints.into_iter() {
-            assert!(constraint
-                .terms
-                .is_sorted_by(|a, b| a.degree() >= b.degree()));
-
-            match constraint.degree() {
-                2 => {
-                    let mut quadratic_terms = vec![];
-                    let mut linear_terms = vec![];
-                    let mut constant_term = F::ZERO;
-                    for term in constraint.terms.into_iter() {
-                        match term.degree() {
-                            2 => {
-                                let coeff = term.get_coef();
-                                let [a, b] = term.as_slice() else { panic!() };
-                                assert!(*a <= *b);
-                                let a = layout.get(a).copied().unwrap();
-                                let b = layout.get(b).copied().unwrap();
-                                quadratic_terms.push((coeff, a, b));
-                            }
-                            1 => {
-                                let coeff = term.get_coef();
-                                let [a] = term.as_slice() else { panic!() };
-                                let a = layout.get(a).copied().unwrap();
-                                linear_terms.push((coeff, a));
-                            }
-                            0 => {
-                                constant_term.add_assign(&term.get_coef());
-                            }
-                            _ => {
-                                unreachable!()
-                            }
-                        }
-                    }
-
-                    let compiled_term = CompiledDegree2Constraint {
-                        quadratic_terms: quadratic_terms.into_boxed_slice(),
-                        linear_terms: linear_terms.into_boxed_slice(),
-                        constant_term,
-                    };
-
-                    compiled_quadratic_terms.push(compiled_term);
-                }
-                1 => {
-                    let mut linear_terms = vec![];
-                    let mut constant_term = F::ZERO;
-                    for term in constraint.terms.into_iter() {
-                        match term.degree() {
-                            1 => {
-                                let coeff = term.get_coef();
-                                let [a] = term.as_slice() else { panic!() };
-                                let a = layout.get(a).copied().unwrap();
-                                linear_terms.push((coeff, a));
-                            }
-                            0 => {
-                                constant_term.add_assign(&term.get_coef());
-                            }
-                            _ => {
-                                unreachable!()
-                            }
-                        }
-                    }
-
-                    let compiled_term = CompiledDegree1Constraint {
-                        linear_terms: linear_terms.into_boxed_slice(),
-                        constant_term,
-                    };
-
-                    compiled_linear_terms.push(compiled_term);
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-        }
-
-        #[cfg(feature = "debug_logs")]
-        {
-            dbg!(compiled_quadratic_terms.len());
-            dbg!(compiled_linear_terms.len());
-        }
 
         // we need only the following public inputs
         // - initial state variable at FIRST row
@@ -1670,11 +1093,12 @@ impl<F: PrimeField> OneRowCompiler<F> {
             multiplicities_columns_for_range_check_16,
             multiplicities_columns_for_timestamp_range_check,
             multiplicities_columns_for_generic_lookup,
+            multiplicities_columns_for_decoder_in_executor_families: ColumnSet::empty(),
             range_check_8_columns,
             range_check_16_columns,
             width_3_lookups,
             range_check_16_lookup_expressions,
-            timestamp_range_check_lookup_expressions: compiled_timestamp_comparison_expressions,
+            timestamp_range_check_lookup_expressions,
             offset_for_special_shuffle_ram_timestamps_range_check_expressions,
             boolean_vars_columns_range,
             scratch_space_columns_range,
@@ -1801,6 +1225,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
             memory_queries_timestamp_comparison_aux_vars,
             batched_memory_access_timestamp_comparison_aux_vars,
             register_and_indirect_access_timestamp_comparison_aux_vars,
+            executor_family_circuit_next_timestamp_aux_var: None,
+            executor_family_decoder_table_size: 0,
             trace_len,
             table_offsets,
             total_tables_size,

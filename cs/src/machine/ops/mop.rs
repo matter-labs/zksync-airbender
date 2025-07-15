@@ -1,7 +1,4 @@
-use crate::cs::witness_placer::WitnessTypeSet;
-use crate::cs::witness_placer::{
-    cs_debug_evaluator::witness_early_branch_if_possible, WitnessPlacer,
-};
+use crate::cs::witness_placer::*;
 
 use super::*;
 

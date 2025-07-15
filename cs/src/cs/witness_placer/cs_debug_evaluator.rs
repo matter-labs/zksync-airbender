@@ -1,6 +1,6 @@
 use super::scalar_witness_type_set::ScalarWitnessTypeSet;
 use super::*;
-use crate::cs::oracle::Oracle;
+use crate::cs::oracle::{ExecutorFamilyDecoderData, Oracle};
 use crate::definitions::Variable;
 use crate::tables::TableDriver;
 use field::PrimeField;
@@ -11,6 +11,7 @@ pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) values: Vec<F>,
     pub oracle: Option<Box<dyn Oracle<F>>>,
     pub(crate) table_driver: TableDriver<F>,
+    pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
 }
 
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
@@ -19,12 +20,24 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
             values: Vec::new(),
             oracle: None,
             table_driver: TableDriver::new(),
+            preprocessed_decoder_table: None,
         }
     }
 
     pub fn new_with_oracle<O: Oracle<F> + 'static>(oracle: O) -> Self {
         let mut new = Self::new();
         new.oracle = Some(Box::new(oracle));
+
+        new
+    }
+
+    pub fn new_with_oracle_and_preprocessed_decoder<O: Oracle<F> + 'static>(
+        oracle: O,
+        preprocessed_decoder_table: Vec<ExecutorFamilyDecoderData>,
+    ) -> Self {
+        let mut new = Self::new();
+        new.oracle = Some(Box::new(oracle));
+        new.preprocessed_decoder_table = Some(preprocessed_decoder_table);
 
         new
     }
@@ -261,23 +274,33 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
             .table_driver
             .enforce_values_and_get_absolute_index(inputs, *table_id as u32);
     }
-}
 
-pub fn witness_early_branch_if_possible<
-    F: PrimeField,
-    W: WitnessPlacer<F>,
-    T: WitnessResolutionDescription<F, W>,
->(
-    branch_mask: W::Mask,
-    placer: &mut W,
-    node: &T,
-) {
-    if W::CAN_BRANCH {
-        if W::branch(&branch_mask) {
-            node.evaluate(placer);
+    fn assume_assigned(&mut self, _variable: Variable) {
+        // nothing
+    }
+
+    fn spec_decoder_relation(&mut self, pc: [Variable; 2], decoder_data: &DecoderData<F>) {
+        let pc = self.get_u32_from_u16_parts(pc);
+        let Some(table) = self.preprocessed_decoder_table.as_ref() else {
+            panic!("Decoder table is not specified");
+        };
+
+        assert!(pc % 4 == 0);
+        let idx = (pc / 4) as usize;
+        let entry = table[idx];
+
+        self.assign_u8(decoder_data.rs1_index, &entry.rs1_index);
+        self.assign_u8(decoder_data.rs2_index, &entry.rs2_index);
+        self.assign_u8(decoder_data.rd_index, &entry.rd_index);
+        self.assign_mask(decoder_data.rd_is_zero, &entry.rd_is_zero);
+        self.assign_u32_from_u16_parts(decoder_data.imm, &entry.imm);
+        self.assign_u8(decoder_data.funct3, &entry.funct3);
+        if let Some(funct7) = decoder_data.funct7 {
+            self.assign_u8(funct7, &entry.funct7.unwrap());
         }
-    } else {
-        // we should use conditional assignment anyway
-        node.evaluate(placer);
+        self.assign_u8(
+            decoder_data.circuit_family_extra_mask,
+            &entry.opcode_family_bits,
+        );
     }
 }

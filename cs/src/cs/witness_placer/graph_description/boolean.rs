@@ -5,7 +5,6 @@ use crate::cs::placeholder::Placeholder;
 use crate::cs::witness_placer::WitnessMask;
 use crate::one_row_compiler::Variable;
 use ::field::PrimeField;
-use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BoolNodeExpression<F: PrimeField> {
@@ -50,81 +49,24 @@ pub enum BoolNodeExpression<F: PrimeField> {
 }
 
 impl<F: PrimeField> BoolNodeExpression<F> {
-    pub fn report_origins(
-        &self,
-        dst: &mut BTreeSet<Variable>,
-        oracles: &mut BTreeSet<(Placeholder, usize)>,
-        lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
-    ) {
-        match self {
-            Self::Place(place) => {
-                dst.insert(*place);
-            }
-            // the rest is recursive
-            Self::Negate(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::FromField(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::FromGenericInteger(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::OracleValue { placeholder } => {
-                oracles.insert((*placeholder, 0));
-            }
-            // Binops
-            Self::FromGenericIntegerEquality { lhs, rhs }
-            | Self::FromGenericIntegerCarry { lhs, rhs }
-            | Self::FromGenericIntegerBorrow { lhs, rhs } => {
-                lhs.report_origins(dst, oracles, lookup_fn);
-                rhs.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::FromFieldEquality { lhs, rhs } => {
-                lhs.report_origins(dst, oracles, lookup_fn);
-                rhs.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::And { lhs, rhs } | Self::Or { lhs, rhs } => {
-                lhs.report_origins(dst, oracles, lookup_fn);
-                rhs.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::Select {
-                selector,
-                if_true,
-                if_false,
-            } => {
-                selector.report_origins(dst, oracles, lookup_fn);
-                if_true.report_origins(dst, oracles, lookup_fn);
-                if_false.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::Constant(..) => {}
-            Self::SubExpression(..) => {
-                unreachable!("must not be used after subexpression elimination")
-            }
-        }
-    }
-
     pub fn make_subexpressions(
         &mut self,
         set: &mut SubexpressionsMapper<F>,
         lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
     ) {
         match self {
-            Self::Place(_place) => {
+            Self::Place(..) => {
                 // Do nothing, it can not be subexpression
             }
             // the rest is recursive
             Self::Negate(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
-                // set.add_boolean_subexprs(inner);
             }
             Self::FromField(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
-                // set.add_field_subexprs(inner);
             }
             Self::FromGenericInteger(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
-                // set.add_integer_subexprs(inner);
             }
             Self::OracleValue { .. } => {
                 // nothing
@@ -135,20 +77,14 @@ impl<F: PrimeField> BoolNodeExpression<F> {
             | Self::FromGenericIntegerBorrow { lhs, rhs } => {
                 lhs.make_subexpressions(set, lookup_fn);
                 rhs.make_subexpressions(set, lookup_fn);
-                // set.add_integer_subexprs(lhs);
-                // set.add_integer_subexprs(rhs);
             }
             Self::FromFieldEquality { lhs, rhs } => {
                 lhs.make_subexpressions(set, lookup_fn);
                 rhs.make_subexpressions(set, lookup_fn);
-                // set.add_field_subexprs(lhs);
-                // set.add_field_subexprs(rhs);
             }
             Self::And { lhs, rhs } | Self::Or { lhs, rhs } => {
                 lhs.make_subexpressions(set, lookup_fn);
                 rhs.make_subexpressions(set, lookup_fn);
-                // set.add_boolean_subexprs(lhs);
-                // set.add_boolean_subexprs(rhs);
             }
             Self::Select {
                 selector,
@@ -158,9 +94,6 @@ impl<F: PrimeField> BoolNodeExpression<F> {
                 selector.make_subexpressions(set, lookup_fn);
                 if_true.make_subexpressions(set, lookup_fn);
                 if_false.make_subexpressions(set, lookup_fn);
-                // set.add_boolean_subexprs(selector);
-                // set.add_boolean_subexprs(if_true);
-                // set.add_boolean_subexprs(if_true);
             }
             Self::Constant(..) => {}
             Self::SubExpression(..) => {

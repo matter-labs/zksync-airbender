@@ -14,14 +14,19 @@ use field::{Mersenne31Field, Mersenne31Quartic};
 use quote::quote;
 use std::collections::BTreeSet;
 
+mod bytecode_preprocessed_executor;
+mod compile_layout;
+mod decoder_compilation;
+mod executor_compilation;
+
 pub mod delegation;
 pub mod layout_utils;
 pub mod stage_2_layout;
 
-mod compile_layout;
-
 pub use self::layout_utils::*;
 pub use self::stage_2_layout::*;
+
+pub const SHIFT_16: u64 = 1 << 16;
 
 pub fn array_to_tokens<T: quote::ToTokens, const N: usize>(
     els: &[T; N],
@@ -904,7 +909,9 @@ pub struct CompiledCircuitArtifact<F: PrimeField> {
     pub batched_memory_access_timestamp_comparison_aux_vars: BatchedRamTimestampComparisonAuxVars,
     pub register_and_indirect_access_timestamp_comparison_aux_vars:
         RegisterAndIndirectAccessTimestampComparisonAuxVars,
+    pub executor_family_circuit_next_timestamp_aux_var: Option<ColumnAddress>,
 
+    pub executor_family_decoder_table_size: usize,
     pub trace_len: usize,
     pub table_offsets: Vec<u32>,
     pub total_tables_size: usize,
@@ -1020,7 +1027,8 @@ fn layout_witness_subtree_variable_at_column(
         variable
     );
     let address = ColumnAddress::WitnessSubtree(offset);
-    layout.insert(variable, address);
+    let existing = layout.insert(variable, address);
+    assert!(existing.is_none());
 
     address
 }
@@ -1063,7 +1071,8 @@ fn layout_witness_subtree_multiple_variables<const N: usize>(
             "variable {:?} was already placed",
             variable
         );
-        layout.insert(variable, place);
+        let existing = layout.insert(variable, place);
+        assert!(existing.is_none());
     }
 
     assert_eq!(place_offset, *offset);
@@ -1071,6 +1080,7 @@ fn layout_witness_subtree_multiple_variables<const N: usize>(
     columns
 }
 
+#[track_caller]
 fn layout_memory_subtree_multiple_variables<const N: usize>(
     offset: &mut usize,
     variables: [Variable; N],
@@ -1088,7 +1098,8 @@ fn layout_memory_subtree_multiple_variables<const N: usize>(
             "variable {:?} was already placed",
             variable
         );
-        layout.insert(variable, place);
+        let existing = layout.insert(variable, place);
+        assert!(existing.is_none());
     }
 
     assert_eq!(place_offset, *offset);

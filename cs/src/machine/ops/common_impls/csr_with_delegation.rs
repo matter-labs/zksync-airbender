@@ -66,7 +66,7 @@ pub fn apply_csr_with_delegation<
 
             let delegation_request = DelegatedComputationRequest {
                 execute: should_delegate,
-                degegation_type: csr_index_masked,
+                delegation_type: csr_index_masked,
                 memory_offset_high: offset_masked,
             };
             cs.add_delegation_request(delegation_request);

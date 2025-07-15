@@ -23,6 +23,8 @@ pub struct MemorySubtree {
     pub shuffle_ram_access_sets: Vec<ShuffleRamQueryColumns>,
     pub delegation_request_layout: Option<DelegationRequestLayout>,
     pub delegation_processor_layout: Option<DelegationProcessingLayout>,
+    pub machine_state_layout: Option<MachineStatePermutationVariables>,
+    pub intermediate_state_layout: Option<IntermediateStatePermutationVariables>,
     pub batched_ram_accesses: Vec<BatchedRamAccessColumns>,
     pub register_and_indirect_accesses: Vec<RegisterAndIndirectAccessDescription>,
     pub total_width: usize,

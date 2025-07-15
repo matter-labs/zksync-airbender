@@ -22,12 +22,14 @@ pub(crate) fn enforce_add_sub_relation<F: PrimeField, CS: Circuit<F>>(
 
     for (((a, b), c), flag) in a_s.iter().zip(b_s.iter()).zip(c_s.iter()).zip(flags.iter()) {
         let Boolean::Is(flag) = *flag else { todo!() };
-        let Num::Var(a_low) = a.0[0] else { todo!() };
-        let Num::Var(a_high) = a.0[1] else { todo!() };
-        let Num::Var(b_low) = b.0[0] else { todo!() };
-        let Num::Var(b_high) = b.0[1] else { todo!() };
-        let Num::Var(c_low) = c.0[0] else { todo!() };
-        let Num::Var(c_high) = c.0[1] else { todo!() };
+
+        let a_low = a.0[0];
+        let a_high = a.0[1];
+        let b_low = b.0[0];
+        let b_high = b.0[1];
+        let c_low = c.0[0];
+        let c_high = c.0[1];
+
         constraint_low = constraint_low + (Term::from(flag) * Term::from(a_low));
         constraint_low = constraint_low + (Term::from(flag) * Term::from(b_low));
         constraint_low = constraint_low - (Term::from(flag) * Term::from(c_low));
@@ -49,9 +51,24 @@ pub(crate) fn enforce_add_sub_relation<F: PrimeField, CS: Circuit<F>>(
 
         for (flag, a, b, c) in dependencies.iter() {
             let mask = placer.get_boolean(*flag);
-            let mut result = placer.get_u16(*a).widen();
-            let b = placer.get_u16(*b).widen();
-            let c = placer.get_u16(*c).widen();
+            let mut result = match a {
+                Num::Constant(a) => <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                    a.as_u64_reduced() as u32,
+                ),
+                Num::Var(a) => placer.get_u16(*a).widen(),
+            };
+            let b = match b {
+                Num::Constant(b) => <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                    b.as_u64_reduced() as u32,
+                ),
+                Num::Var(b) => placer.get_u16(*b).widen(),
+            };
+            let c = match c {
+                Num::Constant(c) => <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                    c.as_u64_reduced() as u32,
+                ),
+                Num::Var(c) => placer.get_u16(*c).widen(),
+            };
             result.add_assign(&b);
             result.sub_assign(&c);
             let carry_candidate = result.get_bit(16);
@@ -60,7 +77,6 @@ pub(crate) fn enforce_add_sub_relation<F: PrimeField, CS: Circuit<F>>(
 
         placer.assign_mask(carry_intermediate_var, &carry);
     };
-
     cs.set_values(value_fn);
 
     let constraint_low = constraint_low

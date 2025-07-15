@@ -1,12 +1,7 @@
 use super::spec_selection::*;
-use super::witness_placer::WitnessPlacer;
-use super::witness_placer::WitnessResolutionDescription;
 use crate::cs::placeholder::*;
 use crate::cs::utils::collapse_max_quadratic_constraint_into;
-use crate::cs::witness_placer::cs_debug_evaluator::witness_early_branch_if_possible;
-use crate::cs::witness_placer::WitnessComputationalField;
-use crate::cs::witness_placer::WitnessComputationalInteger;
-use crate::cs::witness_placer::WitnessTypeSet;
+use crate::cs::witness_placer::*;
 use crate::definitions::*;
 use crate::devices::optimization_context::OptimizationContext;
 use crate::one_row_compiler::LookupInput;
@@ -172,7 +167,7 @@ impl<F: PrimeField> RangeCheckQuery<F> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DelegatedComputationRequest {
     pub execute: Variable,            // assumed boolean
-    pub degegation_type: Variable,    // abstract index
+    pub delegation_type: Variable,    // abstract index
     pub memory_offset_high: Variable, // 16 bit variable
 }
 
@@ -241,8 +236,9 @@ pub struct CircuitOutput<F: PrimeField> {
     pub shuffle_ram_queries: Vec<ShuffleRamMemQuery>,
     pub delegated_computation_requests: Vec<DelegatedComputationRequest>,
     pub degegated_request_to_process: Option<DelegatedProcessingData>,
-    pub batched_memory_accesses: Vec<BatchedMemoryAccessType>,
     pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    pub decoder_machine_state: Option<DecoderCircuitMachineState<F>>,
+    pub executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
     pub linked_variables: Vec<LinkedVariablesPair>,
     pub range_check_expressions: Vec<RangeCheckQuery<F>>,
     pub boolean_vars: Vec<Variable>,
@@ -417,8 +413,27 @@ pub trait Circuit<F: PrimeField>: Sized {
                         Num::Var(new_var)
                     }
 
-                    Boolean::Not(_cond) => {
-                        unreachable!()
+                    Boolean::Not(cond) => {
+                        // new_var = flag * b + (1 - flag) * a
+                        let new_var = self.add_variable();
+
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let mask = placer.get_boolean(cond).negate();
+                            let selection_result = WitnessComputationalField::select(
+                                &mask,
+                                &placer.get_field(a),
+                                &placer.get_field(b),
+                            );
+                            placer.assign_field(new_var, &selection_result);
+                        };
+                        self.set_values(value_fn);
+
+                        self.add_constraint(
+                            Constraint::from(new_var)
+                                - (Term::from(cond) * Term::from(b)
+                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
+                        );
+                        Num::Var(new_var)
 
                         // // new_var = flag * b + (1 - flag) * a = flag * (b - a) + a
                         // let cnstr: Constraint<F> =
@@ -803,6 +818,12 @@ pub trait Circuit<F: PrimeField>: Sized {
     fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
     fn view_log(&self, name: &'static str);
     fn is_satisfied(&mut self) -> bool;
+
+    fn allocate_decoder_circuit_state(&mut self) -> DecoderCircuitMachineState<F>;
+
+    fn allocate_execution_circuit_state<const ASSUME_PREPROCESSED_DECODER_TABLE: bool>(
+        &mut self,
+    ) -> OpcodeFamilyCircuitState<F>;
 }
 
 impl<F: PrimeField> LookupInput<F> {

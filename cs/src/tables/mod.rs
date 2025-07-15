@@ -7,6 +7,24 @@ use std::{
     sync::Arc,
 };
 
+mod binops;
+mod branch_opcode_related;
+mod jump_opcode_related;
+mod memory_opcode_related;
+mod range_checks_and_decompositions;
+mod rom_related;
+mod shift_opcode_related;
+mod zero_entry;
+
+pub use self::binops::*;
+pub use self::branch_opcode_related::*;
+pub use self::jump_opcode_related::*;
+pub use self::memory_opcode_related::*;
+pub use self::range_checks_and_decompositions::*;
+pub use self::rom_related::*;
+pub use self::shift_opcode_related::*;
+pub use self::zero_entry::*;
+
 pub use super::definitions::TableType;
 
 const TOTAL_NUM_OF_TABLES: usize = TableType::DynamicPlaceholder as u32 as usize;
@@ -43,6 +61,8 @@ pub enum IndexLookupFn<F: PrimeField, const N: usize> {
     ReuseGenerationClosure(TableGenerationClosure<F, N>),
     Closure(std::sync::Arc<dyn Fn(&[F; N]) -> usize + 'static + Send + Sync>),
 }
+
+pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
 #[derive(Derivative)]
 #[derivative(Clone, Debug)]
@@ -668,6 +688,41 @@ impl quote::ToTokens for TableType {
             }
             TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
             TableType::TruncateShift => quote! { TableType::TruncateShift },
+            TableType::AlignedRomRead => quote! { TableType::AlignedRomRead },
+            TableType::ConditionalJmpBranchSlt => {
+                quote! { TableType::ConditionalJmpBranchSlt }
+            }
+            TableType::SllWith16BitInputLow => {
+                quote! { TableType::SllWith16BitInputLow }
+            }
+            TableType::SllWith16BitInputHigh => {
+                quote! { TableType::SllWith16BitInputHigh }
+            }
+            TableType::SrlWith16BitInputLow => {
+                quote! { TableType::SrlWith16BitInputLow }
+            }
+            TableType::SrlWith16BitInputHigh => {
+                quote! { TableType::SrlWith16BitInputHigh }
+            }
+            TableType::Sra16BitInputSignFill => {
+                quote! { TableType::Sra16BitInputSignFill }
+            }
+            TableType::RangeCheck16WithZeroPads => {
+                quote! { TableType::RangeCheck16WithZeroPads }
+            }
+            TableType::TruncateShiftAmount => {
+                quote! { TableType::TruncateShiftAmount }
+            }
+            TableType::MemStoreClearOriginalRamValueLimb => {
+                quote! { TableType::MemStoreClearOriginalRamValueLimb }
+            }
+            TableType::MemStoreClearWrittenValueLimb => {
+                quote! { TableType::MemStoreClearWrittenValueLimb }
+            }
+            TableType::MemoryGetOffsetAndMaskWithTrap => {
+                quote! { TableType::MemoryGetOffsetAndMaskWithTrap }
+            }
+            TableType::MemoryLoadHalfwordOrByte => quote! { TableType::MemoryLoadHalfwordOrByte },
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")
             }
@@ -696,7 +751,7 @@ impl TableType {
             TableType::RangeCheckLarge => {
                 LookupWrapper::Dimensional1(create_range_check_table::<F, 16>(id))
             }
-            TableType::PowersOf2 => LookupWrapper::Dimensional3(create_pow2_table::<F, 5>(id)),
+            // TableType::PowersOf2 => LookupWrapper::Dimensional3(create_pow2_table::<F, 5>(id)),
             TableType::OpTypeBitmask => {
                 panic!("Machine must defined it's own way to create supporting decoder table")
             }
@@ -796,7 +851,42 @@ impl TableType {
             TableType::TruncateShift => {
                 LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
             }
-
+            TableType::ConditionalJmpBranchSlt => LookupWrapper::Dimensional3(
+                create_conditional_jmp_branch_slt_family_resolution_table(id),
+            ),
+            TableType::MemoryGetOffsetAndMaskWithTrap => {
+                LookupWrapper::Dimensional3(create_memory_offset_mask_with_trap_table(id))
+            }
+            TableType::MemoryLoadHalfwordOrByte => {
+                LookupWrapper::Dimensional3(create_memory_load_halfword_or_byte_table(id))
+            }
+            TableType::MemStoreClearOriginalRamValueLimb => LookupWrapper::Dimensional3(
+                create_memory_store_halfword_or_byte_clear_source_limb_table::<F>(id),
+            ),
+            TableType::MemStoreClearWrittenValueLimb => LookupWrapper::Dimensional3(
+                create_memory_store_halfword_or_byte_clear_written_limb_table::<F>(id),
+            ),
+            TableType::TruncateShiftAmount => {
+                LookupWrapper::Dimensional3(create_shift_amount_truncation_table::<F>(id))
+            }
+            TableType::SllWith16BitInputLow => LookupWrapper::Dimensional3(
+                create_logical_shift_16_bit_table::<F, false, false>(id),
+            ),
+            TableType::SllWith16BitInputHigh => {
+                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, false>(id))
+            }
+            TableType::SrlWith16BitInputLow => {
+                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, false, true>(id))
+            }
+            TableType::SrlWith16BitInputHigh => {
+                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, true>(id))
+            }
+            TableType::Sra16BitInputSignFill => {
+                LookupWrapper::Dimensional3(create_sra_16_filler_mask_table::<F>(id))
+            }
+            TableType::RangeCheck16WithZeroPads => LookupWrapper::Dimensional3(
+                create_formal_width_3_range_check_table_for_single_entry::<F, 16>(id),
+            ),
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -841,545 +931,12 @@ fn bit_chunks_index_gen_fn<F: PrimeField, const N: usize, const WIDTH: usize>(
     index_for_binary_key_for_width::<WIDTH>(a, b)
 }
 
-pub fn create_zero_entry_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = vec![[F::ZERO; 3]];
-    const TABLE_NAME: &'static str = "zero entry table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        3,
-        |_keys| (0, [F::ZERO; 3]),
-        Some(|_| 0),
-        id,
-    )
-}
-
 fn index_for_binary_key(a: u64, b: u64) -> usize {
     ((a << 8) | b) as usize
 }
 
 fn index_for_binary_key_for_width<const WIDTH: usize>(a: u64, b: u64) -> usize {
     ((a << WIDTH) | b) as usize
-}
-
-pub fn create_xor_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_binary_generation_for_width::<F, 3, WIDTH>();
-    let table_name = format!("XOR {}x{} bit table", WIDTH, WIDTH);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(
-                a < 1u64 << WIDTH,
-                "input 0x{:08x} is too large for {} bits",
-                a,
-                WIDTH
-            );
-            assert!(
-                b < 1u64 << WIDTH,
-                "input 0x{:08x} is too large for {} bits",
-                b,
-                WIDTH
-            );
-
-            let binop_result = a ^ b;
-            let value = binop_result as u64;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(value);
-
-            (index_for_binary_key_for_width::<WIDTH>(a, b), result)
-        },
-        Some(bit_chunks_index_gen_fn::<F, 3, WIDTH>),
-        id,
-    )
-}
-
-pub fn create_and_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_binary_generation();
-    const TABLE_NAME: &'static str = "AND table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a <= u8::MAX as u64);
-            assert!(b <= u8::MAX as u64);
-
-            let binop_result = a & b;
-            let value = binop_result as u64;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(value);
-
-            (index_for_binary_key(a, b), result)
-        },
-        Some(u8_chunks_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_or_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_binary_generation();
-    const TABLE_NAME: &'static str = "OR table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a <= u8::MAX as u64);
-            assert!(b <= u8::MAX as u64);
-
-            let binop_result = a | b;
-            let value = binop_result as u64;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(value);
-
-            (index_for_binary_key(a, b), result)
-        },
-        Some(u8_chunks_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_and_not_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_binary_generation();
-    const TABLE_NAME: &'static str = "AND NOT table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a <= u8::MAX as u64);
-            assert!(b <= u8::MAX as u64);
-
-            let binop_result = a & (!b);
-            let value = binop_result as u64;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(value);
-
-            (index_for_binary_key(a, b), result)
-        },
-        Some(u8_chunks_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_quick_decoder_decomposition_table_4x4x4<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (4 + 4 + 4));
-    let u4_max = 0x0f as u8;
-    for a in 0..=u4_max {
-        for b in 0..=u4_max {
-            for c in 0..=u4_max {
-                let row = [
-                    F::from_u64_unchecked(a as u64),
-                    F::from_u64_unchecked(b as u64),
-                    F::from_u64_unchecked(c as u64),
-                ];
-                keys.push(row);
-            }
-        }
-    }
-
-    const TABLE_NAME: &'static str = "quick decoder decomposition 4x4x4 table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        3,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-            let c = keys[2].as_u64_reduced();
-
-            assert!(a < (1u64 << 4));
-            assert!(b < (1u64 << 4));
-            assert!(c < (1u64 << 4));
-
-            let index = (a << 8) | (b << 4) | c;
-
-            (index as usize, [F::ZERO; 3])
-        },
-        None,
-        id,
-    )
-}
-
-pub fn create_quick_decoder_decomposition_table_7x3x6<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (7 + 3 + 6));
-    let u7_max = 0b0111_1111 as u8;
-    let u3_max = 0b0111 as u8;
-    let u6_max = 0b0011_1111 as u8;
-    for a in 0..=u7_max {
-        for b in 0..=u3_max {
-            for c in 0..=u6_max {
-                let row = [
-                    F::from_u64_unchecked(a as u64),
-                    F::from_u64_unchecked(b as u64),
-                    F::from_u64_unchecked(c as u64),
-                ];
-                keys.push(row);
-            }
-        }
-    }
-    assert_eq!(keys.len(), 1 << (7 + 3 + 6));
-
-    const TABLE_NAME: &'static str = "quick decoder decomposition 7x3x6 table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        3,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-            let c = keys[2].as_u64_reduced();
-
-            assert!(a < (1u64 << 7));
-            assert!(b < (1u64 << 3));
-            assert!(c < (1u64 << 6));
-
-            let index = (a << 9) | (b << 6) | c;
-
-            (index as usize, [F::ZERO; 3])
-        },
-        None,
-        id,
-    )
-}
-
-pub fn create_u16_get_sign_and_high_byte_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "U16 get sign and high byte table";
-
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16), "input value is 0x{:08x}", a);
-
-            let sign = a >> 15;
-            let high_byte = a >> 8;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(sign as u64);
-            result[1] = F::from_u64_unchecked(high_byte as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_jump_cleanup_offset_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "Jump offset check-cleanup table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16));
-
-            let check_bit = (a >> 1) & 0x01;
-            let output = a & (!0x3);
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(check_bit as u64);
-            result[1] = F::from_u64_unchecked(output as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_memory_offset_lowest_bits_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "Memory offset lowest bits table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16));
-
-            // output lowest two bits
-            let lowest = a & 0x01;
-            let second = (a >> 1) & 0x01;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(lowest as u64);
-            result[1] = F::from_u64_unchecked(second as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_memory_load_signs_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "Get sign bits table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16));
-
-            // get bits 7 and 15
-            let sign_if_u8 = (a >> 7) & 0x01;
-            let sign_if_u16 = (a >> 15) & 0x01;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(sign_if_u8 as u64);
-            result[1] = F::from_u64_unchecked(sign_if_u16 as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(1 + 1 + 5);
-    const TABLE_NAME: &'static str = "SRA sign bits filler table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let input_sign = a & 1 > 0;
-            let is_sra = (a >> 1) & 1 > 0;
-            let shift_amount = a >> 2;
-            assert!(shift_amount < 32);
-
-            if input_sign == false || is_sra == false {
-                // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
-                // in practice, but we have to fill the table)
-                let result = [F::ZERO; 3];
-
-                (a as usize, result)
-            } else {
-                if shift_amount == 0 {
-                    // special case
-                    let result = [F::ZERO; 3];
-
-                    (a as usize, result)
-                } else {
-                    let (mask, _) = u32::MAX.overflowing_shl(32 - (shift_amount as u32));
-
-                    let mut result = [F::ZERO; 3];
-                    result[0] = F::from_u64_unchecked(mask as u16 as u64);
-                    result[1] = F::from_u64_unchecked((mask >> 16) as u16 as u64);
-
-                    (a as usize, result)
-                }
-            }
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_conditional_op_resolution_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const TABLE_WIDTH: usize = 3 + 1 + 1 + 1 + 1;
-    const FUNCT3_MASK: u64 = 0x7u64;
-    const UNSIGNED_LT_BIT_SHIFT: usize = 3;
-    const EQ_BIT_SHIFT: usize = 4;
-    const SRC1_BIT_SHIFT: usize = 5;
-    const SRC2_BIT_SHIFT: usize = 6;
-
-    let keys = key_for_continuous_log2_range(TABLE_WIDTH);
-    const TABLE_NAME: &'static str = "Conditional family resolution table";
-
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << TABLE_WIDTH));
-
-            let input = a;
-            let funct3 = input & FUNCT3_MASK;
-            let unsigned_lt_flag = (input & (1 << UNSIGNED_LT_BIT_SHIFT)) != 0;
-            let eq_flag = (input & (1 << EQ_BIT_SHIFT)) != 0;
-            let src1_bit = (input & (1 << SRC1_BIT_SHIFT)) != 0;
-            let src2_bit = (input & (1 << SRC2_BIT_SHIFT)) != 0;
-            let operands_different_signs_flag = src1_bit ^ src2_bit;
-
-            let (should_branch, should_store) = match funct3 {
-                0b000 => {
-                    // BEQ
-                    if eq_flag {
-                        (true, false)
-                    } else {
-                        (false, false)
-                    }
-                }
-                0b001 => {
-                    // BNE
-                    if eq_flag == false {
-                        (true, false)
-                    } else {
-                        (false, false)
-                    }
-                }
-                0b010 => {
-                    // STL
-                    if operands_different_signs_flag {
-                        // signs are different,
-                        // so if rs1 is negative, and rs2 is positive (so condition holds)
-                        // then LT must be be false
-                        if unsigned_lt_flag == false {
-                            (false, true)
-                        } else {
-                            (false, false)
-                        }
-                    } else {
-                        // just unsigned comparison works for both cases
-                        if unsigned_lt_flag {
-                            (false, true)
-                        } else {
-                            (false, false)
-                        }
-                    }
-                }
-                0b011 => {
-                    // STLU
-                    // just unsigned comparison works for both cases
-                    if unsigned_lt_flag {
-                        (false, true)
-                    } else {
-                        (false, false)
-                    }
-                }
-                0b100 => {
-                    // BLT
-                    if operands_different_signs_flag {
-                        // signs are different,
-                        // so if rs1 is negative, and rs2 is positive (so condition holds)
-                        // then LT must be be false
-                        if unsigned_lt_flag == false {
-                            (true, false)
-                        } else {
-                            (false, false)
-                        }
-                    } else {
-                        // just unsigned comparison works for both cases
-                        if unsigned_lt_flag {
-                            (true, false)
-                        } else {
-                            (false, false)
-                        }
-                    }
-                }
-                0b101 => {
-                    // BGE
-                    // inverse of BLT
-                    if operands_different_signs_flag {
-                        if unsigned_lt_flag == false {
-                            (false, false)
-                        } else {
-                            (true, false)
-                        }
-                    } else {
-                        if unsigned_lt_flag {
-                            (false, false)
-                        } else {
-                            (true, false)
-                        }
-                    }
-                }
-                0b110 => {
-                    // BLTU
-                    if unsigned_lt_flag {
-                        (true, false)
-                    } else {
-                        (false, false)
-                    }
-                }
-                0b111 => {
-                    // BGEU
-                    // inverse of BLTU
-                    if unsigned_lt_flag {
-                        (false, false)
-                    } else {
-                        (true, false)
-                    }
-                }
-
-                _ => {
-                    unreachable!()
-                }
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(should_branch as u64);
-            result[1] = F::from_u64_unchecked(should_store as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_rom_separator_table<
-    F: PrimeField,
-    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
->(
-    id: u32,
-) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "ROM address space separator table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16));
-
-            let bound = 1 << ROM_ADDRESS_SPACE_SECOND_WORD_BITS;
-            let input = a;
-            let is_ram = input >= bound;
-            let rom_chunk = input % bound;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(is_ram as u64);
-            result[1] = F::from_u64_unchecked(rom_chunk);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
 }
 
 // we make it so that index in the table is just (key0 << 8) || key1
@@ -1452,464 +1009,47 @@ pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
     keys
 }
 
-pub fn create_range_check_table<F: PrimeField, const M: usize>(id: u32) -> LookupTable<F, 1> {
-    assert!(M > 0);
-    let keys = key_for_continuous_log2_range(M);
-    let table_name = format!("Range check {} bits table", M);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << M));
+// pub fn create_pow2_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTable<F, 3> {
+//     // also support formal 1<<width as place 0 in such cases
+//     let keys = key_for_continuous_range(1u64 << WIDTH);
+//     const MASK: u64 = (1u64 << 16) - 1;
+//     let table_name = format!("Powers of 2 table up to {} value", (1 << WIDTH) - 1);
 
-            (a as usize, [F::ZERO])
-        },
-        Some(first_key_index_gen_fn::<F, 1>),
-        id,
-    )
-}
+//     LookupTable::create_table_from_key_and_pure_generation_fn(
+//         &keys,
+//         table_name,
+//         1,
+//         |keys| {
+//             let max_value: u64 = 1u64 << WIDTH;
+//             let a = keys[0].as_u64_reduced();
+//             assert!(a <= max_value);
+//             if a == max_value {
+//                 let result = [F::ZERO; 3];
 
-pub fn create_formal_width_3_range_check_table_for_two_tuple<F: PrimeField, const M: usize>(
-    id: u32,
-) -> LookupTable<F, 3> {
-    assert!(M > 0);
-    let mut keys = Vec::with_capacity(1 << (M * 2));
-    for first in 0..(1 << M) {
-        for second in 0..(1 << M) {
-            let key = [
-                F::from_u64_unchecked(first as u64),
-                F::from_u64_unchecked(second as u64),
-                F::ZERO,
-            ];
-            keys.push(key)
-        }
-    }
-    let table_name = format!("Range check {} bits table", M);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        3,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-            assert!(keys[2].is_zero());
-            assert!(a < (1u64 << M));
-            assert!(b < (1u64 << M));
+//                 (a as usize, result)
+//             } else {
+//                 let mut result = [F::ZERO; 3];
+//                 let pow_of_2 = 1u64 << a;
+//                 let low: u64 = pow_of_2 & MASK;
+//                 let high = pow_of_2 >> 16;
 
-            (((a << M) | b) as usize, [F::ZERO; 3])
-        },
-        Some(|keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-            assert!(keys[2].is_zero());
-            assert!(a < (1u64 << M));
-            assert!(b < (1u64 << M));
+//                 result[0] = F::from_u64_unchecked(low as u64);
+//                 result[1] = F::from_u64_unchecked(high as u64);
 
-            ((a << M) | b) as usize
-        }),
-        id,
-    )
-}
+//                 (a as usize, result)
+//             }
+//         },
+//         Some(first_key_index_gen_fn::<F, 3>),
+//         id,
+//     )
+// }
 
-pub fn create_formal_width_3_range_check_table_for_single_entry<F: PrimeField, const M: usize>(
-    id: u32,
-) -> LookupTable<F, 3> {
-    assert!(M > 0);
-    let mut keys = Vec::with_capacity(1 << M);
-    for first in 0..(1 << M) {
-        let key = [F::from_u64_unchecked(first as u64), F::ZERO, F::ZERO];
-        keys.push(key)
-    }
-    let table_name = format!("Width-3 range check {} bits table", M);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        3,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(keys[1].is_zero());
-            assert!(keys[2].is_zero());
-            assert!(a < (1u64 << M));
-
-            (a as usize, [F::ZERO; 3])
-        },
-        Some(|keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(keys[1].is_zero());
-            assert!(keys[2].is_zero());
-            assert!(a < (1u64 << M));
-
-            a as usize
-        }),
-        id,
-    )
-}
-
-pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // take 16 bits of input half-word || shift || is_right
-
-    let keys = key_for_continuous_log2_range(16 + 5 + 1);
-
-    let table_name = "Shift implementation table".to_string();
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let input_word = a as u16;
-            let shift_amount = ((a >> 16) & 0b1_1111) as u32;
-            let is_right_shift = (a >> (16 + 5)) > 0;
-
-            let (in_place, overflow) = if is_right_shift {
-                let input = (input_word as u32) << 16;
-                let t = input >> shift_amount;
-                let in_place = (t >> 16) as u16;
-                let overflow = t as u16;
-
-                (in_place, overflow)
-            } else {
-                let input = input_word as u32;
-                let t = input << shift_amount;
-                let in_place = t as u16;
-                let overflow = (t >> 16) as u16;
-
-                (in_place, overflow)
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(in_place as u64);
-            result[1] = F::from_u64_unchecked(overflow as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_select_byte_and_get_sign_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // This table takes a word + single bit, and selected a byte + gets sign on the byte
-    let keys = key_for_continuous_log2_range(16 + 1);
-
-    let table_name = "Select byte and get sign table".to_string();
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < 1 << 17);
-
-            let word = a as u16;
-            let selector_bit = (a >> 16) != 0;
-
-            let selected_byte = if selector_bit {
-                (word >> 8) as u8
-            } else {
-                word as u8
-            };
-
-            let sign_bit = selected_byte & (1 << 7) != 0;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(selected_byte as u64);
-            result[1] = F::from_boolean(sign_bit);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (8 + 1));
-    for first in 0..(1 << 8) {
-        for second in 0..(1 << 1) {
-            let key = [
-                F::from_u64_unchecked(first as u64),
-                F::from_u64_unchecked(second as u64),
-                F::ZERO,
-            ];
-            keys.push(key)
-        }
-    }
-    let table_name = format!("Truncate and adjust shift amount");
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        3,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-            assert!(a < 1 << 8);
-
-            let is_right_shift = b != 0;
-            let shift_amount = a & 0b1_1111;
-            let shift_amount = if is_right_shift {
-                shift_amount
-            } else {
-                32 - shift_amount
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(shift_amount as u64);
-
-            (((a << 1) | b) as usize, result)
-        },
-        Some(|keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a < (1u64 << 8));
-            assert!(b < (1u64 << 1));
-
-            ((a << 1) | b) as usize
-        }),
-        id,
-    )
-}
-
-pub fn create_mem_load_extend_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // 16-bit half-word || low/high value bit || funct3
-    let keys = key_for_continuous_log2_range(16 + 1 + 3);
-
-    let table_name = "Extend LOAD value table".to_string();
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < 1 << (16 + 1 + 3));
-
-            let word = a as u16;
-            let use_high_half = ((a >> 16) & 1) != 0;
-            let funct3 = (a >> 17) as u8;
-
-            let selected_byte = if use_high_half {
-                (word >> 8) as u8
-            } else {
-                word as u8
-            };
-
-            #[allow(non_snake_case)]
-            let loaded_word = match funct3 {
-                _LB @ 0b000 => {
-                    // sign-extend selected byte
-                    let sign = (selected_byte >> 7) != 0;
-                    if sign {
-                        (selected_byte as u32) | 0xffffff00
-                    } else {
-                        selected_byte as u32
-                    }
-                }
-                _LBU @ 0b100 => {
-                    // zero-extend selected byte
-                    selected_byte as u32
-                }
-                _LH @ 0b001 => {
-                    // sign-extend selected word
-                    let sign = (word >> 15) != 0;
-                    if sign {
-                        (word as u32) | 0xffff0000
-                    } else {
-                        word as u32
-                    }
-                }
-                _LHU @ 0b101 => {
-                    // zero-extend selected word
-                    word as u32
-                }
-                _ => {
-                    // Not important
-                    0u32
-                }
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked((loaded_word & 0xffff) as u64);
-            result[1] = F::from_u64_unchecked((loaded_word >> 16) as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (16 + 1));
-    for first in 0..(1 << 16) {
-        for second in 0..(1 << 1) {
-            let key = [
-                F::from_u64_unchecked(first as u64),
-                F::from_u64_unchecked(second as u64),
-                F::ZERO,
-            ];
-            keys.push(key)
-        }
-    }
-    let table_name = format!("Store byte source contribution table");
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            let bit_0 = b != 0;
-            let byte = a as u8;
-            let result_half_word = if bit_0 {
-                (byte as u16) << 8
-            } else {
-                byte as u16
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(result_half_word as u64);
-
-            (((a << 1) | b) as usize, result)
-        },
-        Some(|keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a < (1u64 << 16));
-            assert!(b < (1u64 << 1));
-
-            ((a << 1) | b) as usize
-        }),
-        id,
-    )
-}
-
-pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (16 + 1));
-    for first in 0..(1 << 16) {
-        for second in 0..(1 << 1) {
-            let key = [
-                F::from_u64_unchecked(first as u64),
-                F::from_u64_unchecked(second as u64),
-                F::ZERO,
-            ];
-            keys.push(key)
-        }
-    }
-    let table_name = format!("Store byte existing contribution table");
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        2,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            // we need to cleanup a part of it to prepare for addition
-            let bit_0 = b != 0;
-            let result_half_word = if bit_0 {
-                (a as u16) & 0x00ff
-            } else {
-                (a as u16) & 0xff00
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(result_half_word as u64);
-
-            (((a << 1) | b) as usize, result)
-        },
-        Some(|keys| {
-            let a = keys[0].as_u64_reduced();
-            let b = keys[1].as_u64_reduced();
-
-            assert!(a < (1u64 << 16));
-            assert!(b < (1u64 << 1));
-
-            ((a << 1) | b) as usize
-        }),
-        id,
-    )
-}
-
-pub fn create_pow2_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTable<F, 3> {
-    // also support formal 1<<width as place 0 in such cases
-    let keys = key_for_continuous_range(1u64 << WIDTH);
-    const MASK: u64 = (1u64 << 16) - 1;
-    let table_name = format!("Powers of 2 table up to {} value", (1 << WIDTH) - 1);
-
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let max_value: u64 = 1u64 << WIDTH;
-            let a = keys[0].as_u64_reduced();
-            assert!(a <= max_value);
-            if a == max_value {
-                let result = [F::ZERO; 3];
-
-                (a as usize, result)
-            } else {
-                let mut result = [F::ZERO; 3];
-                let pow_of_2 = 1u64 << a;
-                let low: u64 = pow_of_2 & MASK;
-                let high = pow_of_2 >> 16;
-
-                result[0] = F::from_u64_unchecked(low as u64);
-                result[1] = F::from_u64_unchecked(high as u64);
-
-                (a as usize, result)
-            }
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-// We have 11 available opcodes [LOAD, MISC_MEM, OP_IMM, AUIPC, STORE, OP, LUI, BRANCH, JALR, JAL, SYSTEM].
-// Not all binary combinations 2^7 exist an opcode so we add an extra flag for this OP_INVALID,
-// as a result we get bitmask with 12 bits
-pub fn create_op_bitmask_table<F: PrimeField>(_id: u32) -> LookupTable<F, 3> {
-    unimplemented!("no longer used");
-}
-
-pub fn create_u16_split_into_bytes_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(16);
-    const TABLE_NAME: &'static str = "U16 split into bytes table";
-
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u64_reduced();
-            assert!(a < (1u64 << 16));
-
-            let low_byte = a & 0xff;
-            let high_byte = a >> 8;
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u64_unchecked(low_byte as u64);
-            result[1] = F::from_u64_unchecked(high_byte as u64);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub const TABLE_TYPES_UPPER_BOUNDS: usize = const {
-    if TOTAL_NUM_OF_TABLES < 48 {
-        TOTAL_NUM_OF_TABLES
-    } else {
-        48
-    }
-};
+// // We have 11 available opcodes [LOAD, MISC_MEM, OP_IMM, AUIPC, STORE, OP, LUI, BRANCH, JALR, JAL, SYSTEM].
+// // Not all binary combinations 2^7 exist an opcode so we add an extra flag for this OP_INVALID,
+// // as a result we get bitmask with 12 bits
+// pub fn create_op_bitmask_table<F: PrimeField>(_id: u32) -> LookupTable<F, 3> {
+//     unimplemented!("no longer used");
+// }
 
 /// Manages multiple lookup tables.
 #[derive(Clone, Debug)]
