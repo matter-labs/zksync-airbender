@@ -385,13 +385,12 @@ fn should_stop_recursion(proof_metadata: &ProofMetadata) -> bool {
 }
 
 // For now, we share the setup cache, only for GPU (as we really care for performance there).
+#[cfg(feature = "gpu")]
 pub struct GpuSharedState<'a> {
-    #[cfg(feature = "gpu")]
     pub prover: gpu_prover::execution::prover::ExecutionProver<'a, usize>,
-    #[cfg(not(feature = "gpu"))]
-    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
+#[cfg(feature = "gpu")]
 impl<'a> GpuSharedState<'a> {
     const MAIN_BINARY_KEY: usize = 0;
     const RECURSION_BINARY_KEY: usize = 1;
@@ -414,8 +413,15 @@ impl<'a> GpuSharedState<'a> {
         let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
         Self { prover }
     }
+}
 
-    #[cfg(not(feature = "gpu"))]
+#[cfg(not(feature = "gpu"))]
+pub struct GpuSharedState<'a> {
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+
+#[cfg(not(feature = "gpu"))]
+impl<'a> GpuSharedState<'a> {
     pub fn new(_binary: &Vec<u32>) -> Self {
         Self {
             _phantom: std::marker::PhantomData,
@@ -470,6 +476,7 @@ pub fn create_proofs_internal(
                     #[cfg(not(feature = "gpu"))]
                     {
                         let _ = gpu_shared_state;
+                        let _ = total_proof_time;
                         panic!("GPU not enabled - please compile with --features gpu flag.")
                     }
                 } else {
@@ -524,6 +531,7 @@ pub fn create_proofs_internal(
                     #[cfg(not(feature = "gpu"))]
                     {
                         let _ = gpu_shared_state;
+                        let _ = total_proof_time;
                         panic!("GPU not enabled - please compile with --features gpu flag.")
                     }
                 } else {
