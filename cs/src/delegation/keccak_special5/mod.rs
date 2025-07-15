@@ -890,8 +890,7 @@ mod test {
             for i in 0..DEBUG_INFO.len() {
                 println!("trying out debug info {i}/{}..", DEBUG_INFO.len());
                 unsafe{
-                    DEBUG_SELECT = i;
-                    update_select();
+                    update_select(i);
                     println!("\tgiven_inputs: {:?}", DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i]));
                     println!("\t.           : {:?}", DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_INPUT_STATE[i])));
                     println!("\texpected_outputs: {:?}", DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i]));
@@ -912,17 +911,16 @@ mod test {
 }
 
 const DEBUG: bool = false;
-static mut DEBUG_SELECT: usize = 0;
-unsafe fn update_select() {
+unsafe fn update_select(select: usize) {
     DEBUG_CONTROL = {
-        let precompile: u16 = DEBUG_INFO[unsafe{DEBUG_SELECT}].0;
-        let iter: u16 = DEBUG_INFO[unsafe{DEBUG_SELECT}].1;
-        let round: u16 = DEBUG_INFO[unsafe{DEBUG_SELECT}].2;
+        let precompile: u16 = DEBUG_INFO[select].0;
+        let iter: u16 = DEBUG_INFO[select].1;
+        let round: u16 = DEBUG_INFO[select].2;
         1<<precompile | 1<<(5+iter) | round<<10
     };
-    DEBUG_INDEXES = DEBUG_INFO[DEBUG_SELECT].3;
-    DEBUG_INPUT_STATE = DEBUG_INFO[DEBUG_SELECT].4;
-    DEBUG_OUTPUT_STATE = DEBUG_INFO[DEBUG_SELECT].5;
+    DEBUG_INDEXES = DEBUG_INFO[select].3;
+    DEBUG_INPUT_STATE = DEBUG_INFO[select].4;
+    DEBUG_OUTPUT_STATE = DEBUG_INFO[select].5;
 }
 static mut DEBUG_CONTROL: u16 = 0;
 static mut DEBUG_INDEXES: [usize; 6] = [0; 6];
