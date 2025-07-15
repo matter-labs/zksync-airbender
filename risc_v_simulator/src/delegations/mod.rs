@@ -11,6 +11,8 @@ use crate::abstractions::tracer::*;
 use crate::cycle::state::RiscV32State;
 use crate::cycle::status_registers::TrapReason;
 use crate::cycle::MachineConfig;
+use crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
+use crate::delegations::keccak_special5::keccak_special5;
 use crate::mmu::*;
 use cs::definitions::TimestampScalar;
 use std::mem::MaybeUninit;
@@ -20,6 +22,7 @@ pub mod unrolled;
 
 pub mod blake2_round_function_with_compression_mode;
 pub mod u256_ops_with_control;
+pub mod keccak_special5;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DelegationsCSRProcessor;
@@ -174,6 +177,25 @@ pub(crate) fn register_indirect_read_write_continuous<M: MemorySource, const N: 
     result
 }
 
+pub(crate) fn register_indirect_read_write_sparse<M: MemorySource, const N: usize>(
+    base_mem_offset: usize,
+    offset_indexes: [usize; N],
+    memory_source: &mut M,
+) -> [RegisterOrIndirectReadWriteData; N] {
+    let mut result = [RegisterOrIndirectReadWriteData::EMPTY; N];
+    let mut trap = TrapReason::NoTrap;
+    for i in 0..N {
+        let address = base_mem_offset + offset_indexes[i]*core::mem::size_of::<u32>();
+        let read_value = memory_source.get(address as u64, AccessType::RegWrite, &mut trap);
+        if trap.is_a_trap() {
+            panic!("error in memory access");
+        }
+        result[i].read_value = read_value;
+    }
+
+    result
+}
+
 #[track_caller]
 pub(crate) fn write_indirect_accesses<M: MemorySource, const N: usize>(
     base_mem_offset: usize,
@@ -195,6 +217,26 @@ pub(crate) fn write_indirect_accesses<M: MemorySource, const N: usize>(
         }
 
         address += core::mem::size_of::<u32>();
+    }
+}
+pub(crate) fn write_indirect_accesses_sparse<M: MemorySource, const N: usize>(
+    base_mem_offset: usize,
+    offset_indexes: [usize; N],
+    accesses: &[RegisterOrIndirectReadWriteData; N],
+    memory_source: &mut M,
+) {
+    let mut trap = TrapReason::NoTrap;
+    for (index, src) in offset_indexes.into_iter().zip(accesses) {
+        let address = base_mem_offset + index * core::mem::size_of::<u32>();
+        memory_source.set(
+            address as u64,
+            src.write_value,
+            AccessType::RegWrite,
+            &mut trap,
+        );
+        if trap.is_a_trap() {
+            panic!("error in memory access");
+        }
     }
 }
 
@@ -251,7 +293,8 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         *ret_val = 0;
         match csr_index {
             BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {}
-            U256_OPS_WITH_CONTROL_ACCESS_ID => {}
+            U256_OPS_WITH_CONTROL_ACCESS_ID => {},
+            KECCAK_SPECIAL5_ACCESS_ID => {},
             _ => {
                 *trap = TrapReason::IllegalInstruction;
             }
@@ -291,6 +334,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
             U256_OPS_WITH_CONTROL_ACCESS_ID => {
                 u256_ops_with_control_impl(state, memory_source, tracer, mmu, rs1_value, trap);
             }
+            KECCAK_SPECIAL5_ACCESS_ID => keccak_special5(state, memory_source, tracer, mmu, rs1_value, trap),
             _ => {
                 *trap = TrapReason::IllegalInstruction;
             }

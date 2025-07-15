@@ -520,6 +520,8 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(cs: &mut CS, precompile_flags: [
     let in1_u8 = LongRegisterDecomposition::new(cs);
     let in2_u8 = LongRegisterDecomposition::new(cs);
 
+    // WORKAROUND: THE SECOND PRECOMPILE CONDITIONALLY NEEDS INPUT u8 CHUNKS TO BE ASSIGNED BEFOREHAND
+
     // first set in1/in2 u8 decompositions + conditional out u64 results
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
         let rotl = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], rot_const: u32| {
