@@ -19,16 +19,17 @@ pub fn keccak_special5_over_unrolled_state<
     // read registers first
     let x10 = machine_state.registers[10];
     let x11 = machine_state.registers[11];
+    let control = x10 >> 16;
     assert!(x10 % (1<<16) == 0, "input control should have lowest 16 bits null"); 
     assert!(x11 % 256 == 0, "input pointer is unaligned");
-    assert!(x10 < 1<<15, "control parameter should be 15 bits but was more");
+    assert!(control < 1<<15, "control parameter should be 15 bits but was more");
     assert!(x11 >= 1 << 21, "state pointer should be in RAM address space but was in ROM");
 
     // extract control info
     let (precompile, iteration, round) = {
-        let precompile_bitmask = x11 & 0b11111;
-        let iteration_bitmask = (x11>>5) & 0b11111;
-        let round = x11 >> 10;
+        let precompile_bitmask = control & 0b11111;
+        let iteration_bitmask = (control>>5) & 0b11111;
+        let round = control >> 10;
         (precompile_bitmask.trailing_zeros(), iteration_bitmask.trailing_zeros() as usize, round as usize)
     };
     assert!(precompile<5 && iteration<5 && round<24, "the control parameters are invalid");
@@ -176,7 +177,7 @@ pub fn keccak_special5_over_unrolled_state<
             let idx4_new = idx4 ^ (!idx0 & i26);
             let i25_new = i25;
             let i26_new = i26;
-            let i27_new = idx0;
+            let i27_new = idx0_new;
             [idx0_new, idx3_new, idx4_new, i25_new, i26_new, i27_new]
         },
         _ => unreachable!()
