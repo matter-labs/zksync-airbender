@@ -185,6 +185,7 @@ pub fn evaluate_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
             range_16_multiplicity_subcounters,
             timestamp_range_check_multiplicity_subcounters,
             general_purpose_multiplicity_subcounters,
+            vec![],
             compiled_circuit,
             generic_lookup_multiplicities_total_len,
             trace_len,

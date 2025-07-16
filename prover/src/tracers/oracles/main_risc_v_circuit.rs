@@ -99,7 +99,7 @@ impl<'a, C: MachineConfig, A: GoodAllocator, F: PrimeField> Oracle<F>
         let cycle_data = &self.cycle_data.per_cycle_data[trace_step];
 
         match placeholder {
-            Placeholder::DegelationABIOffset => 0,
+            Placeholder::DelegationABIOffset => 0,
             Placeholder::DelegationType => cycle_data.delegation_request,
 
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {

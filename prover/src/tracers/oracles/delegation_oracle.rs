@@ -107,7 +107,7 @@ impl<'a, A: GoodAllocator, F: PrimeField> Oracle<F> for DelegationCircuitOracle<
             return 0;
         }
         match placeholder {
-            Placeholder::DegelationABIOffset => 0,
+            Placeholder::DelegationABIOffset => 0,
             Placeholder::DelegationType => self.cycle_data.delegation_type,
             a @ _ => {
                 panic!("Placeholder query {:?} is not supported as u16", a);

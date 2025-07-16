@@ -7,6 +7,7 @@
 
 pub mod abstractions;
 pub mod cycle;
+pub mod machine_mode_only_unrolled;
 pub mod mmio;
 pub mod mmu;
 mod qol;

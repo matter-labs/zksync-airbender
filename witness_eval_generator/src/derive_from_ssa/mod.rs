@@ -488,4 +488,29 @@ mod test {
                 .unwrap();
         }
     }
+
+    #[test]
+    fn gen_for_unrolled_tests() {
+        for prefix in [
+            "add_sub_lui_auipc_mop_preprocessed",
+            "jump_branch_slt_preprocessed",
+            "shift_binop_csrrw_preprocessed",
+            "load_store_preprocessed",
+            "word_only_load_store_preprocessed",
+            "subword_only_load_store_preprocessed",
+            "mul_div_preprocessed",
+            "mul_div_unsigned_preprocessed",
+        ] {
+            let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
+                deserialize_from_file(&format!("../cs/{}_layout.json", prefix));
+            let compiled_graph: Vec<Vec<RawExpression<Mersenne31Field>>> =
+                deserialize_from_file(&format!("../cs/{}_ssa.json", prefix));
+            let full_stream = derive_from_ssa(&compiled_graph, &compiled_circuit, false);
+
+            std::fs::File::create(&format!("../prover/{}_generated.rs", prefix))
+                .unwrap()
+                .write_all(&full_stream.to_string().as_bytes())
+                .unwrap();
+        }
+    }
 }

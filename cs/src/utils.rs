@@ -1,4 +1,4 @@
-use crate::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
+use crate::definitions::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS, TIMESTAMP_STEP};
 
 pub const WORD_SIZE: usize = core::mem::size_of::<u32>();
 
@@ -71,6 +71,14 @@ pub fn timestamp_sub(a: (u32, u32), b: (u32, u32)) -> (((u32, u32), bool), bool)
     let high = t & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
 
     (((low, high), intermediate_borrow), final_borrow)
+}
+
+pub fn timestamp_increment(initial_ts: TimestampScalar) -> (TimestampScalar, bool) {
+    let final_ts = initial_ts.wrapping_add(TIMESTAMP_STEP);
+    let intermediate_carry =
+        (final_ts >> TIMESTAMP_COLUMNS_NUM_BITS) != (initial_ts >> TIMESTAMP_COLUMNS_NUM_BITS);
+
+    (final_ts, intermediate_carry)
 }
 
 pub fn bitreverse_for_bitlength(num: usize, bitlength: usize) -> usize {
@@ -168,13 +176,11 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-#[allow(dead_code)]
 pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     bincode::serialize_into(&mut dst, el).unwrap();

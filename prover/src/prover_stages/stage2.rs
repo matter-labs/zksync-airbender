@@ -24,20 +24,17 @@ use cached_data::ProverCachedData;
 use cs::one_row_compiler::{ColumnAddress, ShuffleRamQueryColumns};
 use fft::field_utils::batch_inverse_with_buffer;
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub struct LookupWidth1SourceDestInformation {
-    pub a_col: usize,
-    pub b_col: usize,
-    pub base_field_quadratic_oracle_col: usize,
-    pub ext4_field_inverses_columns_start: usize,
-}
-
 pub struct SecondStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
     pub ldes: Vec<CosetBoundTracePart<N, A>>,
     pub trees: Vec<T>,
     pub lookup_argument_linearization_challenges:
         [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1],
     pub lookup_argument_gamma: Mersenne31Quartic,
+
+    pub decoder_table_linearization_challenges:
+        [Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    pub decoder_table_gamma: Mersenne31Quartic,
+
     pub grand_product_accumulator: Mersenne31Quartic,
     pub sum_over_delegation_poly: Mersenne31Quartic,
 }
@@ -188,11 +185,11 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                     for i in 0..chunk_size {
                         let absolute_table_idx = chunk_start + i;
 
-                        let (column, row_idx) = lookup_index_into_encoding_tuple(
+                        let (column, row) = lookup_index_into_encoding_tuple(
                             absolute_table_idx,
                             lookup_encoding_capacity,
                         );
-                        let row = setup_trace.get_row(row_idx as usize);
+                        let row = setup_trace.get_row(row as usize);
                         let src = row.get_unchecked(
                             compiled_circuit
                                 .setup_layout
@@ -2015,6 +2012,8 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         trees,
         lookup_argument_linearization_challenges,
         lookup_argument_gamma,
+        decoder_table_linearization_challenges: std::array::from_fn(|_| Mersenne31Quartic::ZERO),
+        decoder_table_gamma: Mersenne31Quartic::ZERO,
         grand_product_accumulator,
         sum_over_delegation_poly,
     };

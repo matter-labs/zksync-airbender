@@ -108,6 +108,7 @@ use super::*;
 use std::collections::HashMap;
 
 mod delegation_test;
+mod unrolled;
 
 #[cfg(test)]
 mod lde_tests;

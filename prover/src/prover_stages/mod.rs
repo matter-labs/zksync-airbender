@@ -26,6 +26,8 @@ use trace_holder::*;
 use transcript::Seed;
 use worker::Worker;
 
+pub mod unrolled_prover;
+
 pub mod cached_data;
 pub mod query_producer;
 pub mod stage1;
@@ -197,6 +199,31 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
         twiddles: &Twiddles<Mersenne31Complex, A>,
         lde_precomputations: &LdePrecomputations<A>,
         lde_factor: usize,
+        tree_cap_size: usize,
+        worker: &Worker,
+    ) -> Self {
+        Self::from_tables_and_trace_len_with_decoder_table(
+            table_driver,
+            &[],
+            trace_len,
+            setup_layout,
+            twiddles,
+            lde_precomputations,
+            lde_factor,
+            tree_cap_size,
+            worker,
+        )
+    }
+
+    pub fn from_tables_and_trace_len_with_decoder_table(
+        table_driver: &TableDriver<Mersenne31Field>,
+        decoder_table_for_execution_circuit: &[[Mersenne31Field;
+              EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH]],
+        trace_len: usize,
+        setup_layout: &SetupLayout,
+        twiddles: &Twiddles<Mersenne31Complex, A>,
+        lde_precomputations: &LdePrecomputations<A>,
+        lde_factor: usize,
         _tree_cap_size: usize,
         worker: &Worker,
     ) -> Self {
@@ -225,11 +252,17 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
         // dump tables
         let all_generic_tables = table_driver.dump_tables();
-        assert_eq!(all_generic_tables.len(), table_driver.total_tables_len);
 
-        let range_check_16_table: Vec<_> = (0..(1 << 16))
-            .map(|el| Mersenne31Field(el as u32))
-            .collect();
+        let reference_range_check_16_table =
+            TableType::RangeCheckLarge.generate_table::<Mersenne31Field>();
+        let mut range_check_16_table = table_driver.get_table(TableType::RangeCheckLarge);
+        if range_check_16_table.is_initialized() == false {
+            // we do not keep it in a common width-3 storage
+            range_check_16_table = &reference_range_check_16_table;
+        }
+        let mut range_check_16_table_content = Vec::with_capacity(range_check_16_table.get_size());
+        range_check_16_table.dump_limited_columns::<1>(&mut range_check_16_table_content);
+        assert_eq!(range_check_16_table_content.len(), 1 << 16);
 
         let timestamp_range_check_table: Vec<_> = (0..(1 << TIMESTAMP_COLUMNS_NUM_BITS))
             .map(|el| Mersenne31Field(el as u32))
@@ -244,8 +277,8 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
             setup_layout.generic_lookup_setup_columns.num_elements()
         );
 
-        let range_check_16_table_content_len = range_check_16_table.len();
-        let range_check_16_table_content_ref = &range_check_16_table;
+        let range_check_16_table_content_len = range_check_16_table_content.len();
+        let range_check_16_table_content_ref = &range_check_16_table_content;
 
         let timestamp_range_check_table_content_len = timestamp_range_check_table.len();
         let timestamp_range_check_table_content_ref = &timestamp_range_check_table;
@@ -266,9 +299,22 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
                         let trace_view_row = trace_view.current_row();
 
+                        if setup_layout.timestamp_setup_columns.num_elements() > 0 {
+                            let timestamp = (absolute_row_idx as u64) + 1;
+                            let timestamp_shifted = timestamp << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+                            let timestamp_low =
+                                timestamp_shifted & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
+                            let timestamp_high = timestamp_shifted >> TIMESTAMP_COLUMNS_NUM_BITS;
+
+                            trace_view_row[setup_layout.timestamp_setup_columns.start()] =
+                                Mersenne31Field(timestamp_low as u32);
+                            trace_view_row[setup_layout.timestamp_setup_columns.start() + 1] =
+                                Mersenne31Field(timestamp_high as u32);
+                        }
+
                         if absolute_row_idx < range_check_16_table_content_len {
                             trace_view_row[setup_layout.range_check_16_setup_column.start()] =
-                                range_check_16_table_content_ref[absolute_row_idx];
+                                range_check_16_table_content_ref[absolute_row_idx][0];
                         }
 
                         if absolute_row_idx < timestamp_range_check_table_content_len {
@@ -288,17 +334,18 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
                             }
                         }
 
-                        if setup_layout.timestamp_setup_columns.num_elements() > 0 {
-                            let timestamp = (absolute_row_idx as u64) + 1;
-                            let timestamp_shifted = timestamp << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
-                            let timestamp_low =
-                                timestamp_shifted & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
-                            let timestamp_high = timestamp_shifted >> TIMESTAMP_COLUMNS_NUM_BITS;
-
-                            trace_view_row[setup_layout.timestamp_setup_columns.start()] =
-                                Mersenne31Field(timestamp_low as u32);
-                            trace_view_row[setup_layout.timestamp_setup_columns.start() + 1] =
-                                Mersenne31Field(timestamp_high as u32);
+                        if setup_layout
+                            .preprocessed_decoder_setup_columns
+                            .num_elements()
+                            > 0
+                        {
+                            if absolute_row_idx < decoder_table_for_execution_circuit.len() {
+                                let flattened =
+                                    &decoder_table_for_execution_circuit[absolute_row_idx];
+                                let range =
+                                    setup_layout.preprocessed_decoder_setup_columns.get_range(0);
+                                trace_view_row[range].copy_from_slice(flattened);
+                            }
                         }
 
                         trace_view.advance_row();
@@ -476,7 +523,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let cached_data_values = self::cached_data::ProverCachedData::new(
         compiled_circuit,
-        external_values,
+        &external_values.challenges,
         trace_len,
         circuit_sequence,
         delegation_processing_type,

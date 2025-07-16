@@ -309,6 +309,9 @@ impl<T: 'static + Sized + Clone + Copy + Zeroable, const N: usize, A: Allocator 
         allocator: A,
         worker: &Worker,
     ) -> Self {
+        if rows == 0 || columns == 0 {
+            return Self::new_zeroed_for_size(rows, columns, allocator);
+        }
         let new = Self::new_uninit_for_size(rows, columns, allocator);
         let new_ref = &new;
         let num_bytes = new.length * new.padded_width * std::mem::size_of::<T>();

@@ -17,8 +17,11 @@ use memory_witness::delegation_circuit::process_delegation_requests_execution;
 use memory_witness::main_circuit::process_delegation_requests;
 use memory_witness::main_circuit::process_lazy_init_work;
 use memory_witness::main_circuit::process_shuffle_ram_accesses;
+use risc_v_simulator::abstractions::csr_processor::*;
 use risc_v_simulator::abstractions::non_determinism::*;
+use risc_v_simulator::abstractions::tracer::Tracer;
 use risc_v_simulator::cycle::state::NUM_REGISTERS;
+use risc_v_simulator::mmu::*;
 use std::alloc::Allocator;
 use std::alloc::Global;
 use std::collections::HashMap;
@@ -30,6 +33,7 @@ mod new;
 mod ext_calls;
 mod ext_calls_with_gpu_tracers;
 mod memory_witness;
+pub mod unrolled;
 pub mod witness_proxy;
 
 pub use self::new::{evaluate_witness, SimpleWitnessProxy};
@@ -60,6 +64,16 @@ pub struct WitnessEvaluationAuxData {
     pub teardown_timestamp_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutorFamilyWitnessEvaluationAuxData {
+    // pub lazy_init_first_row: [Mersenne31Field; REGISTER_SIZE],
+    // pub teardown_value_first_row: [Mersenne31Field; REGISTER_SIZE],
+    // pub teardown_timestamp_first_row: [Mersenne31Field; REGISTER_SIZE],
+    // pub lazy_init_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
+    // pub teardown_value_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
+    // pub teardown_timestamp_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct RegisterFinalData {
     pub last_write_timestamp: u32,
@@ -79,6 +93,21 @@ pub struct WitnessEvaluationData<const N: usize, A: Allocator + Clone> {
 #[derive(Clone, Debug)]
 pub struct MemoryOnlyWitnessEvaluationData<const N: usize, A: Allocator + Clone> {
     pub aux_data: WitnessEvaluationAuxData,
+    pub memory_trace: RowMajorTrace<Mersenne31Field, N, A>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WitnessEvaluationDataForExecutionFamily<const N: usize, A: Allocator + Clone> {
+    pub aux_data: ExecutorFamilyWitnessEvaluationAuxData,
+    pub exec_trace: RowMajorTrace<Mersenne31Field, N, A>,
+    pub num_witness_columns: usize,
+    // we will use it for stage 2 - we can map (for free) every lookup tuple into the
+    // corresponding index of the lookup tables (and more precisely - in the concatenation of all the tables)
+    pub lookup_mapping: RowMajorTrace<u32, N, A>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MemoryOnlyWitnessEvaluationDataForExecutionFamily<const N: usize, A: Allocator + Clone> {
     pub memory_trace: RowMajorTrace<Mersenne31Field, N, A>,
 }
 
@@ -293,6 +322,7 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
     mut range_16_multiplicity_subcounters: Vec<Vec<u32>>,
     mut timestamp_range_check_multiplicity_subcounters: Vec<Vec<u32>>,
     mut general_purpose_multiplicity_subcounters: Vec<Vec<u32>>,
+    mut decoder_multiplicity_subcounters: Vec<Vec<u32>>,
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     generic_lookup_multiplicities_total_len: usize,
     trace_len: usize,
@@ -367,6 +397,49 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
                 let (row, _) = view.current_row_split(num_witness_columns);
                 let multiplicity =
                     *timestamp_range_check_multiplicities.get_unchecked(absolute_row_idx);
+                debug_assert!(multiplicity < Mersenne31Field::CHARACTERISTICS as u32);
+                *row.get_unchecked_mut(offset) = Mersenne31Field(multiplicity as u32);
+
+                view.advance_row();
+            }
+        }
+
+        #[cfg(feature = "profiling")]
+        PROFILING_TABLE.with_borrow_mut(|el| {
+            *el.entry("Timestamp range check multiplicity copy-back")
+                .or_default() += t.elapsed();
+        });
+    }
+
+    if compiled_circuit
+        .witness_layout
+        .multiplicities_columns_for_decoder_in_executor_families
+        .num_elements()
+        > 0
+    {
+        // add up and write decoder multiplicities
+        #[cfg(feature = "profiling")]
+        let t = std::time::Instant::now();
+
+        let mut decoder_multiplicities = decoder_multiplicity_subcounters.pop().unwrap();
+        for el in decoder_multiplicity_subcounters.into_iter() {
+            assert_eq!(decoder_multiplicities.len(), el.len());
+
+            for (dst, src) in decoder_multiplicities.iter_mut().zip(el.into_iter()) {
+                *dst += src;
+            }
+        }
+
+        // write them column_major
+        unsafe {
+            let offset = compiled_circuit
+                .witness_layout
+                .multiplicities_columns_for_decoder_in_executor_families
+                .start();
+            let mut view = exec_trace.row_view(0..1 << TIMESTAMP_COLUMNS_NUM_BITS);
+            for absolute_row_idx in 0..(1 << TIMESTAMP_COLUMNS_NUM_BITS) {
+                let (row, _) = view.current_row_split(num_witness_columns);
+                let multiplicity = *decoder_multiplicities.get_unchecked(absolute_row_idx);
                 debug_assert!(multiplicity < Mersenne31Field::CHARACTERISTICS as u32);
                 *row.get_unchecked_mut(offset) = Mersenne31Field(multiplicity as u32);
 

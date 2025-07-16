@@ -366,7 +366,21 @@ impl Worker {
         Self::get_geometry_for_num_cores(self.num_cores, work_size)
     }
 
+    #[track_caller]
     pub fn get_geometry_for_num_cores(num_cores: usize, work_size: usize) -> WorkerGeometry {
+        if num_cores == 0 {
+            panic!("No cores to work with");
+        }
+        if work_size == 0 {
+            panic!("Empty work");
+        }
+        if num_cores == 1 {
+            return WorkerGeometry {
+                num_chunks: 1,
+                ordinary_chunk_size: work_size,
+                remainder: 0,
+            }
+        }
         // we should ensure that ebery thread has at least some work to do
         let num_chunks = std::cmp::min(num_cores, work_size);
 

@@ -808,61 +808,6 @@ impl quote::ToTokens for DelegationProcessingLayout {
     }
 }
 
-// #[derive(Clone, Debug)]
-// pub struct CompiledWitnessEvaluator<F: PrimeField> {
-//     pub sources: Range<usize>,
-//     pub targets: Range<usize>,
-//     pub condition: Option<ColumnAddress>,
-//     pub constants: Range<usize>,
-//     pub table_type: TableType,
-//     pub func: fn(WitnessGenSource<'_, F>, WitnessGenDest<'_, F>, &[F], &TableDriver<F>, TableType),
-// }
-
-// pub fn add_copy_constraint_if_needed<F: PrimeField>(
-//     variable: Variable,
-//     num_variables: &mut u64,
-//     constraints: &mut Vec<(Constraint<F>, bool)>,
-//     witness_evaluators: &mut Vec<WitnessEvaluator<F>>,
-//     all_variables_to_place: &mut BTreeSet<Variable>,
-// ) -> Variable {
-//     if all_variables_to_place.contains(&variable) {
-//         return variable;
-//     }
-
-//     let new_var = Variable(*num_variables);
-//     *num_variables += 1;
-
-//     all_variables_to_place.insert(new_var);
-
-//     // add copy constraint
-//     let mut constraint = Constraint::from(Term::from(variable) - Term::from(new_var));
-//     constraint.normalize();
-//     // can not be used for optimizations!
-//     constraints.push((constraint, true));
-
-//     // and add witness evaluator
-//     let value_fn = |input: WitnessGenSource<'_, F>,
-//                     mut output: WitnessGenDest<'_, F>,
-//                     constants: &[F],
-//                     table_driver: &TableDriver<F>,
-//                     table_type: TableType| {
-//         debug_assert!(constants.is_empty());
-//         output[0] = input[0];
-//     };
-
-//     let wit_resolution = WitnessEvaluator {
-//         sources: SmallVec::from_slice(&[variable]),
-//         targets: SmallVec::from_slice(&[new_var]),
-//         condition: None,
-//         constants: SmallVec::new(),
-//         table_type: TableType::ZeroEntry,
-//         func: value_fn,
-//     };
-//     witness_evaluators.push(wit_resolution);
-
-//     new_var
-// }
-
 impl quote::ToTokens for BoundaryConstraintLocation {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let stream = match *self {

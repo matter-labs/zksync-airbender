@@ -282,6 +282,7 @@ pub struct ProverCachedData {
     pub delegation_type: Mersenne31Field,
 
     pub memory_argument_challenges: ExternalMemoryArgumentChallenges,
+    pub machine_state_argument_challenges: ExternalMachineStateArgumentChallenges,
 
     pub execute_delegation_argument: bool,
     pub delegation_challenges: ExternalDelegationArgumentChallenges,
@@ -343,7 +344,7 @@ pub struct ProverCachedData {
 impl ProverCachedData {
     pub fn new(
         compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-        external_values: &ExternalValues,
+        external_challenges: &ExternalChallenges,
         trace_len: usize,
         circuit_sequence: usize,
         delegation_processing_type: u16,
@@ -514,18 +515,23 @@ impl ProverCachedData {
             AlignedColumnSet::empty()
         };
 
-        let memory_argument_challenges = external_values.challenges.memory_argument;
+        let memory_argument_challenges = external_challenges.memory_argument;
+        let machine_state_argument_challenges =
+            if let Some(values) = external_challenges.machine_state_permutation_argument {
+                values
+            } else {
+                ExternalMachineStateArgumentChallenges::default()
+            };
 
-        let execute_delegation_argument = external_values.challenges.delegation_argument.is_some();
+        let execute_delegation_argument = external_challenges.delegation_argument.is_some();
         if execute_delegation_argument {
             assert!(handle_delegation_requests | process_delegations);
         }
-        let delegation_challenges =
-            if let Some(values) = external_values.challenges.delegation_argument {
-                values
-            } else {
-                ExternalDelegationArgumentChallenges::default()
-            };
+        let delegation_challenges = if let Some(values) = external_challenges.delegation_argument {
+            values
+        } else {
+            ExternalDelegationArgumentChallenges::default()
+        };
 
         #[cfg(feature = "debug_logs")]
         {
@@ -676,6 +682,7 @@ impl ProverCachedData {
             memory_timestamp_high_from_circuit_idx,
             delegation_type,
             memory_argument_challenges,
+            machine_state_argument_challenges,
             execute_delegation_argument,
             delegation_challenges,
             process_shuffle_ram_init,

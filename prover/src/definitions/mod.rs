@@ -104,15 +104,89 @@ impl ExternalDelegationArgumentChallenges {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,
+)]
+#[repr(C)]
+pub struct ExternalMachineStateArgumentChallenges {
+    pub linearization_challenges: [Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    pub additive_term: Mersenne31Quartic,
+}
+
+impl ExternalMachineStateArgumentChallenges {
+    pub fn flatten(&self) -> [u32; (NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES + 1) * 4] {
+        // we must normalize
+        let mut result = [0u32; (NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES + 1) * 4];
+        let mut it = result.iter_mut();
+
+        for el in self.linearization_challenges.iter() {
+            let flattened = el
+                .into_coeffs_in_base()
+                .map(|el: Mersenne31Field| el.to_reduced_u32());
+            for src in flattened.into_iter() {
+                *it.next().unwrap() = src;
+            }
+        }
+
+        let flattened = self
+            .additive_term
+            .into_coeffs_in_base()
+            .map(|el: Mersenne31Field| el.to_reduced_u32());
+        for src in flattened.into_iter() {
+            *it.next().unwrap() = src;
+        }
+
+        assert!(it.next().is_none());
+
+        result
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,
+)]
+#[repr(C)]
+pub struct ExternalMachineIntermediateStateArgumentChallenges {
+    pub linearization_challenges:
+        [Mersenne31Quartic; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    pub additive_term: Mersenne31Quartic,
+}
+
+impl ExternalMachineIntermediateStateArgumentChallenges {
+    pub fn flatten(&self) -> [u32; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES * 4] {
+        // we must normalize
+        let mut result = [0u32; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES * 4];
+        let mut it = result.iter_mut();
+
+        for el in self.linearization_challenges.iter() {
+            let flattened = el
+                .into_coeffs_in_base()
+                .map(|el: Mersenne31Field| el.to_reduced_u32());
+            for src in flattened.into_iter() {
+                *it.next().unwrap() = src;
+            }
+        }
+
+        let flattened = self
+            .additive_term
+            .into_coeffs_in_base()
+            .map(|el: Mersenne31Field| el.to_reduced_u32());
+        for src in flattened.into_iter() {
+            *it.next().unwrap() = src;
+        }
+
+        assert!(it.next().is_none());
+
+        result
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, Default, serde::Serialize, serde::Deserialize, PartialEq)]
 #[repr(C)]
 pub struct ExternalChallenges {
-    // #[serde(bound(deserialize = "ExternalMemoryArgumentChallenges: serde::Deserialize<'de>"))]
-    // #[serde(bound(serialize = "ExternalMemoryArgumentChallenges: serde::Serialize"))]
     pub memory_argument: ExternalMemoryArgumentChallenges,
-    // #[serde(bound(deserialize = "ExternalDelegationArgumentChallenges: serde::Deserialize<'de>"))]
-    // #[serde(bound(serialize = "ExternalDelegationArgumentChallenges: serde::Serialize"))]
     pub delegation_argument: Option<ExternalDelegationArgumentChallenges>,
+    pub machine_state_permutation_argument: Option<ExternalMachineStateArgumentChallenges>,
 }
 
 impl ExternalChallenges {
@@ -147,6 +221,7 @@ impl ExternalChallenges {
                 Self {
                     memory_argument,
                     delegation_argument: None,
+                    machine_state_permutation_argument: None,
                 }
             } else {
                 let mut transcript_challenges = [0u32;
@@ -201,6 +276,7 @@ impl ExternalChallenges {
                 Self {
                     memory_argument,
                     delegation_argument: Some(delegation_argument),
+                    machine_state_permutation_argument: None,
                 }
             }
         }

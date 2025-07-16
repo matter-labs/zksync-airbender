@@ -153,17 +153,17 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
         } = lazy_init;
 
         // copy lazy init values
-        write_u32_value_into_memory_columns(
+        write_u32_value_into_columns(
             lazy_init_and_teardown.lazy_init_addresses_columns,
             this_row_lazy_init_address,
             memory_row,
         );
-        write_u32_value_into_memory_columns(
+        write_u32_value_into_columns(
             lazy_init_and_teardown.lazy_teardown_values_columns,
             this_row_teardown_value,
             memory_row,
         );
-        write_timestamp_value_into_memory_columns(
+        write_timestamp_value_into_columns(
             lazy_init_and_teardown.lazy_teardown_timestamps_columns,
             this_row_teardown_timestamp.as_scalar(),
             memory_row,
@@ -233,7 +233,7 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
                     );
                 }
             } else {
-                // VERY important - we will use the fact that final borrow value is unconstrained
+                // VERY important - we will use the fact that final borrow value is unconstrainted
                 // when we will define lazy init/teardown padding constraint, so we manually right here write it
                 // to the proper value - it must be `1`
                 write_value(
@@ -264,23 +264,23 @@ pub(crate) unsafe fn process_delegation_requests<O: Oracle<Mersenne31Field>>(
     if let Some(delegation_request_layout) =
         compiled_circuit.memory_layout.delegation_request_layout
     {
-        write_boolean_placeholder_into_memory_columns(
+        write_boolean_placeholder_into_columns(
             delegation_request_layout.multiplicity,
             Placeholder::ExecuteDelegation,
             oracle,
             memory_row,
             absolute_row_idx,
         );
-        write_u16_placeholder_into_memory_columns(
+        write_u16_placeholder_into_columns(
             delegation_request_layout.delegation_type,
             Placeholder::DelegationType,
             oracle,
             memory_row,
             absolute_row_idx,
         );
-        write_u16_placeholder_into_memory_columns(
+        write_u16_placeholder_into_columns(
             delegation_request_layout.abi_mem_offset_high,
-            Placeholder::DegelationABIOffset,
+            Placeholder::DelegationABIOffset,
             oracle,
             memory_row,
             absolute_row_idx,
@@ -326,7 +326,7 @@ pub(crate) unsafe fn process_shuffle_ram_accesses<
     {
         match mem_query.get_address() {
             ShuffleRamAddress::RegisterOnly(RegisterOnlyAccessAddress { register_index }) => {
-                write_u16_placeholder_into_memory_columns(
+                write_u16_placeholder_into_columns(
                     register_index,
                     Placeholder::ShuffleRamAddress(access_idx),
                     oracle,
@@ -346,7 +346,7 @@ pub(crate) unsafe fn process_shuffle_ram_accesses<
                     );
                 memory_row[is_register.start()] = Mersenne31Field::from_boolean(is_register_flag);
 
-                write_u32_placeholder_into_memory_columns(
+                write_u32_placeholder_into_columns(
                     address,
                     Placeholder::ShuffleRamAddress(access_idx),
                     oracle,
@@ -356,7 +356,7 @@ pub(crate) unsafe fn process_shuffle_ram_accesses<
             }
         }
 
-        write_timestamp_placeholder_into_memory_columns(
+        write_timestamp_placeholder_into_columns(
             mem_query.get_read_timestamp_columns(),
             Placeholder::ShuffleRamReadTimestamp(access_idx),
             oracle,
@@ -364,7 +364,7 @@ pub(crate) unsafe fn process_shuffle_ram_accesses<
             absolute_row_idx,
         );
 
-        write_u32_placeholder_into_memory_columns(
+        write_u32_placeholder_into_columns(
             mem_query.get_read_value_columns(),
             Placeholder::ShuffleRamReadValue(access_idx),
             oracle,
@@ -374,7 +374,7 @@ pub(crate) unsafe fn process_shuffle_ram_accesses<
 
         if let ShuffleRamQueryColumns::Write(columns) = mem_query {
             // also do write
-            write_u32_placeholder_into_memory_columns(
+            write_u32_placeholder_into_columns(
                 columns.write_value,
                 Placeholder::ShuffleRamWriteValue(access_idx),
                 oracle,
