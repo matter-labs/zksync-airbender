@@ -16,6 +16,37 @@ pub enum Term<F: PrimeField> {
     },
 }
 
+impl<F: PrimeField> fmt::Display for Term<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Constant(c) => { write!(f, "{c}") },
+            Self::Expression { coeff, inner, degree } => {
+                let coeff = coeff.as_u64_reduced();
+                let coeff_opp = F::CHARACTERISTICS - coeff;
+                if coeff < coeff_opp {
+                    if coeff != 1 {
+                        write!(f, " + {coeff}")?;
+                    } else {
+                        write!(f, " + ")?;
+                    }
+                } else {
+                    if coeff_opp != 1 {
+                        write!(f, " - {coeff_opp}")?;
+                    } else {
+                        write!(f, " - ")?;
+                    }
+                }
+                if coeff != 0 {
+                    for &Variable(var) in inner.into_iter().take(*degree) {
+                        write!(f, "(v{var})")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<F: PrimeField> PartialOrd for Term<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -282,6 +313,15 @@ impl<F: PrimeField> Term<F> {
 #[derive(Clone, Debug)]
 pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
+}
+use std::fmt;
+impl<F: PrimeField> fmt::Display for Constraint<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for term in self.terms.iter() {
+            write!(f, "{term}")?;
+        }
+        Ok(())
+    }
 }
 
 impl<F: PrimeField> From<Variable> for Constraint<F> {

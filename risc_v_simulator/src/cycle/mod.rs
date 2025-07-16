@@ -61,6 +61,7 @@ impl MachineConfig for IMStandardIsaConfig {
         &[
             crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
             crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
+            crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
         ];
 }
 
@@ -163,5 +164,6 @@ impl MachineConfig for IMIsaConfigWithAllDelegations {
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
         crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
         crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
+        crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
     ];
 }
