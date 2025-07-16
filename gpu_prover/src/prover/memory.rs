@@ -1,4 +1,4 @@
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::trace_holder::{transform_tree_caps, TraceHolder};
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::{device_tracing, BF};
@@ -13,14 +13,14 @@ use era_cudart::result::CudaResult;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::sync::Arc;
 
-pub struct MemoryCommitmentJob<'a, C: ProverContext> {
+pub struct MemoryCommitmentJob<'a> {
     range: device_tracing::Range<'a>,
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
+    tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
 }
 
-impl<'a, C: ProverContext> MemoryCommitmentJob<'a, C> {
+impl<'a> MemoryCommitmentJob<'a> {
     pub fn is_finished(&self) -> CudaResult<bool> {
         self.is_finished_event.query()
     }
@@ -40,13 +40,13 @@ impl<'a, C: ProverContext> MemoryCommitmentJob<'a, C> {
     }
 }
 
-pub fn commit_memory<'a, C: ProverContext>(
-    tracing_data_transfer: TracingDataTransfer<'a, C>,
+pub fn commit_memory<'a>(
+    tracing_data_transfer: TracingDataTransfer<'a>,
     circuit: &CompiledCircuitArtifact<BF>,
     log_lde_factor: u32,
     log_tree_cap_size: u32,
-    context: &C,
-) -> CudaResult<MemoryCommitmentJob<'a, C>> {
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
     let trace_len = circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();

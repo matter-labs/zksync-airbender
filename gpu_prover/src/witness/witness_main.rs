@@ -4,7 +4,6 @@ use crate::circuit_type::MainCircuitType;
 use crate::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
-use crate::prover::context::ProverContext;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -28,9 +27,9 @@ generate_witness_main_kernel!(generate_machine_without_signed_mul_div_witness_ke
 generate_witness_main_kernel!(generate_reduced_risc_v_machine_witness_kernel);
 generate_witness_main_kernel!(generate_risc_v_cycles_witness_kernel);
 
-pub fn generate_witness_values_main<C: ProverContext>(
+pub fn generate_witness_values_main(
     circuit_type: MainCircuitType,
-    trace: &MainTraceDevice<C>,
+    trace: &MainTraceDevice,
     generic_lookup_tables: &DeviceMatrix<BF>,
     memory: &DeviceMatrix<BF>,
     witness: &mut DeviceMatrixMut<BF>,
