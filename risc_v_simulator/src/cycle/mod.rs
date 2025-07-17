@@ -64,7 +64,6 @@ impl MachineConfig for IMStandardIsaConfig {
         ];
 }
 
-
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]

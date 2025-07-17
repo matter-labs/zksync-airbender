@@ -19,7 +19,7 @@ impl ShuffleRamInitAndTeardownLayout {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MemorySubtree {
-    pub shuffle_ram_inits_and_teardowns: Option<ShuffleRamInitAndTeardownLayout>,
+    pub shuffle_ram_inits_and_teardowns: Vec<ShuffleRamInitAndTeardownLayout>,
     pub shuffle_ram_access_sets: Vec<ShuffleRamQueryColumns>,
     pub delegation_request_layout: Option<DelegationRequestLayout>,
     pub delegation_processor_layout: Option<DelegationProcessingLayout>,
@@ -41,7 +41,7 @@ impl MemorySubtree {
         }
 
         CompiledMemorySubtree {
-            shuffle_ram_inits_and_teardowns: self.shuffle_ram_inits_and_teardowns,
+            shuffle_ram_inits_and_teardowns: &self.shuffle_ram_inits_and_teardowns,
             shuffle_ram_access_sets: &self.shuffle_ram_access_sets,
             delegation_request_layout: self.delegation_request_layout,
             delegation_processor_layout: self.delegation_processor_layout,
@@ -54,7 +54,7 @@ impl MemorySubtree {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CompiledMemorySubtree<'a> {
-    pub shuffle_ram_inits_and_teardowns: Option<ShuffleRamInitAndTeardownLayout>,
+    pub shuffle_ram_inits_and_teardowns: &'a [ShuffleRamInitAndTeardownLayout],
     pub shuffle_ram_access_sets: &'a [ShuffleRamQueryColumns],
     pub delegation_request_layout: Option<DelegationRequestLayout>,
     pub delegation_processor_layout: Option<DelegationProcessingLayout>,

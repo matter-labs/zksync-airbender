@@ -453,18 +453,20 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     // VERY important - we will use the fact that final borrow value is unconstrained
     // when we will define lazy init/teardown padding constraint, so we manually right here write it
     // to the proper value - it must be `1`
-    if let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars {
-        let ShuffleRamAuxComparisonSet { final_borrow, .. } = lazy_init_address_aux_vars;
+    if compiled_circuit.lazy_init_address_aux_vars.len() > 0 {
+        for lazy_init_address_aux_vars in compiled_circuit.lazy_init_address_aux_vars.iter() {
+            let ShuffleRamAuxComparisonSet { final_borrow, .. } = *lazy_init_address_aux_vars;
 
-        let row_of_interest = trace_len - 2; // one before last
-        let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
-        let (witness_row, _) = exec_trace_view
-            .current_row()
-            .split_at_mut(num_witness_columns);
-        let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
-            unreachable!()
-        };
-        witness_row[offset] = Mersenne31Field::ONE;
+            let row_of_interest = trace_len - 2; // one before last
+            let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
+            let (witness_row, _) = exec_trace_view
+                .current_row()
+                .split_at_mut(num_witness_columns);
+            let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
+                unreachable!()
+            };
+            witness_row[offset] = Mersenne31Field::ONE;
+        }
     }
 
     let optimal_folding =
@@ -501,8 +503,16 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     if compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_some()
+        .is_empty()
+        == false
     {
+        assert_eq!(
+            compiled_circuit
+                .memory_layout
+                .shuffle_ram_inits_and_teardowns
+                .len(),
+            1
+        );
         transcript_input.extend(external_values.aux_boundary_values.flatten().into_iter());
     }
 
@@ -599,7 +609,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         &stage_1_output,
         &stage_2_output,
         &setup_precomputations,
-        external_values,
+        &[external_values.aux_boundary_values],
         precomputations,
         lde_precomputations,
         lde_factor,

@@ -56,23 +56,33 @@ pub(crate) unsafe fn evaluate_lookup_arguments_consistency(
         if compiled_circuit
             .memory_layout
             .shuffle_ram_inits_and_teardowns
-            .is_some()
+            .is_empty()
+            == false
         {
             let lazy_init_address_range_check_16 = compiled_circuit
                 .stage_2_layout
                 .lazy_init_address_range_check_16
                 .unwrap();
-            let el = stage_2_trace_view_row
-                .as_ptr()
-                .add(
-                    lazy_init_address_range_check_16
-                        .ext_4_field_oracles
-                        .get_range(0)
-                        .start,
-                )
-                .cast::<Mersenne31Quartic>()
-                .read();
-            term_contribution.sub_assign(&el);
+            assert_eq!(
+                compiled_circuit
+                    .memory_layout
+                    .shuffle_ram_inits_and_teardowns
+                    .len(),
+                lazy_init_address_range_check_16.num_pairs
+            );
+            for i in 0..lazy_init_address_range_check_16.num_pairs {
+                let el = stage_2_trace_view_row
+                    .as_ptr()
+                    .add(
+                        lazy_init_address_range_check_16
+                            .ext_4_field_oracles
+                            .get_range(i)
+                            .start,
+                    )
+                    .cast::<Mersenne31Quartic>()
+                    .read();
+                term_contribution.sub_assign(&el);
+            }
         }
         if let Some(_remainder) = compiled_circuit.stage_2_layout.remainder_for_range_check_16 {
             todo!();

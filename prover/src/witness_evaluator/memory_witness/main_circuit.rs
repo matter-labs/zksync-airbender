@@ -9,12 +9,28 @@ pub fn evaluate_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
     worker: &Worker,
     allocator: A,
 ) -> MemoryOnlyWitnessEvaluationData<DEFAULT_TRACE_PADDING_MULTIPLE, A> {
+    assert_eq!(
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len(),
+        compiled_circuit.lazy_init_address_aux_vars.len()
+    );
+
     if compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_some()
+        .is_empty()
+        == false
     {
-        assert_eq!(lazy_init_data.len(), cycles);
+        assert_eq!(
+            lazy_init_data.len(),
+            cycles
+                * compiled_circuit
+                    .memory_layout
+                    .shuffle_ram_inits_and_teardowns
+                    .len()
+        );
     }
 
     let trace_len = cycles.next_power_of_two();
@@ -64,66 +80,115 @@ pub fn evaluate_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
     // we also do not care about multiplicities
 
     // now get aux variables
-
-    let LazyInitAndTeardown {
-        address: lazy_init_address_first_row,
-        teardown_value: lazy_teardown_value_first_row,
-        teardown_timestamp: lazy_teardown_timestamp_first_row,
-    } = lazy_init_data[0];
-
-    let LazyInitAndTeardown {
-        address: lazy_init_address_one_before_last_row,
-        teardown_value: lazy_teardown_value_one_before_last_row,
-        teardown_timestamp: lazy_teardown_timestamp_one_before_last_row,
-    } = lazy_init_data[cycles - 1];
-
-    let (lazy_init_address_first_row_low, lazy_init_address_first_row_high) =
-        split_u32_into_pair_u16(lazy_init_address_first_row);
-    let (teardown_value_first_row_low, teardown_value_first_row_high) =
-        split_u32_into_pair_u16(lazy_teardown_value_first_row);
-    let (teardown_timestamp_first_row_low, teardown_timestamp_first_row_high) =
-        split_timestamp(lazy_teardown_timestamp_first_row.as_scalar());
-
-    let (lazy_init_address_one_before_last_row_low, lazy_init_address_one_before_last_row_high) =
-        split_u32_into_pair_u16(lazy_init_address_one_before_last_row);
-    let (teardown_value_one_before_last_row_low, teardown_value_one_before_last_row_high) =
-        split_u32_into_pair_u16(lazy_teardown_value_one_before_last_row);
-    let (teardown_timestamp_one_before_last_row_low, teardown_timestamp_one_before_last_row_high) =
-        split_timestamp(lazy_teardown_timestamp_one_before_last_row.as_scalar());
+    let aux_boundary_data = get_aux_boundary_data(compiled_circuit, cycles, lazy_init_data);
 
     let aux_data = WitnessEvaluationAuxData {
         first_row_public_inputs: vec![],
         one_before_last_row_public_inputs: vec![],
-        lazy_init_first_row: [
-            Mersenne31Field(lazy_init_address_first_row_low as u32),
-            Mersenne31Field(lazy_init_address_first_row_high as u32),
-        ],
-        teardown_value_first_row: [
-            Mersenne31Field(teardown_value_first_row_low as u32),
-            Mersenne31Field(teardown_value_first_row_high as u32),
-        ],
-        teardown_timestamp_first_row: [
-            Mersenne31Field(teardown_timestamp_first_row_low),
-            Mersenne31Field(teardown_timestamp_first_row_high),
-        ],
-        lazy_init_one_before_last_row: [
-            Mersenne31Field(lazy_init_address_one_before_last_row_low as u32),
-            Mersenne31Field(lazy_init_address_one_before_last_row_high as u32),
-        ],
-        teardown_value_one_before_last_row: [
-            Mersenne31Field(teardown_value_one_before_last_row_low as u32),
-            Mersenne31Field(teardown_value_one_before_last_row_high as u32),
-        ],
-        teardown_timestamp_one_before_last_row: [
-            Mersenne31Field(teardown_timestamp_one_before_last_row_low),
-            Mersenne31Field(teardown_timestamp_one_before_last_row_high),
-        ],
+        aux_boundary_data,
     };
 
     MemoryOnlyWitnessEvaluationData {
         aux_data,
         memory_trace: memory_trace_view,
     }
+}
+
+pub(crate) fn get_aux_boundary_data(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    cycles: usize,
+    lazy_init_data: &[LazyInitAndTeardown],
+) -> Vec<AuxArgumentsBoundaryValues> {
+    assert_eq!(
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len(),
+        compiled_circuit.lazy_init_address_aux_vars.len()
+    );
+
+    if compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .is_empty()
+        == false
+    {
+        assert_eq!(
+            lazy_init_data.len(),
+            cycles
+                * compiled_circuit
+                    .memory_layout
+                    .shuffle_ram_inits_and_teardowns
+                    .len()
+        );
+    }
+
+    // now get aux variables
+    let mut aux_boundary_data = Vec::with_capacity(lazy_init_data.len());
+    let len = compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .len();
+
+    for i in 0..len {
+        let LazyInitAndTeardown {
+            address: lazy_init_address_first_row,
+            teardown_value: lazy_teardown_value_first_row,
+            teardown_timestamp: lazy_teardown_timestamp_first_row,
+        } = lazy_init_data[(cycles - 1) * i];
+
+        let LazyInitAndTeardown {
+            address: lazy_init_address_one_before_last_row,
+            teardown_value: lazy_teardown_value_one_before_last_row,
+            teardown_timestamp: lazy_teardown_timestamp_one_before_last_row,
+        } = lazy_init_data[(cycles * (i + 1)) - 1];
+
+        let (lazy_init_address_first_row_low, lazy_init_address_first_row_high) =
+            split_u32_into_pair_u16(lazy_init_address_first_row);
+        let (teardown_value_first_row_low, teardown_value_first_row_high) =
+            split_u32_into_pair_u16(lazy_teardown_value_first_row);
+        let (teardown_timestamp_first_row_low, teardown_timestamp_first_row_high) =
+            split_timestamp(lazy_teardown_timestamp_first_row.as_scalar());
+
+        let (lazy_init_address_one_before_last_row_low, lazy_init_address_one_before_last_row_high) =
+            split_u32_into_pair_u16(lazy_init_address_one_before_last_row);
+        let (teardown_value_one_before_last_row_low, teardown_value_one_before_last_row_high) =
+            split_u32_into_pair_u16(lazy_teardown_value_one_before_last_row);
+        let (
+            teardown_timestamp_one_before_last_row_low,
+            teardown_timestamp_one_before_last_row_high,
+        ) = split_timestamp(lazy_teardown_timestamp_one_before_last_row.as_scalar());
+
+        let aux_value = AuxArgumentsBoundaryValues {
+            lazy_init_first_row: [
+                Mersenne31Field(lazy_init_address_first_row_low as u32),
+                Mersenne31Field(lazy_init_address_first_row_high as u32),
+            ],
+            teardown_value_first_row: [
+                Mersenne31Field(teardown_value_first_row_low as u32),
+                Mersenne31Field(teardown_value_first_row_high as u32),
+            ],
+            teardown_timestamp_first_row: [
+                Mersenne31Field(teardown_timestamp_first_row_low),
+                Mersenne31Field(teardown_timestamp_first_row_high),
+            ],
+            lazy_init_one_before_last_row: [
+                Mersenne31Field(lazy_init_address_one_before_last_row_low as u32),
+                Mersenne31Field(lazy_init_address_one_before_last_row_high as u32),
+            ],
+            teardown_value_one_before_last_row: [
+                Mersenne31Field(teardown_value_one_before_last_row_low as u32),
+                Mersenne31Field(teardown_value_one_before_last_row_high as u32),
+            ],
+            teardown_timestamp_one_before_last_row: [
+                Mersenne31Field(teardown_timestamp_one_before_last_row_low),
+                Mersenne31Field(teardown_timestamp_one_before_last_row_high),
+            ],
+        };
+        aux_boundary_data.push(aux_value);
+    }
+
+    aux_boundary_data
 }
 
 #[inline]
@@ -137,15 +202,19 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
 ) {
     #[cfg(feature = "profiling")]
     let t = std::time::Instant::now();
-    if let Some(lazy_init_and_teardown) = compiled_circuit
+    let len = compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
+        .len();
+    for (i, (lazy_init_and_teardown, lazy_init_address_aux_vars)) in compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .iter()
+        .zip(compiled_circuit.lazy_init_address_aux_vars.iter())
+        .enumerate()
     {
-        let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars else {
-            unreachable!()
-        };
+        let lazy_init = lazy_init_data[absolute_row_idx * len + i];
 
-        let lazy_init = lazy_init_data[absolute_row_idx];
         let LazyInitAndTeardown {
             address: this_row_lazy_init_address,
             teardown_value: this_row_teardown_value,
@@ -177,7 +246,7 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
                 aux_low_high: [low_place, high_place],
                 intermediate_borrow,
                 final_borrow,
-            } = lazy_init_address_aux_vars;
+            } = *lazy_init_address_aux_vars;
 
             // lazy init ordering
             if let Some(next_row_lazy_init) = lazy_init_data.get(absolute_row_idx + 1).copied() {
@@ -245,6 +314,7 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
             }
         }
     }
+
     #[cfg(feature = "profiling")]
     PROFILING_TABLE.with_borrow_mut(|el| {
         *el.entry("Lazy init processing").or_default() += t.elapsed();

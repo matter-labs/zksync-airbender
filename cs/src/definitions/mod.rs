@@ -175,7 +175,7 @@ pub struct VerifierCompiledCircuitArtifact<'a, F: PrimeField> {
     pub degree_1_constraints: &'a [VerifierCompiledDegree1Constraint<'a, F>],
     pub state_linkage_constraints: &'a [(ColumnAddress, ColumnAddress)],
     pub public_inputs: &'a [(BoundaryConstraintLocation, ColumnAddress)],
-    pub lazy_init_address_aux_vars: Option<ShuffleRamAuxComparisonSet>,
+    pub lazy_init_address_aux_vars: &'a [ShuffleRamAuxComparisonSet],
     // pub memory_queries_timestamp_comparison_aux_vars: &'a [ColumnAddress],
     // pub batched_memory_access_timestamp_comparison_aux_vars: CompiledBatchedRamTimestampComparisonAuxVars<'a>,
     pub trace_len_log2: usize,
@@ -211,10 +211,9 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // we open state-linking boundary constraints
         num_deep_poly_terms_at_z_omega += self.state_linkage_constraints.len();
 
-        if self.memory_layout.shuffle_ram_inits_and_teardowns.is_some() {
-            // then we open lazy init columns in memory
-            num_deep_poly_terms_at_z_omega += REGISTER_SIZE; // width of lazy inits
-        }
+        // then we open lazy init columns in memory
+        num_deep_poly_terms_at_z_omega +=
+            REGISTER_SIZE * self.memory_layout.shuffle_ram_inits_and_teardowns.len(); // width of lazy inits
 
         // and accumulator for grand product in stage 2
         num_deep_poly_terms_at_z_omega += 1;
@@ -237,7 +236,10 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
                     || self.memory_layout.register_and_indirect_accesses.len() > 0
             );
 
-            assert!(self.memory_layout.batched_ram_accesses.is_empty(), "deprecated");
+            assert!(
+                self.memory_layout.batched_ram_accesses.is_empty(),
+                "deprecated"
+            );
 
             // we do not care about values in the set if we do NOT process,
             // so we do:
@@ -309,21 +311,12 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
             todo!()
         }
 
-        if let Some(shuffle_ram_inits_and_teardowns) =
-            self.memory_layout.shuffle_ram_inits_and_teardowns
-        {
-            // and special case of range check 16 for lazy init columns
-            assert!(
-                shuffle_ram_inits_and_teardowns
-                    .lazy_init_addresses_columns
-                    .num_elements()
-                    == 1
-            );
-            num_quotient_terms += 2;
+        // and special case of range check 16 for lazy init columns
 
-            // 3 * 2 constraints for the case of padding values checks
-            num_quotient_terms += 3 * 2;
-        }
+        // 2 constraints for columns itself (comparison), and 3*2 for padding values
+
+        num_quotient_terms +=
+            (2 + 3 * 2) * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         // same for timestamps
         num_quotient_terms += 2 * self
@@ -408,10 +401,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // constraints that link state variables, every rows except last two
         num_quotient_terms += self.state_linkage_constraints.len();
 
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // two constraints from comparison of lazy init addresses (we stop at one before last and output it)
-            num_quotient_terms += 2;
-        }
+        // two constraints from comparison of lazy init addresses (we stop at one before last and output it)
+        num_quotient_terms += 2 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         num_quotient_terms
     }
@@ -424,10 +415,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         num_quotient_terms += 1;
 
         // we need to output lazy init addresses + teardown values/timestamps
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // 2 limbs per each address, final value and final timestamp
-            num_quotient_terms += 2 * 3;
-        }
+        // 2 limbs per each address, final value and final timestamp
+        num_quotient_terms += 2 * 3 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         // and public inputs
         let mut i = 0;
@@ -452,10 +441,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // one before last row
 
         // we need to output lazy init addresses + teardown values/timestamps
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // 2 limbs per each address, final value and final timestamp
-            num_quotient_terms += 2 * 3;
-        }
+        // 2 limbs per each address, final value and final timestamp
+        num_quotient_terms += 2 * 3 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         // and public inputs
         let mut i = 0;

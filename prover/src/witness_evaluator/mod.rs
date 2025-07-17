@@ -1,3 +1,4 @@
+use crate::definitions::AuxArgumentsBoundaryValues;
 use crate::definitions::LazyInitAndTeardown;
 use ::field::*;
 use core::u32;
@@ -56,23 +57,11 @@ use super::*;
 pub struct WitnessEvaluationAuxData {
     pub first_row_public_inputs: Vec<Mersenne31Field>,
     pub one_before_last_row_public_inputs: Vec<Mersenne31Field>,
-    pub lazy_init_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_value_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_timestamp_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub lazy_init_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_value_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_timestamp_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
+    pub aux_boundary_data: Vec<AuxArgumentsBoundaryValues>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ExecutorFamilyWitnessEvaluationAuxData {
-    // pub lazy_init_first_row: [Mersenne31Field; REGISTER_SIZE],
-    // pub teardown_value_first_row: [Mersenne31Field; REGISTER_SIZE],
-    // pub teardown_timestamp_first_row: [Mersenne31Field; REGISTER_SIZE],
-    // pub lazy_init_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    // pub teardown_value_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    // pub teardown_timestamp_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-}
+pub struct ExecutorFamilyWitnessEvaluationAuxData {}
 
 #[derive(Clone, Copy, Debug)]
 pub struct RegisterFinalData {
@@ -189,9 +178,10 @@ unsafe fn count_special_range_check_multiplicities(
     }
 
     // special case for lazy init values
-    if let Some(shuffle_ram_inits_and_teardowns) = compiled_circuit
+    for shuffle_ram_inits_and_teardowns in compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
+        .iter()
     {
         let start = shuffle_ram_inits_and_teardowns
             .lazy_init_addresses_columns

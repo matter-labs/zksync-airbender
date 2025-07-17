@@ -288,7 +288,7 @@ pub struct ProverCachedData {
     pub delegation_challenges: ExternalDelegationArgumentChallenges,
 
     pub process_shuffle_ram_init: bool,
-    pub shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
+    pub shuffle_ram_inits_and_teardowns: Vec<ShuffleRamInitAndTeardownLayout>,
     pub lazy_init_address_range_check_16: OptimizedOraclesForLookupWidth1,
 
     pub handle_delegation_requests: bool,
@@ -435,22 +435,18 @@ impl ProverCachedData {
         let process_shuffle_ram_init = compiled_circuit
             .memory_layout
             .shuffle_ram_inits_and_teardowns
-            .is_some();
+            .is_empty()
+            == false;
         if process_shuffle_ram_init {
             assert!(compiled_circuit
                 .stage_2_layout
                 .lazy_init_address_range_check_16
                 .is_some());
         }
-        let shuffle_ram_inits_and_teardowns = if let Some(shuffle_ram_inits_and_teardowns) =
-            compiled_circuit
-                .memory_layout
-                .shuffle_ram_inits_and_teardowns
-        {
-            shuffle_ram_inits_and_teardowns
-        } else {
-            ShuffleRamInitAndTeardownLayout::empty()
-        };
+        let shuffle_ram_inits_and_teardowns = compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .clone();
         let lazy_init_address_range_check_16 = if let Some(lazy_init_address_range_check_16) =
             compiled_circuit
                 .stage_2_layout
@@ -523,9 +519,9 @@ impl ProverCachedData {
                 ExternalMachineStateArgumentChallenges::default()
             };
 
-        let execute_delegation_argument = external_challenges.delegation_argument.is_some();
+        let execute_delegation_argument = handle_delegation_requests | process_delegations;
         if execute_delegation_argument {
-            assert!(handle_delegation_requests | process_delegations);
+            assert!(external_challenges.delegation_argument.is_some());
         }
         let delegation_challenges = if let Some(values) = external_challenges.delegation_argument {
             values

@@ -589,6 +589,7 @@ pub(crate) fn allocate_range_check_expressions<F: PrimeField>(
     witness_tree_offset: &mut usize,
     all_variables_to_place: &mut BTreeSet<Variable>,
     layout: &mut BTreeMap<Variable, ColumnAddress>,
+    extra_preexisting_range_checks_16: usize,
 ) -> (ColumnSet<1>, ColumnSet<1>, Vec<LookupExpression<F>>) {
     assert!(trace_len.is_power_of_two());
 
@@ -678,8 +679,9 @@ pub(crate) fn allocate_range_check_expressions<F: PrimeField>(
         dbg!(range_check_16_lookup_expressions.len());
     }
 
-    let total_lookups_for_range_checks_16 =
-        range_check_16_lookup_expressions.len() as u64 * trace_len as u64;
+    let total_lookups_for_range_checks_16 = ((range_check_16_lookup_expressions.len()
+        + extra_preexisting_range_checks_16) as u64)
+        * trace_len as u64;
     assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS);
 
     (

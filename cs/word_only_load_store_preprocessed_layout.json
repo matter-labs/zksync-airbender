@@ -286,7 +286,7 @@
     "total_width": 31
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": null,
+    "shuffle_ram_inits_and_teardowns": [],
     "shuffle_ram_access_sets": [
       {
         "Readonly": {
@@ -501,6 +501,10 @@
       "num_elements": 1
     },
     "delegation_processing_aux_poly": null,
+    "intermediate_polys_for_memory_init_teardown": {
+      "start": 56,
+      "num_elements": 0
+    },
     "intermediate_polys_for_memory_argument": {
       "start": 56,
       "num_elements": 3

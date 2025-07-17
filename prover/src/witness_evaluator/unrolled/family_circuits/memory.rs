@@ -11,7 +11,7 @@ pub fn evaluate_memory_witness_for_executor_family<O: Oracle<Mersenne31Field>, A
     assert!(compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_none());
+        .is_empty());
 
     let trace_len = cycles.next_power_of_two();
     assert_eq!(cycles, trace_len - 1);

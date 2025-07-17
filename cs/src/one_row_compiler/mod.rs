@@ -847,7 +847,7 @@ pub struct CompiledCircuitArtifact<F: PrimeField> {
 
     pub scratch_space_size_for_witness_gen: usize,
 
-    pub lazy_init_address_aux_vars: Option<ShuffleRamAuxComparisonSet>,
+    pub lazy_init_address_aux_vars: Vec<ShuffleRamAuxComparisonSet>,
 
     // we need the field below to generate witness only
     pub memory_queries_timestamp_comparison_aux_vars: Vec<ColumnAddress>,
@@ -898,7 +898,7 @@ impl<F: PrimeField> CompiledCircuitArtifact<F> {
             degree_1_constraints: &*degree_1_buffer,
             state_linkage_constraints: &self.state_linkage_constraints,
             public_inputs: &self.public_inputs,
-            lazy_init_address_aux_vars: self.lazy_init_address_aux_vars,
+            lazy_init_address_aux_vars: &self.lazy_init_address_aux_vars,
             // memory_queries_timestamp_comparison_aux_vars: &self
             //     .memory_queries_timestamp_comparison_aux_vars,
             // batched_memory_access_timestamp_comparison_aux_vars: self

@@ -15,15 +15,6 @@ pub fn sign_extend_u32(x: u32) -> i64 {
     (x as i32) as i64
 }
 
-pub fn round_up(x: usize, factor: usize) -> usize {
-    let rem = x % factor;
-    if rem > 0 {
-        x + factor - rem
-    } else {
-        x
-    }
-}
-
 pub fn log2_n(n: usize) -> usize {
     debug_assert!(n.is_power_of_two());
     let res = n.trailing_zeros();

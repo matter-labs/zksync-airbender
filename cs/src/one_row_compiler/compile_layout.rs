@@ -562,7 +562,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             };
 
             let memory_subtree_placement = MemorySubtree {
-                shuffle_ram_inits_and_teardowns: None,
+                shuffle_ram_inits_and_teardowns: vec![],
                 shuffle_ram_access_sets: vec![],
                 delegation_request_layout: None,
                 delegation_processor_layout: Some(delegation_processor_layout),
@@ -573,7 +573,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 total_width: memory_tree_offset,
             };
 
-            (memory_subtree_placement, None, vec![], Some(aux_vars))
+            (memory_subtree_placement, vec![], vec![], Some(aux_vars))
         } else {
             // first we will manually add extra space for constraint that lazy init values are unique
 
@@ -601,7 +601,11 @@ impl<F: PrimeField> OneRowCompiler<F> {
             // NOTE: lookup expressions do not allow to express a relation between two rows,
             // so we will pay to materialize intermediate subtraction result variables
 
-            let lazy_init_aux_set = {
+            // NOTE: we assume 1 lazy init/teardown per cycle here
+
+            let mut lazy_init_aux_set = vec![];
+
+            for _ in 0..1 {
                 let tmp_low_var =
                     add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
                 let tmp_high_var =
@@ -611,11 +615,11 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 let final_borrow_var =
                     add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
 
-                let lazy_init_aux_set = (
+                lazy_init_aux_set.push((
                     [tmp_low_var, tmp_high_var],
                     intermediate_borrow_var,
                     final_borrow_var,
-                );
+                ));
                 range_check_expressions.push(RangeCheckQuery::new(
                     tmp_low_var,
                     LARGE_RANGE_CHECK_TABLE_WIDTH,
@@ -626,9 +630,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 ));
                 boolean_vars.push(intermediate_borrow_var);
                 boolean_vars.push(final_borrow_var);
-
-                lazy_init_aux_set
-            };
+            }
 
             let shuffle_ram_init_addresses = add_multiple_compiler_defined_variables::<REGISTER_SIZE>(
                 &mut num_variables,
@@ -876,7 +878,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             };
 
             let memory_subtree_placement = MemorySubtree {
-                shuffle_ram_inits_and_teardowns: Some(shuffle_ram_inits_and_teardowns),
+                shuffle_ram_inits_and_teardowns: vec![shuffle_ram_inits_and_teardowns],
                 shuffle_ram_access_sets,
                 delegation_request_layout,
                 delegation_processor_layout: None,
@@ -893,7 +895,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
             (
                 memory_subtree_placement,
-                Some(lazy_init_aux_set),
+                lazy_init_aux_set,
                 memory_timestamp_comparison_sets,
                 None,
             )
@@ -927,6 +929,10 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 &mut witness_tree_offset,
                 &mut all_variables_to_place,
                 &mut layout,
+                memory_subtree_placement
+                    .shuffle_ram_inits_and_teardowns
+                    .len()
+                    * 2,
             );
 
         // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
@@ -1067,8 +1073,9 @@ impl<F: PrimeField> OneRowCompiler<F> {
             compiled_substitutions.push((*k, place));
         }
 
-        let lazy_init_address_aux_vars =
-            lazy_init_aux_set.map(|(comparison_aux_vars, intermediate_borrow, final_borrow)| {
+        let lazy_init_address_aux_vars = lazy_init_aux_set
+            .into_iter()
+            .map(|(comparison_aux_vars, intermediate_borrow, final_borrow)| {
                 let address_aux = comparison_aux_vars
                     .map(|el| layout.get(&el).copied().expect("must be compiled"));
                 let intermediate_borrow = layout
@@ -1087,7 +1094,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 };
 
                 lazy_init_address_aux_vars
-            });
+            })
+            .collect();
 
         let witness_layout = WitnessSubtree {
             multiplicities_columns_for_range_check_16,
@@ -1195,6 +1203,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &witness_layout,
             &memory_subtree_placement,
             &setup_layout,
+            false,
         );
 
         for el in compiled_quadratic_terms.iter_mut() {

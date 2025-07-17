@@ -303,3 +303,259 @@ pub(crate) unsafe fn stage2_process_machine_state_permutation_assuming_no_decode
     // and keep denominators for batch inverse
     batch_inverses_input.push(*denom_acc_value);
 }
+
+pub(crate) unsafe fn process_lazy_init_memory_contributions(
+    memory_trace_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    numerator_acc_value: &mut Mersenne31Quartic,
+    denom_acc_value: &mut Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    batch_inverses_input: &mut Vec<Mersenne31Quartic>,
+) {
+    let memory_dsts = compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown;
+    for (i, shuffle_ram_inits_and_teardowns) in compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .iter()
+        .enumerate()
+    {
+        let mut numerator = memory_argument_challenges.memory_argument_gamma;
+
+        let address_low = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_init_addresses_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        t.mul_assign_by_base(&address_low);
+        numerator.add_assign(&t);
+
+        let address_high = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_init_addresses_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        t.mul_assign_by_base(&address_high);
+        numerator.add_assign(&t);
+
+        numerator_acc_value.mul_assign(&numerator);
+
+        // NOTE: we write accumulators
+        (stage_2_trace.get_unchecked_mut(memory_dsts.get_range(i).start) as *mut Mersenne31Field)
+            .cast::<Mersenne31Quartic>()
+            .write(*numerator_acc_value);
+
+        // lazy init and teardown sets have same addresses
+        let mut denom = numerator;
+
+        let value_low = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_values_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+        t.mul_assign_by_base(&value_low);
+        denom.add_assign(&t);
+
+        let value_high = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_values_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+        t.mul_assign_by_base(&value_high);
+        denom.add_assign(&t);
+
+        let timestamp_low = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_timestamps_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&timestamp_low);
+        denom.add_assign(&t);
+
+        let timestamp_high = *memory_trace_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_timestamps_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&timestamp_high);
+        denom.add_assign(&t);
+
+        denom_acc_value.mul_assign(&denom);
+
+        batch_inverses_input.push(*denom_acc_value);
+    }
+}
+
+pub(crate) unsafe fn process_registers_and_indirect_access_in_delegation(
+    memory_trace_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    numerator_acc_value: &mut Mersenne31Quartic,
+    denom_acc_value: &mut Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    batch_inverses_input: &mut Vec<Mersenne31Quartic>,
+    delegation_write_timestamp_contribution: &Mersenne31Quartic,
+) {
+    let mut memory_dsts_iter = compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_argument
+        .iter();
+    for register_access_columns in compiled_circuit
+        .memory_layout
+        .register_and_indirect_accesses
+        .iter()
+    {
+        let base_value = match &register_access_columns.register_access {
+            RegisterAccessColumns::ReadAccess {
+                read_timestamp,
+                read_value,
+                register_index,
+            } => {
+                use crate::prover_stages::stage2_utils::stage_2_register_access_assemble_read_contribution;
+
+                let base_value = stage_2_register_access_assemble_read_contribution(
+                    memory_trace_row,
+                    *read_value,
+                    *read_timestamp,
+                    delegation_write_timestamp_contribution,
+                    *register_index,
+                    &memory_argument_challenges,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(memory_dsts_iter.next().unwrap().start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+
+                base_value
+            }
+            RegisterAccessColumns::WriteAccess {
+                read_timestamp,
+                read_value,
+                write_value,
+                register_index,
+            } => {
+                use crate::prover_stages::stage2_utils::stage_2_register_access_assemble_write_contribution;
+                let base_value = stage_2_register_access_assemble_write_contribution(
+                    memory_trace_row,
+                    *read_value,
+                    *write_value,
+                    *read_timestamp,
+                    delegation_write_timestamp_contribution,
+                    *register_index,
+                    &memory_argument_challenges,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(memory_dsts_iter.next().unwrap().start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+
+                base_value
+            }
+        };
+
+        for indirect_access_columns in register_access_columns.indirect_accesses.iter() {
+            match indirect_access_columns {
+                IndirectAccessColumns::ReadAccess {
+                    read_timestamp,
+                    read_value,
+                    offset,
+                    ..
+                } => {
+                    debug_assert!(*offset < 1 << 16);
+
+                    use crate::prover_stages::stage2_utils::stage_2_indirect_access_assemble_read_contribution;
+                    stage_2_indirect_access_assemble_read_contribution(
+                        memory_trace_row,
+                        *read_value,
+                        *read_timestamp,
+                        &delegation_write_timestamp_contribution,
+                        base_value,
+                        *offset as u16,
+                        &memory_argument_challenges,
+                        numerator_acc_value,
+                        denom_acc_value,
+                    );
+
+                    // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                    let dst = stage_2_trace
+                        .as_mut_ptr()
+                        .add(memory_dsts_iter.next().unwrap().start)
+                        .cast::<Mersenne31Quartic>();
+                    debug_assert!(dst.is_aligned());
+                    dst.write(*numerator_acc_value);
+
+                    // and keep denominators for batch inverse
+                    batch_inverses_input.push(*denom_acc_value);
+                }
+                IndirectAccessColumns::WriteAccess {
+                    read_timestamp,
+                    read_value,
+                    write_value,
+                    offset,
+                    ..
+                } => {
+                    debug_assert!(*offset < 1 << 16);
+                    use crate::prover_stages::stage2_utils::stage_2_indirect_access_assemble_write_contribution;
+                    stage_2_indirect_access_assemble_write_contribution(
+                        memory_trace_row,
+                        *read_value,
+                        *write_value,
+                        *read_timestamp,
+                        &delegation_write_timestamp_contribution,
+                        base_value,
+                        *offset as u16,
+                        &memory_argument_challenges,
+                        numerator_acc_value,
+                        denom_acc_value,
+                    );
+
+                    // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                    let dst = stage_2_trace
+                        .as_mut_ptr()
+                        .add(memory_dsts_iter.next().unwrap().start)
+                        .cast::<Mersenne31Quartic>();
+                    debug_assert!(dst.is_aligned());
+                    dst.write(*numerator_acc_value);
+
+                    // and keep denominators for batch inverse
+                    batch_inverses_input.push(*denom_acc_value);
+                }
+            };
+        }
+    }
+}

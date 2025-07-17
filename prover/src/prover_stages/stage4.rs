@@ -206,9 +206,10 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     // then we open lazy init columns in memory
     let mut columns_indexes_in_memory_trace = vec![];
-    if let Some(shuffle_ram_inits_and_teardowns) = compiled_circuit
+    for shuffle_ram_inits_and_teardowns in compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
+        .iter()
     {
         columns_indexes_in_memory_trace.push(
             shuffle_ram_inits_and_teardowns

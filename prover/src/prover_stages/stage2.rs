@@ -19,9 +19,9 @@
 
 use super::stage1::*;
 use super::*;
-use crate::{prover_stages::stage2_utils::*, utils::*};
+use crate::prover_stages::stage2_utils::*;
 use cached_data::ProverCachedData;
-use cs::one_row_compiler::{ColumnAddress, ShuffleRamQueryColumns};
+use cs::one_row_compiler::ColumnAddress;
 use fft::field_utils::batch_inverse_with_buffer;
 
 pub struct SecondStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
@@ -126,8 +126,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
         timestamp_range_check_width_1_lookups_access_via_expressions,
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
-
-        memory_accumulator_dst_start,
         ..
     } = cached_data.clone();
 
@@ -166,155 +164,26 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     let lookup_encoding_capacity = trace_len - 1;
     let generic_lookup_tables_size = compiled_circuit.total_tables_size;
-    let mut generic_lookup_preprocessing =
-        Vec::with_capacity_in(generic_lookup_tables_size, A::default());
-    let mut dst =
-        &mut generic_lookup_preprocessing.spare_capacity_mut()[..generic_lookup_tables_size];
 
-    unsafe {
-        worker.scope(generic_lookup_tables_size, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let chunk_size = geometry.get_chunk_size(thread_idx);
-                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-
-                let (chunk, rest) = dst.split_at_mut(chunk_size);
-                dst = rest;
-
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut batch_inverse_buffer = vec![Mersenne31Quartic::ZERO; chunk.len()];
-                    for i in 0..chunk_size {
-                        let absolute_table_idx = chunk_start + i;
-
-                        let (column, row) = lookup_index_into_encoding_tuple(
-                            absolute_table_idx,
-                            lookup_encoding_capacity,
-                        );
-                        let row = setup_trace.get_row(row as usize);
-                        let src = row.get_unchecked(
-                            compiled_circuit
-                                .setup_layout
-                                .generic_lookup_setup_columns
-                                .get_range(column as usize),
-                        );
-                        assert_eq!(src.len(), COMMON_TABLE_WIDTH + 1);
-
-                        let [el0, el1, el2, el3] = std::array::from_fn(|j| {
-                            let value = src[j];
-
-                            value
-                        });
-                        let denom = compute_aggregated_key_value(
-                            el0,
-                            [el1, el2, el3],
-                            lookup_argument_linearization_challenges,
-                            lookup_argument_gamma,
-                        );
-
-                        chunk[i].write(denom);
-                    }
-
-                    // batch inverse
-                    let buffer = chunk.assume_init_mut();
-                    let all_nonzero = batch_inverse_checked(buffer, &mut batch_inverse_buffer);
-                    assert!(all_nonzero);
-                });
-            }
-
-            assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), generic_lookup_tables_size, worker.get_num_cores());
-        });
-    }
-
-    unsafe {
-        generic_lookup_preprocessing.set_len(generic_lookup_tables_size);
-    }
+    use crate::prover_stages::unrolled_prover::stage_2_shared::preprocess_lookup_tables;
+    let generic_lookup_preprocessing = preprocess_lookup_tables::<N, A>(
+        compiled_circuit,
+        trace_len,
+        setup_trace,
+        lookup_argument_linearization_challenges,
+        lookup_argument_gamma,
+        worker,
+    );
 
     // same for range check 16
-
-    assert!(trace_len > 1 << 16);
-
-    let mut range_check_16_preprocessing: Vec<Mersenne31Quartic, A> =
-        Vec::with_capacity_in(1 << 16, A::default());
-    let mut dst = &mut range_check_16_preprocessing.spare_capacity_mut()[..(1 << 16)];
-
-    unsafe {
-        worker.scope(1 << 16, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let chunk_size = geometry.get_chunk_size(thread_idx);
-                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-
-                let (chunk, rest) = dst.split_at_mut(chunk_size);
-                dst = rest;
-
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut batch_inverse_buffer = vec![Mersenne31Quartic::ZERO; chunk.len()];
-                    for i in 0..chunk_size {
-                        let absolute_table_idx = chunk_start + i;
-
-                        // range check 16
-                        let mut denom = lookup_argument_gamma;
-                        denom.add_assign_base(&Mersenne31Field(absolute_table_idx as u32));
-
-                        chunk[i].write(denom);
-                    }
-
-                    // batch inverse
-                    let buffer = chunk.assume_init_mut();
-                    let all_nonzero = batch_inverse_checked(buffer, &mut batch_inverse_buffer);
-                    assert!(all_nonzero);
-                });
-            }
-
-            assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), 1 << 16, worker.get_num_cores());
-        });
-    }
-
-    unsafe {
-        range_check_16_preprocessing.set_len(1 << 16);
-    }
+    use crate::prover_stages::unrolled_prover::stage_2_shared::preprocess_range_check_16_table;
+    let range_check_16_preprocessing =
+        preprocess_range_check_16_table::<A>(trace_len, lookup_argument_gamma, worker);
 
     // and timestamp range checks
-    assert!(trace_len > 1 << TIMESTAMP_COLUMNS_NUM_BITS);
-
-    let mut timestamp_range_check_preprocessing: Vec<Mersenne31Quartic, A> =
-        Vec::with_capacity_in(1 << TIMESTAMP_COLUMNS_NUM_BITS, A::default());
-    let mut dst = &mut timestamp_range_check_preprocessing.spare_capacity_mut()
-        [..(1 << TIMESTAMP_COLUMNS_NUM_BITS)];
-
-    unsafe {
-        worker.scope(1 << TIMESTAMP_COLUMNS_NUM_BITS, |scope, geometry| {
-            for thread_idx in 0..geometry.len() {
-                let chunk_size = geometry.get_chunk_size(thread_idx);
-                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-
-                let (chunk, rest) = dst.split_at_mut(chunk_size);
-                dst = rest;
-
-                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut batch_inverse_buffer = vec![Mersenne31Quartic::ZERO; chunk.len()];
-                    for i in 0..chunk_size {
-                        let absolute_table_idx = chunk_start + i;
-
-                        // range check
-                        let mut denom = lookup_argument_gamma;
-                        denom.add_assign_base(&Mersenne31Field(absolute_table_idx as u32));
-
-                        chunk[i].write(denom);
-                    }
-
-                    // batch inverse
-                    let buffer = chunk.assume_init_mut();
-                    let all_nonzero = batch_inverse_checked(buffer, &mut batch_inverse_buffer);
-                    assert!(all_nonzero);
-                });
-            }
-
-            assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), 1 << TIMESTAMP_COLUMNS_NUM_BITS, worker.get_num_cores());
-        });
-    }
-
-    unsafe {
-        timestamp_range_check_preprocessing.set_len(1 << TIMESTAMP_COLUMNS_NUM_BITS);
-    }
+    use crate::prover_stages::unrolled_prover::stage_2_shared::preprocess_timestamp_range_check_table;
+    let timestamp_range_check_preprocessing: Vec<Mersenne31Quartic, A> =
+        preprocess_timestamp_range_check_table::<A>(trace_len, lookup_argument_gamma, worker);
 
     println!("Lookup preprocessing took {:?}", now.elapsed());
 
@@ -329,125 +198,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     // NOTE: we will preprocess lookup setup polynomials to more quickly generate values of lookup
     // multiplicities aux polys and aux polys for rational expressions
-
-    // Also we will need to do batch inverses for memory argument, and we need to count how many we will need
-
-    // now for self-check we should compute how many batch inverses we will want,
-    // and define ranges when numerators that are part of batch inverses are 1, so we can skip those
-
-    let offset_for_continuous_batch_inverses_write = if let Some(delegation_processing_aux_poly) =
-        compiled_circuit
-            .stage_2_layout
-            .delegation_processing_aux_poly
-    {
-        assert_eq!(
-            delegation_processing_aux_poly.full_range().end,
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_argument
-                .start()
-        );
-
-        delegation_processing_aux_poly.start()
-    } else {
-        compiled_circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .start()
-    };
-    assert!(
-        offset_for_continuous_batch_inverses_write < compiled_circuit.stage_2_layout.total_width
-    );
-
-    if let Some(el) = compiled_circuit
-        .stage_2_layout
-        .lazy_init_address_range_check_16
-    {
-        assert!(
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_range_check_16
-                .ext_4_field_oracles
-                .start()
-                <= el.ext_4_field_oracles.start()
-        );
-        assert_eq!(
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_range_check_16
-                .ext_4_field_oracles
-                .full_range()
-                .end,
-            el.ext_4_field_oracles.start()
-        );
-    }
-
-    if let Some(delegation_processing_aux_poly) = compiled_circuit
-        .stage_2_layout
-        .delegation_processing_aux_poly
-        .as_ref()
-    {
-        assert!(
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_range_check_16
-                .ext_4_field_oracles
-                .start()
-                <= delegation_processing_aux_poly.start()
-        );
-    }
-
-    assert_eq!(
-        compiled_circuit
-            .stage_2_layout
-            .intermediate_poly_for_range_check_16_multiplicity
-            .full_range()
-            .end,
-        compiled_circuit
-            .stage_2_layout
-            .intermediate_poly_for_timestamp_range_check_multiplicity
-            .start()
-    );
-    assert_eq!(
-        compiled_circuit
-            .stage_2_layout
-            .intermediate_poly_for_timestamp_range_check_multiplicity
-            .full_range()
-            .end,
-        compiled_circuit
-            .stage_2_layout
-            .intermediate_polys_for_generic_multiplicities
-            .start()
-    );
-
-    // small assert over continuous range
-    if compiled_circuit
-        .memory_layout
-        .delegation_processor_layout
-        .is_none()
-        && compiled_circuit
-            .memory_layout
-            .delegation_request_layout
-            .is_none()
-    {
-        assert_eq!(
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_generic_multiplicities
-                .full_range()
-                .end,
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_argument
-                .start()
-        );
-    } else {
-        assert!(delegation_challenges.delegation_argument_gamma.is_zero() == false);
-        assert!(compiled_circuit
-            .stage_2_layout
-            .delegation_processing_aux_poly
-            .is_some());
-    }
 
     // batch inverses are only required for delegation linkage poly and memory grand product accumulators
     let mut num_batch_inverses = 0;
@@ -490,6 +240,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let generic_lookup_preprocessing_ref = &generic_lookup_preprocessing;
     let timestamp_range_check_preprocessing_ref = &timestamp_range_check_preprocessing;
     let range_check_16_preprocessing_ref = &range_check_16_preprocessing;
+    let shuffle_ram_inits_and_teardowns_ref = &shuffle_ram_inits_and_teardowns;
 
     let now = std::time::Instant::now();
 
@@ -537,111 +288,36 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         let stage_2_trace = stage_2_trace_view.current_row();
                         let lookup_indexes_view_row = lookup_indexes_view.current_row_ref();
 
-                        // range check 16 are special as those are width-1
-                        for lookup_set in range_check_16_width_1_lookups_access_ref.iter() {
-                            let a = *witness_trace_row.get_unchecked(lookup_set.a_col);
-                            let b = *witness_trace_row.get_unchecked(lookup_set.b_col);
-                            if DEBUG_QUOTIENT {
-                                assert!(a.to_reduced_u32() < 1 << 16);
-                                assert!(b.to_reduced_u32() < 1 << 16);
-                            }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_range_check_16_trivial_checks;
+                        stage2_process_range_check_16_trivial_checks(
+                            witness_trace_row,
+                            memory_trace_row,
+                            stage_2_trace,
+                            range_check_16_preprocessing_ref,
+                            &range_check_16_width_1_lookups_access_ref[..],
+                        );
 
-                            let mut quad = a;
-                            quad.mul_assign(&b);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.base_field_quadratic_oracle_col)
-                                .write(quad);
-
-                            // we made a * b = some temporary variable,
-                            // and now would use this temporary variable to more efficiently prove
-                            // that the final value is just
-                            // 1 / (a + gamma) + 1 / (b + gamma)
-
-                            // And we can compute final value by just taking a sum of range check 16 preprocessing
-
-                            let a_idx = a.to_reduced_u32() as usize;
-                            let b_idx = b.to_reduced_u32() as usize;
-                            let mut final_value = *range_check_16_preprocessing_ref.get_unchecked(a_idx);
-                            final_value.add_assign(range_check_16_preprocessing_ref.get_unchecked(b_idx));
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.ext4_field_inverses_columns_start)
-                                .cast::<Mersenne31Quartic>()
-                                .write(final_value);
-                        }
-
-                        // then we have some non-trivial expressions too
-                        for lookup_set in range_check_16_width_1_lookups_access_via_expressions_ref.iter() {
-                            let LookupExpression::Expression(a) = &lookup_set.a_expr else {
-                                unreachable!()
-                            };
-                            let LookupExpression::Expression(b) = &lookup_set.b_expr else {
-                                unreachable!()
-                            };
-                            let a = a.evaluate_at_row_on_main_domain(
-                                witness_trace_row,
-                                memory_trace_row,
-                            );
-                            let b = b.evaluate_at_row_on_main_domain(
-                                witness_trace_row,
-                                memory_trace_row,
-                            );
-                            if DEBUG_QUOTIENT {
-                                assert!(a.to_reduced_u32() < 1 << 16);
-                                assert!(b.to_reduced_u32() < 1 << 16);
-                            }
-
-                            let mut quad = a;
-                            quad.mul_assign(&b);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.base_field_quadratic_oracle_col)
-                                .write(quad);
-
-                            let a_idx = a.to_reduced_u32() as usize;
-                            let b_idx = b.to_reduced_u32() as usize;
-                            let mut final_value = *range_check_16_preprocessing_ref.get_unchecked(a_idx);
-                            final_value.add_assign(range_check_16_preprocessing_ref.get_unchecked(b_idx));
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.ext4_field_inverses_columns_start)
-                                .cast::<Mersenne31Quartic>()
-                                .write(final_value);
-                        }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_range_check_16_expressions;
+                        stage2_process_range_check_16_expressions(
+                            witness_trace_row,
+                            memory_trace_row,
+                            stage_2_trace,
+                            range_check_16_preprocessing_ref,
+                            &range_check_16_width_1_lookups_access_via_expressions_ref[..],
+                        );
 
                         // special case for range check 16 for lazy init address
                         if process_shuffle_ram_init {
-                            let lookup_set = &lazy_init_address_range_check_16;
-                            let a_col = shuffle_ram_inits_and_teardowns
-                                .lazy_init_addresses_columns
-                                .start();
-                            let b_col = a_col + 1;
-                            let a = *memory_trace_row.get_unchecked(a_col);
-                            let b = *memory_trace_row.get_unchecked(b_col);
-                            if DEBUG_QUOTIENT {
-                                assert!(a.to_reduced_u32() < 1 << 16);
-                                assert!(b.to_reduced_u32() < 1 << 16);
-                            }
-                            let mut quad = a;
-                            quad.mul_assign(&b);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.base_field_oracles.start())
-                                .write(quad);
+                            use crate::prover_stages::unrolled_prover::stage_2_shared::process_lazy_init_range_checks;
 
-                            let a_idx = a.to_reduced_u32() as usize;
-                            let b_idx = b.to_reduced_u32() as usize;
-                            let mut final_value = *range_check_16_preprocessing_ref.get_unchecked(a_idx);
-                            final_value.add_assign(range_check_16_preprocessing_ref.get_unchecked(b_idx));
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.ext_4_field_oracles.start())
-                                .cast::<Mersenne31Quartic>()
-                                .write(final_value);
+                            process_lazy_init_range_checks(
+                                memory_trace_row,
+                                witness_trace_row,
+                                stage_2_trace,
+                                range_check_16_preprocessing_ref,
+                                &lazy_init_address_range_check_16,
+                                &shuffle_ram_inits_and_teardowns_ref,
+                            );
                         }
 
                         // // remainders for width 1
@@ -657,242 +333,84 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         //     // batch_inverses_input.push(denom);
                         // }
 
-                        // then expressions for the timestamps
-                        for lookup_set in timestamp_range_check_width_1_lookups_access_via_expressions_ref.iter() {
-                            let LookupExpression::Expression(a) = &lookup_set.a_expr else {
-                                unreachable!()
-                            };
-                            let LookupExpression::Expression(b) = &lookup_set.b_expr else {
-                                unreachable!()
-                            };
-                            let a = a.evaluate_at_row_on_main_domain(
-                                witness_trace_row,
-                                memory_trace_row,
-                            );
-                            let b = b.evaluate_at_row_on_main_domain(
-                                witness_trace_row,
-                                memory_trace_row,
-                            );
-                            if DEBUG_QUOTIENT {
-                                assert!(a.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
-                                assert!(b.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
-                            }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_timestamp_range_check_expressions;
+                        stage2_process_timestamp_range_check_expressions(
+                            witness_trace_row,
+                            memory_trace_row,
+                            stage_2_trace,
+                            timestamp_range_check_preprocessing_ref,
+                            &timestamp_range_check_width_1_lookups_access_via_expressions_ref[..],
+                        );
 
-                            let mut quad = a;
-                            quad.mul_assign(&b);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.base_field_quadratic_oracle_col)
-                                .write(quad);
-
-                            let a_idx = a.to_reduced_u32() as usize;
-                            let b_idx = b.to_reduced_u32() as usize;
-                            let mut final_value = *timestamp_range_check_preprocessing_ref.get_unchecked(a_idx);
-                            final_value.add_assign(timestamp_range_check_preprocessing_ref.get_unchecked(b_idx));
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.ext4_field_inverses_columns_start)
-                                .cast::<Mersenne31Quartic>()
-                                .write(final_value);
-                        }
-
-                        // and finish with those that also have shuffle ram part and extra contribution in timestamp
-                        for lookup_set in
-                            timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref.iter()
-                        {
-                            let LookupExpression::Expression(a_expr) = &lookup_set.a_expr else {
-                                unreachable!()
-                            };
-                            let LookupExpression::Expression(b_expr) = &lookup_set.b_expr else {
-                                unreachable!()
-                            };
-                            let a = a_expr.evaluate_at_row_on_main_domain_ext(
-                                witness_trace_row,
-                                memory_trace_row,
-                                setup_row,
-                            );
-                            // only "high" (that is always second) needs an adjustment
-                            let mut b = b_expr.evaluate_at_row_on_main_domain_ext(
-                                witness_trace_row,
-                                memory_trace_row,
-                                setup_row,
-                            );
-                            b.sub_assign(&memory_timestamp_high_from_circuit_idx);
-
-                            if DEBUG_QUOTIENT {
-                                assert!(a.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
-                                assert!(b.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
-                            }
-
-                            let mut quad = a;
-                            quad.mul_assign(&b);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.base_field_quadratic_oracle_col)
-                                .write(quad);
-
-                            let a_idx = a.to_reduced_u32() as usize;
-                            let b_idx = b.to_reduced_u32() as usize;
-                            let mut final_value = *timestamp_range_check_preprocessing_ref.get_unchecked(a_idx);
-                            final_value.add_assign(timestamp_range_check_preprocessing_ref.get_unchecked(b_idx));
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(lookup_set.ext4_field_inverses_columns_start)
-                                .cast::<Mersenne31Quartic>()
-                                .write(final_value);
-                        }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_timestamp_range_check_expressions_with_extra_timestamp_contribution;
+                        stage2_process_timestamp_range_check_expressions_with_extra_timestamp_contribution(
+                            witness_trace_row,
+                            memory_trace_row,
+                            setup_row,
+                            stage_2_trace,
+                            timestamp_range_check_preprocessing_ref,
+                            &timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref[..],
+                            memory_timestamp_high_from_circuit_idx,
+                        );
 
                         // now generic lookups
-
-                        // NOTE: as we have preprocessed the lookup setup, we can just pick a value by index
-                        {
-                            let mut dst_ptr = stage_2_trace
-                                .as_mut_ptr()
-                                .add(width_3_intermediate_polys_offset)
-                                .cast::<Mersenne31Quartic>();
-                            assert!(dst_ptr.is_aligned());
-
-                            for (i, _lookup_set) in compiled_circuit
-                                .witness_layout
-                                .width_3_lookups
-                                .iter()
-                                .enumerate()
-                            {
-                                let absolute_table_idx = *lookup_indexes_view_row.get_unchecked(i);
-
-                                if DEBUG_QUOTIENT {
-                                    assert!((absolute_table_idx as usize) < generic_lookup_tables_size);
-                                }
-
-                                let preprocessed_value = *generic_lookup_preprocessing_ref.get_unchecked(absolute_table_idx as usize);
-                                dst_ptr.write(preprocessed_value);
-
-                                dst_ptr = dst_ptr.add(1);
-                            }
-                        }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_generic_lookup_intermediate_polys;
+                        stage2_process_generic_lookup_intermediate_polys(
+                            compiled_circuit,
+                            stage_2_trace,
+                            lookup_indexes_view_row,
+                            generic_lookup_preprocessing_ref,
+                            width_3_intermediate_polys_offset,
+                            generic_lookup_tables_size,
+                        );
 
                         // now we can do the same with multiplicities
 
-                        // range check 16
-                        {
-                            let value = if absolute_row_idx < 1<<16 {
-                                let m =
-                                    *witness_trace_row.get_unchecked(range_check_16_multiplicities_src);
+                        // range-check 16
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_range_check_16_multiplicity_intermediate_poly;
+                        stage2_process_range_check_16_multiplicity_intermediate_poly(
+                            witness_trace_row,
+                            stage_2_trace,
+                            range_check_16_preprocessing_ref,
+                            range_check_16_multiplicities_src,
+                            range_check_16_multiplicities_dst,
+                            absolute_row_idx,
+                        );
 
-                                // Read preprocessed column and read rational value 1/(table(alpha) + gammma)
-                                let mut value = range_check_16_preprocessing_ref[absolute_row_idx];
-                                // it's enough just to multiply by multiplicity
-                                value.mul_assign_by_base(&m);
-
-                                value
-                            } else {
-                                if DEBUG_QUOTIENT {
-                                    assert_eq!(
-                                        *witness_trace_row.get_unchecked(range_check_16_multiplicities_src),
-                                        Mersenne31Field::ZERO,
-                                        "multiplicity for range check 16 is not zero for row {}",
-                                        absolute_row_idx
-                                    );
-                                }
-                                Mersenne31Quartic::ZERO
-                            };
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(range_check_16_multiplicities_dst)
-                                .cast::<Mersenne31Quartic>()
-                                .write(value);
-                        }
-
-                        // timestamp
-                        {
-                            let value = if absolute_row_idx < 1<<TIMESTAMP_COLUMNS_NUM_BITS {
-                                let m =
-                                    *witness_trace_row.get_unchecked(timestamp_range_check_multiplicities_src);
-
-                                // Read preprocessed column and read rational value 1/(table(alpha) + gammma)
-                                let mut value = timestamp_range_check_preprocessing_ref[absolute_row_idx];
-                                // it's enough just to multiply by multiplicity
-                                value.mul_assign_by_base(&m);
-
-                                value
-                            } else {
-                                if DEBUG_QUOTIENT {
-                                    assert_eq!(
-                                        *witness_trace_row.get_unchecked(timestamp_range_check_multiplicities_src),
-                                        Mersenne31Field::ZERO,
-                                        "multiplicity for timestamp range check is not zero for row {}",
-                                        absolute_row_idx
-                                    );
-                                }
-
-                                Mersenne31Quartic::ZERO
-                            };
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(timestamp_range_check_multiplicities_dst)
-                                .cast::<Mersenne31Quartic>()
-                                .write(value);
-                        }
+                        // timestamp range checks
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_timestamp_range_check_multiplicity_intermediate_poly;
+                        stage2_process_timestamp_range_check_multiplicity_intermediate_poly(
+                            witness_trace_row,
+                            stage_2_trace,
+                            timestamp_range_check_preprocessing_ref,
+                            timestamp_range_check_multiplicities_src,
+                            timestamp_range_check_multiplicities_dst,
+                            absolute_row_idx,
+                        );
 
                         // generic lookup
-                        for i in 0..compiled_circuit
-                            .stage_2_layout
-                            .intermediate_polys_for_generic_multiplicities
-                            .num_elements()
-                        {
-                            let absolute_table_idx = encoding_tuple_into_lookup_index(
-                                i as u32,
-                                absolute_row_idx as u32,
-                                lookup_encoding_capacity,
-                            );
-
-                            let value = if absolute_table_idx < generic_lookup_tables_size {
-                                let m = *witness_trace_row
-                                    .get_unchecked(generic_lookup_multiplicities_src_start + i);
-                                let mut value = generic_lookup_preprocessing_ref[absolute_table_idx];
-                                value.mul_assign_by_base(&m);
-
-                                value
-                            } else {
-                                Mersenne31Quartic::ZERO
-                            };
-
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(generic_lookup_multiplicities_dst_start)
-                                .cast::<Mersenne31Quartic>()
-                                .add(i)
-                                .write(value);
-                        }
+                        use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_generic_lookup_multiplicity_intermediate_poly;
+                        stage2_process_generic_lookup_multiplicity_intermediate_poly(
+                            witness_trace_row,
+                            stage_2_trace,
+                            compiled_circuit,
+                            &generic_lookup_preprocessing_ref[..],
+                            lookup_encoding_capacity,
+                            generic_lookup_multiplicities_src_start,
+                            generic_lookup_multiplicities_dst_start,
+                            generic_lookup_tables_size,
+                            absolute_row_idx,
+                        );
 
                         // now we process set-equality argument for either delegation requests or processing
                         // in all the cases we have 0 or 1 in the numerator, and need to assemble denominator
                         if handle_delegation_requests {
-                            let m = *memory_trace_row
-                                .get_unchecked(delegation_request_layout.multiplicity.start());
-                            assert!(m == Mersenne31Field::ZERO || m == Mersenne31Field::ONE);
-
-                            let numerator = Mersenne31Quartic::from_base(m);
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(delegation_processing_aux_poly.start())
-                                .cast::<Mersenne31Quartic>()
-                                .write(numerator);
-
-                            let mut timestamp_low = *setup_row.get_unchecked(
+                            let timestamp_low = *setup_row.get_unchecked(
                                 compiled_circuit
                                     .setup_layout
                                     .timestamp_setup_columns
                                     .start(),
                             );
-                            // offset by access number
-                            timestamp_low.add_assign(&Mersenne31Field(
-                                delegation_request_layout.in_cycle_write_index as u32,
-                            ));
 
                             let mut timestamp_high = *setup_row.get_unchecked(
                                 compiled_circuit
@@ -903,57 +421,17 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             );
                             timestamp_high.add_assign(&memory_timestamp_high_from_circuit_idx);
 
-                            let denom = compute_aggregated_key_value(
-                                *memory_trace_row.get_unchecked(
-                                    delegation_request_layout.delegation_type.start(),
-                                ),
-                                [
-                                    *memory_trace_row.get_unchecked(
-                                        delegation_request_layout.abi_mem_offset_high.start(),
-                                    ),
-                                    timestamp_low,
-                                    timestamp_high,
-                                ],
-                                delegation_challenges.delegation_argument_linearization_challenges,
-                                delegation_challenges.delegation_argument_gamma,
+                            use crate::prover_stages::unrolled_prover::stage_2_shared::process_delegation_requests;
+                            process_delegation_requests(
+                                memory_trace_row,
+                                stage_2_trace,
+                                &delegation_request_layout,
+                                delegation_processing_aux_poly,
+                                &delegation_challenges,
+                                &mut batch_inverses_input,
+                                timestamp_low,
+                                timestamp_high,
                             );
-
-                            batch_inverses_input.push(denom);
-
-                            if DEBUG_QUOTIENT {
-                                if m == Mersenne31Field::ZERO {
-                                    let valid_convention = memory_trace_row.get_unchecked(
-                                        delegation_request_layout.delegation_type.start(),
-                                    ).is_zero() && memory_trace_row.get_unchecked(
-                                        delegation_request_layout.abi_mem_offset_high.start(),
-                                    ).is_zero();
-                                    assert!(
-                                        valid_convention,
-                                        "Delegation request violates convention with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
-                                        memory_trace_row.get_unchecked(
-                                            delegation_request_layout.delegation_type.start(),
-                                        ),
-                                        memory_trace_row.get_unchecked(
-                                            delegation_request_layout.abi_mem_offset_high.start(),
-                                        ),
-                                        timestamp_low,
-                                        timestamp_high,
-                                    );
-                                } else {
-                                    println!(
-                                        "Delegation request with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
-                                        memory_trace_row.get_unchecked(
-                                            delegation_request_layout.delegation_type.start(),
-                                        ),
-                                        memory_trace_row.get_unchecked(
-                                            delegation_request_layout.abi_mem_offset_high.start(),
-                                        ),
-                                        timestamp_low,
-                                        timestamp_high,
-                                    );
-                                    println!("Contribution = {:?}", denom);
-                                }
-                            }
                         }
 
                         if process_delegations {
@@ -1033,118 +511,35 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                         // Numerator is write set, denom is read set
 
-                        // first we write total accumulated from all previous rows
-                        let mut memory_argument_dst = stage_2_trace
-                            .as_mut_ptr()
-                            .add(memory_accumulator_dst_start)
-                            .cast::<Mersenne31Quartic>();
-                        debug_assert!(memory_argument_dst.is_aligned());
-
                         // NOTE: we want to accumulate our grand products, but in practice we want to write full running accumulator to the NEXT row,
                         // so we first write a value here, and below we accumulate, to eventually write to the next row
 
-                        memory_argument_dst
-                            .add(offset_for_grand_product_accumulation_poly)
-                            .write(total_accumulated);
+                        let dst = stage_2_trace
+                            .as_mut_ptr()
+                            .add(compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start())
+                            .cast::<Mersenne31Quartic>();
+                        debug_assert!(dst.is_aligned());
+                        dst.write(total_accumulated);
 
                         // first lazy init from read set / lazy teardown
 
                         // and memory grand product accumulation identities
-                        let mut numerator_acc_value;
-                        let mut denom_acc_value;
+                        let mut numerator_acc_value = Mersenne31Quartic::ONE;
+                        let mut denom_acc_value = Mersenne31Quartic::ONE;
 
                         // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
                         if process_shuffle_ram_init {
-                            assert!(
-                                compiled_circuit.memory_layout.shuffle_ram_access_sets.len() > 0
-                            );
-                            let mut numerator = memory_argument_challenges.memory_argument_gamma;
+                            use crate::prover_stages::unrolled_prover::stage_2_ram_shared::process_lazy_init_memory_contributions;
 
-                            let address_low = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_init_addresses_columns
-                                    .start(),
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                            t.mul_assign_by_base(&address_low);
-                            numerator.add_assign(&t);
-
-                            let address_high = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_init_addresses_columns
-                                    .start()
-                                    + 1,
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                            t.mul_assign_by_base(&address_high);
-                            numerator.add_assign(&t);
-
-                            numerator_acc_value = numerator;
-
-                            // NOTE: we write accumulators
-                            memory_argument_dst.write(numerator_acc_value);
-                            memory_argument_dst = memory_argument_dst.add(1);
-
-                            // lazy init and teardown sets have same addresses
-                            let mut denom = numerator;
-
-                            let value_low = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_teardown_values_columns
-                                    .start(),
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                            t.mul_assign_by_base(&value_low);
-                            denom.add_assign(&t);
-
-                            let value_high = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_teardown_values_columns
-                                    .start()
-                                    + 1,
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                            t.mul_assign_by_base(&value_high);
-                            denom.add_assign(&t);
-
-                            let timestamp_low = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_teardown_timestamps_columns
-                                    .start(),
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                            t.mul_assign_by_base(&timestamp_low);
-                            denom.add_assign(&t);
-
-                            let timestamp_high = *memory_trace_row.get_unchecked(
-                                shuffle_ram_inits_and_teardowns
-                                    .lazy_teardown_timestamps_columns
-                                    .start()
-                                    + 1,
-                            );
-                            let mut t = memory_argument_challenges
-                                .memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                            t.mul_assign_by_base(&timestamp_high);
-                            denom.add_assign(&t);
-
-                            denom_acc_value = denom;
-
-                            batch_inverses_input.push(denom_acc_value);
-                        } else {
-                            // we do not have any logic and only have to initialize products
-                            numerator_acc_value = Mersenne31Quartic::ONE;
-                            denom_acc_value = Mersenne31Quartic::ONE;
+                            process_lazy_init_memory_contributions(
+                                memory_trace_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                            )
                         }
 
                         // we assembled P(x) = write init set / read teardown set, or trivial init. Now we add contributions fro
@@ -1160,288 +555,66 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         );
 
                         // now we can continue to accumulate
-                        for (access_idx, memory_access_columns) in compiled_circuit
-                            .memory_layout
-                            .shuffle_ram_access_sets
-                            .iter()
-                            .enumerate()
-                        {
-                            match memory_access_columns {
-                                ShuffleRamQueryColumns::Readonly(columns) => {
-                                    let address_contribution =
-                                        stage_2_shuffle_ram_assemble_address_contribution(
-                                            memory_trace_row,
-                                            memory_access_columns,
-                                            &memory_argument_challenges,
-                                        );
-
-                                    debug_assert_eq!(columns.read_value.width(), 2);
-
-                                    stage_2_shuffle_ram_assemble_read_contribution(
-                                        memory_trace_row,
-                                        setup_row,
-                                        &address_contribution,
-                                        &columns,
-                                        compiled_circuit.setup_layout.timestamp_setup_columns,
-                                        &memory_argument_challenges,
-                                        access_idx,
-                                        memory_timestamp_high_from_circuit_idx,
-                                        &mut numerator_acc_value,
-                                        &mut denom_acc_value,
-                                    );
-
-                                    // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                    memory_argument_dst.write(numerator_acc_value);
-                                    memory_argument_dst = memory_argument_dst.add(1);
-
-                                    // and keep denominators for batch inverse
-                                    batch_inverses_input.push(denom_acc_value);
-                                }
-                                ShuffleRamQueryColumns::Write(columns) => {
-                                    let address_contribution =
-                                        stage_2_shuffle_ram_assemble_address_contribution(
-                                            memory_trace_row,
-                                            memory_access_columns,
-                                            &memory_argument_challenges,
-                                        );
-
-                                    stage_2_shuffle_ram_assemble_write_contribution(
-                                        memory_trace_row,
-                                        setup_row,
-                                        &address_contribution,
-                                        &columns,
-                                        compiled_circuit.setup_layout.timestamp_setup_columns,
-                                        &memory_argument_challenges,
-                                        access_idx,
-                                        memory_timestamp_high_from_circuit_idx,
-                                        &mut numerator_acc_value,
-                                        &mut denom_acc_value,
-                                    );
-
-                                    // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                    memory_argument_dst.write(numerator_acc_value);
-                                    memory_argument_dst = memory_argument_dst.add(1);
-
-                                    // and keep denominators for batch inverse
-                                    batch_inverses_input.push(denom_acc_value);
-                                }
-                            }
-                        }
-
-                        let delegation_write_timestamp_contribution = if process_batch_ram_access || process_registers_and_indirect_access {
-                            let write_timestamp = delegation_processor_layout.write_timestamp;
-
-                            let write_timestamp_low = *memory_trace_row.get_unchecked(write_timestamp.start());
-                            let mut write_timestamp_contribution = memory_argument_challenges
-                                .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                            write_timestamp_contribution.mul_assign_by_base(&write_timestamp_low);
-
-                            let write_timestamp_high = *memory_trace_row.get_unchecked(write_timestamp.start() + 1);
-                            let mut t = memory_argument_challenges.memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                            t.mul_assign_by_base(&write_timestamp_high);
-                            write_timestamp_contribution.add_assign(&t);
-
-                            write_timestamp_contribution
-                        } else {
-                            Mersenne31Quartic::ZERO
-                        };
+                        stage2_process_ram_access(
+                            memory_trace_row,
+                            setup_row,
+                            stage_2_trace,
+                            compiled_circuit,
+                            &mut numerator_acc_value,
+                            &mut denom_acc_value,
+                            &memory_argument_challenges,
+                            &mut batch_inverses_input,
+                            memory_timestamp_high_from_circuit_idx,
+                        );
 
                         if process_batch_ram_access {
-                            assert!(process_delegations);
-
-                            let abi_mem_offset_high =
-                                delegation_processor_layout.abi_mem_offset_high;
-
-                            // alternatively we may have batch RAM access
-                            for (offset, memory_access_columns) in compiled_circuit
-                                .memory_layout
-                                .batched_ram_accesses
-                                .iter()
-                                .enumerate()
-                            {
-                                // we must compute offsets in u32 words
-                                let offset = offset * std::mem::size_of::<u32>();
-
-                                match memory_access_columns {
-                                    BatchedRamAccessColumns::ReadAccess {
-                                        read_timestamp,
-                                        read_value,
-                                    } => {
-                                        stage_2_batched_ram_assemble_read_contribution(
-                                            memory_trace_row,
-                                            *read_value,
-                                            *read_timestamp,
-                                            &delegation_write_timestamp_contribution,
-                                            abi_mem_offset_high,
-                                            offset,
-                                            &memory_argument_challenges,
-                                            &mut numerator_acc_value,
-                                            &mut denom_acc_value,
-                                        );
-
-                                        // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                        memory_argument_dst.write(numerator_acc_value);
-                                        memory_argument_dst = memory_argument_dst.add(1);
-
-                                        // and keep denominators for batch inverse
-                                        batch_inverses_input.push(denom_acc_value);
-                                    }
-                                    BatchedRamAccessColumns::WriteAccess {
-                                        read_timestamp,
-                                        read_value,
-                                        write_value,
-                                    } => {
-                                        stage_2_batched_ram_assemble_write_contribution(
-                                            memory_trace_row,
-                                            *read_value,
-                                            *write_value,
-                                            *read_timestamp,
-                                            &delegation_write_timestamp_contribution,
-                                            abi_mem_offset_high,
-                                            offset,
-                                            &memory_argument_challenges,
-                                            &mut numerator_acc_value,
-                                            &mut denom_acc_value,
-                                        );
-
-                                        // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                        memory_argument_dst.write(numerator_acc_value);
-                                        memory_argument_dst = memory_argument_dst.add(1);
-
-                                        // and keep denominators for batch inverse
-                                        batch_inverses_input.push(denom_acc_value);
-                                    }
-                                }
-                            }
+                            panic!("deprecated");
                         }
 
                         if process_registers_and_indirect_access {
+                            let delegation_write_timestamp_contribution = {
+                                let write_timestamp = delegation_processor_layout.write_timestamp;
+
+                                let write_timestamp_low = *memory_trace_row.get_unchecked(write_timestamp.start());
+                                let mut write_timestamp_contribution = memory_argument_challenges
+                                    .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                write_timestamp_contribution.mul_assign_by_base(&write_timestamp_low);
+
+                                let write_timestamp_high = *memory_trace_row.get_unchecked(write_timestamp.start() + 1);
+                                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                                t.mul_assign_by_base(&write_timestamp_high);
+                                write_timestamp_contribution.add_assign(&t);
+
+                                write_timestamp_contribution
+                            };
+
                             assert!(process_delegations);
 
-                            // alternatively we may have batch RAM access
-                            for register_access_columns in compiled_circuit
-                                .memory_layout
-                                .register_and_indirect_accesses
-                                .iter()
-                            {
-                                let base_value = match &register_access_columns.register_access {
-                                    RegisterAccessColumns::ReadAccess {
-                                        read_timestamp,
-                                        read_value,
-                                        register_index,
-                                    } => {
-                                        let base_value = stage_2_register_access_assemble_read_contribution(
-                                            memory_trace_row,
-                                            *read_value,
-                                            *read_timestamp,
-                                            &delegation_write_timestamp_contribution,
-                                            *register_index,
-                                            &memory_argument_challenges,
-                                            &mut numerator_acc_value,
-                                            &mut denom_acc_value,
-                                        );
-
-                                        // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                        memory_argument_dst.write(numerator_acc_value);
-                                        memory_argument_dst = memory_argument_dst.add(1);
-
-                                        // and keep denominators for batch inverse
-                                        batch_inverses_input.push(denom_acc_value);
-
-                                        base_value
-                                    }
-                                    RegisterAccessColumns::WriteAccess {
-                                        read_timestamp,
-                                        read_value,
-                                        write_value,
-                                        register_index,
-                                    } => {
-                                        let base_value = stage_2_register_access_assemble_write_contribution(
-                                            memory_trace_row,
-                                            *read_value,
-                                            *write_value,
-                                            *read_timestamp,
-                                            &delegation_write_timestamp_contribution,
-                                            *register_index,
-                                            &memory_argument_challenges,
-                                            &mut numerator_acc_value,
-                                            &mut denom_acc_value,
-                                        );
-
-                                        // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                        memory_argument_dst.write(numerator_acc_value);
-                                        memory_argument_dst = memory_argument_dst.add(1);
-
-                                        // and keep denominators for batch inverse
-                                        batch_inverses_input.push(denom_acc_value);
-
-                                        base_value
-                                    }
-                                };
-
-                                for indirect_access_columns in register_access_columns.indirect_accesses
-                                    .iter()
-                                {
-                                    match indirect_access_columns {
-                                        IndirectAccessColumns::ReadAccess {
-                                            read_timestamp,
-                                            read_value,
-                                            offset,
-                                            ..
-                                        } => {
-                                            debug_assert!(*offset < 1<<16);
-                                            stage_2_indirect_access_assemble_read_contribution(
-                                                memory_trace_row,
-                                                *read_value,
-                                                *read_timestamp,
-                                                &delegation_write_timestamp_contribution,
-                                                base_value,
-                                                *offset as u16,
-                                                &memory_argument_challenges,
-                                                &mut numerator_acc_value,
-                                                &mut denom_acc_value,
-                                            );
-
-                                            // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                            memory_argument_dst.write(numerator_acc_value);
-                                            memory_argument_dst = memory_argument_dst.add(1);
-
-                                            // and keep denominators for batch inverse
-                                            batch_inverses_input.push(denom_acc_value);
-                                        }
-                                        IndirectAccessColumns::WriteAccess {
-                                            read_timestamp,
-                                            read_value,
-                                            write_value,
-                                            offset,
-                                            ..
-                                        } => {
-                                            debug_assert!(*offset < 1<<16);
-                                            stage_2_indirect_access_assemble_write_contribution(
-                                                memory_trace_row,
-                                                *read_value,
-                                                *write_value,
-                                                *read_timestamp,
-                                                &delegation_write_timestamp_contribution,
-                                                base_value,
-                                                *offset as u16,
-                                                &memory_argument_challenges,
-                                                &mut numerator_acc_value,
-                                                &mut denom_acc_value,
-                                            );
-
-                                            // NOTE: here we write a chain of accumulator values, and not numerators themselves
-                                            memory_argument_dst.write(numerator_acc_value);
-                                            memory_argument_dst = memory_argument_dst.add(1);
-
-                                            // and keep denominators for batch inverse
-                                            batch_inverses_input.push(denom_acc_value);
-                                        }
-                                    };
-                                }
-                            }
+                            use crate::prover_stages::unrolled_prover::stage_2_ram_shared::process_registers_and_indirect_access_in_delegation;
+                            process_registers_and_indirect_access_in_delegation(
+                                memory_trace_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                                &delegation_write_timestamp_contribution,
+                            );
                         }
+
+                        // and we also write previously accumulated over chunk value ("at this row"),
+                        // before(!) updating it (that would be value "at next row")
+                        let offset_for_grand_product_poly = compiled_circuit
+                            .stage_2_layout
+                            .intermediate_poly_for_grand_product
+                            .start();
+                        stage_2_trace
+                            .as_mut_ptr()
+                            .add(offset_for_grand_product_poly)
+                            .cast::<Mersenne31Quartic>()
+                            .write(total_accumulated);
 
                         assert_eq!(num_batch_inverses, batch_inverses_input.len());
                         batch_inverse_with_buffer(
@@ -1449,33 +622,86 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             &mut batch_inverses_buffer,
                         );
 
-                        total_accumulated.mul_assign(&numerator_acc_value);
-                        let total_accumulated_denom =
-                            batch_inverses_input.last().copied().unwrap_unchecked();
-                        total_accumulated.mul_assign(&total_accumulated_denom);
-
-                        assert_eq!(
-                            memory_argument_dst,
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(memory_accumulator_dst_start)
-                                .cast::<Mersenne31Quartic>()
-                                .add(offset_for_grand_product_accumulation_poly)
-                        );
-
                         // now we save total accumulated for the next step, and write down batch inverses
+                        {
+                            // now write back everything that we batch inversed:
+                            // - delegations
+                            // - lazy init/teardown
+                            // - memory accesses in any form
+                            // - state permutation (if applies)
+                            // - masking (if appliies)
+                            // We do not need to write grand product as we write it into "next row"
+                            // now we save total accumulated for the next step, and write down batch inverses
 
-                        // write batch inversed range check 16 elements
-                        let mut dst = stage_2_trace
-                            .as_mut_ptr()
-                            .add(offset_for_continuous_batch_inverses_write)
-                            .cast::<Mersenne31Quartic>();
-                        assert!(dst.is_aligned());
-                        for denom_value in batch_inverses_input.iter() {
-                            let mut numerator = dst.read();
-                            numerator.mul_assign(&denom_value);
-                            dst.write(numerator);
-                            dst = dst.add(1);
+                            let mut it = batch_inverses_input.iter();
+                            if handle_delegation_requests || process_delegations {
+                                if let Some(el) = compiled_circuit
+                                    .stage_2_layout
+                                    .delegation_processing_aux_poly
+                                {
+                                    stage_2_trace
+                                        .as_mut_ptr()
+                                        .add(el.start())
+                                        .cast::<Mersenne31Quartic>()
+                                        .as_mut_unchecked()
+                                        .mul_assign(it.next().unwrap());
+                                }
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_memory_init_teardown
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_memory_argument
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_state_permutation
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_permutation_masking
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            assert!(it.next().is_none());
+
+                            // and accumulate grand product
+                            total_accumulated.mul_assign(&numerator_acc_value);
+                            let total_accumulated_denom =
+                                batch_inverses_input.last().copied().unwrap_unchecked();
+                            total_accumulated.mul_assign(&total_accumulated_denom);
                         }
 
                         exec_trace_view.advance_row();
@@ -1489,16 +715,12 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                     if chunk_start + chunk_size == trace_len - 1 {
                         // we will be at the very last row here
                         let stage_2_trace = stage_2_trace_view.current_row();
-                        let dst_ptr = stage_2_trace.as_mut_ptr();
-
-                        let memory_argument_dst = dst_ptr
-                            .add(memory_accumulator_dst_start)
+                        let dst = stage_2_trace
+                            .as_mut_ptr()
+                            .add(compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start())
                             .cast::<Mersenne31Quartic>();
-                        assert!(memory_argument_dst.is_aligned());
-
-                        memory_argument_dst
-                            .add(offset_for_grand_product_accumulation_poly)
-                            .write(total_accumulated);
+                        debug_assert!(dst.is_aligned());
+                        dst.write(total_accumulated);
                     }
 
                     // this is a full running grand product over our chunk of rows

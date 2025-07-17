@@ -379,7 +379,7 @@ impl Worker {
                 num_chunks: 1,
                 ordinary_chunk_size: work_size,
                 remainder: 0,
-            }
+            };
         }
         // we should ensure that ebery thread has at least some work to do
         let num_chunks = std::cmp::min(num_cores, work_size);

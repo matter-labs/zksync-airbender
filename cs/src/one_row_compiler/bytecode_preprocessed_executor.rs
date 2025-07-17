@@ -319,7 +319,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         );
 
         let memory_layout = MemorySubtree {
-            shuffle_ram_inits_and_teardowns: None,
+            shuffle_ram_inits_and_teardowns: vec![],
             shuffle_ram_access_sets,
             delegation_request_layout,
             delegation_processor_layout: None,
@@ -353,6 +353,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 &mut witness_tree_offset,
                 &mut all_variables_to_place,
                 &mut layout,
+                0,
             );
 
         let mut compiled_quadratic_terms = vec![];
@@ -509,7 +510,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup
         );
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts_for_unrolled_case(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
             &witness_layout,
             &memory_layout,
             &setup_layout,
@@ -545,7 +546,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             public_inputs: Vec::new(),
             scratch_space_size_for_witness_gen,
             variable_mapping: layout,
-            lazy_init_address_aux_vars: None,
+            lazy_init_address_aux_vars: Vec::new(),
             memory_queries_timestamp_comparison_aux_vars,
             batched_memory_access_timestamp_comparison_aux_vars,
             register_and_indirect_access_timestamp_comparison_aux_vars,

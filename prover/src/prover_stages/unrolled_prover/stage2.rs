@@ -130,7 +130,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
 
     let ProverCachedData {
         trace_len,
-        delegation_type,
         memory_argument_challenges,
         machine_state_argument_challenges,
         delegation_challenges,
@@ -162,6 +161,8 @@ pub fn prover_stage_2_for_unrolled_circuit<
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
         ..
     } = cached_data.clone();
+
+    assert!(process_batch_ram_access == false, "deprecated");
 
     assert_eq!(
         compiled_circuit
@@ -240,6 +241,24 @@ pub fn prover_stage_2_for_unrolled_circuit<
     // batch inverses are only requried for delegation linkage poly and memory grand product accumulators
     let mut num_batch_inverses = 0;
 
+    if let Some(el) = compiled_circuit
+        .stage_2_layout
+        .delegation_processing_aux_poly
+    {
+        assert_eq!(
+            el.full_range().end,
+            compiled_circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument
+                .start()
+        );
+        num_batch_inverses += el.num_elements();
+    }
+
+    num_batch_inverses += compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown
+        .num_elements();
     num_batch_inverses += compiled_circuit
         .stage_2_layout
         .intermediate_polys_for_memory_argument
@@ -253,23 +272,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
         .intermediate_polys_for_permutation_masking
         .num_elements();
 
-    if let Some(el) = compiled_circuit
-        .stage_2_layout
-        .delegation_processing_aux_poly
-    {
-        todo!();
-        // assert_eq!(
-        //     el.full_range().end,
-        //     compiled_circuit
-        //         .stage_2_layout
-        //         .intermediate_polys_for_memory_argument
-        //         .start()
-        // );
-        // num_batch_inverses += el.num_elements();
-    }
-
-    // // Grand product is only accumulated
-    // num_batch_inverses += compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.num_elements();
+    // Grand product is only accumulated
 
     let range_check_16_width_1_lookups_access_ref = &range_check_16_width_1_lookups_access;
     let range_check_16_width_1_lookups_access_via_expressions_ref =
@@ -295,6 +298,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
     let timestamp_range_check_preprocessing_ref = &timestamp_range_check_preprocessing;
     let range_check_16_preprocessing_ref = &range_check_16_preprocessing;
     let decoder_preprocessing_ref = &decoder_preprocessing;
+    let shuffle_ram_inits_and_teardowns_ref = &shuffle_ram_inits_and_teardowns;
 
     let now = std::time::Instant::now();
 
@@ -356,7 +360,14 @@ pub fn prover_stage_2_for_unrolled_circuit<
 
                         // special case for range check 16 for lazy init address
                         if process_shuffle_ram_init {
-                            todo!();
+                            process_lazy_init_range_checks(
+                                memory_trace_row,
+                                witness_trace_row,
+                                stage_2_trace,
+                                range_check_16_preprocessing_ref,
+                                &lazy_init_address_range_check_16,
+                                &shuffle_ram_inits_and_teardowns_ref,
+                            );
                         }
 
                         stage2_process_timestamp_range_check_expressions(
@@ -457,28 +468,50 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         // now we process set-equality argument for either delegation requests or processing
                         // in all the cases we have 0 or 1 in the numerator, and need to assemble denominator
                         if handle_delegation_requests {
-                            todo!();
+                            let timestamp_columns = compiled_circuit
+                                .memory_layout
+                                .intermediate_state_layout
+                                .unwrap()
+                                .timestamp;
+
+                            let timestamp_low =
+                                *memory_trace_row.get_unchecked(timestamp_columns.start());
+                            let timestamp_high =
+                                *memory_trace_row.get_unchecked(timestamp_columns.start() + 1);
+
+                            process_delegation_requests(
+                                memory_trace_row,
+                                stage_2_trace,
+                                &delegation_request_layout,
+                                delegation_processing_aux_poly,
+                                &delegation_challenges,
+                                &mut batch_inverses_input,
+                                timestamp_low,
+                                timestamp_high,
+                            );
                         }
 
                         if process_delegations {
-                            todo!();
+                            panic!("Please use another prover function for such circuit types");
                         }
 
-                        // Now handle RAM and other permutations
-
-                        // Numerator is write set, denom is read set
-
                         // and memory grand product accumulation identities
-                        let mut numerator_acc_value;
-                        let mut denom_acc_value;
+                        let mut numerator_acc_value = Mersenne31Quartic::ONE;
+                        let mut denom_acc_value = Mersenne31Quartic::ONE;
 
-                        // first lazy init from read set / lazy teardown
+                        // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
                         if process_shuffle_ram_init {
-                            todo!();
-                        } else {
-                            // we do not have any logic and only have to initialize products
-                            numerator_acc_value = Mersenne31Quartic::ONE;
-                            denom_acc_value = Mersenne31Quartic::ONE;
+                            use crate::prover_stages::unrolled_prover::stage_2_ram_shared::process_lazy_init_memory_contributions;
+
+                            process_lazy_init_memory_contributions(
+                                memory_trace_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                            )
                         }
 
                         // we assembled P(x) = write init set / read teardown set, or trivial init. Now we add contributions fro
@@ -514,7 +547,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         }
 
                         if process_registers_and_indirect_access {
-                            todo!();
+                            panic!("Please use another prover function for such circuit types");
                         }
 
                         // and mask
@@ -571,65 +604,87 @@ pub fn prover_stage_2_for_unrolled_circuit<
                             .cast::<Mersenne31Quartic>()
                             .write(total_accumulated);
 
-                        // and accumulate grand product
-                        total_accumulated.mul_assign(&numerator_acc_value);
-                        let total_accumulated_denom =
-                            batch_inverses_input.last().copied().unwrap_unchecked();
-                        total_accumulated.mul_assign(&total_accumulated_denom);
-
                         // now we save total accumulated for the next step, and write down batch inverses
+                        {
+                            // now write back everything that we batch inversed:
+                            // - delegations
+                            // - lazy init/teardown
+                            // - memory accesses in any form
+                            // - state permutation (if applies)
+                            // - masking (if appliies)
+                            // We do not need to write grand product as we write it into "next row"
+                            // now we save total accumulated for the next step, and write down batch inverses
 
-                        let mut it = batch_inverses_input.iter();
-                        for dst in compiled_circuit
-                            .stage_2_layout
-                            .intermediate_polys_for_memory_argument
-                            .iter()
-                        {
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(dst.start)
-                                .cast::<Mersenne31Quartic>()
-                                .as_mut_unchecked()
-                                .mul_assign(it.next().unwrap());
-                        }
-                        for dst in compiled_circuit
-                            .stage_2_layout
-                            .intermediate_polys_for_state_permutation
-                            .iter()
-                        {
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(dst.start)
-                                .cast::<Mersenne31Quartic>()
-                                .as_mut_unchecked()
-                                .mul_assign(it.next().unwrap());
-                        }
-                        for dst in compiled_circuit
-                            .stage_2_layout
-                            .intermediate_polys_for_permutation_masking
-                            .iter()
-                        {
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(dst.start)
-                                .cast::<Mersenne31Quartic>()
-                                .as_mut_unchecked()
-                                .mul_assign(it.next().unwrap());
-                        }
+                            let mut it = batch_inverses_input.iter();
+                            if handle_delegation_requests || process_delegations {
+                                if let Some(el) = compiled_circuit
+                                    .stage_2_layout
+                                    .delegation_processing_aux_poly
+                                {
+                                    stage_2_trace
+                                        .as_mut_ptr()
+                                        .add(el.start())
+                                        .cast::<Mersenne31Quartic>()
+                                        .as_mut_unchecked()
+                                        .mul_assign(it.next().unwrap());
+                                }
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_memory_init_teardown
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_memory_argument
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_state_permutation
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_permutation_masking
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+                            assert!(it.next().is_none());
 
-                        if let Some(el) = compiled_circuit
-                            .stage_2_layout
-                            .delegation_processing_aux_poly
-                        {
-                            stage_2_trace
-                                .as_mut_ptr()
-                                .add(el.start())
-                                .cast::<Mersenne31Quartic>()
-                                .as_mut_unchecked()
-                                .mul_assign(it.next().unwrap());
+                            // and accumulate grand product
+                            total_accumulated.mul_assign(&numerator_acc_value);
+                            let total_accumulated_denom =
+                                batch_inverses_input.last().copied().unwrap_unchecked();
+                            total_accumulated.mul_assign(&total_accumulated_denom);
                         }
-
-                        assert!(it.next().is_none());
 
                         exec_trace_view.advance_row();
                         setup_trace_view.advance_row();

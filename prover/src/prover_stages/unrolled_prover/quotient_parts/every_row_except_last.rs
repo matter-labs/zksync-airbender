@@ -1819,3 +1819,897 @@ pub(crate) unsafe fn evaluate_permutation_masking(
 
     add_quotient_term_contribution_in_ext4(other_challenges_ptr, term_contribution, quotient_term);
 }
+
+pub(crate) unsafe fn evaluate_delegation_requests(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    _witness_trace_view_row: &[Mersenne31Field],
+    memory_trace_view_row: &[Mersenne31Field],
+    _setup_trace_view_row: &[Mersenne31Field],
+    stage_2_trace_view_row: &[Mersenne31Field],
+    _tau_in_domain: &Mersenne31Complex,
+    tau_in_domain_by_half: &Mersenne31Complex,
+    absolute_row_idx: usize,
+    is_last_row: bool,
+    quotient_term: &mut Mersenne31Quartic,
+    other_challenges_ptr: &mut *const Mersenne31Quartic,
+    delegation_request_layout: &DelegationRequestLayout,
+    delegation_challenges: &ExternalDelegationArgumentChallenges,
+    timestamp_low: Mersenne31Field,
+    timestamp_high: Mersenne31Field,
+    delegation_requests_timestamp_extra_contribution: &Mersenne31Quartic,
+) {
+    let acc = compiled_circuit
+        .stage_2_layout
+        .delegation_processing_aux_poly
+        .unwrap()
+        .start();
+    let acc_ptr = stage_2_trace_view_row
+        .as_ptr()
+        .add(acc)
+        .cast::<Mersenne31Quartic>();
+    debug_assert!(acc_ptr.is_aligned());
+    let acc_value = acc_ptr.read();
+
+    let m = *memory_trace_view_row.get_unchecked(delegation_request_layout.multiplicity.start());
+
+    // we will add contribution from literal offset afterwards
+    let mut denom = quotient_compute_aggregated_key_value(
+        *memory_trace_view_row.get_unchecked(delegation_request_layout.delegation_type.start()),
+        [
+            *memory_trace_view_row
+                .get_unchecked(delegation_request_layout.abi_mem_offset_high.start()),
+            timestamp_low,
+            timestamp_high,
+        ],
+        delegation_challenges.delegation_argument_linearization_challenges,
+        delegation_challenges.delegation_argument_gamma,
+        *tau_in_domain_by_half,
+    );
+    denom.add_assign(delegation_requests_timestamp_extra_contribution);
+
+    // extra power to scale accumulator and multiplicity
+    let mut term_contribution = denom;
+    term_contribution.mul_assign(&acc_value);
+    term_contribution.sub_assign_base(&m);
+    term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+    if DEBUG_QUOTIENT {
+        if is_last_row == false {
+            assert!(
+                m == Mersenne31Field::ZERO || m == Mersenne31Field::ONE,
+                "multiplicity must be 0 or 1, but got {}",
+                m
+            );
+            assert_eq!(
+                term_contribution,
+                Mersenne31Quartic::ZERO,
+                "unsatisfied at delegation argument aux column at row {}",
+                absolute_row_idx,
+            );
+        }
+    }
+    add_quotient_term_contribution_in_ext4(other_challenges_ptr, term_contribution, quotient_term);
+}
+
+pub(crate) unsafe fn evaluate_memory_init_teardown_range_checks(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    _witness_trace_view_row: &[Mersenne31Field],
+    memory_trace_view_row: &[Mersenne31Field],
+    _setup_trace_view_row: &[Mersenne31Field],
+    stage_2_trace_view_row: &[Mersenne31Field],
+    _tau_in_domain: &Mersenne31Complex,
+    tau_in_domain_by_half: &Mersenne31Complex,
+    absolute_row_idx: usize,
+    is_last_row: bool,
+    quotient_term: &mut Mersenne31Quartic,
+    other_challenges_ptr: &mut *const Mersenne31Quartic,
+    lookup_argument_gamma: &Mersenne31Quartic,
+    lookup_argument_two_gamma: &Mersenne31Quartic,
+) {
+    let lazy_init_address_range_check_16 = compiled_circuit
+        .stage_2_layout
+        .lazy_init_address_range_check_16
+        .unwrap_unchecked();
+    for i in 0..lazy_init_address_range_check_16.num_pairs {
+        let shuffle_ram_inits_and_teardowns = compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .get_unchecked(i);
+        let c = lazy_init_address_range_check_16
+            .base_field_oracles
+            .get_range(i)
+            .start;
+        let c = *stage_2_trace_view_row.get_unchecked(c);
+        let a = shuffle_ram_inits_and_teardowns
+            .lazy_init_addresses_columns
+            .start();
+        let b = a + 1;
+        let a = *memory_trace_view_row.get_unchecked(a);
+        let b = *memory_trace_view_row.get_unchecked(b);
+
+        if DEBUG_QUOTIENT {
+            if is_last_row == false {
+                assert!(
+                    a.to_reduced_u32() < 1u32 << 16,
+                    "unsatisfied at range check 16 for lazy init addresses: value is {}",
+                    a,
+                );
+
+                assert!(
+                    b.to_reduced_u32() < 1u32 << 16,
+                    "unsatisfied at range check 16 for lazy init addresses: value is {}",
+                    b,
+                );
+            }
+        }
+
+        let mut a_mul_by_b = a;
+        a_mul_by_b.mul_assign(&b);
+
+        let mut term_contribution = *tau_in_domain_by_half;
+        term_contribution.mul_assign_by_base(&a_mul_by_b);
+        term_contribution.sub_assign_base(&c);
+        term_contribution.mul_assign(&tau_in_domain_by_half);
+
+        if DEBUG_QUOTIENT {
+            if is_last_row == false {
+                assert_eq!(
+                    term_contribution,
+                    Mersenne31Complex::ZERO,
+                    "unsatisfied at range check 16 lookup base field oracle for lazy init addresses at row {}",
+                    absolute_row_idx
+                );
+            }
+        }
+        add_quotient_term_contribution_in_ext2(
+            other_challenges_ptr,
+            term_contribution,
+            quotient_term,
+        );
+
+        let acc = lazy_init_address_range_check_16
+            .ext_4_field_oracles
+            .get_range(i)
+            .start;
+        let acc_ptr = stage_2_trace_view_row
+            .as_ptr()
+            .add(acc)
+            .cast::<Mersenne31Quartic>();
+        debug_assert!(acc_ptr.is_aligned());
+
+        let mut acc_value = acc_ptr.read();
+        acc_value.mul_assign_by_base(tau_in_domain_by_half);
+
+        let mut t = a;
+        t.add_assign(&b);
+        let mut a_plus_b_contribution = *tau_in_domain_by_half;
+        a_plus_b_contribution.mul_assign_by_base(&t);
+
+        let mut c_contribution = *tau_in_domain_by_half;
+        c_contribution.mul_assign_by_base(&c);
+
+        let mut denom = *lookup_argument_gamma;
+        denom.add_assign_base(&a_plus_b_contribution);
+        denom.mul_assign(lookup_argument_gamma);
+        denom.add_assign_base(&c_contribution);
+        // C(x) + gamma * (a(x) + b(x)) + gamma^2
+
+        // a(x) + b(x) + 2 * gamma
+        let mut numerator = *lookup_argument_two_gamma;
+        numerator.add_assign_base(&a_plus_b_contribution);
+
+        // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
+        let mut term_contribution = denom;
+        term_contribution.mul_assign(&acc_value);
+        term_contribution.sub_assign(&numerator);
+        if DEBUG_QUOTIENT {
+            if is_last_row == false {
+                assert_eq!(
+                    term_contribution,
+                    Mersenne31Quartic::ZERO,
+                    "unsatisfied at range check 16 lookup ext field oracle for lazy init addresses at row {}",
+                    absolute_row_idx,
+                );
+            }
+        }
+        add_quotient_term_contribution_in_ext4(
+            other_challenges_ptr,
+            term_contribution,
+            quotient_term,
+        );
+    }
+}
+
+pub(crate) unsafe fn evaluate_memory_init_teardown_padding(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    witness_trace_view_row: &[Mersenne31Field],
+    memory_trace_view_row: &[Mersenne31Field],
+    _setup_trace_view_row: &[Mersenne31Field],
+    _stage_2_trace_view_row: &[Mersenne31Field],
+    _tau_in_domain: &Mersenne31Complex,
+    tau_in_domain_by_half: &Mersenne31Complex,
+    absolute_row_idx: usize,
+    is_last_row: bool,
+    quotient_term: &mut Mersenne31Quartic,
+    other_challenges_ptr: &mut *const Mersenne31Quartic,
+) {
+    // NOTE: very special trick here - this constraint makes sense on every row except last two, but it's quadratic,
+    // and unless we actually make it on every row except last only(!) we can not get a quotient of degree 1. The good thing
+    // is that a constraint about final borrow in the lazy init sorting is on every row except last two, so we can just place
+    // an artificial borrow value for our needs
+
+    for (lazy_init_address_aux_vars, shuffle_ram_inits_and_teardowns) in
+        compiled_circuit.lazy_init_address_aux_vars.iter().zip(
+            compiled_circuit
+                .memory_layout
+                .shuffle_ram_inits_and_teardowns
+                .iter(),
+        )
+    {
+        let ShuffleRamAuxComparisonSet { final_borrow, .. } = *lazy_init_address_aux_vars;
+
+        // then if we do NOT have borrow-high, then we require that init address, teardown final value and timestamps are all zeroes
+
+        let final_borrow_value =
+            read_value(final_borrow, witness_trace_view_row, memory_trace_view_row);
+
+        let lazy_init_address_start = shuffle_ram_inits_and_teardowns
+            .lazy_init_addresses_columns
+            .start();
+        let lazy_init_address_low = lazy_init_address_start;
+        let lazy_init_address_high = lazy_init_address_start + 1;
+
+        let lazy_init_address_low = memory_trace_view_row[lazy_init_address_low];
+        let lazy_init_address_high = memory_trace_view_row[lazy_init_address_high];
+
+        let teardown_value_start = shuffle_ram_inits_and_teardowns
+            .lazy_teardown_values_columns
+            .start();
+        let teardown_value_low = teardown_value_start;
+        let teardown_value_high = teardown_value_start + 1;
+
+        let teardown_value_low = memory_trace_view_row[teardown_value_low];
+        let teardown_value_high = memory_trace_view_row[teardown_value_high];
+
+        let teardown_timestamp_start = shuffle_ram_inits_and_teardowns
+            .lazy_teardown_timestamps_columns
+            .start();
+        let teardown_timestamp_low = teardown_timestamp_start;
+        let teardown_timestamp_high = teardown_timestamp_start + 1;
+
+        let teardown_timestamp_low = memory_trace_view_row[teardown_timestamp_low];
+        let teardown_timestamp_high = memory_trace_view_row[teardown_timestamp_high];
+
+        // if borrow is 1 (strict comparison), then values can be any,
+        // otherwise address, value and timestamp are 0
+        let mut final_borrow_minus_one = *tau_in_domain_by_half;
+        final_borrow_minus_one.mul_assign_by_base(&final_borrow_value);
+        final_borrow_minus_one.sub_assign_base(&Mersenne31Field::ONE);
+
+        // pre-multiply by another tau^H/2
+        let mut final_borrow_minus_one_term = final_borrow_minus_one;
+        final_borrow_minus_one_term.mul_assign(&tau_in_domain_by_half);
+
+        for value in [
+            lazy_init_address_low,
+            lazy_init_address_high,
+            teardown_value_low,
+            teardown_value_high,
+            teardown_timestamp_low,
+            teardown_timestamp_high,
+        ]
+        .into_iter()
+        {
+            let mut term_contribution_ext2 = final_borrow_minus_one_term;
+            term_contribution_ext2.mul_assign_by_base(&value);
+
+            if DEBUG_QUOTIENT {
+                if is_last_row == false {
+                    assert_eq!(
+                        term_contribution_ext2,
+                        Mersenne31Complex::ZERO,
+                        "unsatisfied at lazy init padding constraint at row {}",
+                        absolute_row_idx
+                    );
+                    if final_borrow_value.is_zero() {
+                        assert_eq!(
+                            value,
+                            Mersenne31Field::ZERO,
+                            "unsatisfied at lazy init padding constraint at row {}",
+                            absolute_row_idx
+                        );
+                    } else {
+                        assert_eq!(final_borrow_value, Mersenne31Field::ONE);
+                    }
+                }
+            }
+
+            add_quotient_term_contribution_in_ext2(
+                other_challenges_ptr,
+                term_contribution_ext2,
+                quotient_term,
+            );
+        }
+    }
+}
+
+pub(crate) unsafe fn evaluate_memory_init_teardown_accumulation(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    _witness_trace_view_row: &[Mersenne31Field],
+    memory_trace_view_row: &[Mersenne31Field],
+    _setup_trace_view_row: &[Mersenne31Field],
+    stage_2_trace_view_row: &[Mersenne31Field],
+    _tau_in_domain: &Mersenne31Complex,
+    tau_in_domain_by_half: &Mersenne31Complex,
+    absolute_row_idx: usize,
+    is_last_row: bool,
+    quotient_term: &mut Mersenne31Quartic,
+    other_challenges_ptr: &mut *const Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    permutation_argument_src: &mut *const Mersenne31Quartic,
+) {
+    for (access_idx, shuffle_ram_inits_and_teardowns) in compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .iter()
+        .enumerate()
+    {
+        let mut numerator = Mersenne31Quartic::ZERO;
+        let address_low = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_init_addresses_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        t.mul_assign_by_base(&address_low);
+        numerator.add_assign(&t);
+
+        let address_high = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_init_addresses_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        t.mul_assign_by_base(&address_high);
+        numerator.add_assign(&t);
+
+        // lazy init and teardown sets have same addresses
+        let mut denom = numerator;
+
+        let value_low = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_values_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+        t.mul_assign_by_base(&value_low);
+        denom.add_assign(&t);
+
+        let value_high = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_values_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+        t.mul_assign_by_base(&value_high);
+        denom.add_assign(&t);
+
+        let timestamp_low = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_timestamps_columns
+                .start(),
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&timestamp_low);
+        denom.add_assign(&t);
+
+        let timestamp_high = *memory_trace_view_row.get_unchecked(
+            shuffle_ram_inits_and_teardowns
+                .lazy_teardown_timestamps_columns
+                .start()
+                + 1,
+        );
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&timestamp_high);
+        denom.add_assign(&t);
+
+        numerator.mul_assign_by_base(tau_in_domain_by_half);
+        denom.mul_assign_by_base(tau_in_domain_by_half);
+
+        numerator.add_assign(&memory_argument_challenges.memory_argument_gamma);
+        denom.add_assign(&memory_argument_challenges.memory_argument_gamma);
+
+        // this * demon - previous * numerator,
+        let previous = permutation_argument_src.read();
+        let next_acc_ptr = stage_2_trace_view_row
+            .as_ptr()
+            .add(
+                compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_memory_init_teardown
+                    .get_range(access_idx)
+                    .start,
+            )
+            .cast::<Mersenne31Quartic>();
+        debug_assert!(next_acc_ptr.is_aligned());
+        let accumulator = next_acc_ptr.read();
+        *permutation_argument_src = next_acc_ptr;
+
+        let mut term_contribution = accumulator;
+        term_contribution.mul_assign(&denom);
+        let mut t = previous;
+        t.mul_assign(&numerator);
+        term_contribution.sub_assign(&t);
+        // only accumulators are not restored, but we are linear over them
+        term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+
+        if DEBUG_QUOTIENT {
+            if is_last_row == false {
+                assert_eq!(
+                    term_contribution,
+                    Mersenne31Quartic::ZERO,
+                    "unsatisfied at memory accumulation for lazy init/teardown at row {}",
+                    absolute_row_idx,
+                );
+            }
+        }
+        add_quotient_term_contribution_in_ext4(
+            other_challenges_ptr,
+            term_contribution,
+            quotient_term,
+        );
+    }
+}
+
+pub(crate) unsafe fn evaluate_register_and_indirect_memory_accesses(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    _witness_trace_view_row: &[Mersenne31Field],
+    memory_trace_view_row: &[Mersenne31Field],
+    _setup_trace_view_row: &[Mersenne31Field],
+    stage_2_trace_view_row: &[Mersenne31Field],
+    _tau_in_domain: &Mersenne31Complex,
+    tau_in_domain_by_half: &Mersenne31Complex,
+    absolute_row_idx: usize,
+    is_last_row: bool,
+    quotient_term: &mut Mersenne31Quartic,
+    other_challenges_ptr: &mut *const Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    permutation_argument_src: &mut *const Mersenne31Quartic,
+    delegation_write_timestamp_contribution: &Mersenne31Quartic,
+    tau_in_domain_by_half_inv: &Mersenne31Complex,
+) {
+    const SHIFT_16: Mersenne31Field = Mersenne31Field(1u32 << 16);
+
+    // we only process RAM permutation itself here, and extra constraints related to convention of
+    // read timestamps/values and write timestamps/values is enforced above
+
+    // commong contribution here will come from the fact that we access register, but it's a literal constant and will be added last
+
+    let mut memory_columns_it = compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_argument
+        .iter();
+
+    for (access_idx, register_access_columns) in compiled_circuit
+        .memory_layout
+        .register_and_indirect_accesses
+        .iter()
+        .enumerate()
+    {
+        let read_value_columns = register_access_columns
+            .register_access
+            .get_read_value_columns();
+        let read_timestamp_columns = register_access_columns
+            .register_access
+            .get_read_timestamp_columns();
+        let register_index = register_access_columns.register_access.get_register_index();
+        debug_assert!(register_index > 0);
+        debug_assert!(register_index < 32);
+
+        // address contribution is literal constant
+        let mem_offset_low = Mersenne31Field(register_index);
+        let mut address_contribution = memory_argument_challenges
+            .memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        address_contribution.mul_assign_by_base(&mem_offset_low);
+        // also a fact that it's a register. There is no challenge here
+        address_contribution.add_assign_base(&Mersenne31Field::ONE);
+
+        debug_assert_eq!(read_value_columns.width(), 2);
+
+        let register_read_value_low =
+            *memory_trace_view_row.get_unchecked(read_value_columns.start());
+        let mut read_value_contribution = memory_argument_challenges
+            .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+        read_value_contribution.mul_assign_by_base(&register_read_value_low);
+
+        let register_read_value_high =
+            *memory_trace_view_row.get_unchecked(read_value_columns.start() + 1);
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+        t.mul_assign_by_base(&register_read_value_high);
+        read_value_contribution.add_assign(&t);
+
+        debug_assert_eq!(read_timestamp_columns.width(), 2);
+
+        let read_timestamp_low =
+            *memory_trace_view_row.get_unchecked(read_timestamp_columns.start());
+        let mut read_timestamp_contribution = memory_argument_challenges
+            .memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        read_timestamp_contribution.mul_assign_by_base(&read_timestamp_low);
+
+        let read_timestamp_high =
+            *memory_trace_view_row.get_unchecked(read_timestamp_columns.start() + 1);
+        let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&read_timestamp_high);
+        read_timestamp_contribution.add_assign(&t);
+
+        match register_access_columns.register_access {
+            RegisterAccessColumns::ReadAccess { .. } => {
+                let mut numerator = read_value_contribution;
+
+                let mut denom = numerator;
+
+                numerator.add_assign(&delegation_write_timestamp_contribution);
+                denom.add_assign(&read_timestamp_contribution);
+
+                numerator.mul_assign_by_base(tau_in_domain_by_half);
+                numerator.add_assign(&memory_argument_challenges.memory_argument_gamma);
+                // literal constant
+                numerator.add_assign(&address_contribution);
+
+                denom.mul_assign_by_base(tau_in_domain_by_half);
+                denom.add_assign(&memory_argument_challenges.memory_argument_gamma);
+                // literal constant
+                denom.add_assign(&address_contribution);
+
+                // this * demon - previous * numerator
+                // or just this * denom - numerator
+                let previous = permutation_argument_src.read();
+                let next_acc_ptr = stage_2_trace_view_row
+                    .as_ptr()
+                    .add(memory_columns_it.next().unwrap().start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(next_acc_ptr.is_aligned());
+                let accumulator = next_acc_ptr.read();
+                *permutation_argument_src = next_acc_ptr;
+
+                let mut term_contribution = accumulator;
+                term_contribution.mul_assign(&denom);
+                let mut t = previous;
+                t.mul_assign(&numerator);
+                term_contribution.sub_assign(&t);
+                // only accumulators are not restored, but we are linear over them
+                term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+
+                if DEBUG_QUOTIENT {
+                    if is_last_row == false {
+                        assert_eq!(
+                            term_contribution,
+                            Mersenne31Quartic::ZERO,
+                            "unsatisfied at register RAM memory accumulation for access idx {} at readonly access:\nprevious accumulated value = {}, numerator = {}, denominator = {}, new expected accumulator = {}. Previous * numerator = {}",
+                            access_idx,
+                            previous,
+                            numerator,
+                            denom,
+                            accumulator,
+                            t,
+                        );
+                    }
+                }
+                add_quotient_term_contribution_in_ext4(
+                    other_challenges_ptr,
+                    term_contribution,
+                    quotient_term,
+                );
+            }
+            RegisterAccessColumns::WriteAccess { write_value, .. } => {
+                let write_value_low = *memory_trace_view_row.get_unchecked(write_value.start());
+                let mut write_value_contribution = memory_argument_challenges
+                    .memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                write_value_contribution.mul_assign_by_base(&write_value_low);
+
+                let write_value_high =
+                    *memory_trace_view_row.get_unchecked(write_value.start() + 1);
+                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                t.mul_assign_by_base(&write_value_high);
+                write_value_contribution.add_assign(&t);
+
+                let mut numerator = write_value_contribution;
+                let mut denom = read_value_contribution;
+
+                numerator.add_assign(&delegation_write_timestamp_contribution);
+                denom.add_assign(&read_timestamp_contribution);
+
+                numerator.mul_assign_by_base(tau_in_domain_by_half);
+                numerator.add_assign(&memory_argument_challenges.memory_argument_gamma);
+                // literal constant
+                numerator.add_assign(&address_contribution);
+
+                denom.mul_assign_by_base(tau_in_domain_by_half);
+                denom.add_assign(&memory_argument_challenges.memory_argument_gamma);
+                // literal constant
+                denom.add_assign(&address_contribution);
+
+                // this * demon - previous * numerator
+                // or just this * denom - numerator
+                let previous = permutation_argument_src.read();
+                let next_acc_ptr = stage_2_trace_view_row
+                    .as_ptr()
+                    .add(memory_columns_it.next().unwrap().start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(next_acc_ptr.is_aligned());
+                let accumulator = next_acc_ptr.read();
+                *permutation_argument_src = next_acc_ptr;
+
+                let mut term_contribution = accumulator;
+                term_contribution.mul_assign(&denom);
+                let mut t = previous;
+                t.mul_assign(&numerator);
+                term_contribution.sub_assign(&t);
+                // only accumulators are not restored, but we are linear over them
+                term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+
+                if DEBUG_QUOTIENT {
+                    if is_last_row == false {
+                        assert_eq!(
+                            term_contribution,
+                            Mersenne31Quartic::ZERO,
+                            "unsatisfied at register RAM memory accumulation for access idx {} at write access:\nprevious accumulated value = {}, numerator = {}, denominator = {}, new expected accumulator = {}. previous * numerator = {}",
+                            access_idx,
+                            previous,
+                            numerator,
+                            denom,
+                            accumulator,
+                            t,
+                        );
+                    }
+                }
+                add_quotient_term_contribution_in_ext4(
+                    other_challenges_ptr,
+                    term_contribution,
+                    quotient_term,
+                );
+            }
+        }
+
+        // and now if we have indirects - must process those
+        for (indirect_access_idx, indirect_access_columns) in
+            register_access_columns.indirect_accesses.iter().enumerate()
+        {
+            let read_value_columns = indirect_access_columns.get_read_value_columns();
+            let read_timestamp_columns = indirect_access_columns.get_read_timestamp_columns();
+            let carry_bit_column =
+                indirect_access_columns.get_address_derivation_carry_bit_column();
+            let offset = indirect_access_columns.get_offset();
+            assert!(
+                offset < 1 << 16,
+                "offset {} is too large and not supported",
+                offset
+            );
+            // we expect offset == 0 for the first indirect access and offset > 0 for others
+            assert_eq!(indirect_access_idx == 0, offset == 0);
+            // address contribution is literal constant common, but a little convoluated
+
+            // let will multiply offset by inverse of tau in domain by half to make our live simpler below
+            let mut offset_adjusted = *tau_in_domain_by_half_inv;
+            offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset));
+
+            let address_contribution =
+                if indirect_access_idx == 0 || carry_bit_column.num_elements() == 0 {
+                    let mem_offset_low = register_read_value_low;
+                    let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
+                    mem_offset_low.add_assign_base(&offset_adjusted);
+
+                    let mut address_contribution = memory_argument_challenges
+                        .memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    address_contribution.mul_assign_by_base(&mem_offset_low);
+
+                    let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    t.mul_assign_by_base(&register_read_value_high);
+                    address_contribution.add_assign(&t);
+
+                    address_contribution
+                } else {
+                    // we compute an absolute address as read value + offset, so low part is register_low + offset - 2^16 * carry_bit
+                    let carry_bit = *memory_trace_view_row.get_unchecked(carry_bit_column.start());
+                    let mut carry_bit_shifted = SHIFT_16;
+                    carry_bit_shifted.mul_assign(&carry_bit);
+
+                    let mut mem_offset_low = register_read_value_low;
+                    mem_offset_low.sub_assign(&carry_bit_shifted);
+                    let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
+                    mem_offset_low.add_assign(&offset_adjusted);
+
+                    let mut address_contribution = memory_argument_challenges
+                        .memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    address_contribution.mul_assign_by_base(&mem_offset_low);
+
+                    let mut mem_offset_high = register_read_value_high;
+                    mem_offset_high.add_assign(&carry_bit);
+
+                    let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    t.mul_assign_by_base(&mem_offset_high);
+                    address_contribution.add_assign(&t);
+
+                    address_contribution
+                };
+
+            // we access RAM and not registers
+            debug_assert_eq!(read_value_columns.width(), 2);
+
+            let read_value_low = *memory_trace_view_row.get_unchecked(read_value_columns.start());
+            let mut read_value_contribution = memory_argument_challenges
+                .memory_argument_linearization_challenges
+                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+            read_value_contribution.mul_assign_by_base(&read_value_low);
+
+            let read_value_high =
+                *memory_trace_view_row.get_unchecked(read_value_columns.start() + 1);
+            let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+            t.mul_assign_by_base(&read_value_high);
+            read_value_contribution.add_assign(&t);
+
+            debug_assert_eq!(read_timestamp_columns.width(), 2);
+
+            let read_timestamp_low =
+                *memory_trace_view_row.get_unchecked(read_timestamp_columns.start());
+            let mut read_timestamp_contribution = memory_argument_challenges
+                .memory_argument_linearization_challenges
+                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+            read_timestamp_contribution.mul_assign_by_base(&read_timestamp_low);
+
+            let read_timestamp_high =
+                *memory_trace_view_row.get_unchecked(read_timestamp_columns.start() + 1);
+            let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+            t.mul_assign_by_base(&read_timestamp_high);
+            read_timestamp_contribution.add_assign(&t);
+
+            let mut numerator = address_contribution;
+
+            match indirect_access_columns {
+                IndirectAccessColumns::ReadAccess { .. } => {
+                    numerator.add_assign(&read_value_contribution);
+
+                    let mut denom = numerator;
+
+                    numerator.add_assign(&delegation_write_timestamp_contribution);
+                    denom.add_assign(&read_timestamp_contribution);
+
+                    numerator.mul_assign_by_base(tau_in_domain_by_half);
+                    numerator.add_assign(&memory_argument_challenges.memory_argument_gamma);
+
+                    denom.mul_assign_by_base(tau_in_domain_by_half);
+                    denom.add_assign(&memory_argument_challenges.memory_argument_gamma);
+
+                    // this * demon - previous * numerator
+                    let previous = permutation_argument_src.read();
+                    let next_acc_ptr = stage_2_trace_view_row
+                        .as_ptr()
+                        .add(memory_columns_it.next().unwrap().start)
+                        .cast::<Mersenne31Quartic>();
+                    debug_assert!(next_acc_ptr.is_aligned());
+                    let accumulator = next_acc_ptr.read();
+                    *permutation_argument_src = next_acc_ptr;
+
+                    let mut term_contribution = accumulator;
+                    term_contribution.mul_assign(&denom);
+                    let mut t = previous;
+                    t.mul_assign(&numerator);
+                    term_contribution.sub_assign(&t);
+                    // only accumulators are not restored, but we are linear over them
+                    term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+
+                    if DEBUG_QUOTIENT {
+                        if is_last_row == false {
+                            assert_eq!(
+                                term_contribution,
+                                Mersenne31Quartic::ZERO,
+                                "row {}: unsatisfied at indirect RAM memory accumulation for register access idx {} indirect access {} at readonly access:\nprevious accumulated value = {}, numerator = {}, denominator = {}, new expected accumulator = {}. Previous * numerator = {}",
+                                absolute_row_idx,
+                                access_idx,
+                                indirect_access_idx,
+                                previous,
+                                numerator,
+                                denom,
+                                accumulator,
+                                t,
+                            );
+                        }
+                    }
+                    add_quotient_term_contribution_in_ext4(
+                        other_challenges_ptr,
+                        term_contribution,
+                        quotient_term,
+                    );
+                }
+                IndirectAccessColumns::WriteAccess { write_value, .. } => {
+                    let write_value_low = *memory_trace_view_row.get_unchecked(write_value.start());
+                    let mut write_value_contribution = memory_argument_challenges
+                        .memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                    write_value_contribution.mul_assign_by_base(&write_value_low);
+
+                    let write_value_high =
+                        *memory_trace_view_row.get_unchecked(write_value.start() + 1);
+                    let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                    t.mul_assign_by_base(&write_value_high);
+                    write_value_contribution.add_assign(&t);
+
+                    let mut denom = numerator;
+
+                    numerator.add_assign(&write_value_contribution);
+                    denom.add_assign(&read_value_contribution);
+
+                    numerator.add_assign(&delegation_write_timestamp_contribution);
+                    denom.add_assign(&read_timestamp_contribution);
+
+                    numerator.mul_assign_by_base(tau_in_domain_by_half);
+                    numerator.add_assign(&memory_argument_challenges.memory_argument_gamma);
+
+                    denom.mul_assign_by_base(tau_in_domain_by_half);
+                    denom.add_assign(&memory_argument_challenges.memory_argument_gamma);
+
+                    // this * demon - previous * numerator
+                    let previous = permutation_argument_src.read();
+                    let next_acc_ptr = stage_2_trace_view_row
+                        .as_ptr()
+                        .add(memory_columns_it.next().unwrap().start)
+                        .cast::<Mersenne31Quartic>();
+                    debug_assert!(next_acc_ptr.is_aligned());
+                    let accumulator = next_acc_ptr.read();
+                    *permutation_argument_src = next_acc_ptr;
+
+                    let mut term_contribution = accumulator;
+                    term_contribution.mul_assign(&denom);
+                    let mut t = previous;
+                    t.mul_assign(&numerator);
+                    term_contribution.sub_assign(&t);
+                    // only accumulators are not restored, but we are linear over them
+                    term_contribution.mul_assign_by_base(tau_in_domain_by_half);
+
+                    if DEBUG_QUOTIENT {
+                        if is_last_row == false {
+                            assert_eq!(
+                                term_contribution,
+                                Mersenne31Quartic::ZERO,
+                                "row {}: unsatisfied at indirect RAM memory accumulation for access idx {} indirect access {} at write access:\nprevious accumulated value = {}, numerator = {}, denominator = {}, new expected accumulator = {}. previous * numerator = {}",
+                                absolute_row_idx,
+                                access_idx,
+                                indirect_access_idx,
+                                previous,
+                                numerator,
+                                denom,
+                                accumulator,
+                                t,
+                            );
+                        }
+                    }
+                    add_quotient_term_contribution_in_ext4(
+                        other_challenges_ptr,
+                        term_contribution,
+                        quotient_term,
+                    );
+                }
+            }
+        }
+    }
+}

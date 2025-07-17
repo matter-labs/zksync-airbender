@@ -12,7 +12,7 @@ pub fn evaluate_delegation_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAll
     assert!(compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_none());
+        .is_empty());
     assert!(compiled_circuit
         .memory_layout
         .shuffle_ram_access_sets

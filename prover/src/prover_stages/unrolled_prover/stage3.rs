@@ -25,6 +25,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
     setup_precomputations: &SetupPrecomputations<N, A, T>,
     first_row_boundary_constraints: Vec<(ColumnAddress, Mersenne31Field)>,
     one_before_last_row_boundary_constraints: Vec<(ColumnAddress, Mersenne31Field)>,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues],
     twiddles: &Twiddles<Mersenne31Complex, A>,
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
@@ -32,6 +33,14 @@ pub fn prover_stage_3_for_unrolled_circuit<
     worker: &Worker,
 ) -> ThirdStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
+
+    assert_eq!(
+        aux_boundary_values.len(),
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len()
+    );
 
     let mut transcript_challenges =
         [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -63,8 +72,6 @@ pub fn prover_stage_3_for_unrolled_circuit<
         machine_state_argument_challenges,
         delegation_challenges,
         process_shuffle_ram_init,
-        shuffle_ram_inits_and_teardowns,
-        lazy_init_address_range_check_16,
         handle_delegation_requests,
         delegation_request_layout,
         process_batch_ram_access,
@@ -321,7 +328,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             exec_trace_view.current_and_next_row_ref();
                         let (witness_trace_view_row, memory_trace_view_row)
                             = exec_trace_view_row.split_at_unchecked(stage_1_output.num_witness_columns);
-                        let (witness_trace_view_next_row, memory_trace_view_next_row)
+                        let (_witness_trace_view_next_row, memory_trace_view_next_row)
                             = exec_trace_view_next_row.split_at_unchecked(stage_1_output.num_witness_columns);
 
                         let (stage_2_trace_view_row, stage_2_trace_view_next_row) =
@@ -410,7 +417,21 @@ pub fn prover_stage_3_for_unrolled_circuit<
 
                         // special case for range check over lazy init address columns
                         if process_shuffle_ram_init {
-                            todo!();
+                            evaluate_memory_init_teardown_range_checks(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &lookup_argument_gamma,
+                                &lookup_argument_two_gamma,
+                            );
                         }
 
                         // now remainders
@@ -560,23 +581,55 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             &lookup_argument_gamma,
                         );
 
+                        // write timestamps come from cycle itself, and are used for multiple things below
+                        let intermediate_state_layout = compiled_circuit.memory_layout.intermediate_state_layout.unwrap();
+                        let write_timestamp_low = *memory_trace_view_row
+                            .get_unchecked(intermediate_state_layout.timestamp.start());
+                        let write_timestamp_high = *memory_trace_view_row
+                            .get_unchecked(
+                                intermediate_state_layout.timestamp.start() + 1,
+                            );
+
                         // either process set equality for delegation requests or processings
                         if handle_delegation_requests {
-                            todo!();
+                            evaluate_delegation_requests(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &delegation_request_layout,
+                                &delegation_challenges,
+                                write_timestamp_low,
+                                write_timestamp_high,
+                                &delegation_requests_timestamp_extra_contribution,
+                            );
                         }
 
                         if process_delegations {
-                            todo!();
+                            panic!("Please use another prover function for such circuit types");
                         }
 
-                        // NOTE: very special trick here - this constraint makes sense on every row except last two, but it's quadratic,
-                        // and unless we actually make it on every row except last only(!) we can not get a quotient of degree 1. The good thing
-                        // is that a constraint about final borrow in the lazy init sorting is on every row except last two, so we can just place
-                        // an artificial borrow value for our needs
-                        if let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars {
-                            debug_assert!(process_shuffle_ram_init);
-
-                            todo!();
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_padding(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                            );
                         }
 
                         // and now we work with memory multiplicative accumulators
@@ -595,28 +648,26 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         // Note on multiplication by tau^H/2: numerator and denominator are degree 1
 
                         if process_shuffle_ram_init {
-                            todo!();
+                            evaluate_memory_init_teardown_accumulation(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &memory_argument_challenges,
+                                &mut permutation_argument_src,
+                            )
                         }
 
                         // we assembled P(x) = write init set / read teardown set
 
                         // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
-
-                        // write timestamps come from cycle itself
-                        let intermediate_state_layout = compiled_circuit.memory_layout.intermediate_state_layout.unwrap();
-                        let write_timestamp_low = *memory_trace_view_row
-                            .get_unchecked(intermediate_state_layout.timestamp.start());
-                        let write_timestamp_high = *memory_trace_view_row
-                            .get_unchecked(
-                                intermediate_state_layout.timestamp.start() + 1,
-                            );
-
-                        // let write_timestamp_low = *setup_trace_view_row
-                        //     .get_unchecked(compiled_circuit.setup_layout.timestamp_setup_columns.start());                
-                        // let write_timestamp_high = *setup_trace_view_row
-                        //     .get_unchecked(
-                        //         compiled_circuit.setup_layout.timestamp_setup_columns.start() + 1,
-                        //     );
 
                         evaluate_memory_queries_accumulation(
                             compiled_circuit,
@@ -638,12 +689,6 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             write_timestamp_high,
                         );
 
-                        let delegation_write_timestamp_contribution = if process_batch_ram_access || process_registers_and_indirect_access {
-                            todo!()
-                        } else {
-                            Mersenne31Quartic::ZERO
-                        };
-
                         // Same for batched RAM accesses
                         if process_batch_ram_access {
                             unreachable!("deprecated");
@@ -651,7 +696,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
 
                         // Same for registers and indirects
                         if process_registers_and_indirect_access {
-                            todo!();
+                            panic!("Please use another prover function for such circuit types");
                         }
 
                         if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
@@ -753,9 +798,18 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         // then linking constraints - None
 
                         // two constraints to compare sorting of lazy init
-                        if let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars {
-                            todo!();
-                        }
+                        evaluate_memory_init_teardown_ordering(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            memory_trace_view_next_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_two_rows,
+                            &mut quotient_term,
+                            &mut every_row_except_last_two_challenges_ptr,
+                        );
 
                         let divisor = divisors_trace_view_row
                             .as_ptr()
@@ -908,7 +962,24 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             // so we show that intermediate poly - interpolant((0, 0), (omega^-1, `value``)) is divisible
                             // by our selected divisor
 
-                            todo!();
+                            // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
+                            let mut interpolant_value = delegation_accumulator_interpolant_prefactor;
+                            interpolant_value.mul_assign_by_base(&x);
+                            let mut term_contribution = stage_2_trace_view_row.as_ptr().add(delegation_processing_aux_poly.start()).cast::<Mersenne31Quartic>().read();
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            term_contribution.sub_assign(&interpolant_value);
+
+                            if DEBUG_QUOTIENT {
+                                if is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at delegation argument set equality at last row");
+                                }
+                            }
+
+                            add_quotient_term_contribution_in_ext4(
+                                &mut last_row_and_at_zero_challenges_ptr,
+                                term_contribution,
+                                &mut quotient_term
+                            );
                         }
 
                         let divisor = divisors_trace_view_row

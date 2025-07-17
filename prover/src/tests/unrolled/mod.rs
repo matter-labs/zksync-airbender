@@ -391,11 +391,10 @@ pub fn run_basic_unrolled_test_impl(
                     memory_argument_linearization_challenges_powers,
                 memory_argument_gamma,
             },
-            // delegation_argument: Some(ExternalDelegationArgumentChallenges {
-            //     delegation_argument_linearization_challenges,
-            //     delegation_argument_gamma,
-            // }),
-            delegation_argument: None,
+            delegation_argument: Some(ExternalDelegationArgumentChallenges {
+                delegation_argument_linearization_challenges,
+                delegation_argument_gamma,
+            }),
             machine_state_permutation_argument: Some(ExternalMachineStateArgumentChallenges {
                 linearization_challenges,
                 additive_term: state_permutation_argument_gamma,
@@ -522,6 +521,7 @@ pub fn run_basic_unrolled_test_impl(
             &vec![],
             &external_values.challenges,
             full_trace,
+            &[],
             &setup,
             &twiddles,
             &lde_precomputations,
@@ -535,7 +535,9 @@ pub fn run_basic_unrolled_test_impl(
         println!("Proving time is {:?}", now.elapsed());
     }
 
-    if true {
+    panic!();
+
+    if false {
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
 
         use crate::cs::machine::ops::unrolled::jump_branch_slt::*;
@@ -630,6 +632,7 @@ pub fn run_basic_unrolled_test_impl(
             &vec![],
             &external_values.challenges,
             full_trace,
+            &[],
             &setup,
             &twiddles,
             &lde_precomputations,
@@ -754,6 +757,7 @@ pub fn run_basic_unrolled_test_impl(
             &vec![],
             &external_values.challenges,
             full_trace,
+            &[],
             &setup,
             &twiddles,
             &lde_precomputations,
@@ -869,6 +873,7 @@ pub fn run_basic_unrolled_test_impl(
             &vec![],
             &external_values.challenges,
             full_trace,
+            &[],
             &setup,
             &twiddles,
             &lde_precomputations,
@@ -986,6 +991,7 @@ pub fn run_basic_unrolled_test_impl(
             &vec![],
             &external_values.challenges,
             full_trace,
+            &[],
             &setup,
             &twiddles,
             &lde_precomputations,

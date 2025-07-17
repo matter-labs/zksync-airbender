@@ -701,3 +701,99 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_write_contribution(
     numerator_acc_value.mul_assign(&numerator);
     denom_acc_value.mul_assign(&denom);
 }
+
+pub(crate) unsafe fn stage2_process_ram_access(
+    memory_trace_row: &[Mersenne31Field],
+    setup_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    numerator_acc_value: &mut Mersenne31Quartic,
+    denom_acc_value: &mut Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    batch_inverses_input: &mut Vec<Mersenne31Quartic>,
+    memory_timestamp_high_from_circuit_idx: Mersenne31Field,
+) {
+    // now we can continue to accumulate
+    let dst_columns = compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_argument;
+    assert_eq!(
+        dst_columns.num_elements(),
+        compiled_circuit.memory_layout.shuffle_ram_access_sets.len()
+    );
+
+    // now we can continue to accumulate
+    for (access_idx, memory_access_columns) in compiled_circuit
+        .memory_layout
+        .shuffle_ram_access_sets
+        .iter()
+        .enumerate()
+    {
+        match memory_access_columns {
+            ShuffleRamQueryColumns::Readonly(columns) => {
+                let address_contribution = stage_2_shuffle_ram_assemble_address_contribution(
+                    memory_trace_row,
+                    memory_access_columns,
+                    &memory_argument_challenges,
+                );
+
+                debug_assert_eq!(columns.read_value.width(), 2);
+
+                stage_2_shuffle_ram_assemble_read_contribution(
+                    memory_trace_row,
+                    setup_row,
+                    &address_contribution,
+                    &columns,
+                    compiled_circuit.setup_layout.timestamp_setup_columns,
+                    &memory_argument_challenges,
+                    access_idx,
+                    memory_timestamp_high_from_circuit_idx,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(dst_columns.get_range(access_idx).start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+            }
+            ShuffleRamQueryColumns::Write(columns) => {
+                let address_contribution = stage_2_shuffle_ram_assemble_address_contribution(
+                    memory_trace_row,
+                    memory_access_columns,
+                    &memory_argument_challenges,
+                );
+
+                stage_2_shuffle_ram_assemble_write_contribution(
+                    memory_trace_row,
+                    setup_row,
+                    &address_contribution,
+                    &columns,
+                    compiled_circuit.setup_layout.timestamp_setup_columns,
+                    &memory_argument_challenges,
+                    access_idx,
+                    memory_timestamp_high_from_circuit_idx,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(dst_columns.get_range(access_idx).start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+            }
+        }
+    }
+}

@@ -3,8 +3,8 @@ use super::*;
 pub(crate) mod quotient_parts;
 pub mod stage2;
 pub mod stage3;
-pub mod stage4;
-pub mod stage5;
+// pub mod stage4;
+// pub mod stage5;
 pub(crate) mod stage_2_ram_shared;
 pub(crate) mod stage_2_shared;
 
@@ -26,8 +26,8 @@ pub struct UnrolledModeProof {
     pub final_monomial_form: Vec<Mersenne31Quartic>,
     pub queries: Vec<QuerySet>,
     pub pow_nonce: u64,
-    pub circuit_sequence: u16,
     pub delegation_type: u16,
+    pub aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
 }
 
 pub fn prove_configured_for_unrolled_circuits<
@@ -39,6 +39,7 @@ pub fn prove_configured_for_unrolled_circuits<
     public_inputs: &[Mersenne31Field],
     external_challenges: &ExternalChallenges,
     witness_eval_data: WitnessEvaluationDataForExecutionFamily<N, A>,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues],
     setup_precomputations: &SetupPrecomputations<N, A, T>,
     precomputations: &Twiddles<Mersenne31Complex, A>,
     lde_precomputations: &LdePrecomputations<A>,
@@ -68,18 +69,20 @@ pub fn prove_configured_for_unrolled_circuits<
     // VERY important - we will use the fact that final borrow value is unconstrainted
     // when we will define lazy init/teardown padding constraint, so we manually right here write it
     // to the proper value - it must be `1`
-    if let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars {
-        let ShuffleRamAuxComparisonSet { final_borrow, .. } = lazy_init_address_aux_vars;
+    if compiled_circuit.lazy_init_address_aux_vars.len() > 0 {
+        for lazy_init_address_aux_vars in compiled_circuit.lazy_init_address_aux_vars.iter() {
+            let ShuffleRamAuxComparisonSet { final_borrow, .. } = *lazy_init_address_aux_vars;
 
-        let row_of_interest = trace_len - 2; // one before last
-        let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
-        let (witness_row, _) = exec_trace_view
-            .current_row()
-            .split_at_mut(num_witness_columns);
-        let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
-            unreachable!()
-        };
-        witness_row[offset] = Mersenne31Field::ONE;
+            let row_of_interest = trace_len - 2; // one before last
+            let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
+            let (witness_row, _) = exec_trace_view
+                .current_row()
+                .split_at_mut(num_witness_columns);
+            let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
+                unreachable!()
+            };
+            witness_row[offset] = Mersenne31Field::ONE;
+        }
     }
 
     let optimal_folding =
@@ -200,6 +203,7 @@ pub fn prove_configured_for_unrolled_circuits<
         &setup_precomputations,
         vec![],
         vec![],
+        aux_boundary_values,
         precomputations,
         lde_precomputations,
         lde_factor,
@@ -421,7 +425,7 @@ pub fn prove_configured_for_unrolled_circuits<
         final_monomial_form: stage_5_output.final_monomials.clone(),
         queries,
         pow_nonce: pow_challenge,
-        circuit_sequence: 0,
+        aux_boundary_values: aux_boundary_values.to_vec(),
         delegation_type: cached_data_values.delegation_type.to_reduced_u32() as u16,
     };
 

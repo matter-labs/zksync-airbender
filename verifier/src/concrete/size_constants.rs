@@ -179,7 +179,7 @@ pub const NUM_DELEGATION_CHALLENGES: usize = const {
 pub const NUM_AUX_BOUNDARY_VALUES: usize = VERIFIER_COMPILED_LAYOUT
     .memory_layout
     .shuffle_ram_inits_and_teardowns
-    .is_some() as usize;
+    .len();
 
 const _: () = const {
     assert!(
@@ -209,16 +209,9 @@ pub const WITNESS_NEXT_ROW_OPENING_INDEXES: [usize; NUM_WITNESS_OPENING_NEXT_ROW
 };
 
 pub const NUM_MEMORY_OPENING_NEXT_ROW: usize = const {
-    if VERIFIER_COMPILED_LAYOUT
+    VERIFIER_COMPILED_LAYOUT
         .memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .is_some()
-    {
-        // RAM address space
-        REGISTER_SIZE
-    } else {
-        0
-    }
+        .shuffle_ram_inits_and_teardowns.len() * REGISTER_SIZE
 };
 pub const MEMORY_NEXT_ROW_OPENING_INDEXES: [usize; NUM_MEMORY_OPENING_NEXT_ROW] = const {
     let mut result = [0usize; NUM_WITNESS_OPENING_NEXT_ROW];

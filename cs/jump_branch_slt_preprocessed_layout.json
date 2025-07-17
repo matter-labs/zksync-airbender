@@ -334,7 +334,7 @@
     "total_width": 37
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": null,
+    "shuffle_ram_inits_and_teardowns": [],
     "shuffle_ram_access_sets": [
       {
         "Readonly": {
@@ -541,6 +541,10 @@
       "num_elements": 1
     },
     "delegation_processing_aux_poly": null,
+    "intermediate_polys_for_memory_init_teardown": {
+      "start": 64,
+      "num_elements": 0
+    },
     "intermediate_polys_for_memory_argument": {
       "start": 64,
       "num_elements": 3
@@ -1692,6 +1696,14 @@
     65536,
     65536,
     65536,
+    65664,
+    65664,
+    65664,
+    65664,
+    65664,
+    65664,
+    65664,
+    65664,
     65664,
     65664,
     65664,

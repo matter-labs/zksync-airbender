@@ -396,6 +396,62 @@ pub(crate) unsafe fn stage2_process_timestamp_range_check_expressions(
     }
 }
 
+pub(crate) unsafe fn stage2_process_timestamp_range_check_expressions_with_extra_timestamp_contribution(
+    witness_trace_row: &[Mersenne31Field],
+    memory_trace_row: &[Mersenne31Field],
+    setup_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    timestamp_range_check_preprocessing_ref: &[Mersenne31Quartic],
+    timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref: &[LookupWidth1SourceDestInformationForExpressions<Mersenne31Field>],
+    memory_timestamp_high_from_circuit_idx: Mersenne31Field,
+) {
+    for lookup_set in
+        timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref.iter()
+    {
+        let LookupExpression::Expression(a_expr) = &lookup_set.a_expr else {
+            unreachable!()
+        };
+        let LookupExpression::Expression(b_expr) = &lookup_set.b_expr else {
+            unreachable!()
+        };
+        let a = a_expr.evaluate_at_row_on_main_domain_ext(
+            witness_trace_row,
+            memory_trace_row,
+            setup_row,
+        );
+        // only "high" (that is always second) needs an adjustment
+        let mut b = b_expr.evaluate_at_row_on_main_domain_ext(
+            witness_trace_row,
+            memory_trace_row,
+            setup_row,
+        );
+        b.sub_assign(&memory_timestamp_high_from_circuit_idx);
+
+        if DEBUG_QUOTIENT {
+            assert!(a.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
+            assert!(b.to_reduced_u32() < 1 << TIMESTAMP_COLUMNS_NUM_BITS);
+        }
+
+        let mut quad = a;
+        quad.mul_assign(&b);
+        stage_2_trace
+            .as_mut_ptr()
+            .add(lookup_set.base_field_quadratic_oracle_col)
+            .write(quad);
+
+        let a_idx = a.to_reduced_u32() as usize;
+        let b_idx = b.to_reduced_u32() as usize;
+        let mut final_value = *timestamp_range_check_preprocessing_ref.get_unchecked(a_idx);
+        final_value.add_assign(timestamp_range_check_preprocessing_ref.get_unchecked(b_idx));
+
+        stage_2_trace
+            .as_mut_ptr()
+            .add(lookup_set.ext4_field_inverses_columns_start)
+            .cast::<Mersenne31Quartic>()
+            .write(final_value);
+    }
+}
+
 pub(crate) unsafe fn stage2_process_generic_lookup_intermediate_polys(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     stage_2_trace: &mut [Mersenne31Field],
@@ -632,5 +688,138 @@ pub(crate) unsafe fn stage2_process_generic_lookup_multiplicity_intermediate_pol
             .cast::<Mersenne31Quartic>()
             .add(i)
             .write(value);
+    }
+}
+
+#[inline]
+pub(crate) fn process_delegation_requests(
+    memory_trace_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    delegation_request_layout: &DelegationRequestLayout,
+    delegation_processing_aux_poly: AlignedColumnSet<4>,
+    delegation_challenges: &ExternalDelegationArgumentChallenges,
+    batch_inverses_input: &mut Vec<Mersenne31Quartic>,
+    mut timestamp_low: Mersenne31Field,
+    timestamp_high: Mersenne31Field,
+) {
+    unsafe {
+        let m = *memory_trace_row.get_unchecked(delegation_request_layout.multiplicity.start());
+        assert!(m == Mersenne31Field::ZERO || m == Mersenne31Field::ONE);
+
+        let numerator = Mersenne31Quartic::from_base(m);
+        stage_2_trace
+            .as_mut_ptr()
+            .add(delegation_processing_aux_poly.start())
+            .cast::<Mersenne31Quartic>()
+            .write(numerator);
+
+        // offset by access number
+        timestamp_low.add_assign(&Mersenne31Field(
+            delegation_request_layout.in_cycle_write_index as u32,
+        ));
+
+        let denom = compute_aggregated_key_value(
+            *memory_trace_row.get_unchecked(delegation_request_layout.delegation_type.start()),
+            [
+                *memory_trace_row
+                    .get_unchecked(delegation_request_layout.abi_mem_offset_high.start()),
+                timestamp_low,
+                timestamp_high,
+            ],
+            delegation_challenges.delegation_argument_linearization_challenges,
+            delegation_challenges.delegation_argument_gamma,
+        );
+
+        batch_inverses_input.push(denom);
+
+        if DEBUG_QUOTIENT {
+            if m == Mersenne31Field::ZERO {
+                let valid_convention = memory_trace_row
+                    .get_unchecked(delegation_request_layout.delegation_type.start())
+                    .is_zero()
+                    && memory_trace_row
+                        .get_unchecked(delegation_request_layout.abi_mem_offset_high.start())
+                        .is_zero();
+                assert!(
+                    valid_convention,
+                    "Delegation request violates convention with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
+                    memory_trace_row.get_unchecked(
+                        delegation_request_layout.delegation_type.start(),
+                    ),
+                    memory_trace_row.get_unchecked(
+                        delegation_request_layout.abi_mem_offset_high.start(),
+                    ),
+                    timestamp_low,
+                    timestamp_high,
+                );
+            } else {
+                println!(
+                    "Delegation request with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
+                    memory_trace_row.get_unchecked(
+                        delegation_request_layout.delegation_type.start(),
+                    ),
+                    memory_trace_row.get_unchecked(
+                        delegation_request_layout.abi_mem_offset_high.start(),
+                    ),
+                    timestamp_low,
+                    timestamp_high,
+                );
+                println!("Contribution = {:?}", denom);
+            }
+        }
+    }
+}
+
+pub(crate) unsafe fn process_lazy_init_range_checks(
+    _witness_trace_row: &[Mersenne31Field],
+    memory_trace_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    range_check_16_preprocessing_ref: &[Mersenne31Quartic],
+    lazy_init_address_range_check_16: &OptimizedOraclesForLookupWidth1,
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
+) {
+    debug_assert_eq!(
+        shuffle_ram_inits_and_teardowns.len(),
+        lazy_init_address_range_check_16.num_pairs
+    );
+    for i in 0..lazy_init_address_range_check_16.num_pairs {
+        let shuffle_ram_inits_and_teardowns = shuffle_ram_inits_and_teardowns.get_unchecked(i);
+        let a_col = shuffle_ram_inits_and_teardowns
+            .lazy_init_addresses_columns
+            .start();
+        let b_col = a_col + 1;
+        let a = *memory_trace_row.get_unchecked(a_col);
+        let b = *memory_trace_row.get_unchecked(b_col);
+        if DEBUG_QUOTIENT {
+            assert!(a.to_reduced_u32() < 1 << 16);
+            assert!(b.to_reduced_u32() < 1 << 16);
+        }
+        let mut quad = a;
+        quad.mul_assign(&b);
+        stage_2_trace
+            .as_mut_ptr()
+            .add(
+                lazy_init_address_range_check_16
+                    .base_field_oracles
+                    .get_range(i)
+                    .start,
+            )
+            .write(quad);
+
+        let a_idx = a.to_reduced_u32() as usize;
+        let b_idx = b.to_reduced_u32() as usize;
+        let mut final_value = *range_check_16_preprocessing_ref.get_unchecked(a_idx);
+        final_value.add_assign(range_check_16_preprocessing_ref.get_unchecked(b_idx));
+
+        stage_2_trace
+            .as_mut_ptr()
+            .add(
+                lazy_init_address_range_check_16
+                    .ext_4_field_oracles
+                    .get_range(i)
+                    .start,
+            )
+            .cast::<Mersenne31Quartic>()
+            .write(final_value);
     }
 }

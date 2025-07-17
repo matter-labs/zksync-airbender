@@ -290,16 +290,12 @@ pub fn run_basic_delegation_test_impl(
             }),
             machine_state_permutation_argument: None,
         },
-        aux_boundary_values: AuxArgumentsBoundaryValues {
-            lazy_init_first_row: witness.aux_data.lazy_init_first_row,
-            teardown_value_first_row: witness.aux_data.teardown_value_first_row,
-            teardown_timestamp_first_row: witness.aux_data.teardown_timestamp_first_row,
-            lazy_init_one_before_last_row: witness.aux_data.lazy_init_one_before_last_row,
-            teardown_value_one_before_last_row: witness.aux_data.teardown_value_one_before_last_row,
-            teardown_timestamp_one_before_last_row: witness
-                .aux_data
-                .teardown_timestamp_one_before_last_row,
-        },
+        aux_boundary_values: witness
+            .aux_data
+            .aux_boundary_data
+            .get(0)
+            .cloned()
+            .unwrap_or_default(),
     };
 
     let mut public_inputs = witness.aux_data.first_row_public_inputs.clone();

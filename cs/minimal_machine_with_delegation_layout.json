@@ -8,6 +8,10 @@
       "start": 1,
       "num_elements": 1
     },
+    "multiplicities_columns_for_decoder_in_executor_families": {
+      "start": 0,
+      "num_elements": 0
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 2,
       "num_elements": 5
@@ -663,20 +667,22 @@
     "total_width": 119
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": {
-      "lazy_init_addresses_columns": {
-        "start": 0,
-        "num_elements": 1
-      },
-      "lazy_teardown_values_columns": {
-        "start": 2,
-        "num_elements": 1
-      },
-      "lazy_teardown_timestamps_columns": {
-        "start": 4,
-        "num_elements": 1
+    "shuffle_ram_inits_and_teardowns": [
+      {
+        "lazy_init_addresses_columns": {
+          "start": 0,
+          "num_elements": 1
+        },
+        "lazy_teardown_values_columns": {
+          "start": 2,
+          "num_elements": 1
+        },
+        "lazy_teardown_timestamps_columns": {
+          "start": 4,
+          "num_elements": 1
+        }
       }
-    },
+    ],
     "shuffle_ram_access_sets": [
       {
         "Readonly": {
@@ -770,6 +776,8 @@
       "in_cycle_write_index": 3
     },
     "delegation_processor_layout": null,
+    "machine_state_layout": null,
+    "intermediate_state_layout": null,
     "batched_ram_accesses": [],
     "register_and_indirect_accesses": [],
     "total_width": 30
@@ -790,6 +798,10 @@
     "generic_lookup_setup_columns": {
       "start": 4,
       "num_elements": 5
+    },
+    "preprocessed_decoder_setup_columns": {
+      "start": 0,
+      "num_elements": 0
     },
     "total_width": 24
   },
@@ -833,27 +845,51 @@
       "num_elements": 11
     },
     "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 96,
+      "num_elements": 1
+    },
+    "intermediate_poly_for_decoder_accesses": {
       "start": 92,
       "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
-      "start": 96,
+      "start": 100,
       "num_elements": 1
     },
     "intermediate_polys_for_generic_multiplicities": {
-      "start": 100,
+      "start": 104,
       "num_elements": 5
     },
+    "intermediate_polys_for_decoder_multiplicities": {
+      "start": 124,
+      "num_elements": 1
+    },
     "delegation_processing_aux_poly": {
-      "start": 120,
+      "start": 128,
+      "num_elements": 1
+    },
+    "intermediate_polys_for_memory_init_teardown": {
+      "start": 132,
       "num_elements": 1
     },
     "intermediate_polys_for_memory_argument": {
-      "start": 124,
-      "num_elements": 5
+      "start": 136,
+      "num_elements": 3
+    },
+    "intermediate_polys_for_state_permutation": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_polys_for_permutation_masking": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_poly_for_grand_product": {
+      "start": 148,
+      "num_elements": 1
     },
     "ext4_polys_offset": 12,
-    "total_width": 144
+    "total_width": 152
   },
   "degree_2_constraints": [
     {
@@ -6960,22 +6996,24 @@
     }
   },
   "scratch_space_size_for_witness_gen": 2,
-  "lazy_init_address_aux_vars": {
-    "aux_low_high": [
-      {
-        "WitnessSubtree": 15
+  "lazy_init_address_aux_vars": [
+    {
+      "aux_low_high": [
+        {
+          "WitnessSubtree": 15
+        },
+        {
+          "WitnessSubtree": 16
+        }
+      ],
+      "intermediate_borrow": {
+        "WitnessSubtree": 47
       },
-      {
-        "WitnessSubtree": 16
+      "final_borrow": {
+        "WitnessSubtree": 48
       }
-    ],
-    "intermediate_borrow": {
-      "WitnessSubtree": 47
-    },
-    "final_borrow": {
-      "WitnessSubtree": 48
     }
-  },
+  ],
   "memory_queries_timestamp_comparison_aux_vars": [
     {
       "WitnessSubtree": 49
@@ -7023,6 +7061,8 @@
     ],
     "aux_borrow_sets": []
   },
+  "executor_family_circuit_next_timestamp_aux_var": null,
+  "executor_family_decoder_table_size": 0,
   "trace_len": 1048576,
   "table_offsets": [
     0,
@@ -7063,6 +7103,19 @@
     991489,
     991489,
     991489,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
     5185793,
     5185793,
     5185793,
