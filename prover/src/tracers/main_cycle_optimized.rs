@@ -429,7 +429,7 @@ impl<
                     .per_cycle_data
                     .last_mut()
                     .unwrap_unchecked()
-                    .pc = current_state.pc;
+                    .pc = current_state.observable.pc;
             }
         }
     }
@@ -446,7 +446,7 @@ impl<
                     .per_cycle_data
                     .last_mut()
                     .unwrap_unchecked()
-                    .pc = current_state.pc;
+                    .pc = current_state.observable.pc;
             }
         }
     }

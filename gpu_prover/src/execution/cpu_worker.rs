@@ -221,7 +221,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
             let touched_ram_cells_count = ram_tracing_data.get_touched_ram_cells_count();
             trace!(
                     "BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulation ended at address 0x{:08x} and took {chunks_traced_count} chunks to finish execution",
-                    state.pc,
+                    state.observable.pc,
                 );
             debug!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulator tracing touched RAM ran {chunks_traced_count}x(2^{log_domain_size}-1) cycles in {elapsed_ms:.3} ms @ {speed:.3} MHz");
             trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulator touched {touched_ram_cells_count} RAM cells");
@@ -280,6 +280,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
         now.elapsed().as_secs_f64() * 1000.0
     );
     let final_register_values = state
+        .observable
         .registers
         .into_iter()
         .zip(register_last_live_timestamps.into_iter())
@@ -398,7 +399,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
             let speed = (cycles_count as f64) / (elapsed_ms * 1000.0);
             trace!(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulation ended at address 0x{:08x} and took {chunks_traced_count} chunks to finish execution",
-                state.pc,
+                state.observable.pc,
             );
             debug!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulator tracing 1/{split_count} cycles ran {chunks_traced_count}x(2^{log_domain_size}-1) cycles in {elapsed_ms:.3} ms @ {speed:.3} MHz");
             end_reached = true;
@@ -517,7 +518,7 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
             let speed = (cycles_count as f64) / (elapsed_ms * 1000.0);
             trace!(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulation ended at address 0x{:08x} and took {chunks_traced_count} chunks to finish execution",
-                state.pc,
+                state.observable.pc,
             );
             debug!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] simulator tracing delegations ran {chunks_traced_count}x(2^{log_domain_size}-1) cycles in {elapsed_ms:.3} ms @ {speed:.3} MHz");
             end_reached = true;
