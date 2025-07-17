@@ -3,7 +3,7 @@ use super::precomputations::CircuitPrecomputationsHost;
 use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
-use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::prover::context::{HostAllocator, ProverContext, ProverContextConfig};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
@@ -79,15 +79,15 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
     }
 }
 
-pub fn get_gpu_worker_func<C: ProverContext>(
+pub fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator + 'static>>>,
-    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator + 'static>>>,
+    results: Sender<Option<WorkerResult<HostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let result = gpu_worker::<C>(
+        let result = gpu_worker(
             device_id,
             prover_context_config,
             is_initialized,
@@ -101,9 +101,9 @@ pub fn get_gpu_worker_func<C: ProverContext>(
     }
 }
 
-enum JobType<'a, C: ProverContext> {
-    MemoryCommitment(MemoryCommitmentJob<'a, C>),
-    Proof(ProofJob<'a, C>),
+enum JobType<'a> {
+    MemoryCommitment(MemoryCommitmentJob<'a>),
+    Proof(ProofJob<'a>),
 }
 
 const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
@@ -111,17 +111,17 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
 }
 
 #[derive(Clone)]
-struct SetupHolder<'a, C: ProverContext> {
-    pub setup: Rc<RefCell<SetupPrecomputations<'a, C>>>,
-    pub trace: Arc<Vec<BF, C::HostAllocator>>,
+struct SetupHolder<'a> {
+    pub setup: Rc<RefCell<SetupPrecomputations<'a>>>,
+    pub trace: Arc<Vec<BF, HostAllocator>>,
 }
 
-fn gpu_worker<C: ProverContext>(
+fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator>>>,
-    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator>>>,
+    results: Sender<Option<WorkerResult<HostAllocator>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
@@ -133,14 +133,14 @@ fn gpu_worker<C: ProverContext>(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let context = C::new(&prover_context_config)?;
+    let context = ProverContext::new(&prover_context_config)?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
     is_initialized.send(()).unwrap();
     drop(is_initialized);
-    let mut current_setup: Option<SetupHolder<C>> = None;
+    let mut current_setup: Option<SetupHolder> = None;
     let mut current_transfer = None;
     let mut current_job = None;
     for request in requests {

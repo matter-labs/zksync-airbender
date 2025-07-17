@@ -1,4 +1,5 @@
 use crate::allocator::allocation_data::StaticAllocationData;
+use crate::allocator::tracker::AllocationPlacement;
 use crate::allocator::{
     ConcurrentInnerStaticAllocatorWrapper, InnerStaticAllocatorWrapper,
     NonConcurrentInnerStaticAllocatorWrapper, StaticAllocation, StaticAllocationBackend,
@@ -13,7 +14,6 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 use std::slice;
 use std::sync::OnceLock;
-use crate::allocator::tracker::AllocationPlacement;
 
 pub static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator> = OnceLock::new();
 
@@ -88,7 +88,12 @@ impl<T, W: InnerStaticHostAllocatorWrapper> DerefMut
 unsafe impl Allocator for ConcurrentStaticHostAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let len = layout.size();
-        if let Ok(data) = self.inner.lock().unwrap().alloc(len, AllocationPlacement::BestFit) {
+        if let Ok(data) = self
+            .inner
+            .lock()
+            .unwrap()
+            .alloc(len, AllocationPlacement::BestFit)
+        {
             let ptr = data.ptr;
             assert!(ptr.is_aligned_to(layout.align()));
             assert_eq!(data.len, len);

@@ -13,7 +13,7 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
-use crate::context::OMEGA_LOG_ORDER;
+use crate::device_context::OMEGA_LOG_ORDER;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,

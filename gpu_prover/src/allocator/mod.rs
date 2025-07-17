@@ -48,7 +48,11 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         }
     }
 
-    pub(crate) fn alloc<T>(&mut self, len: usize, placement: AllocationPlacement) -> CudaResult<StaticAllocationData<T>> {
+    pub(crate) fn alloc<T>(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<StaticAllocationData<T>> {
         let size_of_t = size_of::<T>();
         let lcs = self.log_chunk_size;
         let alloc_len = (len * size_of_t).next_multiple_of(1 << lcs);
@@ -78,7 +82,11 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
 }
 
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
-    pub fn alloc(len: usize, placement: AllocationPlacement, allocator: &mut StaticAllocator<B, W>) -> CudaResult<Self> {
+    pub fn alloc(
+        len: usize,
+        placement: AllocationPlacement,
+        allocator: &mut StaticAllocator<B, W>,
+    ) -> CudaResult<Self> {
         allocator.alloc(len, placement)
     }
 
@@ -149,7 +157,11 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         Self::from_inner(inner, log_chunk_size)
     }
 
-    pub fn alloc<T>(&self, len: usize, placement: AllocationPlacement) -> CudaResult<StaticAllocation<T, B, W>> {
+    pub fn alloc<T>(
+        &self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<StaticAllocation<T, B, W>> {
         self.inner
             .execute(|inner| inner.alloc(len, placement))
             .map(|data| StaticAllocation {
@@ -169,6 +181,21 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
 
     pub fn log_chunk_size(&self) -> u32 {
         self.log_chunk_size
+    }
+
+    pub fn get_used_mem_current(&self) -> usize {
+        self.inner
+            .execute(|inner| inner.tracker.get_used_mem_current())
+    }
+
+    pub(crate) fn get_used_mem_peak(&self) -> usize {
+        self.inner
+            .execute(|inner| inner.tracker.get_used_mem_peak())
+    }
+
+    pub(crate) fn reset_used_mem_peak(&self) {
+        self.inner
+            .execute(|inner| inner.tracker.reset_used_mem_peak())
     }
 }
 

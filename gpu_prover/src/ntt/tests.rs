@@ -14,7 +14,7 @@ use rand::Rng;
 use serial_test::serial;
 use worker::Worker;
 
-use crate::context::Context;
+use crate::device_context::DeviceContext;
 use crate::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut};
 use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::REAL_COLS_PER_BLOCK;
@@ -65,7 +65,7 @@ fn run_natural_evals_to_bitrev_Z(
     num_bf_cols: usize,
     evals_are: EvalsAre,
 ) {
-    let ctx = Context::create(12).unwrap();
+    let ctx = DeviceContext::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     assert_eq!(num_bf_cols % 2, 0);
     let num_Z_cols = num_bf_cols / 2;
@@ -259,7 +259,7 @@ fn run_natural_evals_to_bitrev_Z(
 }
 
 fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
-    let ctx = Context::create(12).unwrap();
+    let ctx = DeviceContext::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     // let num_Z_cols = (num_bf_cols + 1) / 2;
     assert_eq!(num_bf_cols % 2, 0);
@@ -469,7 +469,7 @@ fn run_bitrev_Z_to_natural_trace_coset_evals(log_n_range: Range<usize>, num_bf_c
 }
 
 fn run_bitrev_Z_to_natural_composition_main_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
-    let ctx = Context::create(12).unwrap();
+    let ctx = DeviceContext::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     // let num_Z_cols = (num_bf_cols + 1) / 2;
     assert_eq!(num_bf_cols % 2, 0);
@@ -612,7 +612,7 @@ fn run_bitrev_Z_to_natural_composition_main_evals(log_n_range: Range<usize>, num
 }
 
 fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_bf_cols: usize) {
-    let ctx = Context::create(12).unwrap();
+    let ctx = DeviceContext::create(12).unwrap();
     let device_properties = DeviceProperties::new().unwrap();
     let n_max = 1 << (log_n_range.end - 1);
     // let num_Z_cols = (num_bf_cols + 1) / 2;

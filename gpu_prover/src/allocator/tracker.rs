@@ -15,6 +15,8 @@ pub struct AllocationsTracker {
     lens: Vec<usize>,
     free_len_by_ptr: BTreeMap<NonNull<u8>, usize>,
     free_ptrs_by_len: BTreeMap<usize, BTreeSet<NonNull<u8>>>,
+    used_mem_current: usize,
+    used_mem_peak: usize,
 }
 
 impl AllocationsTracker {
@@ -39,6 +41,8 @@ impl AllocationsTracker {
             lens,
             free_len_by_ptr,
             free_ptrs_by_len,
+            used_mem_current: 0,
+            used_mem_peak: 0,
         }
     }
 
@@ -109,20 +113,27 @@ impl AllocationsTracker {
         let free_ptr = Self::find_free_ptr_by_len(self.free_len_by_ptr.iter().rev(), len);
         self.alloc_at_free_ptr(free_ptr, len)
     }
-    
+
     pub fn alloc(
         &mut self,
         len: usize,
         placement: AllocationPlacement,
     ) -> Result<NonNull<u8>, AllocError> {
-        match placement {
+        let result = match placement {
             AllocationPlacement::BestFit => self.alloc_best_fit(len),
             AllocationPlacement::Bottom => self.alloc_bottom(len),
             AllocationPlacement::Top => self.alloc_top(len),
-        }
+        };
+        if result.is_ok() {
+            self.used_mem_current += len;
+            self.used_mem_peak = self.used_mem_peak.max(self.used_mem_current);
+        };
+        result
     }
 
     pub fn free(&mut self, mut ptr: NonNull<u8>, mut len: usize) {
+        assert_ne!(len, 0, "attempt to free zero-length allocation");
+        self.used_mem_current -= len;
         unsafe {
             let idx = match self.ptrs.binary_search(&ptr) {
                 Ok(idx) => idx,
@@ -167,6 +178,18 @@ impl AllocationsTracker {
         }
         self.free_len_by_ptr.insert(ptr, len);
         self.free_ptrs_by_len.entry(len).or_default().insert(ptr);
+    }
+
+    pub fn get_used_mem_current(&self) -> usize {
+        self.used_mem_current
+    }
+
+    pub fn get_used_mem_peak(&self) -> usize {
+        self.used_mem_peak
+    }
+
+    pub fn reset_used_mem_peak(&mut self) {
+        self.used_mem_peak = self.used_mem_current;
     }
 }
 

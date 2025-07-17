@@ -327,7 +327,7 @@ pub fn batch_barycentric_eval(
 mod tests {
     use super::*;
 
-    use crate::context::Context;
+    use crate::device_context::DeviceContext;
     use crate::device_structures::DeviceMatrix;
     use crate::field::{BaseField, Ext2Field, Ext4Field};
 
@@ -555,7 +555,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_barycentric_for_delegation_circuit() {
-        let ctx = Context::create(12).unwrap();
+        let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),

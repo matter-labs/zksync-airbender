@@ -167,7 +167,7 @@ fn generate_powers_dev<F: Field>(
     memory_copy(powers_dev, &powers_host)
 }
 
-pub struct Context {
+pub struct DeviceContext {
     pub powers_of_w_fine: DeviceAllocation<Ext2Field>,
     pub powers_of_w_coarser: DeviceAllocation<Ext2Field>,
     pub powers_of_w_coarsest: DeviceAllocation<Ext2Field>,
@@ -177,7 +177,7 @@ pub struct Context {
     pub powers_of_w_inv_coarse_bitrev_for_ntt: DeviceAllocation<Ext2Field>,
 }
 
-impl Context {
+impl DeviceContext {
     pub fn create(powers_of_w_coarsest_log_count: u32) -> CudaResult<Self> {
         assert!(powers_of_w_coarsest_log_count <= OMEGA_LOG_ORDER);
         let length_fine = 1usize << FINEST_LOG_COUNT;

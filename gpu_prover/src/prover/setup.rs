@@ -1,4 +1,4 @@
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::trace_holder::TraceHolder;
 use super::BF;
 use crate::prover::transfer::Transfer;
@@ -6,18 +6,18 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::result::CudaResult;
 use std::sync::Arc;
 
-pub struct SetupPrecomputations<'a, C: ProverContext> {
-    pub(crate) trace_holder: TraceHolder<BF, C>,
-    pub(crate) transfer: Transfer<'a, C>,
+pub struct SetupPrecomputations<'a> {
+    pub(crate) trace_holder: TraceHolder<BF>,
+    pub(crate) transfer: Transfer<'a>,
     pub(crate) is_commitment_produced: bool,
 }
 
-impl<'a, C: ProverContext> SetupPrecomputations<'a, C> {
+impl<'a> SetupPrecomputations<'a> {
     pub fn new(
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        context: &C,
+        context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
@@ -43,25 +43,22 @@ impl<'a, C: ProverContext> SetupPrecomputations<'a, C> {
 
     pub fn schedule_transfer(
         &mut self,
-        trace: Arc<Vec<BF, C::HostAllocator>>,
-        context: &C,
-    ) -> CudaResult<()>
-    where
-        C::HostAllocator: 'a,
-    {
+        trace: Arc<Vec<BF, HostAllocator>>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let dst = self.trace_holder.get_evaluations_mut();
         self.transfer.schedule(trace, dst, context)?;
         self.transfer.record_transferred(context)
     }
 
-    pub fn ensure_commitment_produced(&mut self, context: &C) -> CudaResult<()> {
+    pub fn ensure_commitment_produced(&mut self, context: &ProverContext) -> CudaResult<()> {
         if self.is_commitment_produced {
             return Ok(());
         }
         self.produce_commitment(context)
     }
 
-    fn produce_commitment(&mut self, context: &C) -> CudaResult<()> {
+    fn produce_commitment(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.transfer.ensure_transferred(context)?;
         self.trace_holder
             .make_evaluations_sum_to_zero_extend_and_commit(context)?;

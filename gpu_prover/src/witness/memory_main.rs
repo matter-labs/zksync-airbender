@@ -8,7 +8,6 @@ use super::BF;
 use crate::device_structures::{
     DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl, MutPtrAndStride,
 };
-use crate::prover::context::ProverContext;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use cs::definitions::{MemorySubtree, TimestampScalar};
 use era_cudart::cuda_kernel;
@@ -98,8 +97,8 @@ cuda_kernel!(GenerateMemoryAndWitnessValuesMain,
 
 pub(crate) fn generate_memory_values_main(
     subtree: &MemorySubtree,
-    setup_and_teardown: &ShuffleRamSetupAndTeardownDevice<impl ProverContext>,
-    trace: &MainTraceDevice<impl ProverContext>,
+    setup_and_teardown: &ShuffleRamSetupAndTeardownDevice,
+    trace: &MainTraceDevice,
     memory: &mut DeviceMatrixMut<BF>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -123,9 +122,9 @@ pub(crate) fn generate_memory_values_main(
 pub(crate) fn generate_memory_and_witness_values_main(
     subtree: &MemorySubtree,
     memory_queries_timestamp_comparison_aux_vars: &[cs::definitions::ColumnAddress],
-    setup_and_teardown: &ShuffleRamSetupAndTeardownDevice<impl ProverContext>,
+    setup_and_teardown: &ShuffleRamSetupAndTeardownDevice,
     lazy_init_address_aux_vars: &cs::definitions::ShuffleRamAuxComparisonSet,
-    trace: &MainTraceDevice<impl ProverContext>,
+    trace: &MainTraceDevice,
     timestamp_high_from_circuit_sequence: TimestampScalar,
     memory: &mut DeviceMatrixMut<BF>,
     witness: &mut DeviceMatrixMut<BF>,

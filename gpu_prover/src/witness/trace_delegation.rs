@@ -1,4 +1,4 @@
-use crate::prover::context::ProverContext;
+use crate::prover::context::DeviceAllocation;
 use cs::definitions::TimestampData;
 use era_cudart::slice::CudaSlice;
 use fft::GoodAllocator;
@@ -8,7 +8,7 @@ use prover::risc_v_simulator::abstractions::tracer::{
 use prover::tracers::delegation::{DelegationWitness, IndirectAccessLocation};
 use std::sync::Arc;
 
-pub struct DelegationTraceDevice<C: ProverContext> {
+pub struct DelegationTraceDevice {
     pub num_requests: usize,
     pub num_register_accesses_per_delegation: usize,
     pub num_indirect_reads_per_delegation: usize,
@@ -16,10 +16,10 @@ pub struct DelegationTraceDevice<C: ProverContext> {
     pub base_register_index: u32,
     pub delegation_type: u16,
     pub indirect_accesses_properties: Vec<Vec<IndirectAccessLocation>>,
-    pub write_timestamp: C::Allocation<TimestampData>,
-    pub register_accesses: C::Allocation<RegisterOrIndirectReadWriteData>,
-    pub indirect_reads: C::Allocation<RegisterOrIndirectReadData>,
-    pub indirect_writes: C::Allocation<RegisterOrIndirectReadWriteData>,
+    pub write_timestamp: DeviceAllocation<TimestampData>,
+    pub register_accesses: DeviceAllocation<RegisterOrIndirectReadWriteData>,
+    pub indirect_reads: DeviceAllocation<RegisterOrIndirectReadData>,
+    pub indirect_writes: DeviceAllocation<RegisterOrIndirectReadWriteData>,
 }
 
 const MAX_INDIRECT_ACCESS_REGISTERS: usize = 2;
@@ -41,8 +41,8 @@ pub(crate) struct DelegationTraceRaw {
     pub indirect_writes: *const RegisterOrIndirectReadWriteData,
 }
 
-impl<C: ProverContext> From<&DelegationTraceDevice<C>> for DelegationTraceRaw {
-    fn from(value: &DelegationTraceDevice<C>) -> Self {
+impl From<&DelegationTraceDevice> for DelegationTraceRaw {
+    fn from(value: &DelegationTraceDevice) -> Self {
         Self {
             num_requests: value.write_timestamp.len() as u32,
             num_register_accesses_per_delegation: value.num_register_accesses_per_delegation as u32,

@@ -10,7 +10,7 @@ use era_cudart::{
 };
 
 use crate::blake2s::Digest;
-use crate::context::CIRCLE_GROUP_LOG_ORDER;
+use crate::device_context::CIRCLE_GROUP_LOG_ORDER;
 use crate::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
@@ -478,7 +478,7 @@ mod tests {
     use serial_test::serial;
     use worker::Worker;
 
-    use crate::context::Context;
+    use crate::device_context::DeviceContext;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
 
     use super::*;
@@ -754,7 +754,7 @@ mod tests {
         const LOG_N: u32 = 16;
         const N: usize = 1 << LOG_N;
         const ROOT_OFFSET: usize = N;
-        let context = Context::create(12).unwrap();
+        let context = DeviceContext::create(12).unwrap();
         let worker = Worker::new_with_num_threads(1);
         let roots = precompute_twiddles_for_fft::<E2, Global, true>(N * 4, &worker);
         let mut rng = rng();

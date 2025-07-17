@@ -5,7 +5,7 @@ use crate::allocator::{
 };
 use era_cudart::memory::DeviceAllocation;
 use era_cudart::memory_pools::DevicePoolAllocation;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
@@ -72,15 +72,21 @@ impl InnerStaticDeviceAllocatorWrapper for NonConcurrentInnerStaticDeviceAllocat
 
 type StaticDeviceAllocator<W> = StaticAllocator<StaticDeviceAllocationBackend, W>;
 
+type StaticDeviceAllocation<T, W> = StaticAllocation<T, StaticDeviceAllocationBackend, W>;
+
 pub type ConcurrentStaticDeviceAllocator =
     StaticDeviceAllocator<ConcurrentInnerStaticDeviceAllocatorWrapper>;
+
+pub type ConcurrentStaticDeviceAllocation<T> =
+    StaticDeviceAllocation<T, ConcurrentInnerStaticDeviceAllocatorWrapper>;
 
 pub type NonConcurrentStaticDeviceAllocator =
     StaticDeviceAllocator<NonConcurrentInnerStaticDeviceAllocatorWrapper>;
 
-impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref
-    for StaticAllocation<T, StaticDeviceAllocationBackend, W>
-{
+pub type NonConcurrentStaticDeviceAllocation<T> =
+    StaticDeviceAllocation<T, NonConcurrentInnerStaticDeviceAllocatorWrapper>;
+
+impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref for StaticDeviceAllocation<T, W> {
     type Target = DeviceSlice<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -88,10 +94,20 @@ impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref
     }
 }
 
-impl<T, W: InnerStaticDeviceAllocatorWrapper> DerefMut
-    for StaticAllocation<T, StaticDeviceAllocationBackend, W>
-{
+impl<T, W: InnerStaticDeviceAllocatorWrapper> DerefMut for StaticDeviceAllocation<T, W> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { DeviceSlice::from_raw_parts_mut(self.data.ptr.as_ptr(), self.data.len) }
+    }
+}
+
+impl<T, W: InnerStaticDeviceAllocatorWrapper> CudaSlice<T> for StaticDeviceAllocation<T, W> {
+    unsafe fn as_slice(&self) -> &[T] {
+        DeviceSlice::<T>::as_slice(self)
+    }
+}
+
+impl<T, W: InnerStaticDeviceAllocatorWrapper> CudaSliceMut<T> for StaticDeviceAllocation<T, W> {
+    unsafe fn as_mut_slice(&mut self) -> &mut [T] {
+        DeviceSlice::<T>::as_mut_slice(self)
     }
 }
