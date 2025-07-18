@@ -46,16 +46,28 @@ impl AllocationsTracker {
         }
     }
 
-    fn insert_remainder(&mut self, free_ptr: NonNull<u8>, free_len: usize, len: usize) {
+    fn insert_remainder(
+        &mut self,
+        free_ptr: NonNull<u8>,
+        free_len: usize,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> NonNull<u8> {
         assert!(free_len > len);
-        let free_ptr = unsafe { free_ptr.add(len) };
         let free_len = free_len - len;
+        let (ptr, free_ptr) = unsafe {
+            match placement {
+                AllocationPlacement::Top => (free_ptr.add(free_len), free_ptr),
+                _ => (free_ptr, free_ptr.add(len)),
+            }
+        };
         assert!(self.free_len_by_ptr.insert(free_ptr, free_len).is_none());
         assert!(self
             .free_ptrs_by_len
             .entry(free_len)
             .or_default()
             .insert(free_ptr));
+        ptr
     }
 
     fn alloc_best_fit(&mut self, len: usize) -> Result<NonNull<u8>, AllocError> {
@@ -67,7 +79,7 @@ impl AllocationsTracker {
             }
             assert_eq!(self.free_len_by_ptr.remove(&free_ptr).unwrap(), free_len);
             if free_len > len {
-                self.insert_remainder(free_ptr, free_len, len);
+                self.insert_remainder(free_ptr, free_len, len, AllocationPlacement::BestFit);
             }
             Ok(free_ptr)
         } else {
@@ -86,18 +98,21 @@ impl AllocationsTracker {
         &mut self,
         free_ptr: Option<NonNull<u8>>,
         len: usize,
+        placement: AllocationPlacement,
     ) -> Result<NonNull<u8>, AllocError> {
         if let Some(free_ptr) = free_ptr {
             let free_len = self.free_len_by_ptr.remove(&free_ptr).unwrap();
+            assert!(free_len >= len);
             let ptrs = self.free_ptrs_by_len.get_mut(&free_len).unwrap();
             assert!(ptrs.remove(&free_ptr));
             if ptrs.is_empty() {
                 assert!(self.free_ptrs_by_len.remove(&free_len).unwrap().is_empty());
             }
-            if free_len > len {
-                self.insert_remainder(free_ptr, free_len, len);
-            }
-            Ok(free_ptr)
+            Ok(if free_len == len {
+                free_ptr
+            } else {
+                self.insert_remainder(free_ptr, free_len, len, placement)
+            })
         } else {
             Err(AllocError)
         }
@@ -106,12 +121,12 @@ impl AllocationsTracker {
     fn alloc_bottom(&mut self, len: usize) -> Result<NonNull<u8>, AllocError> {
         let iter = self.free_len_by_ptr.iter();
         let free_ptr = Self::find_free_ptr_by_len(iter, len);
-        self.alloc_at_free_ptr(free_ptr, len)
+        self.alloc_at_free_ptr(free_ptr, len, AllocationPlacement::Bottom)
     }
 
     fn alloc_top(&mut self, len: usize) -> Result<NonNull<u8>, AllocError> {
         let free_ptr = Self::find_free_ptr_by_len(self.free_len_by_ptr.iter().rev(), len);
-        self.alloc_at_free_ptr(free_ptr, len)
+        self.alloc_at_free_ptr(free_ptr, len, AllocationPlacement::Top)
     }
 
     pub fn alloc(

@@ -4,6 +4,7 @@ use cs::utils::split_timestamp;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use gpu_prover::cudart::result::CudaResult;
+use gpu_prover::prover::context::HostAllocator;
 use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{
@@ -16,7 +17,6 @@ use gpu_prover::{
     witness::trace_main::get_aux_arguments_boundary_values,
 };
 use itertools::Itertools;
-use gpu_prover::prover::context::HostAllocator;
 use prover::{
     definitions::{
         produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
@@ -229,10 +229,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
 
     let mut gpu_setup_main = {
         let setup_row_major = &risc_v_circuit_precomputations.setup.ldes[0].trace;
-        let mut setup_evaluations = Vec::with_capacity_in(
-            setup_row_major.as_slice().len(),
-            HostAllocator::default(),
-        );
+        let mut setup_evaluations =
+            Vec::with_capacity_in(setup_row_major.as_slice().len(), HostAllocator::default());
         unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
         transpose::transpose(
             setup_row_major.as_slice(),
@@ -349,10 +347,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
             let log_tree_cap_size =
                 OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
             let setup_row_major = &prec.setup.ldes[0].trace;
-            let mut setup_evaluations = Vec::with_capacity_in(
-                setup_row_major.as_slice().len(),
-                HostAllocator::default(),
-            );
+            let mut setup_evaluations =
+                Vec::with_capacity_in(setup_row_major.as_slice().len(), HostAllocator::default());
             unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
             transpose::transpose(
                 setup_row_major.as_slice(),

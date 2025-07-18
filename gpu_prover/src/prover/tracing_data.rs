@@ -50,9 +50,9 @@ impl<'a> TracingDataTransfer<'a> {
                 if let Some(setup_and_teardown) = setup_and_teardown {
                     assert_eq!(setup_and_teardown.lazy_init_data.len(), len);
                 };
-                let lazy_init_data = context.alloc(len, AllocationPlacement::BestFit)?;
+                let lazy_init_data = context.alloc(len, AllocationPlacement::Top)?;
                 let setup_and_teardown = ShuffleRamSetupAndTeardownDevice { lazy_init_data };
-                let cycle_data = context.alloc(len, AllocationPlacement::BestFit)?;
+                let cycle_data = context.alloc(len, AllocationPlacement::Top)?;
                 let trace = MainTraceDevice { cycle_data };
                 TracingDataDevice::Main {
                     setup_and_teardown,
@@ -61,13 +61,13 @@ impl<'a> TracingDataTransfer<'a> {
             }
             TracingDataHost::Delegation(trace) => {
                 let d_write_timestamp =
-                    context.alloc(trace.write_timestamp.len(), AllocationPlacement::BestFit)?;
+                    context.alloc(trace.write_timestamp.len(), AllocationPlacement::Top)?;
                 let d_register_accesses =
-                    context.alloc(trace.register_accesses.len(), AllocationPlacement::BestFit)?;
+                    context.alloc(trace.register_accesses.len(), AllocationPlacement::Top)?;
                 let d_indirect_reads =
-                    context.alloc(trace.indirect_reads.len(), AllocationPlacement::BestFit)?;
+                    context.alloc(trace.indirect_reads.len(), AllocationPlacement::Top)?;
                 let d_indirect_writes =
-                    context.alloc(trace.indirect_writes.len(), AllocationPlacement::BestFit)?;
+                    context.alloc(trace.indirect_writes.len(), AllocationPlacement::Top)?;
                 let trace = DelegationTraceDevice {
                     num_requests: trace.num_requests,
                     num_register_accesses_per_delegation: trace

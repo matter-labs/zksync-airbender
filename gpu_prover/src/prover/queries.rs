@@ -293,6 +293,7 @@ impl<'a> QueriesOutput<'a> {
         let mut leafs = Vec::with_capacity_in(leafs_len, HostAllocator::default());
         unsafe { leafs.set_len(leafs_len) };
         memory_copy_async(&mut leafs, d_leafs.deref(), stream)?;
+        d_leafs.free();
         let digests_len = queries_count * layers_count as usize;
         let mut d_digests = context.alloc(digests_len, AllocationPlacement::BestFit)?;
         gather_merkle_paths(indexes, tree, &mut d_digests, layers_count, stream)?;

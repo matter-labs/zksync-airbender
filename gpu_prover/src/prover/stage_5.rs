@@ -75,9 +75,7 @@ impl<'a> StageFiveOutput<'a> {
             let log_num_leafs = log_folded_domain_size - next_log_fold;
             let mut ldes = Vec::with_capacity(lde_factor);
             for _ in 0..lde_factor {
-                ldes.push(
-                    context.alloc(1 << log_folded_domain_size, AllocationPlacement::BestFit)?,
-                );
+                ldes.push(context.alloc(1 << log_folded_domain_size, AllocationPlacement::Bottom)?);
             }
             let folding_inputs = if i == 0 {
                 &stage_4_output.trace_holder.ldes
@@ -119,6 +117,7 @@ impl<'a> StageFiveOutput<'a> {
                     context,
                 )?;
             }
+            d_challenges.free();
             let expose_all_leafs = if i == oracles_count - 1 {
                 let log_bound = num_queries.next_power_of_two().trailing_zeros();
                 log_num_leafs + 1 - log_lde_factor <= log_bound
@@ -156,7 +155,7 @@ impl<'a> StageFiveOutput<'a> {
                 let mut trees = Vec::with_capacity(lde_factor);
                 for _ in 0..lde_factor {
                     trees.push(
-                        context.alloc(1 << (log_num_leafs + 1), AllocationPlacement::BestFit)?,
+                        context.alloc(1 << (log_num_leafs + 1), AllocationPlacement::Bottom)?,
                     );
                 }
                 let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size);

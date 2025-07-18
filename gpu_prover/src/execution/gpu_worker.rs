@@ -133,18 +133,20 @@ fn gpu_worker(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let context = ProverContext::new(&prover_context_config)?;
+    let mut context = ProverContext::new(&prover_context_config)?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
     is_initialized.send(()).unwrap();
     drop(is_initialized);
-    let mut current_setup: Option<SetupHolder> = None;
-    let mut current_transfer = None;
-    let mut current_job = None;
+    let mut even_odd_index = 0;
+    let mut setup_cache = [None::<SetupHolder>, None::<SetupHolder>];
+    let mut current_phase_one = None;
+    let mut current_phase_two = None;
     for request in requests {
-        let mut transfer = if let Some(request) = request {
+        context.set_reversed_allocation_placement(even_odd_index == 1);
+        let mut phase_one = if let Some(request) = request {
             let (batch_id, circuit_type, circuit_sequence, setup, tracing_data) = match &request {
                 GpuWorkRequest::MemoryCommitment(request) => (
                     request.batch_id,
@@ -156,7 +158,7 @@ fn gpu_worker(
                 GpuWorkRequest::Proof(request) => {
                     let batch_id = request.batch_id;
                     let precomputations = &request.precomputations;
-                    let setup = if let Some(holder) = &current_setup
+                    let setup = if let Some(holder) = &setup_cache[even_odd_index]
                         && Arc::ptr_eq(&holder.trace, &precomputations.setup)
                     {
                         match request.circuit_type {
@@ -184,7 +186,7 @@ fn gpu_worker(
                         }
                         setup.schedule_transfer(precomputations.setup.clone(), &context)?;
                         let setup = Rc::new(RefCell::new(setup));
-                        current_setup = Some(SetupHolder {
+                        setup_cache[even_odd_index] = Some(SetupHolder {
                             setup: setup.clone(),
                             trace: precomputations.setup.clone(),
                         });
@@ -209,8 +211,9 @@ fn gpu_worker(
         } else {
             None
         };
-        mem::swap(&mut current_transfer, &mut transfer);
-        let mut job = if let Some((request, setup, transfer)) = transfer {
+        mem::swap(&mut current_phase_one, &mut phase_one);
+        context.set_reversed_allocation_placement(even_odd_index == 0);
+        let mut phase_two = if let Some((request, setup, transfer)) = phase_one {
             let job = match &request {
                 GpuWorkRequest::MemoryCommitment(request) => {
                     let batch_id = request.batch_id;
@@ -309,8 +312,9 @@ fn gpu_worker(
         } else {
             None
         };
-        mem::swap(&mut current_job, &mut job);
-        let result = if let Some((request, job)) = job {
+        mem::swap(&mut current_phase_two, &mut phase_two);
+        even_odd_index = 1 - even_odd_index;
+        let result = if let Some((request, job)) = phase_two {
             match request {
                 GpuWorkRequest::MemoryCommitment(request) => {
                     let MemoryCommitmentRequest {
@@ -388,8 +392,8 @@ fn gpu_worker(
         };
         results.send(result).unwrap()
     }
-    assert!(current_transfer.is_none());
-    assert!(current_job.is_none());
+    assert!(current_phase_one.is_none());
+    assert!(current_phase_two.is_none());
     trace!("GPU_WORKER[{device_id}] finished");
     Ok(())
 }

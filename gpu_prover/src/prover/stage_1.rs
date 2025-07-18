@@ -86,7 +86,7 @@ impl<'a> StageOneOutput<'a> {
         let memory_subtree = &circuit.memory_layout;
         let generic_lookup_mapping_size = witness_subtree.width_3_lookups.len() << log_domain_size;
         let mut generic_lookup_mapping =
-            context.alloc(generic_lookup_mapping_size, AllocationPlacement::BestFit)?;
+            context.alloc(generic_lookup_mapping_size, AllocationPlacement::Top)?;
         let TracingDataTransfer {
             circuit_type,
             data_host: _,

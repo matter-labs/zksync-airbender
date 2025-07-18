@@ -209,7 +209,7 @@ pub(crate) fn allocate_ldes<T>(
     let size = columns_count << log_domain_size;
     let mut result = Vec::with_capacity(instances_count);
     for _ in 0..instances_count {
-        result.push(context.alloc(size, AllocationPlacement::BestFit)?);
+        result.push(context.alloc(size, AllocationPlacement::Bottom)?);
     }
     Ok(result)
 }
@@ -223,7 +223,7 @@ pub(crate) fn allocate_trees(
     let size = 1 << (log_domain_size + 1 - log_rows_per_leaf);
     let mut result = Vec::with_capacity(instances_count);
     for _ in 0..instances_count {
-        result.push(context.alloc(size, AllocationPlacement::BestFit)?);
+        result.push(context.alloc(size, AllocationPlacement::Bottom)?);
     }
     Ok(result)
 }

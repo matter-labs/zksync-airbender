@@ -57,6 +57,7 @@ pub struct ProverContext {
     pub(crate) mem_size: usize,
     pub(crate) device_id: i32,
     pub(crate) device_properties: DeviceProperties,
+    pub(crate) reversed_allocation_placement: bool,
 }
 
 pub type HostAllocator = ConcurrentStaticHostAllocator;
@@ -130,6 +131,7 @@ impl ProverContext {
             mem_size,
             device_id,
             device_properties,
+            reversed_allocation_placement: false,
         };
         Ok(context)
     }
@@ -160,6 +162,15 @@ impl ProverContext {
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
         assert_ne!(size, 0);
+        let placement = if self.reversed_allocation_placement {
+            match placement {
+                AllocationPlacement::BestFit => AllocationPlacement::BestFit,
+                AllocationPlacement::Bottom => AllocationPlacement::Top,
+                AllocationPlacement::Top => AllocationPlacement::Bottom,
+            }
+        } else {
+            placement
+        };
         let result = self.device_allocator.alloc(size, placement);
         if result.is_err() {
             error!(
@@ -201,5 +212,13 @@ impl ProverContext {
 
     pub fn get_device_properties(&self) -> &DeviceProperties {
         &self.device_properties
+    }
+
+    pub fn is_reversed_allocation_placement(&self) -> bool {
+        self.reversed_allocation_placement
+    }
+
+    pub fn set_reversed_allocation_placement(&mut self, reversed: bool) {
+        self.reversed_allocation_placement = reversed;
     }
 }

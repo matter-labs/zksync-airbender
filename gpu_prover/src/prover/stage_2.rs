@@ -154,7 +154,11 @@ impl<'a> StageTwoOutput<'a> {
             log_domain_size,
             stream,
         )?;
-        drop(generic_lookup_mappings);
+        generic_lookup_mappings.free();
+        d_alloc_e4_scratch.free();
+        d_alloc_scratch_for_cub_ops.free();
+        d_alloc_scratch_for_col_sums.free();
+        d_lookup_challenges.free();
         trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;
         trace_holder.produce_tree_caps(context)?;
