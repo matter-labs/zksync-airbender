@@ -4,6 +4,8 @@ use crate::abstractions::tracer::{RegisterOrIndirectReadData, RegisterOrIndirect
 // NOTE: We assume that tracer can timestamp by itself
 
 pub trait UnrolledTracer<C: MachineConfig>: Sized {
+    const SPECIAL_CASE_WORD_SIZED_MEM_OPS: bool = false;
+
     #[inline(always)]
     fn at_cycle_start(&mut self, _current_state: &RiscV32StateForUnrolledProver<C>) {}
 
@@ -17,7 +19,13 @@ pub trait UnrolledTracer<C: MachineConfig>: Sized {
     fn trace_non_mem_step(&mut self, family: u8, data: NonMemoryOpcodeTracingData) {}
 
     #[inline(always)]
+    fn trace_word_sized_mem_load_step(&mut self, data: LoadOpcodeTracingData) {}
+
+    #[inline(always)]
     fn trace_mem_load_step(&mut self, data: LoadOpcodeTracingData) {}
+
+    #[inline(always)]
+    fn trace_word_sized_mem_store_step(&mut self, data: StoreOpcodeTracingData) {}
 
     #[inline(always)]
     fn trace_mem_store_step(&mut self, data: StoreOpcodeTracingData) {}

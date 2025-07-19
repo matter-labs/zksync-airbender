@@ -163,6 +163,37 @@ pub fn opcodes_for_full_machine_with_unsigned_mul_div_only() -> Vec<Box<dyn Opco
     ]
 }
 
+pub fn opcodes_for_full_machine_with_mem_word_access_specialization() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
+    vec![
+        Box::new(AddSubLuiAuipcMopDecoder),
+        Box::new(JumpSltBranchDecoder::<true>),
+        Box::new(ShiftBinaryCsrrwDecoder),
+        Box::new(WordOnlyMemoryFamilyDecoder),
+        Box::new(SubwordOnlyMemoryFamilyDecoder),
+        Box::new(DivMulDecoder::<true>),
+    ]
+}
+
+pub fn opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
+    vec![
+        Box::new(AddSubLuiAuipcMopDecoder),
+        Box::new(JumpSltBranchDecoder::<true>),
+        Box::new(ShiftBinaryCsrrwDecoder),
+        Box::new(WordOnlyMemoryFamilyDecoder),
+        Box::new(SubwordOnlyMemoryFamilyDecoder),
+        Box::new(DivMulDecoder::<false>),
+    ]
+}
+
+pub fn opcodes_for_reduced_machine() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
+    vec![
+        Box::new(AddSubLuiAuipcMopDecoder),
+        Box::new(JumpSltBranchDecoder::<true>),
+        Box::new(ShiftBinaryCsrrwDecoder),
+        Box::new(WordOnlyMemoryFamilyDecoder),
+    ]
+}
+
 pub fn decoder_data_for_opcodes(
     all_opcodes: &Vec<Box<dyn OpcodeFamilyDecoder>>,
 ) -> Vec<(bool, InstructionType, u8, InstructionFamilyBitmaskRepr)> {

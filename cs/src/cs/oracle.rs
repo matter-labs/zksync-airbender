@@ -4,7 +4,7 @@ use crate::definitions::TimestampScalar;
 
 use super::placeholder::Placeholder;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct ExecutorFamilyDecoderData {
     pub imm: u32,
     pub rs1_index: u8,
@@ -14,6 +14,22 @@ pub struct ExecutorFamilyDecoderData {
     pub funct3: u8,
     pub funct7: Option<u8>,
     pub opcode_family_bits: u8,
+}
+
+impl Default for ExecutorFamilyDecoderData {
+    fn default() -> Self {
+        // We make a value that is self-consistent, and as family-agnostic as possible
+        ExecutorFamilyDecoderData {
+            imm: 0,
+            rs1_index: 0,
+            rs2_index: 0,
+            rd_index: 0,
+            rd_is_zero: true, // consistency!
+            funct3: 0,
+            funct7: None,
+            opcode_family_bits: 0,
+        }
+    }
 }
 
 pub trait Oracle<F: PrimeField>: Send + Sync {

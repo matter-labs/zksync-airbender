@@ -2578,7 +2578,7 @@
     }
   },
   "scratch_space_size_for_witness_gen": 0,
-  "lazy_init_address_aux_vars": null,
+  "lazy_init_address_aux_vars": [],
   "memory_queries_timestamp_comparison_aux_vars": [
     {
       "WitnessSubtree": 17

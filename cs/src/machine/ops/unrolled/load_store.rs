@@ -145,7 +145,7 @@ fn apply_load_store<
     let load_from_ram = Boolean::and(&is_load, &Boolean::Is(is_ram_range), cs);
     // Branches below are orthogonal, but before proceeding we will manually create queries for RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
 
-    // NOTE: construction of this circuit REQUIRES non-trivial padding of memro query values if we do NOT
+    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we do NOT
     // execute (so we pad circuits for capacity). Such queries do NOT contribute to memory accumulators due to
     // predication on `execute`, but we still do not want to spend too many variables to make extra masking here
 

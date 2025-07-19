@@ -43,7 +43,7 @@ impl VectorMemoryImplWithRom {
         self.ram[(address / 4) as usize] = value;
     }
 
-    pub fn load_image<'a, B>(&mut self, entry_point: u32, bytes: B)
+    pub fn load_image<B>(&mut self, entry_point: u32, bytes: B)
     where
         B: Iterator<Item = u8>,
     {
@@ -138,6 +138,21 @@ impl MemorySource for VectorMemoryImplWithRom {
     }
 
     #[inline(always)]
+    fn get_noexcept_with_rom_check(&self, phys_address: u64) -> (u32, u32) {
+        debug_assert!(phys_address % 4 == 0);
+        if ((phys_address / 4) as usize) < self.ram.len() {
+            let addr = if phys_address < self.rom_bound as u64 {
+                0
+            } else {
+                phys_address as u32
+            };
+            (self.ram[(phys_address / 4) as usize], addr)
+        } else {
+            panic!("Out of bound memory access at address 0x{:x}", phys_address);
+        }
+    }
+
+    #[inline(always)]
     fn get_opcode_noexcept(&self, phys_address: u64) -> u32 {
         debug_assert!(phys_address % 4 == 0);
         debug_assert!(
@@ -146,13 +161,5 @@ impl MemorySource for VectorMemoryImplWithRom {
             phys_address
         );
         unsafe { *self.ram.get_unchecked((phys_address / 4) as usize) }
-
-        // if phys_address < self.rom_bound as u64 {
-        //     unsafe {
-        //         *self.ram.get_unchecked((phys_address / 4) as usize)
-        //     }
-        // } else {
-        //     panic!("Out of bound opcode access at address 0x{:x}", phys_address);
-        // }
     }
 }

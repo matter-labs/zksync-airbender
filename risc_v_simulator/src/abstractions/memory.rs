@@ -71,6 +71,11 @@ pub trait MemorySource {
     }
 
     #[inline(always)]
+    fn get_noexcept_with_rom_check(&self, phys_address: u64) -> (u32, u32) {
+        unimplemented!("unimplemented by default");
+    }
+
+    #[inline(always)]
     fn get_opcode_noexcept(&self, phys_address: u64) -> u32 {
         self.get(
             phys_address,

@@ -120,6 +120,10 @@ fn apply_word_only_load_store<
 
     // Below this point we know that address is aligned
 
+    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we do NOT
+    // execute (so we pad circuits for capacity). Such queries do NOT contribute to memory accumulators due to
+    // predication on `execute`, but we still do not want to spend too many variables to make extra masking here
+
     let rs2_or_load_ram_access_query = {
         let rs2_or_load_ram_access_query_is_register = is_store;
         // we model ROM loads as loads from 0

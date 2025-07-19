@@ -74,7 +74,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 203 {
+        // if self.no_index_assigned == 39 {
         //     panic!("debug");
         // }
         let variable = Variable(self.no_index_assigned);

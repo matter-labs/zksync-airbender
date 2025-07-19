@@ -1,243 +1,28 @@
+use cs::machine::ops::unrolled::{
+    load_store_subword_only::{
+        subword_only_load_store_circuit_with_preprocessed_bytecode,
+        subword_only_load_store_table_addition_fn, subword_only_load_store_table_driver_fn,
+    },
+    load_store_word_only::{
+        create_word_only_load_store_special_tables,
+        word_only_load_store_circuit_with_preprocessed_bytecode,
+        word_only_load_store_table_addition_fn, word_only_load_store_table_driver_fn,
+    },
+};
+
+use crate::unrolled::run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization;
+
 use super::*;
-
-use crate::tracers::unrolled::tracer::*;
-use crate::unrolled::evaluate_witness_for_executor_family;
-use crate::unrolled::run_unrolled_machine_for_num_cycles;
-use crate::unrolled::MemoryCircuitOracle;
-use crate::unrolled::NonMemoryCircuitOracle;
-use cs::cs::circuit::Circuit;
-use cs::definitions::*;
-use cs::machine::ops::unrolled::*;
-use cs::machine::NON_DETERMINISM_CSR;
-use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
-
-use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
-use risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
-
-use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
-use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
-
-mod word_specialized;
-
-pub mod add_sub_lui_auipc_mod {
-    use crate::unrolled::NonMemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../add_sub_lui_auipc_mop_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod jump_branch_slt {
-    use crate::unrolled::NonMemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../jump_branch_slt_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod shift_binop_csrrw {
-    use crate::unrolled::NonMemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../shift_binop_csrrw_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod mul_div {
-    use crate::unrolled::NonMemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../mul_div_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod mul_div_unsigned_only {
-    use crate::unrolled::NonMemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../mul_div_unsigned_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, NonMemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod load_store {
-    use crate::unrolled::MemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../load_store_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod word_load_store {
-    use crate::unrolled::MemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../word_only_load_store_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod subword_load_store {
-    use crate::unrolled::MemoryCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../subword_only_load_store_preprocessed_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
 
 const SUPPORT_SIGNED: bool = false;
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
-fn run_basic_unrolled_test() {
-    run_basic_unrolled_test_impl(None);
+fn run_basic_unrolled_test_with_word_specialization() {
+    run_basic_unrolled_test_with_word_specialization_impl(None);
 }
 
-pub fn run_basic_unrolled_test_impl(
+pub fn run_basic_unrolled_test_with_word_specialization_impl(
     maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
     // NOTE: these constants must match with ones used in CS crate to produce
@@ -274,7 +59,10 @@ pub fn run_basic_unrolled_test_impl(
         let factory = Box::new(|| NonMemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1));
         opcode_family_factories.insert(family, factory as _);
     }
-    let mem_factory = Box::new(|| MemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1)) as _;
+    let word_mem_factory =
+        Box::new(|| MemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1)) as _;
+    let subword_mem_factory =
+        Box::new(|| MemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1)) as _;
 
     let csr_processor = DelegationsCSRProcessor;
 
@@ -319,12 +107,15 @@ pub fn run_basic_unrolled_test_impl(
     let (
         final_pc,
         family_circuits,
-        mem_circuits,
+        (word_mem_circuits, subword_mem_circuits),
         delegation_circuits,
         register_final_state,
         shuffle_ram_touched_addresses,
     ) = if SUPPORT_SIGNED {
-        run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfig>(
+        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
+            _,
+            IMStandardIsaConfig,
+        >(
             NUM_CYCLES_PER_CHUNK,
             0,
             csr_processor,
@@ -332,12 +123,16 @@ pub fn run_basic_unrolled_test_impl(
             1 << 21,
             vec![15, 1], // 1000 steps of fibonacci, and 1 round of hashing
             opcode_family_factories,
-            mem_factory,
+            word_mem_factory,
+            subword_mem_factory,
             factories,
             &worker,
         )
     } else {
-        run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfigWithUnsignedMulDiv>(
+        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
+            _,
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
             NUM_CYCLES_PER_CHUNK,
             0,
             csr_processor,
@@ -345,7 +140,8 @@ pub fn run_basic_unrolled_test_impl(
             1 << 21,
             vec![15, 1], // 1000 steps of fibonacci, and 1 round of hashing
             opcode_family_factories,
-            mem_factory,
+            word_mem_factory,
+            subword_mem_factory,
             factories,
             &worker,
         )
@@ -366,9 +162,20 @@ pub fn run_basic_unrolled_test_impl(
     }
 
     println!(
-        "Traced {} memory circuits, total len {}",
-        mem_circuits.len(),
-        mem_circuits.iter().map(|el| el.data.len()).sum::<usize>()
+        "Traced {} word-sized memory circuits, total len {}",
+        word_mem_circuits.len(),
+        word_mem_circuits
+            .iter()
+            .map(|el| el.data.len())
+            .sum::<usize>()
+    );
+    println!(
+        "Traced {} subword-sized memory circuits, total len {}",
+        subword_mem_circuits.len(),
+        subword_mem_circuits
+            .iter()
+            .map(|el| el.data.len())
+            .sum::<usize>()
     );
 
     let memory_argument_alpha = Mersenne31Quartic::from_array_of_base([
@@ -461,7 +268,7 @@ pub fn run_basic_unrolled_test_impl(
     let preprocessing_data = if SUPPORT_SIGNED {
         process_binary_into_separate_tables::<Mersenne31Field>(
             &text_section,
-            &opcodes_for_full_machine(),
+            &opcodes_for_full_machine_with_mem_word_access_specialization(),
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
@@ -472,7 +279,7 @@ pub fn run_basic_unrolled_test_impl(
     } else {
         process_binary_into_separate_tables::<Mersenne31Field>(
             &text_section,
-            &opcodes_for_full_machine_with_unsigned_mul_div_only(),
+            &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
@@ -938,35 +745,40 @@ pub fn run_basic_unrolled_test_impl(
     }
 
     if true {
-        println!("Will try to prove LOAD/STORE circuit");
+        println!("Will try to prove word LOAD/STORE circuit");
 
-        use cs::machine::ops::unrolled::load_store::*;
         const SECOND_WORD_BITS: usize = 4;
 
-        let extra_tables = create_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
-        let load_store_circuit = {
+        let extra_tables =
+            create_word_only_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
+        let word_load_store_circuit = {
             compile_unrolled_circuit_state_transition::<Mersenne31Field>(
                 &|cs| {
-                    load_store_table_addition_fn(cs);
+                    word_only_load_store_table_addition_fn(cs);
                     for (table_type, table) in extra_tables.clone() {
                         cs.add_table_with_content(table_type, table);
                     }
                 },
-                &|cs| load_store_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(cs),
+                &|cs| {
+                    word_only_load_store_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(
+                        cs,
+                    )
+                },
                 1 << 20,
                 TRACE_LEN_LOG2,
             )
         };
 
         let mut table_driver = TableDriver::<Mersenne31Field>::new();
-        load_store_table_driver_fn(&mut table_driver);
+        word_only_load_store_table_driver_fn(&mut table_driver);
         for (table_type, table) in extra_tables.clone() {
             table_driver.add_table_with_content(table_type, table);
         }
 
-        let family_data = &mem_circuits;
+        let family_data = &word_mem_circuits;
         assert_eq!(family_data.len(), 1);
-        let (decoder_table_data, witness_gen_data) = &preprocessing_data[&MEMORY_FAMILY_INDEX];
+        let (decoder_table_data, witness_gen_data) =
+            &preprocessing_data[&WORD_ONLY_MEMORY_FAMILY_INDEX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = MemoryCircuitOracle {
@@ -976,11 +788,12 @@ pub fn run_basic_unrolled_test_impl(
 
         // println!(
         //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[29].opcode_data.opcode
+        //     family_data[0].data[203].opcode_data.opcode
         // );
+        // dbg!(family_data[0].data[203].as_load_data());
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
-            &load_store_circuit,
+            &word_load_store_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
@@ -988,8 +801,8 @@ pub fn run_basic_unrolled_test_impl(
         );
 
         let full_trace = evaluate_witness_for_executor_family::<_, Global>(
-            &load_store_circuit,
-            load_store::witness_eval_fn,
+            &word_load_store_circuit,
+            word_load_store::witness_eval_fn,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &table_driver,
@@ -999,7 +812,7 @@ pub fn run_basic_unrolled_test_impl(
 
         println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
-            &load_store_circuit,
+            &word_load_store_circuit,
             &full_trace.exec_trace,
             full_trace.num_witness_columns,
         );
@@ -1014,7 +827,7 @@ pub fn run_basic_unrolled_test_impl(
             &table_driver,
             &decoder_table_data,
             trace_len,
-            &load_store_circuit.setup_layout,
+            &word_load_store_circuit.setup_layout,
             &twiddles,
             &lde_precomputations,
             lde_factor,
@@ -1036,7 +849,7 @@ pub fn run_basic_unrolled_test_impl(
             _,
             DefaultTreeConstructor,
         >(
-            &load_store_circuit,
+            &word_load_store_circuit,
             &vec![],
             &external_values.challenges,
             full_trace,
@@ -1052,6 +865,132 @@ pub fn run_basic_unrolled_test_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+    }
+
+    if true {
+        println!("Will try to prove subword LOAD/STORE circuit");
+
+        use cs::machine::ops::unrolled::load_store::*;
+        const SECOND_WORD_BITS: usize = 4;
+
+        let extra_tables = create_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
+        let subword_load_store_circuit = {
+            compile_unrolled_circuit_state_transition::<Mersenne31Field>(
+                &|cs| {
+                    subword_only_load_store_table_addition_fn(cs);
+                    for (table_type, table) in extra_tables.clone() {
+                        cs.add_table_with_content(table_type, table);
+                    }
+                },
+                &|cs| {
+                    subword_only_load_store_circuit_with_preprocessed_bytecode::<
+                        _,
+                        _,
+                        SECOND_WORD_BITS,
+                    >(cs)
+                },
+                1 << 20,
+                TRACE_LEN_LOG2,
+            )
+        };
+
+        let mut table_driver = TableDriver::<Mersenne31Field>::new();
+        subword_only_load_store_table_driver_fn(&mut table_driver);
+        for (table_type, table) in extra_tables.clone() {
+            table_driver.add_table_with_content(table_type, table);
+        }
+
+        let family_data = &subword_mem_circuits;
+        assert_eq!(family_data.len(), 1);
+        let (decoder_table_data, witness_gen_data) =
+            &preprocessing_data[&SUBWORD_ONLY_MEMORY_FAMILY_INDEX];
+        let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
+
+        let oracle = MemoryCircuitOracle {
+            inner: &family_data[0].data,
+            decoder_table: witness_gen_data,
+        };
+
+        // println!(
+        //     "Opcode = 0x{:08x}",
+        //     family_data[0].data[29].opcode_data.opcode
+        // );
+
+        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+            &subword_load_store_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &worker,
+            Global,
+        );
+
+        let full_trace = evaluate_witness_for_executor_family::<_, Global>(
+            &subword_load_store_circuit,
+            subword_load_store::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &table_driver,
+            &worker,
+            Global,
+        );
+
+        println!("Checking if satisfied");
+        let is_satisfied = check_satisfied(
+            &subword_load_store_circuit,
+            &full_trace.exec_trace,
+            full_trace.num_witness_columns,
+        );
+        assert!(is_satisfied);
+
+        println!("Precomputing twiddles");
+        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+        println!("Precomputing LDE factors");
+        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+        println!("Precomputing setup");
+        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+            &table_driver,
+            &decoder_table_data,
+            trace_len,
+            &subword_load_store_circuit.setup_layout,
+            &twiddles,
+            &lde_precomputations,
+            lde_factor,
+            tree_cap_size,
+            &worker,
+        );
+
+        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
+        //     Some(witness.lookup_mapping.clone())
+        // } else {
+        //     None
+        // };
+
+        println!("Trying to prove");
+
+        let now = std::time::Instant::now();
+        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+            DEFAULT_TRACE_PADDING_MULTIPLE,
+            _,
+            DefaultTreeConstructor,
+        >(
+            &subword_load_store_circuit,
+            &vec![],
+            &external_values.challenges,
+            full_trace,
+            &[],
+            &setup,
+            &twiddles,
+            &lde_precomputations,
+            None,
+            lde_factor,
+            tree_cap_size,
+            53,
+            28,
+            &worker,
+        );
+        println!("Proving time is {:?}", now.elapsed());
+
+        dbg!(proof.permutation_grand_product_accumulator);
     }
 
     // if !for_gpu_comparison {

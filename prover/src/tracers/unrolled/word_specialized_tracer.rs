@@ -1,3 +1,5 @@
+use super::tracer::*;
+
 use crate::fft::GoodAllocator;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadData;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadWriteData;
@@ -11,51 +13,7 @@ use risc_v_simulator::cycle::IMStandardIsaConfig;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::machine_mode_only_unrolled::*;
 
-pub(crate) const NUM_OPCODE_FAMILIES_NO_RAM: usize = 4;
-const NUM_OPCODE_FAMILIES_WITH_RAM: usize = 2;
-
-pub(crate) const RS1_ACCESS_IDX: TimestampScalar = 0;
-pub(crate) const RS2_ACCESS_IDX: TimestampScalar = 1;
-pub(crate) const RD_ACCESS_IDX: TimestampScalar = 2;
-pub(crate) const DELEGATION_ACCESS_IDX: TimestampScalar = 3;
-pub(crate) const RAM_READ_ACCESS_IDX: TimestampScalar = RS2_ACCESS_IDX;
-pub(crate) const RAM_WRITE_ACCESS_IDX: TimestampScalar = RD_ACCESS_IDX;
-
-pub struct NonMemTracingFamilyChunk {
-    pub num_cycles: usize,
-    pub data: Vec<NonMemoryOpcodeTracingDataWithTimestamp>,
-}
-
-impl NonMemTracingFamilyChunk {
-    pub fn new_for_num_cycles(num_cycles: usize) -> Self {
-        let capacity = num_cycles + 1;
-        assert!(capacity.is_power_of_two());
-
-        Self {
-            num_cycles,
-            data: Vec::with_capacity(capacity),
-        }
-    }
-}
-
-pub struct MemTracingFamilyChunk {
-    pub num_cycles: usize,
-    pub data: Vec<MemoryOpcodeTracingDataWithTimestamp>,
-}
-
-impl MemTracingFamilyChunk {
-    pub fn new_for_num_cycles(num_cycles: usize) -> Self {
-        let capacity = num_cycles + 1;
-        assert!(capacity.is_power_of_two());
-
-        Self {
-            num_cycles,
-            data: Vec::with_capacity(capacity),
-        }
-    }
-}
-
-pub struct UnrolledGPUFriendlyTracer<
+pub struct WordSpecializedTracer<
     C: MachineConfig = IMStandardIsaConfig,
     A: GoodAllocator = Global,
     const TRACE_FOR_TEARDOWNS: bool = true,
@@ -66,10 +24,13 @@ pub struct UnrolledGPUFriendlyTracer<
     pub current_timestamp: TimestampScalar,
     pub current_family_chunks: [NonMemTracingFamilyChunk; NUM_OPCODE_FAMILIES_NO_RAM],
     pub completed_family_chunks: HashMap<u8, Vec<NonMemTracingFamilyChunk>>,
-    pub current_mem_family_chunk: MemTracingFamilyChunk,
-    pub completed_mem_family_chunks: Vec<MemTracingFamilyChunk>,
+    pub current_word_sized_mem_family_chunk: MemTracingFamilyChunk,
+    pub current_subword_sized_mem_family_chunk: MemTracingFamilyChunk,
+    pub completed_word_sized_mem_family_chunks: Vec<MemTracingFamilyChunk>,
+    pub completed_subword_sized_mem_family_chunks: Vec<MemTracingFamilyChunk>,
     pub opcode_family_chunk_factories: HashMap<u8, Box<dyn Fn() -> NonMemTracingFamilyChunk>>,
-    pub mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
+    pub word_sized_mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
+    pub subword_sized_mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
     pub delegation_tracer: DelegationTracingData,
     pub _marker: core::marker::PhantomData<C>,
 }
@@ -80,12 +41,13 @@ impl<
         const TRACE_FOR_TEARDOWNS: bool,
         const TRACE_FOR_PROVING: bool,
         const TRACE_DELEGATIONS: bool,
-    > UnrolledGPUFriendlyTracer<C, A, TRACE_FOR_TEARDOWNS, TRACE_FOR_PROVING, TRACE_DELEGATIONS>
+    > WordSpecializedTracer<C, A, TRACE_FOR_TEARDOWNS, TRACE_FOR_PROVING, TRACE_DELEGATIONS>
 {
     pub fn new(
         bookkeeping_aux_data: RamTracingData<TRACE_FOR_TEARDOWNS>,
         opcode_family_chunk_factories: HashMap<u8, Box<dyn Fn() -> NonMemTracingFamilyChunk>>,
-        mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
+        word_sized_mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
+        subword_sized_mem_family_chunk_factory: Box<dyn Fn() -> MemTracingFamilyChunk>,
         delegation_tracer: DelegationTracingData,
     ) -> Self {
         if TRACE_FOR_PROVING {
@@ -116,17 +78,21 @@ impl<
             let family = (i + 1) as u8;
             (opcode_family_chunk_factories[&family])()
         });
-        let current_mem_family_chunk = (mem_family_chunk_factory)();
+        let current_word_sized_mem_family_chunk = (word_sized_mem_family_chunk_factory)();
+        let current_subword_sized_mem_family_chunk = (subword_sized_mem_family_chunk_factory)();
 
         Self {
             bookkeeping_aux_data,
             current_timestamp: INITIAL_TIMESTAMP,
             current_family_chunks,
             completed_family_chunks: HashMap::with_capacity(NUM_OPCODE_FAMILIES_NO_RAM),
-            current_mem_family_chunk,
-            completed_mem_family_chunks: Vec::new(),
+            current_word_sized_mem_family_chunk,
+            current_subword_sized_mem_family_chunk,
+            completed_word_sized_mem_family_chunks: Vec::new(),
+            completed_subword_sized_mem_family_chunks: Vec::new(),
             opcode_family_chunk_factories,
-            mem_family_chunk_factory,
+            word_sized_mem_family_chunk_factory,
+            subword_sized_mem_family_chunk_factory,
             delegation_tracer,
             _marker: core::marker::PhantomData,
         }
@@ -186,9 +152,9 @@ impl<
         const TRACE_FOR_PROVING: bool,
         const TRACE_DELEGATIONS: bool,
     > UnrolledTracer<C>
-    for UnrolledGPUFriendlyTracer<C, A, TRACE_FOR_TEARDOWNS, TRACE_FOR_PROVING, TRACE_DELEGATIONS>
+    for WordSpecializedTracer<C, A, TRACE_FOR_TEARDOWNS, TRACE_FOR_PROVING, TRACE_DELEGATIONS>
 {
-    const SPECIAL_CASE_WORD_SIZED_MEM_OPS: bool = false;
+    const SPECIAL_CASE_WORD_SIZED_MEM_OPS: bool = true;
 
     #[inline(always)]
     fn at_cycle_start(&mut self, _current_state: &RiscV32StateForUnrolledProver<C>) {
@@ -269,16 +235,59 @@ impl<
                 rd_or_ram_read_timestamp,
                 cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
             };
-            self.current_mem_family_chunk.data.push(data);
-            if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
+            self.current_subword_sized_mem_family_chunk.data.push(data);
+            if self.current_subword_sized_mem_family_chunk.data.len()
+                == self.current_subword_sized_mem_family_chunk.num_cycles
             {
-                let next = (self.mem_family_chunk_factory)();
-                let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
-                self.completed_mem_family_chunks.push(completed);
+                let next = (self.subword_sized_mem_family_chunk_factory)();
+                let completed =
+                    core::mem::replace(&mut self.current_subword_sized_mem_family_chunk, next);
+                self.completed_subword_sized_mem_family_chunks
+                    .push(completed);
             }
         }
     }
 
+    #[inline(always)]
+    fn trace_word_sized_mem_load_step(&mut self, data: LoadOpcodeTracingData) {
+        let mut rs1_read_timestamp = TimestampData::EMPTY;
+        let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
+        let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
+
+        let (rs1, _, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
+        if rd == 0 {
+            debug_assert_eq!(data.rd_value, 0);
+        }
+        self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
+        self.update_ram_access_timestmap::<RAM_READ_ACCESS_IDX>(
+            data.aligned_ram_address as u64,
+            false,
+            &mut rs2_or_ram_read_timestamp,
+        );
+        self.update_reg_access_timestamp::<RD_ACCESS_IDX>(rd, &mut rd_or_ram_read_timestamp);
+
+        if TRACE_FOR_PROVING {
+            let data = MemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: data,
+                discr: MEM_LOAD_TRACE_DATA_MARKER,
+                rs1_read_timestamp,
+                rs2_or_ram_read_timestamp,
+                rd_or_ram_read_timestamp,
+                cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
+            };
+            self.current_word_sized_mem_family_chunk.data.push(data);
+            if self.current_word_sized_mem_family_chunk.data.len()
+                == self.current_word_sized_mem_family_chunk.num_cycles
+            {
+                let next = (self.word_sized_mem_family_chunk_factory)();
+                let completed =
+                    core::mem::replace(&mut self.current_word_sized_mem_family_chunk, next);
+                self.completed_word_sized_mem_family_chunks.push(completed);
+            }
+        }
+    }
+
+    #[inline(always)]
     fn trace_mem_store_step(&mut self, data: StoreOpcodeTracingData) {
         let mut rs1_read_timestamp = TimestampData::EMPTY;
         let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
@@ -302,12 +311,51 @@ impl<
                 rd_or_ram_read_timestamp,
                 cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
             };
-            self.current_mem_family_chunk.data.push(data);
-            if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
+            self.current_subword_sized_mem_family_chunk.data.push(data);
+            if self.current_subword_sized_mem_family_chunk.data.len()
+                == self.current_subword_sized_mem_family_chunk.num_cycles
             {
-                let next = (self.mem_family_chunk_factory)();
-                let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
-                self.completed_mem_family_chunks.push(completed);
+                let next = (self.subword_sized_mem_family_chunk_factory)();
+                let completed =
+                    core::mem::replace(&mut self.current_subword_sized_mem_family_chunk, next);
+                self.completed_subword_sized_mem_family_chunks
+                    .push(completed);
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn trace_word_sized_mem_store_step(&mut self, data: StoreOpcodeTracingData) {
+        let mut rs1_read_timestamp = TimestampData::EMPTY;
+        let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
+        let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
+
+        let (rs1, rs2, _) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
+        self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
+        self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_or_ram_read_timestamp);
+        self.update_ram_access_timestmap::<RAM_WRITE_ACCESS_IDX>(
+            data.aligned_ram_address as u64,
+            true,
+            &mut rd_or_ram_read_timestamp,
+        );
+
+        if TRACE_FOR_PROVING {
+            let data = MemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: unsafe { core::mem::transmute(data) },
+                discr: MEM_STORE_TRACE_DATA_MARKER,
+                rs1_read_timestamp,
+                rs2_or_ram_read_timestamp,
+                rd_or_ram_read_timestamp,
+                cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
+            };
+            self.current_word_sized_mem_family_chunk.data.push(data);
+            if self.current_word_sized_mem_family_chunk.data.len()
+                == self.current_word_sized_mem_family_chunk.num_cycles
+            {
+                let next = (self.word_sized_mem_family_chunk_factory)();
+                let completed =
+                    core::mem::replace(&mut self.current_word_sized_mem_family_chunk, next);
+                self.completed_word_sized_mem_family_chunks.push(completed);
             }
         }
     }

@@ -127,6 +127,30 @@ impl MemoryOpcodeTracingDataWithTimestamp {
         }
     }
 
+    pub fn as_load_data(&self) -> LoadOpcodeTracingData {
+        match self.discr {
+            MEM_STORE_TRACE_DATA_MARKER => {
+                panic!("is store data");
+            }
+            MEM_LOAD_TRACE_DATA_MARKER => {
+                self.opcode_data
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_store_data(&self) -> StoreOpcodeTracingData {
+        match self.discr {
+            MEM_STORE_TRACE_DATA_MARKER => {
+                unsafe { core::mem::transmute(self.opcode_data) }
+            }
+            MEM_LOAD_TRACE_DATA_MARKER => {
+                panic!("is load data");
+            }
+            _ => unreachable!(),
+        }
+    }
+
     pub fn rs2_or_ram_read_value(&self) -> u32 {
         match self.discr {
             MEM_STORE_TRACE_DATA_MARKER => {
@@ -857,7 +881,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             // Memory implementation should handle read in full. For now we only use one
                             // that doesn't step over 4 byte boundary ever, meaning even though formal address is not 4 byte aligned,
                             // loads of u8/u16/u32 are still "aligned"
-                            let (aligned_ram_read_value, ram_read_value) = mem_read::<M, Config>(
+                            let (aligned_ram_read_value, ram_read_value, adjusted_load_address) = mem_read_mask_rom_if_needed::<M, Config>(
                                 memory_source,
                                 load_address as u64,
                                 num_bytes,
@@ -914,12 +938,20 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                                 initial_pc: pc,
                                 opcode,
                                 rs1_value,
-                                aligned_ram_address: load_address & !3,
+                                aligned_ram_address: adjusted_load_address & !3,
                                 aligned_ram_read_value,
                                 rd_value,
                                 rd_old_value,
                             };
-                            tracer.trace_mem_load_step(tracing_data);
+                            if TR::SPECIAL_CASE_WORD_SIZED_MEM_OPS {
+                                if num_bytes == 4 {
+                                    tracer.trace_word_sized_mem_load_step(tracing_data);
+                                } else {
+                                    tracer.trace_mem_load_step(tracing_data);
+                                }
+                            } else {
+                                tracer.trace_mem_load_step(tracing_data);
+                            }
                         }
                         _ => {
                             panic!("Unknown opcode 0x{:08x}", opcode);
@@ -974,7 +1006,15 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                                 aligned_ram_old_value,
                                 aligned_ram_write_value,
                             };
-                            tracer.trace_mem_store_step(tracing_data);
+                            if TR::SPECIAL_CASE_WORD_SIZED_MEM_OPS {
+                                if store_length == 4 {
+                                    tracer.trace_word_sized_mem_store_step(tracing_data);
+                                } else {
+                                    tracer.trace_mem_store_step(tracing_data);
+                                }
+                            } else {
+                                tracer.trace_mem_store_step(tracing_data);
+                            }
                         }
                         _ => {
                             panic!("Unknown opcode 0x{:08x}", opcode);

@@ -211,7 +211,9 @@ pub const WITNESS_NEXT_ROW_OPENING_INDEXES: [usize; NUM_WITNESS_OPENING_NEXT_ROW
 pub const NUM_MEMORY_OPENING_NEXT_ROW: usize = const {
     VERIFIER_COMPILED_LAYOUT
         .memory_layout
-        .shuffle_ram_inits_and_teardowns.len() * REGISTER_SIZE
+        .shuffle_ram_inits_and_teardowns
+        .len()
+        * REGISTER_SIZE
 };
 pub const MEMORY_NEXT_ROW_OPENING_INDEXES: [usize; NUM_MEMORY_OPENING_NEXT_ROW] = const {
     let mut result = [0usize; NUM_WITNESS_OPENING_NEXT_ROW];

@@ -10,7 +10,6 @@ use risc_v_simulator::machine_mode_only_unrolled::{
 pub struct MemoryCircuitOracle<'a> {
     pub inner: &'a [MemoryOpcodeTracingDataWithTimestamp],
     pub decoder_table: &'a [ExecutorFamilyDecoderData],
-    pub default_pc_value_in_padding: u32,
 }
 
 impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
@@ -31,7 +30,8 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
         let Some(cycle_data) = self.inner.get(trace_step) else {
             // there are few cases of conventional values
             return match placeholder {
-                Placeholder::PcFin => self.default_pc_value_in_padding,
+                Placeholder::PcInit => 0,
+                Placeholder::PcFin => 4,
                 _ => 0,
             };
         };
