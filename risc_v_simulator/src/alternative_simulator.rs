@@ -113,7 +113,7 @@ macro_rules! after_call {
 // between RISC-V and x86 registers
 
 fn destination_gpr(x: u32) -> u8 {
-    x64::Rq::RDX as u8
+    x64::Rq::RAX as u8
 }
 
 fn store_result(ops: &mut x64::Assembler, x: u32) {
@@ -124,7 +124,7 @@ fn store_result(ops: &mut x64::Assembler, x: u32) {
     let high_or_low = x & 1;
     let register = x >> 1;
     dynasm!(ops
-        ; pinsrd Rx(register), edx, high_or_low as i8
+        ; pinsrd Rx(register), eax, high_or_low as i8
     )
 }
 
@@ -155,14 +155,45 @@ fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
     );
 }
 
-const TRACE_LEN: usize = 10000;
+const TRACE_LEN: usize = 10;
 
 macro_rules! increment_trace {
     ($ops:ident) => {
         dynasm!($ops
             ; inc r9
             ; cmp r9, TRACE_LEN as _
-            ; je ->quit
+            ; jne >skip
+            ; xor r9, r9
+            ; push rax
+            ; push rcx
+            ; push rdx
+            ;; before_call!($ops)
+            ; mov rax, QWORD print_trace as _
+            ; mov rdi, r8
+            ; call rax
+            ;; after_call!($ops)
+            ; pop rdx
+            ; pop rcx
+            ; pop rax
+            ; skip:
+        );
+    };
+}
+
+macro_rules! trace_register {
+    ($ops:ident, $r:expr) => {
+        dynasm!($ops
+            ; mov [r8 + 4*r9], Rd($r)
+            ;; increment_trace!($ops)
+        );
+    };
+}
+
+macro_rules! trace_zero {
+    ($ops:ident) => {
+         dynasm!($ops
+            ; mov DWORD [r8 + 4*r9], 0
+            ;; increment_trace!($ops)
         );
     };
 }
@@ -177,11 +208,11 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
 
     dynasm!(ops
         ; ->start:
+        ;; prologue!(ops)
         ; vzeroall
         ; mov r8, rdx
         ; xor r9, r9
     );
-    prologue!(ops);
 
     // Static jump targets for JAL and branch instructions
     let instruction_labels = (0..program.len())
@@ -445,10 +476,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 _ => impure = true,
             }
             if !impure {
-                dynasm!(ops
-                    ; mov [r8 + 4*r9], Rd(out)
-                );
-                increment_trace!(ops);
+                trace_register!(ops, out);
 
                 store_result(&mut ops, rd);
                 instruction_emitted = true;
@@ -462,11 +490,11 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     if rd != 0 {
                         dynasm!(ops
                             ; mov Rd(out), (pc + 4) as i32
-                            // Trace the return value
-                            ; mov [r8 + 4*r9], Rd(out)
                         );
-                        increment_trace!(ops);
                         store_result(&mut ops, rd);
+                        trace_register!(ops, out);
+                    } else {
+                        trace_zero!(ops);
                     }
 
                     let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
@@ -482,11 +510,11 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     if rd != 0 {
                         dynasm!(ops
                             ; mov Rd(out), (pc + 4) as i32
-                            // Trace the return value
-                            ; mov [r8 + 4*r9], Rd(out)
                         );
-                        increment_trace!(ops);
+                        trace_register!(ops, out);
                         store_result(&mut ops, rd);
+                    } else {
+                        trace_zero!(ops);
                     }
 
                     let offset = sign_extend::<12>(parts.imm());
@@ -514,18 +542,18 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 | Instruction::Bltu(parts)
                 | Instruction::Bge(parts)
                 | Instruction::Bgeu(parts) => {
-                    let jump_target = pc as i32 + sign_extend::<12>(parts.imm());
+                    let jump_target = pc as i32 + sign_extend::<13>(parts.imm());
                     if jump_target % 4 != 0 {
                         todo!("instruction address misaligned exception")
                     } else {
                         let a = load(&mut ops, parts.rs1());
                         load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
 
+                        trace_zero!(ops);
+
                         dynasm!(ops
                             ; cmp Rd(a), Rd(SCRATCH_REGISTER)
                         );
-                        increment_trace!(ops);
-
                         match instruction {
                             Instruction::Beq(_) => {
                                 dynasm!(ops
@@ -572,7 +600,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
                     );
-                    increment_trace!(ops);
+                    trace_zero!(ops);
                 }
                 Instruction::Sh(parts) => {
                     // TODO: exception on misalignment
@@ -584,7 +612,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
                     );
-                    increment_trace!(ops);
+                    trace_zero!(ops);
                 }
                 Instruction::Sw(parts) => {
                     // TODO: exception on misalignment
@@ -596,7 +624,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
                     );
-                    increment_trace!(ops);
+                    trace_zero!(ops);
                 }
 
                 Instruction::Csrrw(parts) => match parts.csr() {
@@ -604,30 +632,30 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         if rd != 0 {
                             before_call!(ops);
                             dynasm!(ops
-                                ; mov rax, Context::<N>::read_nondeterminism as _
+                                ; mov rax, QWORD Context::<N>::read_nondeterminism as _
                                 ; mov rdi, rsi
                                 ; call rax
                             );
                             after_call!(ops);
                             dynasm!(ops
                                 ; mov Rd(out), eax
-                                // Trace the return value
-                                ; mov [r8 + 4*r9], Rd(out)
                             );
+                            trace_register!(ops, out);
                             store_result(&mut ops, rd);
+                        } else {
+                            trace_zero!(ops);
                         }
                         if parts.rs1() != 0 {
                             load_into(&mut ops, rd, SCRATCH_REGISTER);
                             before_call!(ops);
                             dynasm!(ops
-                                ; mov rax, Context::<N>::write_nondeterminism as _
+                                ; mov rax, QWORD Context::<N>::write_nondeterminism as _
                                 ; mov rdi, rsi
                                 ; mov esi, Rd(SCRATCH_REGISTER)
                                 ; call rax
                             );
                             after_call!(ops);
                         }
-                        increment_trace!(ops);
                     }
                     _ => panic!("Unknown csr"),
                 },
@@ -635,6 +663,9 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 _ => {
                     if rd != 0 {
                         todo!("unsupported instruction")
+                    } else {
+                        // effectively a NOP
+                        trace_zero!(ops);
                     }
                 }
             }
@@ -679,6 +710,13 @@ impl<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> Context<'a, N> {
     extern "sysv64" fn write_nondeterminism(&mut self, value: u32) {
         self.non_determinism_source
             .write_with_memory_access(&self.memory, value);
+    }
+}
+
+extern "sysv64" fn print_trace(trace: *const u32) {
+    let trace: &[u32; TRACE_LEN] = unsafe { &*trace.cast() };
+    for x in trace {
+        println!("{x}");
     }
 }
 

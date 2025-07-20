@@ -59,25 +59,28 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     let mmu = NoMMU { sapt: 0 };
 
     let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-                                                                   /*memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
+    if false {
+        memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
-                                                                   let mut sim = Simulator::new(
-                                                                       config,
-                                                                       state,
-                                                                       memory,
-                                                                       memory_tracer,
-                                                                       mmu,
-                                                                       non_determinism_source,
-                                                                   );
+        let mut sim = Simulator::new(
+            config,
+            state,
+            memory,
+            memory_tracer,
+            mmu,
+            non_determinism_source,
+        );
 
-                                                                   sim.run(|_, _| {}, |_, _| {});*/
-
-    let program = read_bin(&config.bin_path)
-        .into_iter()
-        .array_chunks()
-        .map(u32::from_le_bytes)
-        .collect::<Vec<_>>();
-    run_alternative_simulator(&program, &mut non_determinism_source, memory);
+        sim.run(|_, _| {}, |_, _| {});
+        non_determinism_source = sim.non_determinism_source;
+    } else {
+        let program = read_bin(&config.bin_path)
+            .into_iter()
+            .array_chunks()
+            .map(u32::from_le_bytes)
+            .collect::<Vec<_>>();
+        run_alternative_simulator(&program, &mut non_determinism_source, memory);
+    }
 
     (non_determinism_source, state)
 }
