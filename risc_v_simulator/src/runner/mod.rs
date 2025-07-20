@@ -59,9 +59,9 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     let mmu = NoMMU { sapt: 0 };
 
     let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
-    if false {
-        memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
+    memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
+    if false {
         let mut sim = Simulator::new(
             config,
             state,
