@@ -646,7 +646,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                             trace_zero!(ops);
                         }
                         if parts.rs1() != 0 {
-                            load_into(&mut ops, rd, SCRATCH_REGISTER);
+                            load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
                             before_call!(ops);
                             dynasm!(ops
                                 ; mov rax, QWORD Context::<N>::write_nondeterminism as _
