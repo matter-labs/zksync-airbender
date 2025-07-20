@@ -1,0 +1,669 @@
+use std::os;
+
+use crate::abstractions::{memory::VectorMemoryImpl, non_determinism::NonDeterminismCSRSource};
+use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
+use riscv_decode::Instruction;
+
+// The prologue saves all callee-saved registers
+// This allows us to use all but rbp and rsp
+// Using rbp would mess with debuggers
+// Using rsp would cause signal handlers to write to some random location
+// instead of the stack.
+macro_rules! prologue {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; push rbp
+            ; mov rbp, rsp
+
+            ; push rbx
+            ; push r12
+            ; push r13
+            ; push r14
+            ; push r15
+        )
+    };
+}
+
+macro_rules! epilogue {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; pop r15
+            ; pop r14
+            ; pop r13
+            ; pop r12
+            ; pop rbx
+
+            ; leave
+            ; ret
+        )
+    };
+}
+
+macro_rules! before_call {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; push rsi
+            ; push rdi
+            ; push r8
+            ; push r9
+            ; push r10
+            ; push r11
+            ; push r12
+            ; push r13
+            ; push r14
+            ; push r15
+
+            ; sub rsp, 16 * 16
+            ; movdqu [rsp + 0], xmm0
+            ; movdqu [rsp + 16], xmm1
+            ; movdqu [rsp + 32], xmm2
+            ; movdqu [rsp + 48], xmm3
+            ; movdqu [rsp + 64], xmm4
+            ; movdqu [rsp + 80], xmm5
+            ; movdqu [rsp + 96], xmm6
+            ; movdqu [rsp + 112], xmm7
+            ; movdqu [rsp + 128], xmm8
+            ; movdqu [rsp + 144], xmm9
+            ; movdqu [rsp + 160], xmm10
+            ; movdqu [rsp + 176], xmm11
+            ; movdqu [rsp + 192], xmm12
+            ; movdqu [rsp + 208], xmm13
+            ; movdqu [rsp + 224], xmm14
+            ; movdqu [rsp + 240], xmm15
+        )
+    }
+}
+
+macro_rules! after_call {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; movdqu  xmm0, [rsp + 0]
+            ; movdqu  xmm1, [rsp + 16]
+            ; movdqu  xmm2, [rsp + 32]
+            ; movdqu  xmm3, [rsp + 48]
+            ; movdqu  xmm4, [rsp + 64]
+            ; movdqu  xmm5, [rsp + 80]
+            ; movdqu  xmm6, [rsp + 96]
+            ; movdqu  xmm7, [rsp + 112]
+            ; movdqu  xmm8, [rsp + 128]
+            ; movdqu  xmm9, [rsp + 144]
+            ; movdqu  xmm10, [rsp + 160]
+            ; movdqu  xmm11, [rsp + 176]
+            ; movdqu  xmm12, [rsp + 192]
+            ; movdqu  xmm13, [rsp + 208]
+            ; movdqu  xmm14, [rsp + 224]
+            ; movdqu  xmm15, [rsp + 240]
+            ; add rsp, 16 * 16
+
+            ; pop r15
+            ; pop r14
+            ; pop r13
+            ; pop r12
+            ; pop r11
+            ; pop r10
+            ; pop r9
+            ; pop r8
+            ; pop rdi
+            ; pop rsi
+        )
+    }
+}
+
+// The following functions are used to specify a mapping
+// between RISC-V and x86 registers
+
+fn destination_gpr(x: u32) -> u8 {
+    x64::Rq::RDX as u8
+}
+
+fn store_result(ops: &mut x64::Assembler, x: u32) {
+    assert!(x != 0);
+    assert!(x < 32);
+
+    let x = x as u8;
+    let high_or_low = x & 1;
+    let register = x >> 1;
+    dynasm!(ops
+        ; pinsrd Rx(register), edx, high_or_low as i8
+    )
+}
+
+/// RCX needs to be used for shift amounts, so no RISC-V register can live there.
+const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
+
+/// Returns the general purpose register that now holds the value of the
+/// RISC-V register `x`.
+/// Do not use in quick succession; the first value will get overwritten.
+fn load(ops: &mut x64::Assembler, x: u32) -> u8 {
+    let x = x as u8;
+    let high_or_low = x & 1;
+    let register = x >> 1;
+    dynasm!(ops
+        ; pextrd Rd(x64::Rq::RDX as u8), Rx(register), high_or_low as i8
+    );
+
+    x64::Rq::RDX as u8
+}
+
+/// Loads the RISC-V register `x` into the specified register.
+fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
+    let x = x as u8;
+    let high_or_low = x & 1;
+    let register = x >> 1;
+    dynasm!(ops
+        ; pextrd Rd(destination), Rx(register), high_or_low as i8
+    );
+}
+
+const TRACE_LEN: usize = 10000;
+
+pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
+    program: &[u32],
+    non_determinism_source: &mut N,
+    mut memory: VectorMemoryImpl,
+) {
+    let mut ops = x64::Assembler::new().unwrap();
+    let start = ops.offset();
+
+    dynasm!(ops
+        ; ->start:
+        ; vzeroall
+        ; mov r8, rdx
+        ; xor r9, r9
+    );
+    prologue!(ops);
+
+    // Static jump targets for JAL and branch instructions
+    let instruction_labels = (0..program.len())
+        .map(|_| ops.new_dynamic_label())
+        .collect::<Vec<_>>();
+
+    // Jump target array for Jalr
+    // Records the position of each RISC-V instruction relative to the start
+    let mut jump_offsets = vec![];
+
+    for (i, instruction) in program.iter().enumerate() {
+        let pc = i as u32 * 4;
+
+        dynasm!(ops
+            ; =>instruction_labels[i]
+        );
+        jump_offsets.push(ops.offset().0);
+
+        let rd = (instruction >> 7) & 0x1F;
+        let out = destination_gpr(rd);
+        let Ok(instruction) = riscv_decode::decode(*instruction) else {
+            println!("bad instruction {instruction:x} at {i}");
+            break;
+        };
+
+        let mut instruction_emitted = false;
+
+        // Instructions that just compute a result are NOPs if they write to x0
+        if rd != 0 {
+            let mut impure = false;
+            match instruction {
+                // Arithmetic
+                Instruction::Addi(parts) => {
+                    let source = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; lea Rd(out), [Rd(source) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+                Instruction::Andi(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; and Rd(out), sign_extend::<12>(parts.imm())
+                    );
+                }
+                Instruction::Ori(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; or Rd(out), sign_extend::<12>(parts.imm())
+                    );
+                }
+                Instruction::Xori(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; xor Rd(out), sign_extend::<12>(parts.imm())
+                    );
+                }
+                Instruction::Slti(parts) => {
+                    let source = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; cmp Rd(source), sign_extend::<12>(parts.imm())
+                        ; setl Rb(out)
+                        ; movzx Rd(out), Rb(out)
+                    );
+                }
+                Instruction::Sltiu(parts) => {
+                    let source = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; cmp Rd(source), sign_extend::<12>(parts.imm())
+                        ; setb Rb(out)
+                        ; movzx Rd(out), Rb(out)
+                    );
+                }
+                Instruction::Slli(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; shl Rd(out), parts.shamt() as i8
+                    );
+                }
+                Instruction::Srli(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; shr Rd(out), parts.shamt() as i8
+                    );
+                }
+                Instruction::Srai(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    dynasm!(ops
+                        ; sar Rd(out), parts.shamt() as i8
+                    );
+                }
+                Instruction::Lui(parts) => {
+                    dynasm!(ops
+                        ; mov Rd(out), parts.imm() as i32
+                    );
+                }
+                Instruction::Auipc(parts) => {
+                    dynasm!(ops
+                        ; mov Rd(out), (pc + parts.imm()) as i32
+                    );
+                }
+                Instruction::Add(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; add Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Sub(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; sub Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Slt(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; cmp Rd(out), Rd(other)
+                        ; setl Rb(out)
+                        ; movzx Rd(out), Rb(out)
+                    );
+                }
+                Instruction::Sltu(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; cmp Rd(out), Rd(other)
+                        ; setb Rb(out)
+                        ; movzx Rd(out), Rb(out)
+                    );
+                }
+                Instruction::And(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; and Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Or(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; or Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Xor(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; xor Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Sll(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    dynasm!(ops
+                        ; and rcx, 0x1f
+                        ; shl Rd(out), cl
+                    );
+                }
+                Instruction::Srl(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    dynasm!(ops
+                        ; and rcx, 0x1f
+                        ; shr Rd(out), cl
+                    );
+                }
+                Instruction::Sra(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    dynasm!(ops
+                        ; and rcx, 0x1f
+                        ; sar Rd(out), cl
+                    );
+                }
+
+                // Loads
+                Instruction::Lb(parts) => {
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(address)
+                        ; movsx Rd(out), BYTE [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+                Instruction::Lbu(parts) => {
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(address)
+                        ; movzx Rd(out), BYTE [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+                Instruction::Lh(parts) => {
+                    // TODO: exception on misalignment
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(address)
+                        ; movsx Rd(out), WORD [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+                Instruction::Lhu(parts) => {
+                    // TODO: exception on misalignment
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(address)
+                        ; movzx Rd(out), WORD [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+                Instruction::Lw(parts) => {
+                    // TODO: exception on misalignment
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(address)
+                        ; mov Rd(out), [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                    );
+                }
+
+                // Multiplication
+                Instruction::Mul(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; imul Rd(out), Rd(other)
+                    );
+                }
+                Instruction::Mulh(parts) => {
+                    load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; imul Rd(other)
+                    );
+                    if out != x64::Rq::RDX as u8 {
+                        dynasm!(ops
+                            ; mov Rd(out), edx
+                        );
+                    }
+                }
+                Instruction::Mulhu(parts) => {
+                    load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; mul Rd(other)
+                    );
+                    if out != x64::Rq::RDX as u8 {
+                        dynasm!(ops
+                            ; mov Rd(out), edx
+                        );
+                    }
+                }
+                Instruction::Mulhsu(parts) => {
+                    load_into(&mut ops, parts.rs1(), out);
+                    let other = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; movsx Rq(out), Rd(out)
+                        ; imul Rq(out), Rq(other)
+                        ; shr Rq(out), 32
+                    );
+                }
+
+                _ => impure = true,
+            }
+            if !impure {
+                dynasm!(ops
+                    ; mov [r8 + 4*r9], Rd(out)
+                );
+                store_result(&mut ops, rd);
+                instruction_emitted = true;
+            }
+        }
+
+        if !instruction_emitted {
+            match instruction {
+                // Control transfer instructions
+                Instruction::Jal(parts) => {
+                    if rd != 0 {
+                        dynasm!(ops
+                            ; mov Rd(out), (pc + 4) as i32
+                        );
+                        store_result(&mut ops, rd);
+                    }
+
+                    let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
+                    if jump_target % 4 != 0 {
+                        todo!("instruction address misaligned exception")
+                    } else {
+                        dynasm!(ops
+                            ; jmp =>instruction_labels[(jump_target / 4) as usize]
+                        );
+                    }
+                }
+                Instruction::Jalr(parts) => {
+                    if rd != 0 {
+                        dynasm!(ops
+                            ; mov Rd(out), (pc + 4) as i32
+                        );
+                        store_result(&mut ops, rd);
+                    }
+
+                    let offset = sign_extend::<12>(parts.imm());
+                    load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
+                    dynasm!(ops
+                        ; add Rd(SCRATCH_REGISTER), offset
+                        // Must be aligned to an instruction but no need to test the least significant bit,
+                        // as it is set to zero according to the specification
+                        ; test Rd(SCRATCH_REGISTER), 2
+                        ; jnz >misaligned
+                        ; shr Rd(SCRATCH_REGISTER), 2
+                        ; lea rdx, [->jump_offsets]
+                        ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
+                        ; lea rdx, [->start]
+                        ; add rdx, rax
+                        ; jmp rdx
+                        ; misaligned:
+                        // TODO: instruction address misaligned exception
+                        ; mov rax, [0]
+                    );
+                }
+                Instruction::Beq(parts)
+                | Instruction::Bne(parts)
+                | Instruction::Blt(parts)
+                | Instruction::Bltu(parts)
+                | Instruction::Bge(parts)
+                | Instruction::Bgeu(parts) => {
+                    let jump_target = pc as i32 + sign_extend::<12>(parts.imm());
+                    if jump_target % 4 != 0 {
+                        todo!("instruction address misaligned exception")
+                    } else {
+                        let a = load(&mut ops, parts.rs1());
+                        load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
+
+                        dynasm!(ops
+                            ; cmp Rd(a), Rd(SCRATCH_REGISTER)
+                        );
+
+                        match instruction {
+                            Instruction::Beq(_) => {
+                                dynasm!(ops
+                                    ; je =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            Instruction::Bne(_) => {
+                                dynasm!(ops
+                                    ; jne =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            Instruction::Blt(_) => {
+                                dynasm!(ops
+                                    ; jl =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            Instruction::Bltu(_) => {
+                                dynasm!(ops
+                                    ; jb =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            Instruction::Bge(_) => {
+                                dynasm!(ops
+                                    ; jge =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            Instruction::Bgeu(_) => {
+                                dynasm!(ops
+                                    ; jae =>instruction_labels[(jump_target / 4) as usize]
+                                );
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+
+                // Stores
+                Instruction::Sb(parts) => {
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                    );
+                    let value = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
+                    );
+                }
+                Instruction::Sh(parts) => {
+                    // TODO: exception on misalignment
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                    );
+                    let value = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
+                    );
+                }
+                Instruction::Sw(parts) => {
+                    // TODO: exception on misalignment
+                    let address = load(&mut ops, parts.rs1());
+                    dynasm!(ops
+                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                    );
+                    let value = load(&mut ops, parts.rs2());
+                    dynasm!(ops
+                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
+                    );
+                }
+
+                Instruction::Csrrw(parts) => match parts.csr() {
+                    NON_DETERMINISM_CSR => {
+                        if rd != 0 {
+                            before_call!(ops);
+                            dynasm!(ops
+                                ; mov rax, Context::<N>::read_nondeterminism as _
+                                ; mov rdi, rsi
+                                ; call rax
+                            );
+                            after_call!(ops);
+                            dynasm!(ops
+                                ; mov Rd(out), eax
+                            );
+                            store_result(&mut ops, rd);
+                        }
+                        if parts.rs1() != 0 {
+                            load_into(&mut ops, rd, SCRATCH_REGISTER);
+                            before_call!(ops);
+                            dynasm!(ops
+                                ; mov rax, Context::<N>::write_nondeterminism as _
+                                ; mov rdi, rsi
+                                ; mov esi, Rd(SCRATCH_REGISTER)
+                                ; call rax
+                            );
+                            after_call!(ops);
+                        }
+                    }
+                    _ => panic!("Unknown csr"),
+                },
+
+                _ => {
+                    if rd != 0 {
+                        todo!("unsupported instruction")
+                    }
+                }
+            }
+        }
+
+        dynasm!(ops
+            ; inc r9
+            ; cmp r9, TRACE_LEN as _
+            ; je ->quit
+        );
+    }
+
+    dynasm!(ops
+        ; ->jump_offsets:
+        ; .bytes jump_offsets.into_iter().flat_map(|x| x.to_le_bytes())
+        ; ->quit:
+    );
+    epilogue!(ops);
+
+    let code = ops.finalize().unwrap();
+    let run_program: extern "sysv64" fn(*mut u32, &mut Context<N>, *mut u32) =
+        unsafe { std::mem::transmute(code.ptr(start)) };
+
+    let mut context = Context {
+        memory,
+        non_determinism_source,
+    };
+    let mut trace = vec![0u32; TRACE_LEN];
+    run_program(
+        context.memory.inner.as_mut_ptr(),
+        &mut context,
+        trace.as_mut_ptr(),
+    );
+    for x in trace {
+        println!("{x}");
+    }
+}
+
+struct Context<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> {
+    memory: VectorMemoryImpl,
+    non_determinism_source: &'a mut N,
+}
+
+impl<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> Context<'a, N> {
+    extern "sysv64" fn read_nondeterminism(&mut self) -> u32 {
+        self.non_determinism_source.read()
+    }
+    extern "sysv64" fn write_nondeterminism(&mut self, value: u32) {
+        self.non_determinism_source
+            .write_with_memory_access(&self.memory, value);
+    }
+}
+
+fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
+    let shift = 32 - SOURCE_BITS;
+    i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
+}
