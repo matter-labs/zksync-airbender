@@ -13,6 +13,7 @@ categories.workspace = true
 prover = { workspace = true, features = ["prover"] }
 risc_v_cycles = { workspace = true }
 reduced_risc_v_machine = { workspace = true }
+reduced_risc_v_log_23_machine = { workspace = true }
 machine_without_signed_mul_div = { workspace = true }
 final_reduced_risc_v_machine = { workspace = true }
 blake2_with_compression = { workspace = true }

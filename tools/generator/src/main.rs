@@ -154,6 +154,10 @@ const ALL_LAYOUTS: &[(
         "reduced_risc_v_machine",
     ),
     (
+        create_reduced_machine_log_23_layout_with_delegation,
+        "reduced_risc_v_log_23_machine",
+    ),
+    (
         create_final_reduced_machine_layout_with_delegation,
         "final_reduced_risc_v_machine",
     ),

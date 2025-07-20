@@ -162,6 +162,7 @@ pub fn trace_execution_for_gpu<
     num_instances_upper_bound: usize,
     bytecode: &[u32],
     mut non_determinism: ND,
+    trace_len: usize,
     worker: &worker::Worker,
 ) -> (
     Vec<CycleData<C>>,
@@ -172,7 +173,8 @@ pub fn trace_execution_for_gpu<
     HashMap<u16, Vec<DelegationWitness>>,
     Vec<FinalRegisterValue>,
 ) {
-    let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
+    // let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
+    let cycles_per_circuit = trace_len - 1;
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
     let delegation_factories = setups::delegation_factories_for_machine::<C, Global>();
@@ -185,6 +187,7 @@ pub fn trace_execution_for_gpu<
         init_and_teardown_chunks,
     ) = run_and_split_for_gpu::<ND, C, Global>(
         max_cycles_to_run,
+        trace_len,
         bytecode,
         &mut non_determinism,
         delegation_factories,
@@ -231,15 +234,18 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A>)],
     worker: &worker::Worker,
 ) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
-    let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
+    let trace_len = risc_v_circuit_precomputations.compiled_circuit.trace_len;
+    let cycles_per_circuit = trace_len - 1;
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
+
+    let lde_factor = risc_v_circuit_precomputations.lde_precomputations.lde_factor;
 
     let (
         main_circuits_witness,
         inits_and_teardowns,
         delegation_circuits_witness,
         final_register_values,
-    ) = trace_execution_for_gpu::<ND, C, A>(max_cycles_to_run, bytecode, non_determinism, worker);
+    ) = trace_execution_for_gpu::<ND, C, A>(max_cycles_to_run, bytecode, non_determinism, trace_len, worker);
 
     let (num_paddings, inits_and_teardowns) = inits_and_teardowns;
 
@@ -468,7 +474,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             },
         };
 
-        let lde_factor = setups::lde_factor_for_machine::<C>();
+        // let lde_factor = setups::lde_factor_for_machine::<C>();
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();

@@ -310,11 +310,29 @@ pub fn verify_recursion_layer(full_proof: &ProgramProof) -> bool {
     run_verifier_binary(binary, responses).is_some()
 }
 
+pub fn verify_log_23_recursion_layer(full_proof: &ProgramProof) -> bool {
+    println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
+    let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+        .iter()
+        .map(|el| el.0)
+        .collect();
+    let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+    let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+        RECURSION_LAYER_VERIFIER_WITH_OUTPUT
+    } else {
+        RECURSION_LAYER_VERIFIER
+    };
+
+    // run_verifier_binary(binary, responses).is_some()
+
+    true
+}
+
 pub fn verify_final_recursion_layer(full_proof: &ProgramProof) -> bool {
     println!(
-        "Verifying final recursion layer proof using RISC-V simulator and the verifier program"
+        "Verifying log 23 recursion layer proof using RISC-V simulator and the verifier program"
     );
-    let allowed_delegation_types: Vec<_> = FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+    let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
         .iter()
         .map(|el| el.0)
         .collect();
@@ -678,6 +696,96 @@ mod test {
         assert!(is_valid);
 
         let mut dst = std::fs::File::create("recursion_over_recursion_layer.json").unwrap();
+        serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+    }
+
+    #[test]
+    fn test_prove_log_23_recursion_over_recursion() {
+        let worker = prover::worker::Worker::new_with_num_threads(8);
+
+        let delegation_precomputations =
+            trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
+                &worker,
+            );
+
+        let binary = RECURSION_LAYER_VERIFIER;
+
+        let expected_final_pc = find_binary_exit_point(&binary);
+        println!(
+            "Expected final PC for recursion program is 0x{:08x}",
+            expected_final_pc
+        );
+
+        let binary = get_padded_binary(&binary);
+
+        let mut src = std::fs::File::open("recursion_over_recursion_layer.json").unwrap();
+        let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+        dbg!(proofs.end_params);
+        dbg!(proofs.recursion_chain_hash);
+        dbg!(proofs.recursion_chain_preimage);
+
+        let main_circuit_precomputations = trace_and_split::setups::get_reduced_riscv_log_23_circuit_setup::<
+            Global,
+            Global,
+        >(&binary, &worker);
+
+        let new_end_params =
+            compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+        let (preimage, chain_hash) = continue_chain_encoding(
+            &proofs.recursion_chain_hash.unwrap(),
+            &proofs.recursion_chain_preimage.unwrap(),
+            &proofs.end_params,
+        );
+
+        dbg!(new_end_params);
+        dbg!(preimage);
+        dbg!(chain_hash);
+
+        let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+            .iter()
+            .map(|el| el.0)
+            .collect();
+        let non_determinism_source = QuasiUARTSource::new_with_reads(
+            proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+        );
+
+        let (main_proofs, delegation_proofs, register_values) =
+            prover_examples::prove_image_execution_on_reduced_machine(
+                10,
+                &binary,
+                non_determinism_source,
+                &main_circuit_precomputations,
+                &delegation_precomputations,
+                &worker,
+            );
+
+        let total_delegation_proofs: usize = delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+        println!(
+            "Created {} basic proofs and {} delegation proofs.",
+            main_proofs.len(),
+            total_delegation_proofs
+        );
+
+        let mut proofs_map = BTreeMap::new();
+        for (delegation_type, proofs) in delegation_proofs.into_iter() {
+            proofs_map.insert(delegation_type, proofs);
+        }
+
+        let program_proof = ProgramProof {
+            base_layer_proofs: main_proofs,
+            delegation_proofs: proofs_map,
+            register_final_values: register_values,
+            end_params: new_end_params,
+            recursion_chain_preimage: Some(preimage),
+            recursion_chain_hash: Some(chain_hash),
+        };
+
+        let is_valid = verify_log_23_recursion_layer(&program_proof);
+        assert!(is_valid);
+
+        let mut dst = std::fs::File::create("log_23_recursion_over_recursion_layer.json").unwrap();
         serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
     }
 

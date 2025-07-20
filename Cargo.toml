@@ -19,6 +19,7 @@ members = [
     # "circuit_defs/opcode_tests",
     "circuit_defs/prover_examples",
     "circuit_defs/reduced_risc_v_machine",
+    "circuit_defs/reduced_risc_v_log_23_machine",
     "circuit_defs/final_reduced_risc_v_machine",
     "circuit_defs/risc_v_cycles",
     "circuit_defs/risc_v_cycles/verifier",
@@ -61,6 +62,7 @@ default-members = [
     # "circuit_defs/opcode_tests",
     "circuit_defs/prover_examples",
     "circuit_defs/reduced_risc_v_machine",
+    "circuit_defs/reduced_risc_v_log_23_machine",
     "circuit_defs/final_reduced_risc_v_machine",
     "circuit_defs/risc_v_cycles",
     "circuit_defs/risc_v_cycles/verifier",
@@ -115,6 +117,7 @@ bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
 risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
 machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
 reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }
+reduced_risc_v_log_23_machine = { path = "./circuit_defs/reduced_risc_v_log_23_machine" }
 final_reduced_risc_v_machine = {path = "./circuit_defs/final_reduced_risc_v_machine"}
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
 setups = { path = "./circuit_defs/setups" }

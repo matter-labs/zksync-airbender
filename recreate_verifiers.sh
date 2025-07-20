@@ -4,6 +4,7 @@
 circuit_names=(
     "risc_v_cycles"
     "reduced_risc_v_machine"
+    "reduced_risc_v_log_23_machine"
     "final_reduced_risc_v_machine"
     "machine_without_signed_mul_div"
     "blake2_with_compression"

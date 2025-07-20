@@ -31,6 +31,7 @@ pub use final_reduced_risc_v_machine;
 pub use machine_without_signed_mul_div;
 pub use prover;
 pub use reduced_risc_v_machine;
+pub use reduced_risc_v_log_23_machine;
 pub use risc_v_cycles;
 
 pub mod circuits;
@@ -57,47 +58,47 @@ pub fn is_final_reduced_machine_configuration<C: MachineConfig>() -> bool {
     std::any::TypeId::of::<C>() == std::any::TypeId::of::<IWithoutByteAccessIsaConfig>()
 }
 
-pub fn num_cycles_for_machine<C: MachineConfig>() -> usize {
-    if is_default_machine_configuration::<C>() {
-        risc_v_cycles::NUM_CYCLES
-    } else if is_reduced_machine_configuration::<C>() {
-        reduced_risc_v_machine::NUM_CYCLES
-    } else if is_final_reduced_machine_configuration::<C>() {
-        final_reduced_risc_v_machine::NUM_CYCLES
-    } else if is_machine_without_signed_mul_div_configuration::<C>() {
-        machine_without_signed_mul_div::NUM_CYCLES
-    } else {
-        panic!("unknown machine configuration {:?}", C::default())
-    }
-}
+// pub fn num_cycles_for_machine<C: MachineConfig>() -> usize {
+//     if is_default_machine_configuration::<C>() {
+//         risc_v_cycles::NUM_CYCLES
+//     } else if is_reduced_machine_configuration::<C>() {
+//         reduced_risc_v_machine::NUM_CYCLES
+//     } else if is_final_reduced_machine_configuration::<C>() {
+//         final_reduced_risc_v_machine::NUM_CYCLES
+//     } else if is_machine_without_signed_mul_div_configuration::<C>() {
+//         machine_without_signed_mul_div::NUM_CYCLES
+//     } else {
+//         panic!("unknown machine configuration {:?}", C::default())
+//     }
+// }
 
-pub fn trace_len_for_machine<C: MachineConfig>() -> usize {
-    if is_default_machine_configuration::<C>() {
-        risc_v_cycles::DOMAIN_SIZE
-    } else if is_reduced_machine_configuration::<C>() {
-        reduced_risc_v_machine::DOMAIN_SIZE
-    } else if is_final_reduced_machine_configuration::<C>() {
-        final_reduced_risc_v_machine::DOMAIN_SIZE
-    } else if is_machine_without_signed_mul_div_configuration::<C>() {
-        machine_without_signed_mul_div::DOMAIN_SIZE
-    } else {
-        panic!("unknown machine configuration {:?}", C::default())
-    }
-}
+// pub fn trace_len_for_machine<C: MachineConfig>() -> usize {
+//     if is_default_machine_configuration::<C>() {
+//         risc_v_cycles::DOMAIN_SIZE
+//     } else if is_reduced_machine_configuration::<C>() {
+//         reduced_risc_v_machine::DOMAIN_SIZE
+//     } else if is_final_reduced_machine_configuration::<C>() {
+//         final_reduced_risc_v_machine::DOMAIN_SIZE
+//     } else if is_machine_without_signed_mul_div_configuration::<C>() {
+//         machine_without_signed_mul_div::DOMAIN_SIZE
+//     } else {
+//         panic!("unknown machine configuration {:?}", C::default())
+//     }
+// }
 
-pub fn lde_factor_for_machine<C: MachineConfig>() -> usize {
-    if is_default_machine_configuration::<C>() {
-        risc_v_cycles::LDE_FACTOR
-    } else if is_reduced_machine_configuration::<C>() {
-        reduced_risc_v_machine::LDE_FACTOR
-    } else if is_final_reduced_machine_configuration::<C>() {
-        final_reduced_risc_v_machine::LDE_FACTOR
-    } else if is_machine_without_signed_mul_div_configuration::<C>() {
-        machine_without_signed_mul_div::LDE_FACTOR
-    } else {
-        panic!("unknown machine configuration {:?}", C::default())
-    }
-}
+// pub fn lde_factor_for_machine<C: MachineConfig>() -> usize {
+//     if is_default_machine_configuration::<C>() {
+//         risc_v_cycles::LDE_FACTOR
+//     } else if is_reduced_machine_configuration::<C>() {
+//         reduced_risc_v_machine::LDE_FACTOR
+//     } else if is_final_reduced_machine_configuration::<C>() {
+//         final_reduced_risc_v_machine::LDE_FACTOR
+//     } else if is_machine_without_signed_mul_div_configuration::<C>() {
+//         machine_without_signed_mul_div::LDE_FACTOR
+//     } else {
+//         panic!("unknown machine configuration {:?}", C::default())
+//     }
+// }
 
 pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
 ) -> HashMap<u16, Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>> {
