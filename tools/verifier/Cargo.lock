@@ -73,6 +73,7 @@ dependencies = [
  "bigint_with_control_verifier",
  "blake2_with_compression_verifier",
  "final_reduced_risc_v_machine_verifier",
+ "reduced_risc_v_log_23_machine_verifier",
  "reduced_risc_v_machine_verifier",
  "risc_v_cycles_verifier",
  "verifier_common",
@@ -165,6 +166,15 @@ dependencies = [
 [[package]]
 name = "reduced_keccak"
 version = "0.1.0"
+
+[[package]]
+name = "reduced_risc_v_log_23_machine_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
 
 [[package]]
 name = "reduced_risc_v_machine_verifier"
