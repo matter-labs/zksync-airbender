@@ -1,5 +1,3 @@
-use std::os;
-
 use crate::abstractions::{memory::VectorMemoryImpl, non_determinism::NonDeterminismCSRSource};
 use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
 use riscv_decode::Instruction;
@@ -693,9 +691,6 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         &mut context,
         trace.as_mut_ptr(),
     );
-    for x in trace {
-        println!("{x}");
-    }
 }
 
 struct Context<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> {
