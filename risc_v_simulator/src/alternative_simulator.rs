@@ -157,6 +157,16 @@ fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
 
 const TRACE_LEN: usize = 10000;
 
+macro_rules! increment_trace {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; inc r9
+            ; cmp r9, TRACE_LEN as _
+            ; je ->quit
+        );
+    };
+}
+
 pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
     program: &[u32],
     non_determinism_source: &mut N,
@@ -193,7 +203,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         let rd = (instruction >> 7) & 0x1F;
         let out = destination_gpr(rd);
         let Ok(instruction) = riscv_decode::decode(*instruction) else {
-            println!("bad instruction {instruction:x} at {i}");
+            //println!("bad instruction {instruction:x} at {i}");
             break;
         };
 
@@ -438,6 +448,8 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 dynasm!(ops
                     ; mov [r8 + 4*r9], Rd(out)
                 );
+                increment_trace!(ops);
+
                 store_result(&mut ops, rd);
                 instruction_emitted = true;
             }
@@ -450,7 +462,10 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     if rd != 0 {
                         dynasm!(ops
                             ; mov Rd(out), (pc + 4) as i32
+                            // Trace the return value
+                            ; mov [r8 + 4*r9], Rd(out)
                         );
+                        increment_trace!(ops);
                         store_result(&mut ops, rd);
                     }
 
@@ -467,7 +482,10 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     if rd != 0 {
                         dynasm!(ops
                             ; mov Rd(out), (pc + 4) as i32
+                            // Trace the return value
+                            ; mov [r8 + 4*r9], Rd(out)
                         );
+                        increment_trace!(ops);
                         store_result(&mut ops, rd);
                     }
 
@@ -506,6 +524,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         dynasm!(ops
                             ; cmp Rd(a), Rd(SCRATCH_REGISTER)
                         );
+                        increment_trace!(ops);
 
                         match instruction {
                             Instruction::Beq(_) => {
@@ -553,6 +572,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
                     );
+                    increment_trace!(ops);
                 }
                 Instruction::Sh(parts) => {
                     // TODO: exception on misalignment
@@ -564,6 +584,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
                     );
+                    increment_trace!(ops);
                 }
                 Instruction::Sw(parts) => {
                     // TODO: exception on misalignment
@@ -575,6 +596,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     dynasm!(ops
                         ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
                     );
+                    increment_trace!(ops);
                 }
 
                 Instruction::Csrrw(parts) => match parts.csr() {
@@ -589,6 +611,8 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                             after_call!(ops);
                             dynasm!(ops
                                 ; mov Rd(out), eax
+                                // Trace the return value
+                                ; mov [r8 + 4*r9], Rd(out)
                             );
                             store_result(&mut ops, rd);
                         }
@@ -603,6 +627,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                             );
                             after_call!(ops);
                         }
+                        increment_trace!(ops);
                     }
                     _ => panic!("Unknown csr"),
                 },
@@ -614,12 +639,6 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 }
             }
         }
-
-        dynasm!(ops
-            ; inc r9
-            ; cmp r9, TRACE_LEN as _
-            ; je ->quit
-        );
     }
 
     dynasm!(ops
