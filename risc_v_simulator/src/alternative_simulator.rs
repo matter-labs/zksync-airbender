@@ -604,8 +604,14 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     store_result(&mut ops, rd);
                 }
 
-                let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
-                if jump_target % 4 != 0 {
+                let offset = sign_extend::<21>(parts.imm());
+                let jump_target = pc as i32 + offset;
+                if offset == 0 {
+                    // An infinite loop is used to signal end of execution
+                    dynasm!(ops
+                        ; jmp ->quit
+                    );
+                } else if jump_target % 4 != 0 {
                     emit_runtime_error!(ops)
                 } else {
                     if let Some(&label) = instruction_labels.get((jump_target / 4) as usize) {
