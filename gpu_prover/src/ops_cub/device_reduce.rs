@@ -188,9 +188,9 @@ fn get_segments_per_col(
     // Heuristic: assume 2 blocks per SM is enough to saturate
     const TARGET_BLOCKS_PER_SM: usize = 2;
     let min_blocks = TARGET_BLOCKS_PER_SM * sm_count;
-    // if batch_size >= min_blocks {
+    if batch_size >= min_blocks {
         return 1;
-    // }
+    }
     let target_blocks_per_col = min_blocks.div_ceil(batch_size);
     assert!(target_blocks_per_col >= 2);
     let block_chunks_per_col = num_items / ADAPTIVE_BATCH_REDUCE_MIN_ELEMS_PER_BLOCK;

@@ -278,7 +278,6 @@ pub(crate) fn make_evaluations_sum_to_zero(
             domain_size,
             context.get_device_properties(),
         )?;
-        batch_reduce_intermediate_elems, columns_count, cub_scratch_bytes);
     let mut scratch_bytes_alloc = context.alloc(
         size_of::<BF>() * (batch_reduce_intermediate_elems + columns_count) + cub_scratch_bytes,
         AllocationPlacement::BestFit,
