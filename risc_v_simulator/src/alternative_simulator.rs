@@ -144,24 +144,38 @@ const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
 /// RISC-V register `x`.
 /// Do not use in quick succession; the first value will get overwritten.
 fn load(ops: &mut x64::Assembler, x: u32) -> u8 {
-    let x = x as u8;
-    let high_or_low = x & 1;
-    let register = x >> 1;
-    dynasm!(ops
-        ; pextrd Rd(x64::Rq::RDX as u8), Rx(register), high_or_low as i8
-    );
+    assert!(x < 32);
+    if x == 0 {
+        dynasm!(ops
+            ; xor edx, edx
+        );
+    } else {
+        let x = x as u8;
+        let high_or_low = x & 1;
+        let register = x >> 1;
+        dynasm!(ops
+            ; pextrd edx, Rx(register), high_or_low as i8
+        );
+    }
 
     x64::Rq::RDX as u8
 }
 
 /// Loads the RISC-V register `x` into the specified register.
 fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
-    let x = x as u8;
-    let high_or_low = x & 1;
-    let register = x >> 1;
-    dynasm!(ops
-        ; pextrd Rd(destination), Rx(register), high_or_low as i8
-    );
+    assert!(x < 32);
+    if x == 0 {
+        dynasm!(ops
+            ; xor Rd(destination), Rd(destination)
+        );
+    } else {
+        let x = x as u8;
+        let high_or_low = x & 1;
+        let register = x >> 1;
+        dynasm!(ops
+            ; pextrd Rd(destination), Rx(register), high_or_low as i8
+        );
+    }
 }
 
 macro_rules! print_registers {
@@ -775,8 +789,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                             Context::<N>::process_csr::<U256_OPS_WITH_CONTROL_ACCESS_ID> as _
                         }
                         x => {
-                            // TODO: crash here if there is a way to avoid decoding garbage
-                            // that resides between instructions
+                            emit_runtime_error!(ops);
                             continue;
                         }
                     };
