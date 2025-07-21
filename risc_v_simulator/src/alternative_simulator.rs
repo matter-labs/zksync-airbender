@@ -632,7 +632,9 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                             dynasm!(ops
                                 ; mov rax, QWORD Context::<N>::read_nondeterminism as _
                                 ; mov rdi, rsi
+                                ; sub rsp, 8
                                 ; call rax
+                                ; add rsp, 8
                             );
                             after_call!(ops);
                             dynasm!(ops
@@ -650,7 +652,9 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                                 ; mov rax, QWORD Context::<N>::write_nondeterminism as _
                                 ; mov rdi, rsi
                                 ; mov esi, Rd(SCRATCH_REGISTER)
+                                ; sub rsp, 8
                                 ; call rax
+                                ; add rsp, 8
                             );
                             after_call!(ops);
                         }
