@@ -21,7 +21,7 @@ use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::prover::definitions::ExternalChallenges;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 use verifier_common::VerifierFunctionPointer;
-use verifier_common::{parse_field_els_as_u32_checked, ProofPublicInputs};
+use verifier_common::{parse_field_els_as_u32_from_u16_limbs_checked, ProofPublicInputs};
 use verifier_common::{prover, ProofOutput};
 
 pub const MAX_BASE_LAYER_CIRCUITS: usize = const {
@@ -233,10 +233,10 @@ unsafe fn verify_full_statement<const BASE_LAYER: bool>(
             );
 
             // check lazy inits
-            let last_previous = parse_field_els_as_u32_checked(
+            let last_previous = parse_field_els_as_u32_from_u16_limbs_checked(
                 previous.lazy_init_boundary_values[0].lazy_init_one_before_last_row,
             );
-            let first_current = parse_field_els_as_u32_checked(
+            let first_current = parse_field_els_as_u32_from_u16_limbs_checked(
                 current.lazy_init_boundary_values[0].lazy_init_first_row,
             );
 
@@ -245,23 +245,40 @@ unsafe fn verify_full_statement<const BASE_LAYER: bool>(
                 // nothing, we are all good
             } else {
                 // we require padding of 0 init address, and 0 teardown value and timestamp
-                let teardown_value = parse_field_els_as_u32_checked(
-                    previous.lazy_init_boundary_values[0].teardown_value_one_before_last_row,
-                );
-                let teardown_timestamp = parse_field_els_as_u32_checked(
-                    previous.lazy_init_boundary_values[0].teardown_timestamp_one_before_last_row,
-                );
                 assert_eq!(last_previous, 0);
-                assert_eq!(teardown_value, 0);
-                assert_eq!(teardown_timestamp, 0);
+
+                // just compare to 0 after reduction to avoid parsing u16 or timestamp bits
+                assert_eq!(
+                    previous.lazy_init_boundary_values[0].teardown_value_one_before_last_row[0]
+                        .to_reduced_u32(),
+                    0
+                );
+                assert_eq!(
+                    previous.lazy_init_boundary_values[0].teardown_value_one_before_last_row[1]
+                        .to_reduced_u32(),
+                    0
+                );
+
+                assert_eq!(
+                    previous.lazy_init_boundary_values[0].teardown_timestamp_one_before_last_row[0]
+                        .to_reduced_u32(),
+                    0
+                );
+                assert_eq!(
+                    previous.lazy_init_boundary_values[0].teardown_timestamp_one_before_last_row[1]
+                        .to_reduced_u32(),
+                    0
+                );
             }
         }
         // then over state variables
 
         // check continuous PC
-        let start_pc = parse_field_els_as_u32_checked(state_variables.input_state_variables);
+        let start_pc =
+            parse_field_els_as_u32_from_u16_limbs_checked(state_variables.input_state_variables);
         assert_eq!(start_pc, expected_input_pc);
-        let end_pc = parse_field_els_as_u32_checked(state_variables.output_state_variables);
+        let end_pc =
+            parse_field_els_as_u32_from_u16_limbs_checked(state_variables.output_state_variables);
         expected_input_pc = end_pc;
 
         // update accumulators
