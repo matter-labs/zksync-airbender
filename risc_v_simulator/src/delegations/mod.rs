@@ -233,7 +233,6 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
@@ -241,10 +240,8 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,
-        _mmu: &mut MMU,
         csr_index: u32,
         _rs1_value: u32,
-        _zimm: u32,
         ret_val: &mut u32,
         trap: &mut TrapReason,
     ) {
@@ -263,7 +260,6 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
@@ -271,10 +267,8 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
-        mmu: &mut MMU,
         csr_index: u32,
         rs1_value: u32,
-        _zimm: u32,
         trap: &mut TrapReason,
     ) {
         match csr_index {
@@ -283,13 +277,12 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
                     state,
                     memory_source,
                     tracer,
-                    mmu,
                     rs1_value,
                     trap,
                 );
             }
             U256_OPS_WITH_CONTROL_ACCESS_ID => {
-                u256_ops_with_control_impl(state, memory_source, tracer, mmu, rs1_value, trap);
+                u256_ops_with_control_impl(state, memory_source, tracer, rs1_value, trap);
             }
             _ => {
                 *trap = TrapReason::IllegalInstruction;

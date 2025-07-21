@@ -20,13 +20,11 @@ const BASE_ABI_REGISTER: u32 = 10;
 pub fn blake2_round_function_with_extended_control<
     M: MemorySource,
     TR: Tracer<C>,
-    MMU: MMUImplementation<M, TR, C>,
     C: MachineConfig,
 >(
     state: &mut RiscV32State<C>,
     memory_source: &mut M,
     tracer: &mut TR,
-    _mmu: &mut MMU,
     rs1_value: u32,
     trap: &mut TrapReason,
 ) {

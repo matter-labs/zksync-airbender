@@ -17,16 +17,10 @@ pub const EQ_OP_BIT_IDX: usize = 5;
 pub const CARRY_BIT_IDX: usize = 6;
 pub const MEMCOPY_BIT_IDX: usize = 7;
 
-pub fn u256_ops_with_control_impl<
-    M: MemorySource,
-    TR: Tracer<C>,
-    MMU: MMUImplementation<M, TR, C>,
-    C: MachineConfig,
->(
+pub fn u256_ops_with_control_impl<M: MemorySource, TR: Tracer<C>, C: MachineConfig>(
     state: &mut RiscV32State<C>,
     memory_source: &mut M,
     tracer: &mut TR,
-    _mmu: &mut MMU,
     rs1_value: u32,
     trap: &mut TrapReason,
 ) {
