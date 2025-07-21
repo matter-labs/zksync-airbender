@@ -95,7 +95,6 @@ pub fn generate_artifacts() {
     let compiled_circuit = get_delegation_circuit();
     serialize_to_file(&compiled_circuit.compiled_circuit, "generated/layout");
 
-    let compiled_circuit = get_delegation_circuit();
     let (layout, quotient) =
         verifier_generator::generate_for_description(compiled_circuit.compiled_circuit);
 

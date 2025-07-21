@@ -149,7 +149,6 @@ pub fn generate_artifacts() {
     let compiled_machine = get_machine(&dummy_bytecode, ALLOWED_DELEGATION_CSRS);
     serialize_to_file(&compiled_machine, "generated/layout");
 
-    let compiled_machine = get_machine(&dummy_bytecode, ALLOWED_DELEGATION_CSRS);
     let (layout, quotient) = verifier_generator::generate_for_description(compiled_machine);
 
     let mut dst = std::fs::File::create("generated/circuit_layout.rs").unwrap();
