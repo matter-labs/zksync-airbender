@@ -700,11 +700,11 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                         operand
                                     },
                                     4 => {
-                                        report_opcode("LB");
+                                        report_opcode("LBU");
                                         zero_extend_8(operand)
                                     },
                                     5 => {
-                                        report_opcode("LH");
+                                        report_opcode("LHU");
                                         zero_extend_16(operand)
                                     },
                                     _ => unsafe {unreachable_unchecked()}
@@ -1099,7 +1099,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {} at pc 0x{:08x}", Config::default(), csr, pc);
                                     // println!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
-                                    csr_processor.process_read(self, memory_source, non_determinism_source, tracer,  csr_number, rs1, &mut ret_val, &mut trap);
+                                    csr_processor.process_read(&mut self.registers, memory_source, non_determinism_source, tracer,  csr_number, rs1, &mut ret_val, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
                                     }
@@ -1155,7 +1155,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                     Self::add_delegation(csr);
                                     // let t = CSR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                                     // println!("Custom CSR = 0x{:04x} WRITE at cycle {}, total: {}", csr_number, proc_cycle, t + 1);
-                                    csr_processor.process_write(self, memory_source, non_determinism_source, tracer,  csr_number, rs1,  &mut trap);
+                                    csr_processor.process_write(&mut self.registers, memory_source, non_determinism_source, tracer,  csr_number, rs1,  &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
                                     }
@@ -1209,7 +1209,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {}", Config::default(), csr);
                                     // println!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
-                                    csr_processor.process_read(self, memory_source, non_determinism_source, tracer, csr_number, rs1,  &mut ret_val, &mut trap);
+                                    csr_processor.process_read(&mut self.registers, memory_source, non_determinism_source, tracer, csr_number, rs1,  &mut ret_val, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
                                     }
@@ -1278,7 +1278,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {}", Config::default(), csr);
                                     // let t = CSR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                                     Self::add_delegation(csr);
-                                    csr_processor.process_write(self, memory_source, non_determinism_source, tracer, csr_number, rs1, &mut trap);
+                                    csr_processor.process_write(&mut self.registers, memory_source, non_determinism_source, tracer, csr_number, rs1, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
                                     }

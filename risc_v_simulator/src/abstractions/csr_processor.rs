@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::*;
-use crate::cycle::state::RiscV32State;
+use crate::cycle::state::NUM_REGISTERS;
 use crate::cycle::status_registers::TrapReason;
 use crate::mmu::MMUImplementation;
 
@@ -15,7 +15,7 @@ pub trait CustomCSRProcessor: 'static + Clone + Debug {
         C: MachineConfig,
     >(
         &mut self,
-        state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
@@ -31,7 +31,7 @@ pub trait CustomCSRProcessor: 'static + Clone + Debug {
         C: MachineConfig,
     >(
         &mut self,
-        state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
@@ -53,7 +53,7 @@ impl CustomCSRProcessor for NoExtraCSRs {
         C: MachineConfig,
     >(
         &mut self,
-        _state: &mut RiscV32State<C>,
+        _registers: &mut [u32; NUM_REGISTERS],
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,
@@ -74,7 +74,7 @@ impl CustomCSRProcessor for NoExtraCSRs {
         C: MachineConfig,
     >(
         &mut self,
-        _state: &mut RiscV32State<C>,
+        _registers: &mut [u32; NUM_REGISTERS],
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,

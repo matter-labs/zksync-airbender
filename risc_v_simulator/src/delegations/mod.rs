@@ -9,6 +9,7 @@ use crate::abstractions::memory::*;
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::tracer::*;
 use crate::cycle::state::RiscV32State;
+use crate::cycle::state::NUM_REGISTERS;
 use crate::cycle::status_registers::TrapReason;
 use crate::cycle::MachineConfig;
 use crate::mmu::*;
@@ -236,7 +237,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         C: MachineConfig,
     >(
         &mut self,
-        _state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,
@@ -263,7 +264,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         C: MachineConfig,
     >(
         &mut self,
-        state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
@@ -274,7 +275,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         match csr_index {
             BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
                 blake2_round_function_with_extended_control(
-                    state,
+                    registers,
                     memory_source,
                     tracer,
                     rs1_value,
@@ -282,7 +283,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
                 );
             }
             U256_OPS_WITH_CONTROL_ACCESS_ID => {
-                u256_ops_with_control_impl(state, memory_source, tracer, rs1_value, trap);
+                u256_ops_with_control_impl(registers, memory_source, tracer, rs1_value, trap);
             }
             _ => {
                 *trap = TrapReason::IllegalInstruction;

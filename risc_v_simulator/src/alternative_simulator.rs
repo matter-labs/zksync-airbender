@@ -1,6 +1,14 @@
 use crate::{
-    abstractions::{memory::VectorMemoryImpl, non_determinism::NonDeterminismCSRSource},
-    cycle::state::NON_DETERMINISM_CSR,
+    abstractions::{
+        csr_processor::{self, CustomCSRProcessor},
+        memory::VectorMemoryImpl,
+        non_determinism::NonDeterminismCSRSource,
+    },
+    cycle::{state::NON_DETERMINISM_CSR, status_registers::TrapReason, IMStandardIsaConfig},
+    delegations::{
+        blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+        u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID, DelegationsCSRProcessor,
+    },
 };
 use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
 use riscv_decode::Instruction;
@@ -156,7 +164,51 @@ fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
     );
 }
 
-const TRACE_LEN: usize = 10;
+macro_rules! print_registers {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; sub rsp, 32 * 4
+            ; mov DWORD [rsp], 0
+        );
+        for i in 1..32 {
+            let reg = load(&mut $ops, i);
+            dynasm!($ops
+                ; mov [rsp + 4 * i as i32], Rd(reg)
+            );
+        }
+
+        dynasm!($ops
+            ; mov rcx, rsp
+
+            ; push rdi
+            ; push rsi
+            ; push r8
+            ; push r9
+
+            ; mov rax, QWORD print_registers as _
+            ; mov rdi, rcx
+            ; call rax
+
+            ; pop r9
+            ; pop r8
+            ; pop rsi
+            ; pop rdi
+        );
+
+        for i in 1..32 {
+            let out = destination_gpr(i);
+            dynasm!($ops
+                ; mov Rd(out), [rsp + 4 * i as i32]
+            );
+            store_result(&mut $ops, i);
+        }
+        dynasm!($ops
+            ; add rsp, 32 * 4
+        );
+    };
+}
+
+const TRACE_LEN: usize = 100;
 
 macro_rules! increment_trace {
     ($ops:ident) => {
@@ -199,6 +251,14 @@ macro_rules! trace_zero {
     };
 }
 
+macro_rules! emit_runtime_error {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; jmp ->exit_with_error
+        );
+    };
+}
+
 pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
     program: &[u32],
     non_determinism_source: &mut N,
@@ -235,8 +295,8 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         let rd = (raw_instruction >> 7) & 0x1F;
         let out = destination_gpr(rd);
         let Ok(instruction) = riscv_decode::decode(*raw_instruction) else {
-            //println!("bad instruction {instruction:x} at {i}");
-            break;
+            emit_runtime_error!(ops);
+            continue;
         };
 
         let mut instruction_emitted = false;
@@ -435,14 +495,14 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     let address = load(&mut ops, parts.rs1());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(address)
-                        ; movsx Rd(out), BYTE [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                        ; movsx Rd(out), BYTE [rsi + Rq(out) + sign_extend::<12>(parts.imm())]
                     );
                 }
                 Instruction::Lbu(parts) => {
                     let address = load(&mut ops, parts.rs1());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(address)
-                        ; movzx Rd(out), BYTE [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                        ; movzx Rd(out), BYTE [rsi + Rq(out) + sign_extend::<12>(parts.imm())]
                     );
                 }
                 Instruction::Lh(parts) => {
@@ -450,7 +510,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     let address = load(&mut ops, parts.rs1());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(address)
-                        ; movsx Rd(out), WORD [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                        ; movsx Rd(out), WORD [rsi + Rq(out) + sign_extend::<12>(parts.imm())]
                     );
                 }
                 Instruction::Lhu(parts) => {
@@ -458,7 +518,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     let address = load(&mut ops, parts.rs1());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(address)
-                        ; movzx Rd(out), WORD [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                        ; movzx Rd(out), WORD [rsi + Rq(out) + sign_extend::<12>(parts.imm())]
                     );
                 }
                 Instruction::Lw(parts) => {
@@ -466,7 +526,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     let address = load(&mut ops, parts.rs1());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(address)
-                        ; mov Rd(out), [rdi + Rq(out) + sign_extend::<12>(parts.imm())]
+                        ; mov Rd(out), [rsi + Rq(out) + sign_extend::<12>(parts.imm())]
                     );
                 }
 
@@ -532,22 +592,18 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
 
                 let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
                 if jump_target % 4 != 0 {
-                    todo!("instruction address misaligned exception")
+                    emit_runtime_error!(ops)
                 } else {
-                    dynasm!(ops
-                        ; jmp =>instruction_labels[(jump_target / 4) as usize]
-                    );
+                    if let Some(&label) = instruction_labels.get((jump_target / 4) as usize) {
+                        dynasm!(ops
+                            ; jmp =>label
+                        );
+                    } else {
+                        emit_runtime_error!(ops)
+                    }
                 }
             }
             Instruction::Jalr(parts) => {
-                dynasm!(ops
-                    ; mov Rd(out), (pc + 4) as i32
-                );
-                trace_register!(ops, out);
-                if rd != 0 {
-                    store_result(&mut ops, rd);
-                }
-
                 let offset = sign_extend::<12>(parts.imm());
                 load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
                 dynasm!(ops
@@ -561,10 +617,24 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
                     ; lea rdx, [->start]
                     ; add rdx, rax
+                );
+
+                // Return address may not be written into register before jump target is computed,
+                // otherwise it could affect the jump target.
+                if rd != 0 {
+                    dynasm!(ops
+                        ; mov Rd(out), (pc + 4) as i32
+                    );
+                    trace_register!(ops, out);
+                    store_result(&mut ops, rd);
+                } else {
+                    trace_zero!(ops);
+                }
+
+                dynasm!(ops
                     ; jmp rdx
                     ; misaligned:
-                    // TODO: instruction address misaligned exception
-                    ; mov rax, [0]
+                    ;; emit_runtime_error!(ops)
                 );
             }
             Instruction::Beq(parts)
@@ -575,48 +645,52 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
             | Instruction::Bgeu(parts) => {
                 let jump_target = pc as i32 + sign_extend::<13>(parts.imm());
                 if jump_target % 4 != 0 {
-                    todo!("instruction address misaligned exception")
+                    emit_runtime_error!(ops);
                 } else {
                     let a = load(&mut ops, parts.rs1());
                     load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
 
                     trace_zero!(ops);
 
-                    dynasm!(ops
-                        ; cmp Rd(a), Rd(SCRATCH_REGISTER)
-                    );
-                    match instruction {
-                        Instruction::Beq(_) => {
-                            dynasm!(ops
-                                ; je =>instruction_labels[(jump_target / 4) as usize]
-                            );
+                    if let Some(&label) = instruction_labels.get((jump_target / 4) as usize) {
+                        dynasm!(ops
+                            ; cmp Rd(a), Rd(SCRATCH_REGISTER)
+                        );
+                        match instruction {
+                            Instruction::Beq(_) => {
+                                dynasm!(ops
+                                    ; je =>label
+                                );
+                            }
+                            Instruction::Bne(_) => {
+                                dynasm!(ops
+                                    ; jne =>label
+                                );
+                            }
+                            Instruction::Blt(_) => {
+                                dynasm!(ops
+                                    ; jl =>label
+                                );
+                            }
+                            Instruction::Bltu(_) => {
+                                dynasm!(ops
+                                    ; jb =>label
+                                );
+                            }
+                            Instruction::Bge(_) => {
+                                dynasm!(ops
+                                    ; jge =>label
+                                );
+                            }
+                            Instruction::Bgeu(_) => {
+                                dynasm!(ops
+                                    ; jae =>label
+                                );
+                            }
+                            _ => unreachable!(),
                         }
-                        Instruction::Bne(_) => {
-                            dynasm!(ops
-                                ; jne =>instruction_labels[(jump_target / 4) as usize]
-                            );
-                        }
-                        Instruction::Blt(_) => {
-                            dynasm!(ops
-                                ; jl =>instruction_labels[(jump_target / 4) as usize]
-                            );
-                        }
-                        Instruction::Bltu(_) => {
-                            dynasm!(ops
-                                ; jb =>instruction_labels[(jump_target / 4) as usize]
-                            );
-                        }
-                        Instruction::Bge(_) => {
-                            dynasm!(ops
-                                ; jge =>instruction_labels[(jump_target / 4) as usize]
-                            );
-                        }
-                        Instruction::Bgeu(_) => {
-                            dynasm!(ops
-                                ; jae =>instruction_labels[(jump_target / 4) as usize]
-                            );
-                        }
-                        _ => unreachable!(),
+                    } else {
+                        emit_runtime_error!(ops)
                     }
                 }
             }
@@ -629,7 +703,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 );
                 let value = load(&mut ops, parts.rs2());
                 dynasm!(ops
-                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
+                    ; mov [rsi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
                 );
                 trace_zero!(ops);
             }
@@ -641,7 +715,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 );
                 let value = load(&mut ops, parts.rs2());
                 dynasm!(ops
-                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
+                    ; mov [rsi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
                 );
                 trace_zero!(ops);
             }
@@ -653,7 +727,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                 );
                 let value = load(&mut ops, parts.rs2());
                 dynasm!(ops
-                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
+                    ; mov [rsi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
                 );
                 trace_zero!(ops);
             }
@@ -664,7 +738,6 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         before_call!(ops);
                         dynasm!(ops
                             ; mov rax, QWORD Context::<N>::read_nondeterminism as _
-                            ; mov rdi, rsi
                             ; sub rsp, 8
                             ; call rax
                             ; add rsp, 8
@@ -683,7 +756,6 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         before_call!(ops);
                         dynasm!(ops
                             ; mov rax, QWORD Context::<N>::write_nondeterminism as _
-                            ; mov rdi, rsi
                             ; mov esi, Rd(SCRATCH_REGISTER)
                             ; sub rsp, 8
                             ; call rax
@@ -692,13 +764,81 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         after_call!(ops);
                     }
                 }
-                _ => panic!("Unknown csr"),
+                csr => {
+                    let function = match csr {
+                        BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
+                            Context::<N>::process_csr::<
+                                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+                            > as _
+                        }
+                        U256_OPS_WITH_CONTROL_ACCESS_ID => {
+                            Context::<N>::process_csr::<U256_OPS_WITH_CONTROL_ACCESS_ID> as _
+                        }
+                        x => {
+                            // TODO: crash here if there is a way to avoid decoding garbage
+                            // that resides between instructions
+                            continue;
+                        }
+                    };
+
+                    dynasm!(ops
+                        ; sub rsp, 32 * 4
+                        ; mov DWORD [rsp], 0
+                    );
+                    for i in 1..32 {
+                        let reg = load(&mut ops, i);
+                        dynasm!(ops
+                            ; mov [rsp + 4 * i as i32], Rd(reg)
+                        );
+                    }
+
+                    load_into(&mut ops, parts.rs1(), x64::Rq::RCX as u8);
+
+                    dynasm!(ops
+                        ; mov rdx, rsp
+
+                        ; push rdi
+                        ; push rsi
+                        ; push r8
+                        ; push r9
+
+                        ; mov rax, QWORD function
+                        ; mov esi, ecx
+                        ; sub rsp, 8
+                        ; call rax
+                        ; add rsp, 8
+
+                        ; pop r9
+                        ; pop r8
+                        ; pop rsi
+                        ; pop rdi
+                    );
+
+                    for i in 1..32 {
+                        let out = destination_gpr(i);
+                        dynasm!(ops
+                            ; mov Rd(out), [rsp + 4 * i as i32]
+                        );
+                        store_result(&mut ops, i);
+                    }
+                    dynasm!(ops
+                        ; add rsp, 32 * 4
+                    );
+
+                    if rd != 0 {
+                        dynasm!(ops
+                            ; mov Rd(out), eax
+                        );
+                        trace_register!(ops, out);
+                        store_result(&mut ops, rd);
+                    } else {
+                        trace_zero!(ops);
+                    }
+                }
             },
 
             _ => {
-                if *raw_instruction != 0 {
-                    todo!("unsupported instruction 0x{raw_instruction:x}");
-                }
+                emit_runtime_error!(ops)
             }
         }
     }
@@ -706,12 +846,18 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
     dynasm!(ops
         ; ->jump_offsets:
         ; .bytes jump_offsets.into_iter().flat_map(|x| x.to_le_bytes())
+
+        ; ->exit_with_error:
+        ; mov rax, QWORD print_complaint as _
+        ; sub rsp, 8
+        ; call rax
+        ; add rsp, 8
         ; ->quit:
     );
     epilogue!(ops);
 
     let code = ops.finalize().unwrap();
-    let run_program: extern "sysv64" fn(*mut u32, &mut Context<N>, *mut u32) =
+    let run_program: extern "sysv64" fn(&mut Context<N>, *mut u32, *mut u32) =
         unsafe { std::mem::transmute(code.ptr(start)) };
 
     let mut context = Context {
@@ -719,11 +865,8 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         non_determinism_source,
     };
     let mut trace = vec![0u32; TRACE_LEN];
-    run_program(
-        context.memory.inner.as_mut_ptr(),
-        &mut context,
-        trace.as_mut_ptr(),
-    );
+    let memory = context.memory.inner.as_mut_ptr();
+    run_program(&mut context, memory, trace.as_mut_ptr());
 }
 
 struct Context<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> {
@@ -739,6 +882,43 @@ impl<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> Context<'a, N> {
         self.non_determinism_source
             .write_with_memory_access(&self.memory, value);
     }
+    extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
+        &mut self,
+        rs1: u32,
+        registers: &mut [u32; 32],
+    ) -> u32 {
+        let mut csr_processor = DelegationsCSRProcessor;
+        let mut trap = TrapReason::NoTrap;
+        let mut ret_val = 0;
+
+        csr_processor.process_read::<_, _, _, IMStandardIsaConfig>(
+            registers,
+            &mut self.memory,
+            self.non_determinism_source,
+            &mut (),
+            CSR_NUMBER,
+            rs1,
+            &mut ret_val,
+            &mut trap,
+        );
+        if trap.is_a_trap() {
+            todo!("what to do with a trap")
+        }
+        csr_processor.process_write::<_, _, _, IMStandardIsaConfig>(
+            registers,
+            &mut self.memory,
+            self.non_determinism_source,
+            &mut (),
+            CSR_NUMBER,
+            rs1,
+            &mut trap,
+        );
+        if trap.is_a_trap() {
+            todo!("what to do with a trap")
+        }
+
+        ret_val
+    }
 }
 
 extern "sysv64" fn print_trace(trace: *const u32) {
@@ -746,6 +926,14 @@ extern "sysv64" fn print_trace(trace: *const u32) {
     for x in trace {
         println!("{x}");
     }
+}
+
+extern "sysv64" fn print_registers(registers: &mut [u32; 32]) {
+    println!("{registers:?}");
+}
+
+extern "sysv64" fn print_complaint() {
+    println!("Runtime error!")
 }
 
 fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
