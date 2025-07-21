@@ -7,7 +7,6 @@ use super::BF;
 use crate::device_structures::{
     DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl, MutPtrAndStride,
 };
-use crate::prover::context::ProverContext;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use cs::definitions::MemorySubtree;
 use era_cudart::cuda_kernel;
@@ -73,7 +72,7 @@ cuda_kernel!(GenerateMemoryAndWitnessValuesDelegation,
 
 pub(crate) fn generate_memory_values_delegation(
     subtree: &MemorySubtree,
-    trace: &DelegationTraceDevice<impl ProverContext>,
+    trace: &DelegationTraceDevice,
     memory: &mut DeviceMatrixMut<BF>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -94,7 +93,7 @@ pub(crate) fn generate_memory_values_delegation(
 pub(crate) fn generate_memory_and_witness_values_delegation(
     subtree: &MemorySubtree,
     aux_vars: &cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars,
-    trace: &DelegationTraceDevice<impl ProverContext>,
+    trace: &DelegationTraceDevice,
     memory: &mut DeviceMatrixMut<BF>,
     witness: &mut DeviceMatrixMut<BF>,
     stream: &CudaStream,
