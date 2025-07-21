@@ -59,10 +59,6 @@ macro_rules! before_call {
             ; push r9
             ; push r10
             ; push r11
-            ; push r12
-            ; push r13
-            ; push r14
-            ; push r15
 
             ; sub rsp, 16 * 16
             ; movdqu [rsp + 0], xmm0
@@ -106,10 +102,6 @@ macro_rules! after_call {
             ; movdqu  xmm15, [rsp + 240]
             ; add rsp, 16 * 16
 
-            ; pop r15
-            ; pop r14
-            ; pop r13
-            ; pop r12
             ; pop r11
             ; pop r10
             ; pop r9
