@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::{
     abstractions::{
         csr_processor::{self, CustomCSRProcessor},
@@ -222,7 +224,7 @@ macro_rules! print_registers {
     };
 }
 
-const TRACE_LEN: usize = 100;
+const TRACE_LEN: usize = 1000000;
 
 macro_rules! increment_trace {
     ($ops:ident) => {
@@ -235,8 +237,8 @@ macro_rules! increment_trace {
             ; push rcx
             ; push rdx
             ;; before_call!($ops)
-            ; mov rax, QWORD print_trace as _
-            ; mov rdi, r8
+            ; mov rax, QWORD Context::<N>::receive_trace as _
+            ; mov rsi, r8
             ; call rax
             ;; after_call!($ops)
             ; pop rdx
@@ -872,25 +874,35 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         ; call rax
         ; add rsp, 8
         ; ->quit:
+        ; mov rax, r9
     );
     epilogue!(ops);
 
     let code = ops.finalize().unwrap();
-    let run_program: extern "sysv64" fn(&mut Context<N>, *mut u32, *mut u32) =
+    let run_program: extern "sysv64" fn(&mut Context<N>, *mut u32, *mut u32) -> u64 =
         unsafe { std::mem::transmute(code.ptr(start)) };
 
     let mut context = Context {
         memory,
         non_determinism_source,
+        trace_len: 0,
     };
     let mut trace = vec![0u32; TRACE_LEN];
     let memory = context.memory.inner.as_mut_ptr();
-    run_program(&mut context, memory, trace.as_mut_ptr());
+
+    let before = Instant::now();
+    let remaining_trace = run_program(&mut context, memory, trace.as_mut_ptr());
+    println!(
+        "execution of {} instructions took {:?}",
+        context.trace_len as u64 + remaining_trace,
+        before.elapsed()
+    );
 }
 
 struct Context<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> {
     memory: VectorMemoryImpl,
     non_determinism_source: &'a mut N,
+    trace_len: usize,
 }
 
 impl<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> Context<'a, N> {
@@ -938,12 +950,10 @@ impl<'a, N: NonDeterminismCSRSource<VectorMemoryImpl>> Context<'a, N> {
 
         ret_val
     }
-}
 
-extern "sysv64" fn print_trace(trace: *const u32) {
-    let trace: &[u32; TRACE_LEN] = unsafe { &*trace.cast() };
-    for x in trace {
-        println!("{x}");
+    extern "sysv64" fn receive_trace(&mut self, trace: *const u32) {
+        let trace: &[u32; TRACE_LEN] = unsafe { &*trace.cast() };
+        self.trace_len += TRACE_LEN;
     }
 }
 
