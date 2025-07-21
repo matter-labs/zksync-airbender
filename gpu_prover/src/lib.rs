@@ -14,7 +14,7 @@ pub mod allocator;
 pub mod barycentric;
 pub mod blake2s;
 pub mod circuit_type;
-pub mod context;
+pub mod device_context;
 pub mod device_structures;
 pub mod execution;
 pub mod field;

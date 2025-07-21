@@ -1,4 +1,4 @@
-use crate::prover::context::ProverContext;
+use crate::prover::context::DeviceAllocation;
 use crate::witness::BF;
 use cs::utils::{split_timestamp, split_u32_into_pair_u16};
 use era_cudart::slice::CudaSlice;
@@ -9,8 +9,8 @@ use prover::tracers::main_cycle_optimized::{CycleData, SingleCycleTracingData};
 use prover::ShuffleRamSetupAndTeardown;
 use std::sync::Arc;
 
-pub struct MainTraceDevice<C: ProverContext> {
-    pub(crate) cycle_data: C::Allocation<SingleCycleTracingData>,
+pub struct MainTraceDevice {
+    pub(crate) cycle_data: DeviceAllocation<SingleCycleTracingData>,
 }
 
 #[repr(C)]
@@ -18,8 +18,8 @@ pub(crate) struct MainTraceRaw {
     cycle_data: *const SingleCycleTracingData,
 }
 
-impl<C: ProverContext> From<&MainTraceDevice<C>> for MainTraceRaw {
-    fn from(value: &MainTraceDevice<C>) -> Self {
+impl From<&MainTraceDevice> for MainTraceRaw {
+    fn from(value: &MainTraceDevice) -> Self {
         Self {
             cycle_data: value.cycle_data.as_ptr(),
         }
@@ -43,8 +43,8 @@ impl<M: MachineConfig, A: GoodAllocator> From<CycleData<M, A>> for MainTraceHost
     }
 }
 
-pub struct ShuffleRamSetupAndTeardownDevice<C: ProverContext> {
-    pub lazy_init_data: C::Allocation<LazyInitAndTeardown>,
+pub struct ShuffleRamSetupAndTeardownDevice {
+    pub lazy_init_data: DeviceAllocation<LazyInitAndTeardown>,
 }
 
 #[repr(C)]
@@ -52,10 +52,8 @@ pub(crate) struct ShuffleRamSetupAndTeardownRaw {
     pub lazy_init_data: *const LazyInitAndTeardown,
 }
 
-impl<C: ProverContext> From<&ShuffleRamSetupAndTeardownDevice<C>>
-    for ShuffleRamSetupAndTeardownRaw
-{
-    fn from(value: &ShuffleRamSetupAndTeardownDevice<C>) -> Self {
+impl From<&ShuffleRamSetupAndTeardownDevice> for ShuffleRamSetupAndTeardownRaw {
+    fn from(value: &ShuffleRamSetupAndTeardownDevice) -> Self {
         Self {
             lazy_init_data: value.lazy_init_data.as_ptr(),
         }

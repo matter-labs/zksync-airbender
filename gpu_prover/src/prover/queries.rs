@@ -1,5 +1,6 @@
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::BF;
+use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{gather_merkle_paths, gather_rows, Digest};
 use crate::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
 use crate::prover::callbacks::Callbacks;
@@ -38,32 +39,29 @@ struct LeafsAndDigestsSet<A: Allocator> {
     intermediate_fri: Vec<LeafsAndDigests<A>>,
 }
 
-pub(crate) struct QueriesOutput<'a, C: ProverContext> {
-    leafs_and_digest_sets: Vec<LeafsAndDigestsSet<C::HostAllocator>>,
+pub(crate) struct QueriesOutput<'a> {
+    leafs_and_digest_sets: Vec<LeafsAndDigestsSet<HostAllocator>>,
     query_indexes: Arc<Mutex<Vec<u32>>>,
     log_domain_size: u32,
     folding_sequence: Vec<u32>,
     callbacks: Callbacks<'a>,
 }
 
-impl<'a, C: ProverContext> QueriesOutput<'a, C> {
+impl<'a> QueriesOutput<'a> {
     pub fn new(
         seed: Arc<Mutex<Seed>>,
-        setup: &SetupPrecomputations<C>,
-        stage_1_output: &StageOneOutput<C>,
-        stage_2_output: &StageTwoOutput<C>,
-        stage_3_output: &StageThreeOutput<C>,
-        stage_4_output: &StageFourOutput<C>,
-        stage_5_output: &StageFiveOutput<C>,
+        setup: &SetupPrecomputations,
+        stage_1_output: &StageOneOutput,
+        stage_2_output: &StageTwoOutput,
+        stage_3_output: &StageThreeOutput,
+        stage_4_output: &StageFourOutput,
+        stage_5_output: &StageFiveOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         num_queries: usize,
         folding_description: &FoldingDescription,
-        context: &C,
-    ) -> CudaResult<Self>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let tree_index_bits = log_domain_size;
         let tree_index_mask = (1 << tree_index_bits) - 1;
         let coset_index_bits = log_lde_factor;
@@ -77,7 +75,7 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
             (num_required_words as usize + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
         let query_indexes = Vec::with_capacity(num_queries);
         let query_indexes = Arc::new(Mutex::new(query_indexes));
-        let mut tree_indexes = Vec::with_capacity_in(num_queries, C::HostAllocator::default());
+        let mut tree_indexes = Vec::with_capacity_in(num_queries, HostAllocator::default());
         unsafe { tree_indexes.set_len(num_queries) };
         let tree_indexes = Arc::new(Mutex::new(tree_indexes));
         let query_indexes_clone = query_indexes.clone();
@@ -101,8 +99,7 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
         callbacks.schedule(get_query_indexes, stream)?;
         let mut leafs_and_digest_sets = Vec::with_capacity(lde_factor);
         for coset_idx in 0..lde_factor {
-            let mut h_tree_indexes =
-                Vec::with_capacity_in(num_queries, C::HostAllocator::default());
+            let mut h_tree_indexes = Vec::with_capacity_in(num_queries, HostAllocator::default());
             unsafe { h_tree_indexes.set_len(num_queries) };
             let h_tree_indexes = Arc::new(Mutex::new(h_tree_indexes));
             let tree_indexes_clone = tree_indexes.clone();
@@ -114,7 +111,7 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
                     .copy_from_slice(&tree_indexes_clone.lock().unwrap());
             };
             callbacks.schedule(copy_tree_indexes, stream)?;
-            let mut d_tree_indexes = context.alloc(num_queries)?;
+            let mut d_tree_indexes = context.alloc(num_queries, AllocationPlacement::BestFit)?;
             memory_copy_async(
                 d_tree_indexes.deref_mut(),
                 h_tree_indexes.lock().unwrap().deref(),
@@ -274,8 +271,8 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
         log_domain_size: u32,
         log_rows_per_index: u32,
         layers_count: u32,
-        context: &C,
-    ) -> CudaResult<LeafsAndDigests<C::HostAllocator>> {
+        context: &ProverContext,
+    ) -> CudaResult<LeafsAndDigests<HostAllocator>> {
         let queries_count = indexes.len();
         let domain_size = 1 << log_domain_size;
         let values_matrix = DeviceMatrix::new(values, domain_size);
@@ -283,7 +280,7 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
         let values_per_column_count = queries_count << log_rows_per_index;
         let leafs_len = values_per_column_count * columns_count;
         let stream = context.get_exec_stream();
-        let mut d_leafs = context.alloc(leafs_len)?;
+        let mut d_leafs = context.alloc(leafs_len, AllocationPlacement::BestFit)?;
         let mut leafs_matrix = DeviceMatrixMut::new(&mut d_leafs, values_per_column_count);
         gather_rows(
             indexes,
@@ -293,13 +290,14 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
             &mut leafs_matrix,
             stream,
         )?;
-        let mut leafs = Vec::with_capacity_in(leafs_len, C::HostAllocator::default());
+        let mut leafs = Vec::with_capacity_in(leafs_len, HostAllocator::default());
         unsafe { leafs.set_len(leafs_len) };
         memory_copy_async(&mut leafs, d_leafs.deref(), stream)?;
+        d_leafs.free();
         let digests_len = queries_count * layers_count as usize;
-        let mut d_digests = context.alloc(digests_len)?;
+        let mut d_digests = context.alloc(digests_len, AllocationPlacement::BestFit)?;
         gather_merkle_paths(indexes, tree, &mut d_digests, layers_count, stream)?;
-        let mut digests = Vec::with_capacity_in(digests_len, C::HostAllocator::default());
+        let mut digests = Vec::with_capacity_in(digests_len, HostAllocator::default());
         unsafe { digests.set_len(digests_len) };
         memory_copy_async(&mut digests, d_digests.deref(), stream)?;
         let result = LeafsAndDigests { leafs, digests };
@@ -309,7 +307,7 @@ impl<'a, C: ProverContext> QueriesOutput<'a, C> {
     fn produce_queries(
         query_indexes: &[u32],
         tree_indexes: &[u32],
-        leafs_and_digests: &LeafsAndDigests<C::HostAllocator>,
+        leafs_and_digests: &LeafsAndDigests<HostAllocator>,
         log_rows_per_index: u32,
     ) -> Vec<Query> {
         let queries_count = query_indexes.len();

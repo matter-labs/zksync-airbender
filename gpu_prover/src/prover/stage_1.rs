@@ -1,8 +1,9 @@
-use super::context::ProverContext;
+use super::context::{DeviceAllocation, HostAllocator, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::trace_holder::TraceHolder;
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::BF;
+use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::{set_by_ref, set_to_zero};
 use crate::prover::callbacks::Callbacks;
@@ -23,20 +24,20 @@ use era_cudart::result::CudaResult;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct StageOneOutput<'a, C: ProverContext> {
-    pub witness_holder: TraceHolder<BF, C>,
-    pub memory_holder: TraceHolder<BF, C>,
-    pub generic_lookup_mapping: Option<C::Allocation<u32>>,
+pub(crate) struct StageOneOutput<'a> {
+    pub witness_holder: TraceHolder<BF>,
+    pub memory_holder: TraceHolder<BF>,
+    pub generic_lookup_mapping: Option<DeviceAllocation<u32>>,
     pub callbacks: Option<Callbacks<'a>>,
     pub public_inputs: Option<Arc<Mutex<Vec<BF>>>>,
 }
 
-impl<'a, C: ProverContext> StageOneOutput<'a, C> {
+impl<'a> StageOneOutput<'a> {
     pub fn allocate_trace_holders(
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        context: &C,
+        context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
@@ -73,10 +74,10 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
     pub fn generate_witness(
         &mut self,
         circuit: &CompiledCircuitArtifact<BF>,
-        setup: &SetupPrecomputations<C>,
-        tracing_data_transfer: TracingDataTransfer<'a, C>,
+        setup: &SetupPrecomputations,
+        tracing_data_transfer: TracingDataTransfer<'a>,
         circuit_sequence: usize,
-        context: &C,
+        context: &ProverContext,
     ) -> CudaResult<()> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
@@ -84,7 +85,8 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
         let witness_subtree = &circuit.witness_layout;
         let memory_subtree = &circuit.memory_layout;
         let generic_lookup_mapping_size = witness_subtree.width_3_lookups.len() << log_domain_size;
-        let mut generic_lookup_mapping = context.alloc(generic_lookup_mapping_size)?;
+        let mut generic_lookup_mapping =
+            context.alloc(generic_lookup_mapping_size, AllocationPlacement::Top)?;
         let TracingDataTransfer {
             circuit_type,
             data_host: _,
@@ -199,11 +201,8 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
     pub fn commit_witness(
         &mut self,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
-        context: &C,
-    ) -> CudaResult<()>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         self.memory_holder
             .make_evaluations_sum_to_zero_extend_and_commit(context)?;
         self.memory_holder.produce_tree_caps(context)?;
@@ -217,11 +216,8 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
     pub fn produce_public_inputs(
         &mut self,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
-        context: &C,
-    ) -> CudaResult<()>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         if self.public_inputs.is_some() {
             return Ok(());
         }
@@ -233,12 +229,13 @@ impl<'a, C: ProverContext> StageOneOutput<'a, C> {
         let columns_count = holder.columns_count;
         let trace_len = 1 << holder.log_domain_size;
         let stream = context.get_exec_stream();
-        let mut d_witness_first_row = context.alloc(columns_count)?;
-        let mut d_witness_one_before_last_row = context.alloc(columns_count)?;
+        let mut d_witness_first_row = context.alloc(columns_count, AllocationPlacement::BestFit)?;
+        let mut d_witness_one_before_last_row =
+            context.alloc(columns_count, AllocationPlacement::BestFit)?;
         let mut h_witness_first_row =
-            Vec::with_capacity_in(columns_count, C::HostAllocator::default());
+            Vec::with_capacity_in(columns_count, HostAllocator::default());
         let mut h_witness_one_before_last_row =
-            Vec::with_capacity_in(columns_count, C::HostAllocator::default());
+            Vec::with_capacity_in(columns_count, HostAllocator::default());
         unsafe { h_witness_first_row.set_len(columns_count) };
         unsafe { h_witness_one_before_last_row.set_len(columns_count) };
         let first_row_src = DeviceMatrixChunk::new(holder.get_evaluations(), trace_len, 0, 1);

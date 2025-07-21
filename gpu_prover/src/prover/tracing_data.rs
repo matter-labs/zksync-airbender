@@ -1,6 +1,7 @@
+use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
 use crate::ops_simple::set_to_zero;
-use crate::prover::context::ProverContext;
+use crate::prover::context::{HostAllocator, ProverContext};
 use crate::prover::transfer::Transfer;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_main::{
@@ -10,12 +11,12 @@ use crate::witness::trace_main::{
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
-pub enum TracingDataDevice<C: ProverContext> {
+pub enum TracingDataDevice {
     Main {
-        setup_and_teardown: ShuffleRamSetupAndTeardownDevice<C>,
-        trace: MainTraceDevice<C>,
+        setup_and_teardown: ShuffleRamSetupAndTeardownDevice,
+        trace: MainTraceDevice,
     },
-    Delegation(DelegationTraceDevice<C>),
+    Delegation(DelegationTraceDevice),
 }
 
 #[derive(Clone)]
@@ -27,18 +28,18 @@ pub enum TracingDataHost<A: GoodAllocator> {
     Delegation(DelegationTraceHost<A>),
 }
 
-pub struct TracingDataTransfer<'a, C: ProverContext> {
+pub struct TracingDataTransfer<'a> {
     pub circuit_type: CircuitType,
-    pub data_host: TracingDataHost<C::HostAllocator>,
-    pub data_device: TracingDataDevice<C>,
-    pub transfer: Transfer<'a, C>,
+    pub data_host: TracingDataHost<HostAllocator>,
+    pub data_device: TracingDataDevice,
+    pub transfer: Transfer<'a>,
 }
 
-impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
+impl<'a> TracingDataTransfer<'a> {
     pub fn new(
         circuit_type: CircuitType,
-        data_host: TracingDataHost<C::HostAllocator>,
-        context: &C,
+        data_host: TracingDataHost<HostAllocator>,
+        context: &ProverContext,
     ) -> CudaResult<Self> {
         let data_device = match &data_host {
             TracingDataHost::Main {
@@ -49,9 +50,9 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
                 if let Some(setup_and_teardown) = setup_and_teardown {
                     assert_eq!(setup_and_teardown.lazy_init_data.len(), len);
                 };
-                let lazy_init_data = context.alloc(len)?;
+                let lazy_init_data = context.alloc(len, AllocationPlacement::Top)?;
                 let setup_and_teardown = ShuffleRamSetupAndTeardownDevice { lazy_init_data };
-                let cycle_data = context.alloc(len)?;
+                let cycle_data = context.alloc(len, AllocationPlacement::Top)?;
                 let trace = MainTraceDevice { cycle_data };
                 TracingDataDevice::Main {
                     setup_and_teardown,
@@ -59,11 +60,15 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
                 }
             }
             TracingDataHost::Delegation(trace) => {
-                let d_write_timestamp = context.alloc(trace.write_timestamp.len())?;
-                let d_register_accesses = context.alloc(trace.register_accesses.len())?;
-                let d_indirect_reads = context.alloc(trace.indirect_reads.len())?;
-                let d_indirect_writes = context.alloc(trace.indirect_writes.len())?;
-                let trace = DelegationTraceDevice::<C> {
+                let d_write_timestamp =
+                    context.alloc(trace.write_timestamp.len(), AllocationPlacement::Top)?;
+                let d_register_accesses =
+                    context.alloc(trace.register_accesses.len(), AllocationPlacement::Top)?;
+                let d_indirect_reads =
+                    context.alloc(trace.indirect_reads.len(), AllocationPlacement::Top)?;
+                let d_indirect_writes =
+                    context.alloc(trace.indirect_writes.len(), AllocationPlacement::Top)?;
+                let trace = DelegationTraceDevice {
                     num_requests: trace.num_requests,
                     num_register_accesses_per_delegation: trace
                         .num_register_accesses_per_delegation,
@@ -90,10 +95,7 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
         })
     }
 
-    pub fn schedule_transfer(&mut self, context: &C) -> CudaResult<()>
-    where
-        C::HostAllocator: 'a,
-    {
+    pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
         match &self.data_host {
             TracingDataHost::Main {
                 setup_and_teardown: h_setup_and_teardown,

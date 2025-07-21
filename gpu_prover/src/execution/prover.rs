@@ -11,7 +11,6 @@ use super::tracer::CycleTracingData;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use crate::cudart::device::get_device_count;
-use crate::prover::context::MemPoolProverContext;
 use crate::prover::context::ProverContext;
 use crate::prover::tracing_data::TracingDataHost;
 use crate::witness::trace_main::MainTraceHost;
@@ -73,9 +72,9 @@ struct BinaryHolder {
     precomputations: CircuitPrecomputationsHost<A>,
 }
 
-pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
+pub struct ExecutionProver<K: Debug + Eq + Hash> {
     device_count: usize,
-    gpu_manager: GpuManager<MemPoolProverContext<'a>>,
+    gpu_manager: GpuManager,
     worker: Worker,
     wait_group: Option<WaitGroup>,
     binaries: HashMap<K, BinaryHolder>,
@@ -123,7 +122,7 @@ impl<A: GoodAllocator> ChunksCache<A> {
     }
 }
 
-impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
+impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
     ///  Creates a new instance of `ExecutionProver`.
     ///
     /// # Arguments
@@ -185,8 +184,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
         let host_allocations_count = total_gb_needed + device_count * 2;
         info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
-        MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
-            .unwrap();
+        ProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22).unwrap();
         info!("PROVER host allocator initialized");
         let gpu_manager = GpuManager::new();
         let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
@@ -1185,7 +1183,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
     }
 }
 
-impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<'a, K> {
+impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<K> {
     fn drop(&mut self) {
         trace!("PROVER waiting for all threads to finish");
         self.wait_group.take().unwrap().wait();
