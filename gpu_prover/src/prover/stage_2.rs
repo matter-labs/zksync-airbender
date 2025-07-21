@@ -131,8 +131,10 @@ impl<'a> StageTwoOutput<'a> {
         let mut d_alloc_scratch_for_cub_ops =
             context.alloc(cub_scratch_bytes, AllocationPlacement::BestFit)?;
         let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
-            let alloc =
-                context.alloc(batch_reduce_intermediate_elems, AllocationPlacement::BestFit)?;
+            let alloc = context.alloc(
+                batch_reduce_intermediate_elems,
+                AllocationPlacement::BestFit,
+            )?;
             Some(alloc)
         } else {
             None
