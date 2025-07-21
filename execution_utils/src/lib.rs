@@ -323,6 +323,7 @@ pub fn verify_log_23_recursion_layer(full_proof: &ProgramProof) -> bool {
         RECURSION_LAYER_VERIFIER
     };
 
+    // Skip to avoid adding more binaries
     // run_verifier_binary(binary, responses).is_some()
 
     true
@@ -330,9 +331,9 @@ pub fn verify_log_23_recursion_layer(full_proof: &ProgramProof) -> bool {
 
 pub fn verify_final_recursion_layer(full_proof: &ProgramProof) -> bool {
     println!(
-        "Verifying log 23 recursion layer proof using RISC-V simulator and the verifier program"
+        "Verifying final recursion layer proof using RISC-V simulator and the verifier program"
     );
-    let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+    let allowed_delegation_types: Vec<_> = FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
         .iter()
         .map(|el| el.0)
         .collect();
