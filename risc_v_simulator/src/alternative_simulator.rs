@@ -1,4 +1,7 @@
-use crate::abstractions::{memory::VectorMemoryImpl, non_determinism::NonDeterminismCSRSource};
+use crate::{
+    abstractions::{memory::VectorMemoryImpl, non_determinism::NonDeterminismCSRSource},
+    cycle::state::NON_DETERMINISM_CSR,
+};
 use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
 use riscv_decode::Instruction;
 
@@ -221,7 +224,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
     // Records the position of each RISC-V instruction relative to the start
     let mut jump_offsets = vec![];
 
-    for (i, instruction) in program.iter().enumerate() {
+    for (i, raw_instruction) in program.iter().enumerate() {
         let pc = i as u32 * 4;
 
         dynasm!(ops
@@ -229,17 +232,55 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         );
         jump_offsets.push(ops.offset().0);
 
-        let rd = (instruction >> 7) & 0x1F;
+        let rd = (raw_instruction >> 7) & 0x1F;
         let out = destination_gpr(rd);
-        let Ok(instruction) = riscv_decode::decode(*instruction) else {
+        let Ok(instruction) = riscv_decode::decode(*raw_instruction) else {
             //println!("bad instruction {instruction:x} at {i}");
             break;
         };
 
         let mut instruction_emitted = false;
 
-        // Instructions that just compute a result are NOPs if they write to x0
-        if rd != 0 {
+        // Pure instructions
+        if matches!(
+            instruction,
+            Instruction::Addi(_)
+                | Instruction::Andi(_)
+                | Instruction::Ori(_)
+                | Instruction::Xori(_)
+                | Instruction::Slti(_)
+                | Instruction::Sltiu(_)
+                | Instruction::Slli(_)
+                | Instruction::Srli(_)
+                | Instruction::Srai(_)
+                | Instruction::Lui(_)
+                | Instruction::Auipc(_)
+                | Instruction::Add(_)
+                | Instruction::Sub(_)
+                | Instruction::Slt(_)
+                | Instruction::Sltu(_)
+                | Instruction::And(_)
+                | Instruction::Or(_)
+                | Instruction::Xor(_)
+                | Instruction::Sll(_)
+                | Instruction::Srl(_)
+                | Instruction::Sra(_)
+                | Instruction::Lb(_)
+                | Instruction::Lbu(_)
+                | Instruction::Lh(_)
+                | Instruction::Lhu(_)
+                | Instruction::Lw(_)
+                | Instruction::Mul(_)
+                | Instruction::Mulh(_)
+                | Instruction::Mulhu(_)
+                | Instruction::Mulhsu(_)
+        ) {
+            // Instructions that just compute a result are NOPs if they write to x0
+            if rd == 0 {
+                trace_zero!(ops);
+                continue;
+            }
+
             let mut impure = false;
             match instruction {
                 // Arithmetic
@@ -470,205 +511,193 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         ; shr Rq(out), 32
                     );
                 }
-
-                _ => impure = true,
+                _ => unreachable!(),
             }
-            if !impure {
-                trace_register!(ops, out);
 
-                store_result(&mut ops, rd);
-                instruction_emitted = true;
-            }
+            trace_register!(ops, out);
+            store_result(&mut ops, rd);
+            continue;
         }
 
-        if !instruction_emitted {
-            match instruction {
-                // Control transfer instructions
-                Instruction::Jal(parts) => {
+        match instruction {
+            // Control transfer instructions
+            Instruction::Jal(parts) => {
+                dynasm!(ops
+                    ; mov Rd(out), (pc + 4) as i32
+                );
+                trace_register!(ops, out);
+                if rd != 0 {
+                    store_result(&mut ops, rd);
+                }
+
+                let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
+                if jump_target % 4 != 0 {
+                    todo!("instruction address misaligned exception")
+                } else {
+                    dynasm!(ops
+                        ; jmp =>instruction_labels[(jump_target / 4) as usize]
+                    );
+                }
+            }
+            Instruction::Jalr(parts) => {
+                dynasm!(ops
+                    ; mov Rd(out), (pc + 4) as i32
+                );
+                trace_register!(ops, out);
+                if rd != 0 {
+                    store_result(&mut ops, rd);
+                }
+
+                let offset = sign_extend::<12>(parts.imm());
+                load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
+                dynasm!(ops
+                    ; add Rd(SCRATCH_REGISTER), offset
+                    // Must be aligned to an instruction but no need to test the least significant bit,
+                    // as it is set to zero according to the specification
+                    ; test Rd(SCRATCH_REGISTER), 2
+                    ; jnz >misaligned
+                    ; shr Rd(SCRATCH_REGISTER), 2
+                    ; lea rdx, [->jump_offsets]
+                    ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
+                    ; lea rdx, [->start]
+                    ; add rdx, rax
+                    ; jmp rdx
+                    ; misaligned:
+                    // TODO: instruction address misaligned exception
+                    ; mov rax, [0]
+                );
+            }
+            Instruction::Beq(parts)
+            | Instruction::Bne(parts)
+            | Instruction::Blt(parts)
+            | Instruction::Bltu(parts)
+            | Instruction::Bge(parts)
+            | Instruction::Bgeu(parts) => {
+                let jump_target = pc as i32 + sign_extend::<13>(parts.imm());
+                if jump_target % 4 != 0 {
+                    todo!("instruction address misaligned exception")
+                } else {
+                    let a = load(&mut ops, parts.rs1());
+                    load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
+
+                    trace_zero!(ops);
+
+                    dynasm!(ops
+                        ; cmp Rd(a), Rd(SCRATCH_REGISTER)
+                    );
+                    match instruction {
+                        Instruction::Beq(_) => {
+                            dynasm!(ops
+                                ; je =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        Instruction::Bne(_) => {
+                            dynasm!(ops
+                                ; jne =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        Instruction::Blt(_) => {
+                            dynasm!(ops
+                                ; jl =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        Instruction::Bltu(_) => {
+                            dynasm!(ops
+                                ; jb =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        Instruction::Bge(_) => {
+                            dynasm!(ops
+                                ; jge =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        Instruction::Bgeu(_) => {
+                            dynasm!(ops
+                                ; jae =>instruction_labels[(jump_target / 4) as usize]
+                            );
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+
+            // Stores
+            Instruction::Sb(parts) => {
+                let address = load(&mut ops, parts.rs1());
+                dynasm!(ops
+                    ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                );
+                let value = load(&mut ops, parts.rs2());
+                dynasm!(ops
+                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
+                );
+                trace_zero!(ops);
+            }
+            Instruction::Sh(parts) => {
+                // TODO: exception on misalignment
+                let address = load(&mut ops, parts.rs1());
+                dynasm!(ops
+                    ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                );
+                let value = load(&mut ops, parts.rs2());
+                dynasm!(ops
+                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
+                );
+                trace_zero!(ops);
+            }
+            Instruction::Sw(parts) => {
+                // TODO: exception on misalignment
+                let address = load(&mut ops, parts.rs1());
+                dynasm!(ops
+                    ; movsx Rq(SCRATCH_REGISTER), Rd(address)
+                );
+                let value = load(&mut ops, parts.rs2());
+                dynasm!(ops
+                    ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
+                );
+                trace_zero!(ops);
+            }
+
+            Instruction::Csrrw(parts) => match parts.csr() {
+                NON_DETERMINISM_CSR => {
                     if rd != 0 {
+                        before_call!(ops);
                         dynasm!(ops
-                            ; mov Rd(out), (pc + 4) as i32
+                            ; mov rax, QWORD Context::<N>::read_nondeterminism as _
+                            ; mov rdi, rsi
+                            ; sub rsp, 8
+                            ; call rax
+                            ; add rsp, 8
                         );
-                        store_result(&mut ops, rd);
+                        after_call!(ops);
+                        dynasm!(ops
+                            ; mov Rd(out), eax
+                        );
                         trace_register!(ops, out);
-                    } else {
-                        trace_zero!(ops);
-                    }
-
-                    let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
-                    if jump_target % 4 != 0 {
-                        todo!("instruction address misaligned exception")
-                    } else {
-                        dynasm!(ops
-                            ; jmp =>instruction_labels[(jump_target / 4) as usize]
-                        );
-                    }
-                }
-                Instruction::Jalr(parts) => {
-                    if rd != 0 {
-                        dynasm!(ops
-                            ; mov Rd(out), (pc + 4) as i32
-                        );
-                        trace_register!(ops, out);
                         store_result(&mut ops, rd);
                     } else {
                         trace_zero!(ops);
                     }
-
-                    let offset = sign_extend::<12>(parts.imm());
-                    load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
-                    dynasm!(ops
-                        ; add Rd(SCRATCH_REGISTER), offset
-                        // Must be aligned to an instruction but no need to test the least significant bit,
-                        // as it is set to zero according to the specification
-                        ; test Rd(SCRATCH_REGISTER), 2
-                        ; jnz >misaligned
-                        ; shr Rd(SCRATCH_REGISTER), 2
-                        ; lea rdx, [->jump_offsets]
-                        ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
-                        ; lea rdx, [->start]
-                        ; add rdx, rax
-                        ; jmp rdx
-                        ; misaligned:
-                        // TODO: instruction address misaligned exception
-                        ; mov rax, [0]
-                    );
-                }
-                Instruction::Beq(parts)
-                | Instruction::Bne(parts)
-                | Instruction::Blt(parts)
-                | Instruction::Bltu(parts)
-                | Instruction::Bge(parts)
-                | Instruction::Bgeu(parts) => {
-                    let jump_target = pc as i32 + sign_extend::<13>(parts.imm());
-                    if jump_target % 4 != 0 {
-                        todo!("instruction address misaligned exception")
-                    } else {
-                        let a = load(&mut ops, parts.rs1());
-                        load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
-
-                        trace_zero!(ops);
-
+                    if parts.rs1() != 0 {
+                        load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
+                        before_call!(ops);
                         dynasm!(ops
-                            ; cmp Rd(a), Rd(SCRATCH_REGISTER)
+                            ; mov rax, QWORD Context::<N>::write_nondeterminism as _
+                            ; mov rdi, rsi
+                            ; mov esi, Rd(SCRATCH_REGISTER)
+                            ; sub rsp, 8
+                            ; call rax
+                            ; add rsp, 8
                         );
-                        match instruction {
-                            Instruction::Beq(_) => {
-                                dynasm!(ops
-                                    ; je =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            Instruction::Bne(_) => {
-                                dynasm!(ops
-                                    ; jne =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            Instruction::Blt(_) => {
-                                dynasm!(ops
-                                    ; jl =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            Instruction::Bltu(_) => {
-                                dynasm!(ops
-                                    ; jb =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            Instruction::Bge(_) => {
-                                dynasm!(ops
-                                    ; jge =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            Instruction::Bgeu(_) => {
-                                dynasm!(ops
-                                    ; jae =>instruction_labels[(jump_target / 4) as usize]
-                                );
-                            }
-                            _ => unreachable!(),
-                        }
+                        after_call!(ops);
                     }
                 }
+                _ => panic!("Unknown csr"),
+            },
 
-                // Stores
-                Instruction::Sb(parts) => {
-                    let address = load(&mut ops, parts.rs1());
-                    dynasm!(ops
-                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
-                    );
-                    let value = load(&mut ops, parts.rs2());
-                    dynasm!(ops
-                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rb(value)
-                    );
-                    trace_zero!(ops);
-                }
-                Instruction::Sh(parts) => {
-                    // TODO: exception on misalignment
-                    let address = load(&mut ops, parts.rs1());
-                    dynasm!(ops
-                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
-                    );
-                    let value = load(&mut ops, parts.rs2());
-                    dynasm!(ops
-                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rw(value)
-                    );
-                    trace_zero!(ops);
-                }
-                Instruction::Sw(parts) => {
-                    // TODO: exception on misalignment
-                    let address = load(&mut ops, parts.rs1());
-                    dynasm!(ops
-                        ; movsx Rq(SCRATCH_REGISTER), Rd(address)
-                    );
-                    let value = load(&mut ops, parts.rs2());
-                    dynasm!(ops
-                        ; mov [rdi + Rq(SCRATCH_REGISTER) + sign_extend::<12>(parts.imm())], Rd(value)
-                    );
-                    trace_zero!(ops);
-                }
-
-                Instruction::Csrrw(parts) => match parts.csr() {
-                    NON_DETERMINISM_CSR => {
-                        if rd != 0 {
-                            before_call!(ops);
-                            dynasm!(ops
-                                ; mov rax, QWORD Context::<N>::read_nondeterminism as _
-                                ; mov rdi, rsi
-                                ; sub rsp, 8
-                                ; call rax
-                                ; add rsp, 8
-                            );
-                            after_call!(ops);
-                            dynasm!(ops
-                                ; mov Rd(out), eax
-                            );
-                            trace_register!(ops, out);
-                            store_result(&mut ops, rd);
-                        } else {
-                            trace_zero!(ops);
-                        }
-                        if parts.rs1() != 0 {
-                            load_into(&mut ops, parts.rs1(), SCRATCH_REGISTER);
-                            before_call!(ops);
-                            dynasm!(ops
-                                ; mov rax, QWORD Context::<N>::write_nondeterminism as _
-                                ; mov rdi, rsi
-                                ; mov esi, Rd(SCRATCH_REGISTER)
-                                ; sub rsp, 8
-                                ; call rax
-                                ; add rsp, 8
-                            );
-                            after_call!(ops);
-                        }
-                    }
-                    _ => panic!("Unknown csr"),
-                },
-
-                _ => {
-                    if rd != 0 {
-                        todo!("unsupported instruction")
-                    } else {
-                        // effectively a NOP
-                        trace_zero!(ops);
-                    }
+            _ => {
+                if *raw_instruction != 0 {
+                    todo!("unsupported instruction 0x{raw_instruction:x}");
                 }
             }
         }
