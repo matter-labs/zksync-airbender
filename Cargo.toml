@@ -48,6 +48,7 @@ members = [
     "execution_utils",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/bigint_with_control",
+    "circuit_defs/keccak_with_control",
     "witness_eval_generator",
     "gpu_witness_eval_generator",
     "circuit_defs/machine_without_signed_mul_div",
@@ -57,6 +58,7 @@ default-members = [
     "blake2s_u32",
     "circuit_defs/bigint_with_control",
     "circuit_defs/blake2_with_compression",
+    "circuit_defs/keccak_with_control",
     "circuit_defs/circuit_common",
     # "circuit_defs/opcode_tests",
     "circuit_defs/prover_examples",
@@ -112,6 +114,7 @@ verifier_generator = { path = "./verifier_generator" }
 circuit_common = { path = "./circuit_defs/circuit_common" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
+keccak_with_control = { path = "./circuit_defs/keccak_with_control" }
 risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
 machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
 reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }

@@ -54,6 +54,14 @@ pub enum TableType {
     StoreByteSourceContribution,
     StoreByteExistingContribution,
     TruncateShift,
+    KeccakPermutationIndices12,
+    KeccakPermutationIndices34,
+    KeccakPermutationIndices56,
+    XorSpecialIota,
+    AndN,
+    RotL,
+
+    // LEAVE THIS LAST !!
     DynamicPlaceholder,
 }
 

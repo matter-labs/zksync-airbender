@@ -997,6 +997,10 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
         resolver.evaluate(self);
         let resolver = self.current_stats_resolver.take().unwrap();
         self.resolvers_data.push(resolver);
+
+        // if self.resolvers_data.len() - 1 == 30 {
+        //     panic!("debug: found bad resolver");
+        // }
     }
 
     fn get_oracle_field(&mut self, placeholder: Placeholder, subindex: usize) -> Self::Field {
@@ -1443,6 +1447,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
             stats.lookup_inputs.insert(lookup_idx, lookup);
         }
 
+        // dbg!(&format!("{lookup_idx}({table_id:?})"));
         std::array::from_fn(|i| FieldNodeExpression::LookupOutput {
             lookup_idx,
             output_idx: i,

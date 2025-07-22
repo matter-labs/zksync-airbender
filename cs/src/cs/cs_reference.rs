@@ -46,6 +46,10 @@ pub struct BasicAssembly<F: PrimeField, W: WitnessPlacer<F> = CSDebugWitnessEval
 impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     type WitnessPlacer = W;
 
+    fn current_variable_count(&self) -> usize {
+        self.no_index_assigned as usize
+    }
+
     fn new() -> Self {
         Self {
             no_index_assigned: 0,
@@ -71,7 +75,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 203 {
+        // if self.no_index_assigned == 14 {
         //     panic!("debug");
         // }
         let variable = Variable(self.no_index_assigned);
@@ -549,6 +553,57 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         output_variables
     }
 
+    #[track_caller]
+    fn set_variables_from_lookup_constrained_explicit<const M: usize, const N: usize>(
+        &mut self,
+        inputs: [LookupInput<F>; M],
+        output_variables: [Variable; N],
+        table_type: Num<F>,
+    ) {
+        assert_eq!(M + N, COMMON_TABLE_WIDTH);
+        assert!(table_type != TableType::ZeroEntry.to_num() && table_type != TableType::DynamicPlaceholder.to_num());
+
+        if M == COMMON_TABLE_WIDTH {
+            assert_eq!(N, 0);
+            // just add lookup, no witness evaluation here
+
+            panic!("Please use `enforce_lookup_tuple_for_fixed_table` if no outputs are required");
+        }
+
+        assert!(M == 1 || M == 2);
+
+        let inputs_vars = inputs.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
+            let table_id = if let Num::Constant(c) = table_type {
+                <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(c.as_u64() as u16)
+            } else if let Num::Var(v) = table_type {
+                placer.get_u16(v)
+            } else {unreachable!()};
+            let output_values = placer.lookup::<M, N>(&input_values, &table_id);
+            for (var, value) in output_variables.iter().zip(output_values.iter()) {
+                placer.assign_field(*var, value);
+            }
+        };
+        self.set_values(value_fn);
+
+        let input_len = M;
+        let row = std::array::from_fn(|idx| {
+            if idx < input_len {
+                inputs[idx].clone()
+            } else {
+                LookupInput::Variable(output_variables[idx - input_len])
+            }
+        });
+        let query = LookupQuery {
+            row,
+            table: if let Num::Constant(c) = table_type {LookupQueryTableType::Constant(TableType::get_table_from_id(c.as_u64() as u32))} 
+                   else if let Num::Var(v) = table_type {LookupQueryTableType::Variable(v)} else {unreachable!()},
+        };
+        // dbg!(&format!("{}({:?})", self.lookup_storage.len(), query.table));
+        self.lookup_storage.push(query);
+    }
+
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant) {
         match invariant {
             Invariant::Boolean => self.boolean_variables.push(variable),
@@ -825,10 +880,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
                     }
 
                     if value != F::ZERO {
-                        panic!(
-                            "unsatisfied at constraint {:?} with value {:?}",
-                            constraint, value
-                        );
+                        panic!("unsatisfied at constraint {constraint} with value {value}");
                     }
                 }
             }

@@ -18,6 +18,7 @@ mod rem;
 mod slt;
 mod sltu;
 mod sra;
+mod keccak;
 
 const INITIAL_PC: u32 = 0;
 

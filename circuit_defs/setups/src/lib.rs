@@ -14,6 +14,7 @@ use prover::field::*;
 use prover::prover_stages::SetupPrecomputations;
 use prover::tracers::delegation::bigint_with_control_factory_fn;
 use prover::tracers::delegation::blake2_with_control_factory_fn;
+use prover::tracers::delegation::keccak_special5_with_control_factory_fn;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
@@ -27,6 +28,7 @@ use worker::Worker;
 
 pub use bigint_with_control;
 pub use blake2_with_compression;
+pub use keccak_with_control;
 pub use final_reduced_risc_v_machine;
 pub use machine_without_signed_mul_div;
 pub use prover;
@@ -101,8 +103,44 @@ pub fn lde_factor_for_machine<C: MachineConfig>() -> usize {
 
 pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
 ) -> HashMap<u16, Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>> {
-    if is_default_machine_configuration::<C>()
-        || is_machine_without_signed_mul_div_configuration::<C>()
+    if is_default_machine_configuration::<C>() {
+        // blake and bigint and keccak
+        HashMap::from_iter(
+            [
+                (
+                    blake2_with_compression::DELEGATION_TYPE_ID as u16,
+                    Box::new(|| {
+                        blake2_with_control_factory_fn(
+                            blake2_with_compression::DELEGATION_TYPE_ID as u16,
+                            blake2_with_compression::NUM_DELEGATION_CYCLES,
+                        )
+                    })
+                        as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,
+                ),
+                (
+                    bigint_with_control::DELEGATION_TYPE_ID as u16,
+                    Box::new(|| {
+                        bigint_with_control_factory_fn(
+                            bigint_with_control::DELEGATION_TYPE_ID as u16,
+                            bigint_with_control::NUM_DELEGATION_CYCLES,
+                        )
+                    })
+                        as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,
+                ),
+                (
+                    keccak_with_control::DELEGATION_TYPE_ID as u16,
+                    Box::new(|| {
+                        keccak_special5_with_control_factory_fn(
+                            keccak_with_control::DELEGATION_TYPE_ID as u16,
+                            keccak_with_control::NUM_DELEGATION_CYCLES,
+                        )
+                    })
+                        as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,
+                ),
+            ]
+            .into_iter(),
+        )
+    } else if is_machine_without_signed_mul_div_configuration::<C>()
     {
         // blake and bigint
         HashMap::from_iter(
@@ -200,6 +238,10 @@ pub fn get_delegation_compiled_circuits_for_default_machine(
         bigint_with_control::DELEGATION_TYPE_ID,
         bigint_with_control::get_delegation_circuit(),
     ));
+    machines.push((
+        keccak_with_control::DELEGATION_TYPE_ID,
+        keccak_with_control::get_delegation_circuit(),
+    ));
 
     assert_eq!(
         machines.len(),
@@ -248,6 +290,10 @@ pub fn all_delegation_circuits_precomputations<A: GoodAllocator, B: GoodAllocato
         (
             bigint_with_control::DELEGATION_TYPE_ID,
             get_bigint_with_control_circuit_setup(worker),
+        ),
+        (
+            keccak_with_control::DELEGATION_TYPE_ID,
+            get_keccak_with_control_circuit_setup(worker),
         ),
         // (
         //     blake2_single_round::DELEGATION_TYPE_ID,
