@@ -473,6 +473,11 @@ pub trait WitnessComputationalInteger<T: 'static + Sized>: WitnessComputationCor
     fn get_bit(&self, bit_idx: u32) -> Self::Mask;
     fn equal_to_constant(&self, value: T) -> Self::Mask;
     fn get_lowest_bits(&self, num_bits: u32) -> Self;
+    // we need some bitwise ops
+    fn or(&self, other: &Self) -> Self;
+    fn and(&self, other: &Self) -> Self;
+    fn xor(&self, other: &Self) -> Self;
+    fn not(&self) -> Self;
 }
 
 pub trait WitnessComputationalU32: WitnessComputationalInteger<u32> {
@@ -769,14 +774,12 @@ macro_rules! impl_comp_core {
             }
             #[inline(always)]
             fn shl(&self, shift_magnitude: u32) -> Self {
-                // the old code is wrong bc 1_uN << N == 1_uN
-                // *self << shift_magnitude 
+                // necessary bc otherwise (1 << N) == 1 in rust
                 self.unbounded_shl(shift_magnitude)
             }
             #[inline(always)]
             fn shr(&self, shift_magnitude: u32) -> Self {
-                // the old code is wrong bc 1_uN >> N == 1_uN
-                // *self >> shift_magnitude
+                // necessary bc otherwise (1 >> N) == 1 in rust
                 self.unbounded_shr(shift_magnitude)
             }
             #[inline(always)]
@@ -790,6 +793,25 @@ macro_rules! impl_comp_core {
             #[inline(always)]
             fn get_lowest_bits(&self, num_bits: u32) -> Self {
                 *self & ((1 << num_bits) - 1)
+            }
+            #[inline(always)]
+            fn not(&self) -> Self {
+                !*self
+            }
+
+            #[inline(always)]
+            fn and(&self, other: &Self) -> Self {
+                self & other
+            }
+
+            #[inline(always)]
+            fn or(&self, other: &Self) -> Self {
+                self | other
+            }
+
+            #[inline(always)]
+            fn xor(&self, other: &Self) -> Self {
+                self ^ other
             }
         }
     };

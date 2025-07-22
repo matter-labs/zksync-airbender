@@ -119,7 +119,7 @@ pub(crate) fn create_keccak_with_control_delegation_layout() -> (
     Vec<Vec<RawExpression<Mersenne31Field>>>,
 ) {
     (
-        setups::keccak_::get_delegation_circuit().compiled_circuit,
-        setups::keccak_::get_ssa_form(),
+        setups::keccak_with_control::get_delegation_circuit().compiled_circuit,
+        setups::keccak_with_control::get_ssa_form(),
     )
 }

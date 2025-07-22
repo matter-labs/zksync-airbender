@@ -232,6 +232,13 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                     let #new_ident = #lhs.shr(#literal);
                 }
             }
+            FixedWidthIntegerNodeExpression::BinaryNot(lhs) => {
+                let lhs = self.integer_expr_into_var(lhs);
+                let new_ident = self.create_var();
+                quote! {
+                    let #new_ident = #lhs.not();
+                }
+            }
             FixedWidthIntegerNodeExpression::LowestBits { value, num_bits } => {
                 let lhs = self.integer_expr_into_var(value);
                 let literal = *num_bits;
@@ -373,6 +380,36 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 let witness_placer_ident = &self.witness_placer_ident;
                 quote! {
                     let #new_ident = #witness_placer_ident::I32::mixed_widening_product_bits(& #lhs, & #rhs).1;
+                }
+            }
+            FixedWidthIntegerNodeExpression::BinaryAnd { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                let witness_placer_ident = &self.witness_placer_ident;
+                quote! {
+                    let #new_ident = #witness_placer_ident::#type_ident::and(& #lhs, & #rhs);
+                }
+            }
+            FixedWidthIntegerNodeExpression::BinaryOr { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                let witness_placer_ident = &self.witness_placer_ident;
+                quote! {
+                    let #new_ident = #witness_placer_ident::#type_ident::or(& #lhs, & #rhs);
+                }
+            }
+            FixedWidthIntegerNodeExpression::BinaryXor { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                let witness_placer_ident = &self.witness_placer_ident;
+                quote! {
+                    let #new_ident = #witness_placer_ident::#type_ident::xor(& #lhs, & #rhs);
                 }
             }
         };
