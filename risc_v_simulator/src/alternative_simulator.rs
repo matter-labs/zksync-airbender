@@ -31,6 +31,7 @@ macro_rules! prologue {
             ; push r13
             ; push r14
             ; push r15
+            ; sub rsp, 8
         )
     };
 }
@@ -38,6 +39,7 @@ macro_rules! prologue {
 macro_rules! epilogue {
     ($ops:ident) => {
         dynasm!($ops
+            ; add rsp, 8
             ; pop r15
             ; pop r14
             ; pop r13
@@ -278,7 +280,9 @@ macro_rules! increment_trace {
             ;; before_call!($ops)
             ; mov rax, QWORD Context::<N>::receive_trace as _
             ; mov rsi, r8
+            ; sub rsp, 8
             ; call rax
+            ; add rsp, 8
             ;; after_call!($ops)
             ; pop rdx
             ; pop rcx
@@ -803,9 +807,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         before_call!(ops);
                         dynasm!(ops
                             ; mov rax, QWORD Context::<N>::read_nondeterminism as _
-                            ; sub rsp, 8
                             ; call rax
-                            ; add rsp, 8
                         );
                         after_call!(ops);
                         dynasm!(ops
@@ -822,9 +824,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                         dynasm!(ops
                             ; mov rax, QWORD Context::<N>::write_nondeterminism as _
                             ; mov esi, Rd(SCRATCH_REGISTER)
-                            ; sub rsp, 8
                             ; call rax
-                            ; add rsp, 8
                         );
                         after_call!(ops);
                     }
@@ -868,9 +868,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
 
                         ; mov rax, QWORD function
                         ; mov esi, ecx
-                        ; sub rsp, 8
                         ; call rax
-                        ; add rsp, 8
 
                         ; pop r9
                         ; pop r8
@@ -913,9 +911,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
 
         ; ->exit_with_error:
         ; mov rax, QWORD print_complaint as _
-        ; sub rsp, 8
         ; call rax
-        ; add rsp, 8
         ; ->quit:
         ; mov rax, r9
     );
