@@ -114,61 +114,108 @@ macro_rules! after_call {
 
 // The following functions are used to specify a mapping
 // between RISC-V and x86 registers
+//
+// For registers with no dedicated x86 register,
+// register writes go via rax and reads via rdx
+// rcx also doesn't contain a register because it must be used for bitshifts
+//
+// x10 - x15 are assiged to r10 - r15
+// rbx is for x9
+
+const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
+
+fn rv_to_gpr(x: u32) -> Option<u8> {
+    use x64::Rq::*;
+    assert!(x < 32);
+
+    Some(
+        (match x {
+            9 => RBX,
+            10 => R10,
+            11 => R11,
+            12 => R12,
+            13 => R13,
+            14 => R14,
+            15 => R15,
+            _ => return None,
+        }) as u8,
+    )
+}
 
 fn destination_gpr(x: u32) -> u8 {
-    x64::Rq::RAX as u8
+    rv_to_gpr(x).unwrap_or(x64::Rq::RAX as u8)
 }
 
 fn store_result(ops: &mut x64::Assembler, x: u32) {
     assert!(x != 0);
     assert!(x < 32);
 
-    let x = x as u8;
-    let high_or_low = x & 1;
-    let register = x >> 1;
-    dynasm!(ops
-        ; pinsrd Rx(register), eax, high_or_low as i8
-    )
+    if rv_to_gpr(x).is_none() {
+        let x = x as u8;
+        let high_or_low = x & 1;
+        let register = x >> 1;
+        dynasm!(ops
+            ; pinsrd Rx(register), eax, high_or_low as i8
+        )
+    }
 }
-
-/// RCX needs to be used for shift amounts, so no RISC-V register can live there.
-const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
 
 /// Returns the general purpose register that now holds the value of the
 /// RISC-V register `x`.
 /// Do not use in quick succession; the first value will get overwritten.
 fn load(ops: &mut x64::Assembler, x: u32) -> u8 {
-    assert!(x < 32);
-    if x == 0 {
-        dynasm!(ops
-            ; xor edx, edx
-        );
-    } else {
-        let x = x as u8;
-        let high_or_low = x & 1;
-        let register = x >> 1;
-        dynasm!(ops
-            ; pextrd edx, Rx(register), high_or_low as i8
-        );
-    }
+    rv_to_gpr(x).unwrap_or_else(|| {
+        if x == 0 {
+            dynasm!(ops
+                ; xor edx, edx
+            );
+        } else {
+            let x = x as u8;
+            let high_or_low = x & 1;
+            let register = x >> 1;
+            dynasm!(ops
+                ; pextrd edx, Rx(register), high_or_low as i8
+            );
+        }
 
-    x64::Rq::RDX as u8
+        x64::Rq::RDX as u8
+    })
 }
 
 /// Loads the RISC-V register `x` into the specified register.
 fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
-    assert!(x < 32);
-    if x == 0 {
-        dynasm!(ops
-            ; xor Rd(destination), Rd(destination)
-        );
+    if let Some(gpr) = rv_to_gpr(x) {
+        if destination != gpr {
+            dynasm!(ops
+                ; mov Rd(destination), Rd(gpr)
+            );
+        }
     } else {
-        let x = x as u8;
-        let high_or_low = x & 1;
-        let register = x >> 1;
-        dynasm!(ops
-            ; pextrd Rd(destination), Rx(register), high_or_low as i8
-        );
+        if x == 0 {
+            dynasm!(ops
+                ; xor Rd(destination), Rd(destination)
+            );
+        } else {
+            let x = x as u8;
+            let high_or_low = x & 1;
+            let register = x >> 1;
+            dynasm!(ops
+                ; pextrd Rd(destination), Rx(register), high_or_low as i8
+            );
+        }
+    }
+}
+
+fn load_abelian(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8) -> u8 {
+    let a = rv_to_gpr(x);
+    let b = rv_to_gpr(y);
+    if a == Some(destination) {
+        load(ops, y)
+    } else if b == Some(destination) {
+        load(ops, x)
+    } else {
+        load_into(ops, x, destination);
+        load(ops, y)
     }
 }
 
@@ -279,6 +326,13 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         ; ->start:
         ;; prologue!(ops)
         ; vzeroall
+        ; xor r10, r10
+        ; xor r11, r11
+        ; xor r12, r12
+        ; xor r13, r13
+        ; xor r14, r14
+        ; xor r15, r15
+
         ; mov r8, rdx
         ; xor r9, r9
     );
@@ -421,77 +475,73 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     );
                 }
                 Instruction::Add(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
+                    let other = load_abelian(&mut ops, parts.rs1(), parts.rs2(), out);
                     dynasm!(ops
                         ; add Rd(out), Rd(other)
                     );
                 }
                 Instruction::Sub(parts) => {
+                    load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
                     load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
                     dynasm!(ops
-                        ; sub Rd(out), Rd(other)
+                        ; sub Rd(out), Rd(SCRATCH_REGISTER)
                     );
                 }
                 Instruction::Slt(parts) => {
+                    load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
                     load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
                     dynasm!(ops
-                        ; cmp Rd(out), Rd(other)
+                        ; cmp Rd(out), Rd(SCRATCH_REGISTER)
                         ; setl Rb(out)
                         ; movzx Rd(out), Rb(out)
                     );
                 }
                 Instruction::Sltu(parts) => {
+                    load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
                     load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
                     dynasm!(ops
-                        ; cmp Rd(out), Rd(other)
+                        ; cmp Rd(out), Rd(SCRATCH_REGISTER)
                         ; setb Rb(out)
                         ; movzx Rd(out), Rb(out)
                     );
                 }
                 Instruction::And(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
+                    let other = load_abelian(&mut ops, parts.rs1(), parts.rs2(), out);
                     dynasm!(ops
                         ; and Rd(out), Rd(other)
                     );
                 }
                 Instruction::Or(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
+                    let other = load_abelian(&mut ops, parts.rs1(), parts.rs2(), out);
                     dynasm!(ops
                         ; or Rd(out), Rd(other)
                     );
                 }
                 Instruction::Xor(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
+                    let other = load_abelian(&mut ops, parts.rs1(), parts.rs2(), out);
                     dynasm!(ops
                         ; xor Rd(out), Rd(other)
                     );
                 }
                 Instruction::Sll(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
                     load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    load_into(&mut ops, parts.rs1(), out);
                     dynasm!(ops
                         ; and rcx, 0x1f
                         ; shl Rd(out), cl
                     );
                 }
                 Instruction::Srl(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
                     load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    load_into(&mut ops, parts.rs1(), out);
                     dynasm!(ops
                         ; and rcx, 0x1f
                         ; shr Rd(out), cl
                     );
                 }
                 Instruction::Sra(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
                     load_into(&mut ops, parts.rs2(), x64::Rq::RCX as u8);
+                    load_into(&mut ops, parts.rs1(), out);
                     dynasm!(ops
                         ; and rcx, 0x1f
                         ; sar Rd(out), cl
@@ -540,8 +590,7 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
 
                 // Multiplication
                 Instruction::Mul(parts) => {
-                    load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
+                    let other = load_abelian(&mut ops, parts.rs1(), parts.rs2(), out);
                     dynasm!(ops
                         ; imul Rd(out), Rd(other)
                     );
@@ -571,11 +620,11 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
                     }
                 }
                 Instruction::Mulhsu(parts) => {
+                    load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
                     load_into(&mut ops, parts.rs1(), out);
-                    let other = load(&mut ops, parts.rs2());
                     dynasm!(ops
                         ; movsx Rq(out), Rd(out)
-                        ; imul Rq(out), Rq(other)
+                        ; imul Rq(out), Rq(SCRATCH_REGISTER)
                         ; shr Rq(out), 32
                     );
                 }
@@ -590,12 +639,14 @@ pub fn run_alternative_simulator<N: NonDeterminismCSRSource<VectorMemoryImpl>>(
         match instruction {
             // Control transfer instructions
             Instruction::Jal(parts) => {
-                dynasm!(ops
-                    ; mov Rd(out), (pc + 4) as i32
-                );
-                trace_register!(ops, out);
                 if rd != 0 {
+                    dynasm!(ops
+                        ; mov Rd(out), (pc + 4) as i32
+                    );
+                    trace_register!(ops, out);
                     store_result(&mut ops, rd);
+                } else {
+                    trace_zero!(ops);
                 }
 
                 let offset = sign_extend::<21>(parts.imm());
