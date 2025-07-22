@@ -48,6 +48,23 @@ macro_rules! epilogue {
 
             ; leave
             ; ret
+
+            ; ->trace_buffer_full:
+            ; xor r9, r9
+            ; push rax
+            ; push rcx
+            ; push rdx
+            ;; before_call!($ops)
+            ; mov rax, QWORD Context::<N>::receive_trace as _
+            ; mov rsi, r8
+            ; sub rsp, 8
+            ; call rax
+            ; add rsp, 8
+            ;; after_call!($ops)
+            ; pop rdx
+            ; pop rcx
+            ; pop rax
+            ; ret
         )
     };
 }
@@ -273,20 +290,7 @@ macro_rules! increment_trace {
             ; inc r9
             ; cmp r9, TRACE_LEN as _
             ; jne >skip
-            ; xor r9, r9
-            ; push rax
-            ; push rcx
-            ; push rdx
-            ;; before_call!($ops)
-            ; mov rax, QWORD Context::<N>::receive_trace as _
-            ; mov rsi, r8
-            ; sub rsp, 8
-            ; call rax
-            ; add rsp, 8
-            ;; after_call!($ops)
-            ; pop rdx
-            ; pop rcx
-            ; pop rax
+            ; call ->trace_buffer_full
             ; skip:
         );
     };
