@@ -43,7 +43,7 @@ impl Default for ProverContextConfig {
         Self {
             powers_of_w_coarse_log_count: 12,
             allocation_block_log_size: 22,
-            device_slack_blocks: 40,
+            device_slack_blocks: 44,
         }
     }
 }
