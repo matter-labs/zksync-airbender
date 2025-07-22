@@ -1447,7 +1447,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
             stats.lookup_inputs.insert(lookup_idx, lookup);
         }
 
-        dbg!(&format!("{lookup_idx}({table_id:?})"));
+        // dbg!(&format!("{lookup_idx}({table_id:?})"));
         std::array::from_fn(|i| FieldNodeExpression::LookupOutput {
             lookup_idx,
             output_idx: i,

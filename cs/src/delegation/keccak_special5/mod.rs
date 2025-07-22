@@ -11,8 +11,6 @@ use crate::types::Num;
 
 use core::array::from_fn;
 use crate::cs::witness_placer::WitnessTypeSet;
-use crate::cs::witness_placer::WitnessComputationalU8;
-use crate::cs::witness_placer::WitnessComputationalField;
 
 // INFO:
 // - 5 "precompiles" (ops) packed into one circuit
@@ -347,43 +345,11 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             }
             [low32_value, high32_value]
         };
-        let binop = |placer: &mut CS::WitnessPlacer, a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], table_id_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16| {
-            let binopu8 = |placer: &mut CS::WitnessPlacer, au8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8, bu8_value: &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8| {
-                let au8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(au8_value.widen().widen());
-                let bu8_field = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(bu8_value.widen().widen());
-                let [outu8_field] = placer.lookup(&[au8_field, bu8_field], table_id_value);
-                let outu8_value = outu8_field.as_integer().truncate().truncate();
-                outu8_value
-            };
-            let tou8 = |u64_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
-                let zerou8 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
-                let mut chunks: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8] = from_fn(|_| zerou8.clone());
-                chunks[0] = u64_value[0].truncate().truncate();
-                chunks[1] = u64_value[0].truncate().shr(8).truncate();
-                chunks[2] = u64_value[0].shr(16).truncate().truncate();
-                chunks[3] = u64_value[0].shr(16).truncate().shr(8).truncate();
-                chunks[4] = u64_value[1].truncate().truncate();
-                chunks[5] = u64_value[1].truncate().shr(8).truncate();
-                chunks[6] = u64_value[1].shr(16).truncate().truncate();
-                chunks[7] = u64_value[1].shr(16).truncate().shr(8).truncate();
-                chunks
-            };
-            let fromu8 = |u8_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8]| {
-                let low32_low16 = u8_values[0].widen().overflowing_add(&u8_values[1].widen().shl(8)).0;
-                let low32_high16 = u8_values[2].widen().overflowing_add(&u8_values[3].widen().shl(8)).0;
-                let high32_low16 = u8_values[4].widen().overflowing_add(&u8_values[5].widen().shl(8)).0;
-                let high32_high16 = u8_values[6].widen().overflowing_add(&u8_values[7].widen().shl(8)).0;
-                let low32 = low32_low16.widen().overflowing_add(&low32_high16.widen().shl(16)).0;
-                let high32 = high32_low16.widen().overflowing_add(&high32_high16.widen().shl(16)).0;
-                [low32, high32]
-            };
-            let au8_values = tou8(a_value);
-            let bu8_values = tou8(b_value);
-            let mut outu8_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8; 8] = from_fn(|_| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0));
-            for i in 0..8 {
-                outu8_values[i] = binopu8(placer, &au8_values[i], &bu8_values[i]);
-            }
-            fromu8(outu8_values)
+        let xor = |a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
+            core::array::from_fn(|i| a_value[i].xor(&b_value[i]))
+        };
+        let andn = |a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
+            core::array::from_fn(|i| a_value[i].not().and(&b_value[i]))
         };
         let zero_u64 = [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0), <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0)];
         
@@ -392,19 +358,45 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             let (p0_state_output_values, p0_tmp_values) = {
                 let [idx0_value, idx5_value, idx10_value, idx15_value, idx20_value, _idcol_value] = state_input_values.clone();
                 let idx0_new_value = {
-                    let table_xor_iota_id_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::XorSpecialIota.to_table_id() as u16);
-                    let round_constant_control_reg_value = [placer.get_u32_from_u16_parts(p0_round_constant_control_reg.low32.0.map(|y| y.get_variable())), placer.get_u32_from_u16_parts(p0_round_constant_control_reg.high32.0.map(|y| y.get_variable()))];
-                    binop(placer, &idx0_value, &round_constant_control_reg_value, &table_xor_iota_id_value)
+                    let round_constant_value = {
+                        let round_if_iter0_value = {
+                            let is_iter0_value = placer.get_boolean(is_iter0.get_variable().unwrap());
+                            let round_value = {
+                                let control_value: <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16 = placer.get_u16(control);
+                                control_value.shr(10)
+                            };
+                            let zero_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+                            <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                                &is_iter0_value, 
+                                &round_value, 
+                                &zero_value)
+                        };
+                        let round_constants_adjusted_values = {
+                            const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [0, 1, 32898, 9223372036854808714, 9223372039002292224, 32907, 2147483649, 9223372039002292353, 9223372036854808585, 138, 136, 2147516425, 2147483658, 2147516555, 9223372036854775947, 9223372036854808713, 9223372036854808579, 9223372036854808578, 9223372036854775936, 32778, 9223372039002259466, 9223372039002292353, 9223372036854808704, 2147483649];
+                            ROUND_CONSTANTS_ADJUSTED.map(|rc| [
+                                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(rc as u32),
+                                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant((rc>>32) as u32)
+                            ])
+                        };
+                        let mut round_constant_value = [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0), <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0)];
+                        for (i, [rc_low32_value, rc_high32_value]) in round_constants_adjusted_values.into_iter().enumerate() {
+                            let i_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(i as u16);
+                            let is_round_eqi = round_if_iter0_value.equal(&i_value);
+                            round_constant_value[0].assign_masked(&is_round_eqi, &rc_low32_value);
+                            round_constant_value[1].assign_masked(&is_round_eqi, &rc_high32_value);
+                        }
+                        round_constant_value
+                    };
+                    xor(&idx0_value, &round_constant_value)
                 };
                 let idx5_new_value = idx5_value.clone();
                 let idx10_new_value = idx10_value.clone();
                 let idx15_new_value = idx15_value.clone();
                 let idx20_new_value = idx20_value.clone();
-                let table_xor_id_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
-                let tmp1_value = binop(placer, &idx0_new_value, &idx5_value, &table_xor_id_value);
-                let tmp2_value = binop(placer, &tmp1_value, &idx10_value, &table_xor_id_value);
-                let tmp3_value = binop(placer, &tmp2_value, &idx15_value, &table_xor_id_value);
-                let idcol_new_value = binop(placer, &tmp3_value, &idx20_value, &table_xor_id_value);
+                let tmp1_value = xor(&idx0_new_value, &idx5_value);
+                let tmp2_value = xor(&tmp1_value, &idx10_value);
+                let tmp3_value = xor(&tmp2_value, &idx15_value);
+                let idcol_new_value = xor(&tmp3_value, &idx20_value);
                 (
                     [idx0_new_value, idx5_new_value, idx10_new_value, idx15_new_value, idx20_new_value, idcol_new_value], 
                     [tmp1_value, tmp2_value, tmp3_value]
@@ -412,12 +404,11 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             };
             let (p1_state_output_values, p1_tmp_values) = {
                 let [i25_value, i26_value, i27_value, i28_value, i29_value, i0_value] = state_input_values.clone();
-                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
-                let i25_new_value = binop(placer, &i25_value, &rotl(&i27_value, 1), &table_id_xor_value);
-                let i26_new_value = binop(placer, &i26_value, &rotl(&i28_value, 1), &table_id_xor_value);
-                let i27_new_value = binop(placer, &i27_value, &rotl(&i29_value, 1), &table_id_xor_value);
-                let i28_new_value = binop(placer, &i28_value, &rotl(&i25_value, 1), &table_id_xor_value);
-                let i29_new_value = binop(placer, &i29_value, &rotl(&i26_value, 1), &table_id_xor_value);
+                let i25_new_value = xor(&i25_value, &rotl(&i27_value, 1));
+                let i26_new_value = xor(&i26_value, &rotl(&i28_value, 1));
+                let i27_new_value = xor(&i27_value, &rotl(&i29_value, 1));
+                let i28_new_value = xor(&i28_value, &rotl(&i25_value, 1));
+                let i29_new_value = xor(&i29_value, &rotl(&i26_value, 1));
                 let i0_new_value = i0_value.clone();
                 (
                     [i25_new_value, i26_new_value, i27_new_value, i28_new_value, i29_new_value, i0_new_value],
@@ -427,9 +418,8 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             let (p2_state_output_values, p2_tmp_values) = {
                 let [idx0_value, idx5_value, idx10_value, idx15_value, idx20_value, idcol_value] = state_input_values.clone();
                 let iter_values = iter_bitmask.map(|x| placer.get_boolean(x.get_variable().unwrap()));
-                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
                 let idx0_new_value = {
-                    let mut idx0_new_value = binop(placer, &idx0_value, &idcol_value, &table_id_xor_value);
+                    let mut idx0_new_value = xor(&idx0_value, &idcol_value);
                     for (iter_value, rot_const) in iter_values.iter().zip([0,1,62,28,27]) {
                         let possible_rotation_value = rotl(&idx0_new_value, rot_const);
                         idx0_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
@@ -438,7 +428,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                     idx0_new_value
                 };
                 let idx5_new_value = {
-                    let mut idx5_new_value = binop(placer, &idx5_value, &idcol_value, &table_id_xor_value);
+                    let mut idx5_new_value = xor(&idx5_value, &idcol_value);
                     for (iter_value, rot_const) in iter_values.iter().zip([36,44,6,55,20]) {
                         let possible_rotation_value = rotl(&idx5_new_value, rot_const);
                         idx5_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
@@ -447,7 +437,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                     idx5_new_value
                 };
                 let idx10_new_value = {
-                    let mut idx10_new_value = binop(placer, &idx10_value, &idcol_value, &table_id_xor_value);
+                    let mut idx10_new_value = xor(&idx10_value, &idcol_value);
                     for (iter_value, rot_const) in iter_values.iter().zip([3,10,43,25,39]) {
                         let possible_rotation_value = rotl(&idx10_new_value, rot_const);
                         idx10_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
@@ -456,7 +446,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                     idx10_new_value
                 };
                 let idx15_new_value = {
-                    let mut idx15_new_value = binop(placer, &idx15_value, &idcol_value, &table_id_xor_value);
+                    let mut idx15_new_value = xor(&idx15_value, &idcol_value);
                     for (iter_value, rot_const) in iter_values.iter().zip([41,45,15,21,8]) {
                         let possible_rotation_value = rotl(&idx15_new_value, rot_const);
                         idx15_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
@@ -465,7 +455,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                     idx15_new_value
                 };
                 let idx20_new_value = {
-                    let mut idx20_new_value = binop(placer, &idx20_value, &idcol_value, &table_id_xor_value);
+                    let mut idx20_new_value = xor(&idx20_value, &idcol_value);
                     for (iter_value, rot_const) in iter_values.iter().zip([18,2,61,56,14]) {
                         let possible_rotation_value = rotl(&idx20_new_value, rot_const);
                         idx20_new_value[0].assign_masked(iter_value, &possible_rotation_value[0]);
@@ -483,13 +473,13 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                 let [idx1_value, idx2_value, idx3_value, idx4_value, _i25_value, _i26_value] = state_input_values.clone();
                 let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
                 let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
-                let tmp1_value = binop(placer, &idx2_value, &idx3_value, &table_id_andn_value);
-                let idx1_new_value = binop(placer, &idx1_value, &tmp1_value, &table_id_xor_value);
-                let tmp2_value = binop(placer, &idx3_value, &idx4_value, &table_id_andn_value);
-                let idx2_new_value = binop(placer, &idx2_value, &tmp2_value, &table_id_xor_value);
+                let tmp1_value = andn(&idx2_value, &idx3_value);
+                let idx1_new_value = xor(&idx1_value, &tmp1_value);
+                let tmp2_value = andn(&idx3_value, &idx4_value);
+                let idx2_new_value = xor(&idx2_value, &tmp2_value);
                 let idx3_new_value = idx3_value.clone();
                 let idx4_new_value = idx4_value.clone();
-                let i25_new_value = binop(placer, &idx1_value, &idx2_value, &table_id_andn_value);
+                let i25_new_value = andn(&idx1_value, &idx2_value);
                 let i26_new_value = idx1_value.clone();
                 (
                     [idx1_new_value, idx2_new_value, idx3_new_value, idx4_new_value, i25_new_value, i26_new_value],
@@ -500,11 +490,11 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                 let [idx0_value, idx3_value, idx4_value, i25_value, i26_value, _i27_value] = state_input_values;
                 let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
                 let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
-                let idx0_new_value = binop(placer, &idx0_value, &i25_value, &table_id_xor_value);
-                let tmp1_value = binop(placer, &idx4_value, &idx0_value, &table_id_andn_value);
-                let idx3_new_value = binop(placer, &idx3_value, &tmp1_value, &table_id_xor_value);
-                let tmp2_value = binop(placer, &idx0_value, &i26_value, &table_id_andn_value);
-                let idx4_new_value = binop(placer, &idx4_value, &tmp2_value, &table_id_xor_value);
+                let idx0_new_value = xor(&idx0_value, &i25_value);
+                let tmp1_value = andn(&idx4_value, &idx0_value);
+                let idx3_new_value = xor(&idx3_value, &tmp1_value);
+                let tmp2_value = andn(&idx0_value, &i26_value);
+                let idx4_new_value = xor(&idx4_value, &tmp2_value);
                 let i25_new_value = i25_value.clone();
                 let i26_new_value = i26_value.clone();
                 let i27_new_value = idx0_new_value.clone();
