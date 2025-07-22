@@ -4,6 +4,7 @@ use super::cpu_worker::{
 use super::gpu_manager::{GpuManager, GpuWorkBatch};
 use super::gpu_worker::{
     GpuWorkRequest, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
+    SetupToCache,
 };
 use super::messages::WorkerResult;
 use super::precomputations::CircuitPrecomputationsHost;
@@ -186,7 +187,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
         ProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22).unwrap();
         info!("PROVER host allocator initialized");
-        let gpu_manager = GpuManager::new();
         let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
         for _ in 0..setup_and_teardowns_count {
             let lazy_init_data = Vec::with_capacity_in(max_num_cycles, A::default());
@@ -219,7 +219,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             worker.num_cores
         );
         let wait_group = Some(WaitGroup::new());
-        let binaries = binaries
+        let binaries: HashMap<K, BinaryHolder> = binaries
             .into_iter()
             .map(|b| {
                 let ExecutableBinary {
@@ -248,12 +248,32 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             })
             .collect();
         info!("PROVER producing precomputations for all delegation circuits");
-        let delegation_circuits_precomputations =
-            setups::all_delegation_circuits_precomputations(&worker)
-                .into_iter()
-                .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
-                .collect();
+        let delegation_circuits_precomputations: HashMap<
+            DelegationCircuitType,
+            CircuitPrecomputationsHost<A>,
+        > = setups::all_delegation_circuits_precomputations(&worker)
+            .into_iter()
+            .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
+            .collect();
         info!("PROVER produced precomputations for all delegation circuits");
+        let mut setups_to_cache = vec![];
+        for value in binaries.values() {
+            let setup = SetupToCache {
+                circuit_type: CircuitType::Main(value.circuit_type),
+                precomputations: value.precomputations.clone(),
+            };
+            setups_to_cache.push(setup);
+        }
+        for (&circuit_type, precomputations) in delegation_circuits_precomputations.iter() {
+            let setup = SetupToCache {
+                circuit_type: CircuitType::Delegation(circuit_type),
+                precomputations: precomputations.clone(),
+            };
+            setups_to_cache.push(setup);
+        }
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager = GpuManager::new(setups_to_cache, gpu_wait_group.clone());
+        gpu_wait_group.wait();
         Self {
             device_count,
             gpu_manager,
