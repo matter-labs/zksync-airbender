@@ -14,6 +14,7 @@ use cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
@@ -116,15 +117,37 @@ impl<'a> StageTwoOutput<'a> {
         let trace_holder = &mut self.trace_holder;
         let trace = trace_holder.get_evaluations_mut();
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
-        let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
+        let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
         let mut d_alloc_e4_scratch =
             context.alloc(num_e4_scratch_elems, AllocationPlacement::BestFit)?;
-        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(trace_len, num_stage_2_bf_cols)?;
+        let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
+            get_stage_2_cub_and_batch_reduce_intermediate_scratch(
+                trace_len,
+                num_stage_2_bf_cols,
+                cached_data.handle_delegation_requests,
+                cached_data.process_delegations,
+                context.get_device_properties(),
+            )?;
         let mut d_alloc_scratch_for_cub_ops =
             context.alloc(cub_scratch_bytes, AllocationPlacement::BestFit)?;
-        let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);
+        let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
+            let alloc = context.alloc(
+                batch_reduce_intermediate_elems,
+                AllocationPlacement::BestFit,
+            )?;
+            Some(alloc)
+        } else {
+            None
+        };
+        let mut maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+            if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+                Some(d_alloc)
+            } else {
+                None
+            };
+        let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
         let mut d_alloc_scratch_for_col_sums =
-            context.alloc(num_bf_scratch_elems, AllocationPlacement::BestFit)?;
+            context.alloc(col_sums_scratch_elems, AllocationPlacement::BestFit)?;
         let mut d_lookup_challenges = context.alloc(1, AllocationPlacement::BestFit)?;
         let guard = lookup_challenges.lock().unwrap();
         memory_copy_async(
@@ -146,6 +169,7 @@ impl<'a> StageTwoOutput<'a> {
             &mut d_stage_2_cols,
             &mut d_alloc_e4_scratch,
             &mut d_alloc_scratch_for_cub_ops,
+            &mut maybe_batch_reduce_intermediates,
             &mut d_alloc_scratch_for_col_sums,
             &d_lookup_challenges[0],
             cached_data,
@@ -153,10 +177,14 @@ impl<'a> StageTwoOutput<'a> {
             circuit.total_tables_size,
             log_domain_size,
             stream,
+            context.get_device_properties(),
         )?;
         generic_lookup_mappings.free();
         d_alloc_e4_scratch.free();
         d_alloc_scratch_for_cub_ops.free();
+        if let Some(allocation) = maybe_batch_reduce_intermediates_alloc {
+            allocation.free();
+        }
         d_alloc_scratch_for_col_sums.free();
         d_lookup_challenges.free();
         trace_holder.allocate_to_full(context)?;
