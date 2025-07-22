@@ -229,7 +229,33 @@ pub mod subword_load_store {
     }
 }
 
+pub mod inits_and_teardowns {
+    use crate::unrolled::MemoryCircuitOracle;
+    use crate::witness_evaluator::SimpleWitnessProxy;
+    use crate::witness_proxy::WitnessProxy;
+    use ::cs::cs::placeholder::Placeholder;
+    use ::cs::cs::witness_placer::WitnessTypeSet;
+    use ::cs::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::Mersenne31Field;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../inits_and_teardowns_preprocessed_generated.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<Mersenne31Field, true>,
+            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
 const SUPPORT_SIGNED: bool = false;
+const INITIAL_PC: u32 = 0;
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
@@ -280,7 +306,7 @@ pub fn run_basic_unrolled_test_impl(
 
     let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, 1 << 21 as usize); // use full RAM
     for (idx, insn) in binary.iter().enumerate() {
-        memory.populate(0 + idx as u32 * 4, *insn);
+        memory.populate(INITIAL_PC + idx as u32 * 4, *insn);
     }
 
     use crate::tracers::delegation::*;
@@ -326,7 +352,7 @@ pub fn run_basic_unrolled_test_impl(
     ) = if SUPPORT_SIGNED {
         run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfig>(
             NUM_CYCLES_PER_CHUNK,
-            0,
+            INITIAL_PC,
             csr_processor,
             &mut memory,
             1 << 21,
@@ -339,7 +365,7 @@ pub fn run_basic_unrolled_test_impl(
     } else {
         run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfigWithUnsignedMulDiv>(
             NUM_CYCLES_PER_CHUNK,
-            0,
+            INITIAL_PC,
             csr_processor,
             &mut memory,
             1 << 21,

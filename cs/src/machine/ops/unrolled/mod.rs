@@ -4,6 +4,7 @@ pub use self::decoder::*;
 use super::*;
 
 pub mod add_sub_lui_auipc_mop;
+pub mod inits_and_teardowns;
 pub mod jump_branch_slt;
 pub mod load_store;
 pub mod load_store_subword_only;

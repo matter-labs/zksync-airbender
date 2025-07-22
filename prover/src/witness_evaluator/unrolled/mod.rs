@@ -4,7 +4,7 @@ use crate::tracers::unrolled::tracer::*;
 use crate::tracers::unrolled::word_specialized_tracer::WordSpecializedTracer;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::machine_mode_only_unrolled::{
-    DelegationCSRProcessor, RiscV32StateForUnrolledProver, INITIAL_TIMESTAMP,
+    DelegationCSRProcessor, RiscV32StateForUnrolledProver,
 };
 
 mod family_circuits;
@@ -208,6 +208,7 @@ pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
     worker: &Worker,
 ) -> (
     u32,
+    TimestampScalar,
     HashMap<u8, Vec<NonMemTracingFamilyChunk>>,
     (Vec<MemTracingFamilyChunk>, Vec<MemTracingFamilyChunk>),
     HashMap<u16, Vec<DelegationWitness>>,
@@ -371,8 +372,12 @@ pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
     let freq = (cycles_passed as f64) / elapsed.as_secs_f64() / 1_000_000f64;
     println!("Simulator frequency is {} MHz", freq);
 
+    let final_pc = state.pc;
+    let final_timestamp = state.timestamp;
+
     (
-        state.pc,
+        final_pc,
+        final_timestamp,
         completed_family_chunks,
         (
             completed_word_sized_mem_family_chunks,

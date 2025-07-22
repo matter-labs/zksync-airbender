@@ -1,0 +1,1 @@
+# [allow (dead_code)] pub fn evaluate_witness_fn < 'a , 'b : 'a , W : WitnessTypeSet < Mersenne31Field > , P : WitnessProxy < Mersenne31Field , W > + 'b > (witness_proxy : & 'a mut P) where W :: Field : Copy , W :: Mask : Copy , W :: U32 : Copy , W :: U16 : Copy , W :: U8 : Copy , W :: I32 : Copy { }

@@ -163,6 +163,11 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
     other_challenges_ptr: &mut *const Mersenne31Quartic,
     delegation_processor_layout: &DelegationProcessingLayout,
 ) {
+    // We require that on unused rows in delegation circuits prover
+    // can only substitute 0s for:
+    // - delegation data itself - so write timestamp is 0
+    // - all memory reads values/read timestamps - so that they do not contribute to RAM permutaiton (cancel immediatelly with writes)
+    // - all memory writes created by circuits are masked/default 0s - same, so that they do not contribute to RAM permutaiton (cancel immediatelly with reads)
     let predicate =
         *memory_trace_view_row.get_unchecked(delegation_processor_layout.multiplicity.start());
     let mut t = *tau_in_domain_by_half;
@@ -232,86 +237,13 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
     // for every read value we check that value == 0
     // for every written value value we check that value == 0
 
-    let bound = compiled_circuit.memory_layout.batched_ram_accesses.len();
-    for access_idx in 0..bound {
-        let access = *compiled_circuit
+    assert!(
+        compiled_circuit
             .memory_layout
             .batched_ram_accesses
-            .get_unchecked(access_idx);
-        match access {
-            BatchedRamAccessColumns::ReadAccess {
-                read_timestamp,
-                read_value,
-            } => {
-                for set in [read_timestamp, read_value].into_iter() {
-                    // low and high
-                    let mut term_contribution = t_minus_one_adjusted;
-                    term_contribution
-                        .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start()));
-                    if DEBUG_QUOTIENT {
-                        if is_last_row == false {
-                            assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value low is 0 if predicate is 0 at row {}", absolute_row_idx);
-                        }
-                    }
-                    add_quotient_term_contribution_in_ext2(
-                        other_challenges_ptr,
-                        term_contribution,
-                        quotient_term,
-                    );
-
-                    let mut term_contribution = t_minus_one_adjusted;
-                    term_contribution
-                        .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start() + 1));
-                    if DEBUG_QUOTIENT {
-                        if is_last_row == false {
-                            assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value high is 0 if predicate is 0 at row {}", absolute_row_idx);
-                        }
-                    }
-                    add_quotient_term_contribution_in_ext2(
-                        other_challenges_ptr,
-                        term_contribution,
-                        quotient_term,
-                    );
-                }
-            }
-            BatchedRamAccessColumns::WriteAccess {
-                read_timestamp,
-                read_value,
-                write_value,
-            } => {
-                for set in [read_timestamp, read_value, write_value].into_iter() {
-                    // low and high
-                    let mut term_contribution = t_minus_one_adjusted;
-                    term_contribution
-                        .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start()));
-                    if DEBUG_QUOTIENT {
-                        if is_last_row == false {
-                            assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value low is 0 if predicate is 0 at row {}", absolute_row_idx);
-                        }
-                    }
-                    add_quotient_term_contribution_in_ext2(
-                        other_challenges_ptr,
-                        term_contribution,
-                        quotient_term,
-                    );
-
-                    let mut term_contribution = t_minus_one_adjusted;
-                    term_contribution
-                        .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start() + 1));
-                    if DEBUG_QUOTIENT {
-                        if is_last_row == false {
-                            assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value high is 0 if predicate is 0 at row {}", absolute_row_idx);
-                        }
-                    }
-                    add_quotient_term_contribution_in_ext2(
-                        other_challenges_ptr,
-                        term_contribution,
-                        quotient_term,
-                    );
-                }
-            }
-        }
-    }
+            .is_empty(),
+        "deprecated"
+    );
 
     // for every register and indirect access
     let bound = compiled_circuit
@@ -442,7 +374,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                     }
 
                     // We only derive with non-trivial addition if it's not-first access
-                    if indirect_access_idx > 0 {
+                    if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
                         let carry_bit = *memory_trace_view_row
                             .get_unchecked(address_derivation_carry_bit.start());
                         let mut term_contribution = *tau_in_domain_by_half;
@@ -504,7 +436,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                     }
 
                     // We only derive with non-trivial addition if it's not-first access
-                    if indirect_access_idx > 0 {
+                    if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
                         let carry_bit = *memory_trace_view_row
                             .get_unchecked(address_derivation_carry_bit.start());
                         let mut term_contribution = *tau_in_domain_by_half;
@@ -535,12 +467,12 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
 pub(crate) unsafe fn evaluate_range_check_16_over_variables(
     _compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness_trace_view_row: &[Mersenne31Field],
-    memory_trace_view_row: &[Mersenne31Field],
+    _memory_trace_view_row: &[Mersenne31Field],
     _setup_trace_view_row: &[Mersenne31Field],
     stage_2_trace_view_row: &[Mersenne31Field],
     _tau_in_domain: &Mersenne31Complex,
     tau_in_domain_by_half: &Mersenne31Complex,
-    _absolute_row_idx: usize,
+    absolute_row_idx: usize,
     is_last_row: bool,
     quotient_term: &mut Mersenne31Quartic,
     other_challenges_ptr: &mut *const Mersenne31Quartic,
@@ -554,10 +486,8 @@ pub(crate) unsafe fn evaluate_range_check_16_over_variables(
         let c = *stage_2_trace_view_row.get_unchecked(c_offset);
         let a = lookup_set.a_col;
         let b = lookup_set.b_col;
-        let a_place = ColumnAddress::WitnessSubtree(a);
-        let b_place = ColumnAddress::WitnessSubtree(b);
-        let a = read_value(a_place, witness_trace_view_row, memory_trace_view_row);
-        let b = read_value(b_place, witness_trace_view_row, memory_trace_view_row);
+        let a = *witness_trace_view_row.get_unchecked(a);
+        let b = *witness_trace_view_row.get_unchecked(b);
 
         if DEBUG_QUOTIENT {
             if is_last_row == false {
@@ -584,11 +514,18 @@ pub(crate) unsafe fn evaluate_range_check_16_over_variables(
         term_contribution.mul_assign(&tau_in_domain_by_half);
         if DEBUG_QUOTIENT {
             if is_last_row == false {
+                if term_contribution.is_zero() == false {
+                    dbg!(lookup_set);
+                    dbg!(a);
+                    dbg!(b);
+                    dbg!(c);
+                }
                 assert_eq!(
                     term_contribution,
                     Mersenne31Complex::ZERO,
-                    "unsatisfied at range check lookup base field oracle {}",
-                    i
+                    "unsatisfied at range check 16 lookup base field oracle {} at row {}",
+                    i,
+                    absolute_row_idx,
                 );
             }
         }
@@ -636,8 +573,9 @@ pub(crate) unsafe fn evaluate_range_check_16_over_variables(
                 assert_eq!(
                     term_contribution,
                     Mersenne31Quartic::ZERO,
-                    "unsatisfied at range check lookup ext field oracle {}",
-                    i
+                    "unsatisfied at range check 16 lookup ext field oracle {} at row {}",
+                    i,
+                    absolute_row_idx,
                 );
             }
         }
@@ -720,7 +658,7 @@ pub(crate) unsafe fn evaluate_range_check_16_over_expressions(
                 assert_eq!(
                     term_contribution,
                     Mersenne31Complex::ZERO,
-                    "unsatisfied at range check lookup base field oracle {}",
+                    "unsatisfied at range check 16 lookup base field oracle {}",
                     i
                 );
             }
@@ -764,7 +702,7 @@ pub(crate) unsafe fn evaluate_range_check_16_over_expressions(
                 assert_eq!(
                     term_contribution,
                     Mersenne31Quartic::ZERO,
-                    "unsatisfied at range check lookup ext field oracle {}",
+                    "unsatisfied at range check 16 lookup ext field oracle {}",
                     i
                 );
             }
@@ -1955,8 +1893,8 @@ pub(crate) unsafe fn evaluate_memory_init_teardown_range_checks(
                 assert_eq!(
                     term_contribution,
                     Mersenne31Complex::ZERO,
-                    "unsatisfied at range check 16 lookup base field oracle for lazy init addresses at row {}",
-                    absolute_row_idx
+                    "unsatisfied at range check 16 lookup base field oracle for lazy init addresses at row {} set {}",
+                    absolute_row_idx, i
                 );
             }
         }
@@ -2006,8 +1944,8 @@ pub(crate) unsafe fn evaluate_memory_init_teardown_range_checks(
                 assert_eq!(
                     term_contribution,
                     Mersenne31Quartic::ZERO,
-                    "unsatisfied at range check 16 lookup ext field oracle for lazy init addresses at row {}",
-                    absolute_row_idx,
+                    "unsatisfied at range check 16 lookup ext field oracle for lazy init addresses at row {} set {}",
+                    absolute_row_idx, i
                 );
             }
         }

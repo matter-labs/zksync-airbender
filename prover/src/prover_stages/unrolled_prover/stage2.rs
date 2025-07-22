@@ -309,6 +309,11 @@ pub fn prover_stage_2_for_unrolled_circuit<
         .intermediate_polys_for_generic_lookup
         .start();
 
+    let offset_for_grand_product_poly = compiled_circuit
+        .stage_2_layout
+        .intermediate_poly_for_grand_product
+        .start();
+
     unsafe {
         worker.scope(trace_len - 1, |scope, geometry| {
             let mut accumulators_dsts = grand_product_accumulators.chunks_mut(1);
@@ -342,9 +347,16 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         let stage_2_trace = stage_2_trace_view.current_row();
                         let lookup_indexes_view_row = lookup_indexes_view.current_row_ref();
 
+                        // we treat `total_accumulated` as the value we previously accumulated at this chunk, so we write it "at this row",
+                        // and the value that we will accumulate at this row will be written in the next iteration
+                        stage_2_trace
+                            .as_mut_ptr()
+                            .add(offset_for_grand_product_poly)
+                            .cast::<Mersenne31Quartic>()
+                            .write(total_accumulated);
+
                         stage2_process_range_check_16_trivial_checks(
                             witness_trace_row,
-                            memory_trace_row,
                             stage_2_trace,
                             range_check_16_preprocessing_ref,
                             &range_check_16_width_1_lookups_access_ref[..],
@@ -362,7 +374,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         if process_shuffle_ram_init {
                             process_lazy_init_range_checks(
                                 memory_trace_row,
-                                witness_trace_row,
                                 stage_2_trace,
                                 range_check_16_preprocessing_ref,
                                 &lazy_init_address_range_check_16,
@@ -408,24 +419,28 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         // now we can do the same with multiplicities
 
                         // range-check 16
-                        stage2_process_range_check_16_multiplicity_intermediate_poly(
-                            witness_trace_row,
-                            stage_2_trace,
-                            range_check_16_preprocessing_ref,
-                            range_check_16_multiplicities_src,
-                            range_check_16_multiplicities_dst,
-                            absolute_row_idx,
-                        );
+                        if compiled_circuit.stage_2_layout.intermediate_poly_for_range_check_16_multiplicity.num_elements() > 0 {
+                            stage2_process_range_check_16_multiplicity_intermediate_poly(
+                                witness_trace_row,
+                                stage_2_trace,
+                                range_check_16_preprocessing_ref,
+                                range_check_16_multiplicities_src,
+                                range_check_16_multiplicities_dst,
+                                absolute_row_idx,
+                            );
+                        }
 
                         // timestamp range checks
-                        stage2_process_timestamp_range_check_multiplicity_intermediate_poly(
-                            witness_trace_row,
-                            stage_2_trace,
-                            timestamp_range_check_preprocessing_ref,
-                            timestamp_range_check_multiplicities_src,
-                            timestamp_range_check_multiplicities_dst,
-                            absolute_row_idx,
-                        );
+                        if compiled_circuit.stage_2_layout.intermediate_poly_for_timestamp_range_check_multiplicity.num_elements() > 0 {
+                            stage2_process_timestamp_range_check_multiplicity_intermediate_poly(
+                                witness_trace_row,
+                                stage_2_trace,
+                                timestamp_range_check_preprocessing_ref,
+                                timestamp_range_check_multiplicities_src,
+                                timestamp_range_check_multiplicities_dst,
+                                absolute_row_idx,
+                            );
+                        }
 
                         if compiled_circuit
                             .stage_2_layout
@@ -517,16 +532,18 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         // we assembled P(x) = write init set / read teardown set, or trivial init. Now we add contributions fro
                         // either individual or batched RAM accesses
 
-                        // now we can continue to accumulate
-                        stage2_process_ram_access_assuming_no_decoder(
-                            memory_trace_row,
-                            stage_2_trace,
-                            compiled_circuit,
-                            &mut numerator_acc_value,
-                            &mut denom_acc_value,
-                            &memory_argument_challenges,
-                            &mut batch_inverses_input,
-                        );
+                        if compiled_circuit.stage_2_layout.intermediate_polys_for_memory_argument.num_elements() > 0 {
+                            // Accumulate memory queries
+                            stage2_process_ram_access_assuming_no_decoder(
+                                memory_trace_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                            );
+                        }
 
                         // now add machine state contribution
                         if compiled_circuit
@@ -591,18 +608,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                             &mut batch_inverses_input,
                             &mut batch_inverses_buffer,
                         );
-
-                        // and we also write previously accumulated over chunk value ("at this row"),
-                        // before(!) updating it (that would be value "at next row")
-                        let offset_for_grand_product_poly = compiled_circuit
-                            .stage_2_layout
-                            .intermediate_poly_for_grand_product
-                            .start();
-                        stage_2_trace
-                            .as_mut_ptr()
-                            .add(offset_for_grand_product_poly)
-                            .cast::<Mersenne31Quartic>()
-                            .write(total_accumulated);
 
                         // now we save total accumulated for the next step, and write down batch inverses
                         {
@@ -698,11 +703,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         // we will be at the very last row here
                         let stage_2_trace = stage_2_trace_view.current_row();
 
-                        let offset_for_grand_product_poly = compiled_circuit
-                            .stage_2_layout
-                            .intermediate_poly_for_grand_product
-                            .start();
-
                         let dst_ptr = stage_2_trace
                             .as_mut_ptr()
                             .add(offset_for_grand_product_poly)
@@ -721,11 +721,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
 
     println!("Generation of stage 2 trace took {:?}", now.elapsed());
     drop(lookup_mapping);
-
-    let offset_for_grand_product_poly = compiled_circuit
-        .stage_2_layout
-        .intermediate_poly_for_grand_product
-        .start();
 
     // unfortunately we have to go over it again, to finish grand product accumulation
     // here we should wait for all threads to finish and go over them again in maybe not too cache convenient manner
@@ -941,10 +936,43 @@ pub fn prover_stage_2_for_unrolled_circuit<
         unsafe {
             let mut trace = stage_2_trace.row_view(0..trace_len);
             let mut next = Mersenne31Quartic::ONE;
-            let src_offset = compiled_circuit
+            let src_offset = if compiled_circuit
                 .stage_2_layout
                 .intermediate_polys_for_permutation_masking
-                .start();
+                .num_elements()
+                > 0
+            {
+                compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_permutation_masking
+                    .start()
+            } else if compiled_circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument
+                .num_elements()
+                > 0
+            {
+                compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_memory_argument
+                    .full_range()
+                    .end
+                    - 4
+            } else if compiled_circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements()
+                > 0
+            {
+                compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_memory_init_teardown
+                    .full_range()
+                    .end
+                    - 4
+            } else {
+                panic!("unsupported memory layout")
+            };
             for row in 0..(trace_len - 1) {
                 let previous = trace
                     .current_row_ref()
@@ -984,6 +1012,11 @@ pub fn prover_stage_2_for_unrolled_circuit<
                 let mut dst_iter = sums.iter_mut();
 
                 // range check 16
+                if compiled_circuit
+                    .stage_2_layout
+                    .intermediate_poly_for_range_check_16_multiplicity
+                    .num_elements()
+                    > 0
                 {
                     let mut term_contribution = Mersenne31Quartic::ZERO;
 
@@ -1035,20 +1068,22 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         .stage_2_layout
                         .lazy_init_address_range_check_16
                     {
-                        let el = row
-                            .as_ptr()
-                            .add(
-                                lazy_init_address_range_check_16
-                                    .ext_4_field_oracles
-                                    .get_range(0)
-                                    .start,
-                            )
-                            .cast::<Mersenne31Quartic>()
-                            .read();
-                        if last_row {
-                            assert_eq!(el, Mersenne31Quartic::ZERO);
+                        for i in 0..lazy_init_address_range_check_16.num_pairs {
+                            let el = row
+                                .as_ptr()
+                                .add(
+                                    lazy_init_address_range_check_16
+                                        .ext_4_field_oracles
+                                        .get_range(i)
+                                        .start,
+                                )
+                                .cast::<Mersenne31Quartic>()
+                                .read();
+                            if last_row {
+                                assert_eq!(el, Mersenne31Quartic::ZERO);
+                            }
+                            term_contribution.sub_assign(&el);
                         }
-                        term_contribution.sub_assign(&el);
                     }
                     if let Some(_remainder) =
                         compiled_circuit.stage_2_layout.remainder_for_range_check_16
@@ -1057,9 +1092,16 @@ pub fn prover_stage_2_for_unrolled_circuit<
                     }
 
                     dst_iter.next().unwrap().add_assign(&term_contribution);
+                } else {
+                    let _ = dst_iter.next().unwrap();
                 }
 
                 // timestamp range check
+                if compiled_circuit
+                    .stage_2_layout
+                    .intermediate_poly_for_timestamp_range_check_multiplicity
+                    .num_elements()
+                    > 0
                 {
                     let mut term_contribution = Mersenne31Quartic::ZERO;
 
@@ -1108,9 +1150,16 @@ pub fn prover_stage_2_for_unrolled_circuit<
                     }
 
                     dst_iter.next().unwrap().add_assign(&term_contribution);
+                } else {
+                    let _ = dst_iter.next().unwrap();
                 }
 
                 // generic lookup
+                if compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_generic_lookup
+                    .num_elements()
+                    > 0
                 {
                     let mut term_contribution = Mersenne31Quartic::ZERO;
                     for i in 0..compiled_circuit
@@ -1159,6 +1208,8 @@ pub fn prover_stage_2_for_unrolled_circuit<
                     }
 
                     dst_iter.next().unwrap().add_assign(&term_contribution);
+                } else {
+                    let _ = dst_iter.next().unwrap();
                 }
 
                 assert!(dst_iter.next().is_none());

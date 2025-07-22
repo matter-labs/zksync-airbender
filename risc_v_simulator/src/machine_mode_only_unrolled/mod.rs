@@ -26,10 +26,7 @@ use crate::mmu::MMUImplementation;
 mod delegations;
 
 use crate::cycle::opcode_formats::*;
-use cs::definitions::{TimestampData, TimestampScalar};
-
-pub const INITIAL_TIMESTAMP: TimestampScalar = 4;
-pub const TIMESTAMP_STEP: TimestampScalar = 4;
+use cs::definitions::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 
 // In general we need to output decoder immediate output, but it's easier to just re-parse it in circuits,
 // so we just output PC and timestamp
@@ -132,18 +129,14 @@ impl MemoryOpcodeTracingDataWithTimestamp {
             MEM_STORE_TRACE_DATA_MARKER => {
                 panic!("is store data");
             }
-            MEM_LOAD_TRACE_DATA_MARKER => {
-                self.opcode_data
-            }
+            MEM_LOAD_TRACE_DATA_MARKER => self.opcode_data,
             _ => unreachable!(),
         }
     }
 
     pub fn as_store_data(&self) -> StoreOpcodeTracingData {
         match self.discr {
-            MEM_STORE_TRACE_DATA_MARKER => {
-                unsafe { core::mem::transmute(self.opcode_data) }
-            }
+            MEM_STORE_TRACE_DATA_MARKER => unsafe { core::mem::transmute(self.opcode_data) },
             MEM_LOAD_TRACE_DATA_MARKER => {
                 panic!("is load data");
             }
@@ -275,7 +268,7 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
 pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaConfig> {
     pub registers: [u32; NUM_REGISTERS],
     pub pc: u32,
-    // pub timestamp: TimestampScalar,
+    pub timestamp: TimestampScalar,
     _marker: std::marker::PhantomData<Config>,
 }
 
@@ -291,7 +284,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         Self {
             registers,
             pc,
-            // timestamp: INITIAL_TIMESTAMP,
+            timestamp: INITIAL_TIMESTAMP,
             _marker: std::marker::PhantomData,
         }
     }
@@ -881,11 +874,12 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             // Memory implementation should handle read in full. For now we only use one
                             // that doesn't step over 4 byte boundary ever, meaning even though formal address is not 4 byte aligned,
                             // loads of u8/u16/u32 are still "aligned"
-                            let (aligned_ram_read_value, ram_read_value, adjusted_load_address) = mem_read_mask_rom_if_needed::<M, Config>(
-                                memory_source,
-                                load_address as u64,
-                                num_bytes,
-                            );
+                            let (aligned_ram_read_value, ram_read_value, adjusted_load_address) =
+                                mem_read_mask_rom_if_needed::<M, Config>(
+                                    memory_source,
+                                    load_address as u64,
+                                    num_bytes,
+                                );
                             let rd_value = if Config::SUPPORT_SIGNED_LOAD {
                                 // now depending on the type of load we extend it
                                 match a {
@@ -1178,7 +1172,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                 }
             }
 
-            // self.timestamp += TIMESTAMP_STEP;
+            self.timestamp += TIMESTAMP_STEP;
             tracer.at_cycle_end(&*self);
 
             if pc == self.pc {

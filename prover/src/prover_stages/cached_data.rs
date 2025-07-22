@@ -374,63 +374,24 @@ impl ProverCachedData {
 
                 memory_timestamp_high_from_circuit_idx
             } else {
-                assert!(
-                    compiled_circuit.memory_layout.batched_ram_accesses.len() > 0
-                        || compiled_circuit
-                            .memory_layout
-                            .register_and_indirect_accesses
-                            .len()
-                            > 0
-                );
                 Mersenne31Field::ZERO
             };
 
         let delegation_type = Mersenne31Field(delegation_processing_type as u32);
 
-        //
-        let num_set_polys_for_memory_shuffle =
-            if compiled_circuit.memory_layout.shuffle_ram_access_sets.len() > 0 {
-                assert!(compiled_circuit
-                    .memory_layout
-                    .batched_ram_accesses
-                    .is_empty());
+        assert!(
+            compiled_circuit
+                .memory_layout
+                .batched_ram_accesses
+                .is_empty(),
+            "deprecated"
+        );
 
-                assert!(compiled_circuit
-                    .memory_layout
-                    .register_and_indirect_accesses
-                    .is_empty());
-
-                1 + compiled_circuit.memory_layout.shuffle_ram_access_sets.len() + 1
-            } else {
-                assert!(
-                    compiled_circuit.memory_layout.batched_ram_accesses.len() > 0
-                        || compiled_circuit
-                            .memory_layout
-                            .register_and_indirect_accesses
-                            .len()
-                            > 0
-                );
-
-                let num_intermediate_polys_for_batched_ram =
-                    compiled_circuit.memory_layout.batched_ram_accesses.len();
-                let mut num_intermediate_polys_for_register_accesses = 0;
-                for el in compiled_circuit
-                    .memory_layout
-                    .register_and_indirect_accesses
-                    .iter()
-                {
-                    num_intermediate_polys_for_register_accesses += 1;
-                    num_intermediate_polys_for_register_accesses += el.indirect_accesses.len();
-                }
-                // intermediate accumulators per access + grand product accumulator
-                let num_set_polys_for_memory_shuffle = num_intermediate_polys_for_batched_ram
-                    + num_intermediate_polys_for_register_accesses
-                    + 1;
-
-                num_set_polys_for_memory_shuffle
-            };
-
-        let offset_for_grand_product_accumulation_poly = num_set_polys_for_memory_shuffle - 1;
+        let num_set_polys_for_memory_shuffle = compiled_circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_argument
+            .num_elements;
+        let offset_for_grand_product_accumulation_poly = 0;
 
         let process_shuffle_ram_init = compiled_circuit
             .memory_layout

@@ -39,6 +39,8 @@ pub use self::witness_tree::*;
 pub const NUM_TIMESTAMP_DATA_LIMBS: usize = 3;
 pub type TimestampScalar = u64;
 
+pub const INITIAL_TIMESTAMP: TimestampScalar = 4;
+
 pub const INITIAL_TIMESTAMP_AT_CHUNK_START: TimestampScalar = 4;
 pub const TIMESTAMP_STEP: TimestampScalar = 1 << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
 
@@ -368,6 +370,12 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
             // 1 constraint for helper sum poly
             num_quotient_terms += 1;
         }
+
+        // 1 constraint per every memory column. This includes final column to accumulate grand product
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown
+            .num_elements();
 
         // 1 constraint per every memory column. This includes final column to accumulate grand product
         num_quotient_terms += self

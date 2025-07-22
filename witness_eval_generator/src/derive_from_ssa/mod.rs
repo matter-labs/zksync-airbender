@@ -500,6 +500,7 @@ mod test {
             "subword_only_load_store_preprocessed",
             "mul_div_preprocessed",
             "mul_div_unsigned_preprocessed",
+            "inits_and_teardowns_preprocessed",
         ] {
             let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
                 deserialize_from_file(&format!("../cs/{}_layout.json", prefix));

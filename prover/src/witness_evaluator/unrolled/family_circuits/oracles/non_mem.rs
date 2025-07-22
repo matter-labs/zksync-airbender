@@ -71,7 +71,16 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
         };
 
         match placeholder {
-            Placeholder::DelegationType => cycle_data.opcode_data.delegation_type,
+            Placeholder::DelegationType => {
+                if cycle_data.opcode_data.delegation_type != 0
+                    && cycle_data.opcode_data.delegation_type != NON_DETERMINISM_CSR
+                {
+                    cycle_data.opcode_data.delegation_type
+                } else {
+                    // It's just a convention - if we do not use delegation, then we put 0 into corresponding column
+                    0
+                }
+            }
             Placeholder::DelegationABIOffset => 0, // we do not use it anymore
 
             a @ _ => {

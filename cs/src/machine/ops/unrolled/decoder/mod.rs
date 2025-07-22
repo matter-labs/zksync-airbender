@@ -163,7 +163,8 @@ pub fn opcodes_for_full_machine_with_unsigned_mul_div_only() -> Vec<Box<dyn Opco
     ]
 }
 
-pub fn opcodes_for_full_machine_with_mem_word_access_specialization() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
+pub fn opcodes_for_full_machine_with_mem_word_access_specialization(
+) -> Vec<Box<dyn OpcodeFamilyDecoder>> {
     vec![
         Box::new(AddSubLuiAuipcMopDecoder),
         Box::new(JumpSltBranchDecoder::<true>),
@@ -174,7 +175,8 @@ pub fn opcodes_for_full_machine_with_mem_word_access_specialization() -> Vec<Box
     ]
 }
 
-pub fn opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
+pub fn opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(
+) -> Vec<Box<dyn OpcodeFamilyDecoder>> {
     vec![
         Box::new(AddSubLuiAuipcMopDecoder),
         Box::new(JumpSltBranchDecoder::<true>),

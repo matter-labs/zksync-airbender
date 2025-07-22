@@ -17,7 +17,8 @@ pub fn mem_read_mask_rom_if_needed<M: MemorySource, C: MachineConfig>(
 ) -> (u32, u32, u32) {
     let unalignment = (phys_address & 3) as u8;
     let aligned_address = phys_address & !3;
-    let (aligned_value, adjusted_address) = memory_source.get_noexcept_with_rom_check(aligned_address);
+    let (aligned_value, adjusted_address) =
+        memory_source.get_noexcept_with_rom_check(aligned_address);
     if C::SUPPORT_LOAD_LESS_THAN_WORD {
         let value = match (unalignment, num_bytes) {
             (0, 4) | (0, 2) | (2, 2) | (0, 1) | (1, 1) | (2, 1) | (3, 1) => {

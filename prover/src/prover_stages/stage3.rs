@@ -372,8 +372,6 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let mut lookup_argument_two_gamma = lookup_argument_gamma;
     lookup_argument_two_gamma.double();
 
-    const SHIFT_16: Mersenne31Field = Mersenne31Field(1u32 << 16);
-
     let first_row_boundary_constraints_ref = &first_row_boundary_constraints;
     let one_before_last_row_boundary_constraints_ref = &one_before_last_row_boundary_constraints;
 

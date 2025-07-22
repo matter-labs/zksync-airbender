@@ -266,13 +266,12 @@ unsafe fn evaluate_witness_inner<O: Oracle<Mersenne31Field>>(
     trace_len: usize,
 ) {
     assert!(trace_len.is_power_of_two());
-    let cycles = trace_len - 1;
     let scratch_space_size = compiled_circuit.scratch_space_size_for_witness_gen;
 
     let mut scratch_space = Vec::with_capacity(scratch_space_size);
 
     for absolute_row_idx in range {
-        let is_last_cycle = absolute_row_idx == cycles - 1;
+        let is_one_before_last_row = absolute_row_idx == trace_len - 2;
 
         let (witness_row, memory_row) = exec_trace_view.current_row_split(num_witness_columns);
         let lookup_mapping_row = lookup_mapping_view.current_row();
@@ -288,7 +287,7 @@ unsafe fn evaluate_witness_inner<O: Oracle<Mersenne31Field>>(
             compiled_circuit,
             oracle,
             absolute_row_idx,
-            is_last_cycle,
+            is_one_before_last_row,
             lazy_init_data,
             timestamp_high_from_circuit_sequence,
         );

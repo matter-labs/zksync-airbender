@@ -514,6 +514,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &witness_layout,
             &memory_layout,
             &setup_layout,
+            true,
             false,
         );
 

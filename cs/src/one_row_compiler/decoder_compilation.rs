@@ -273,6 +273,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &memory_layout,
             &setup_layout,
             true,
+            true,
         );
 
         for el in compiled_quadratic_terms.iter_mut() {

@@ -192,6 +192,22 @@ pub fn prove_configured_for_unrolled_circuits<
         trace_len as u32,
     );
 
+    // here we should place init/teardowns as boundary constraints if needed
+    let mut first_row_boundary_constraints = vec![];
+    let mut one_before_last_row_boundary_constraints = vec![];
+
+    // first lazy init, then public inputs
+
+    if cached_data_values.process_shuffle_ram_init {
+        use crate::prover_stages::unrolled_prover::quotient_parts::add_boundary_constraints_from_memory_init_teardown;
+        add_boundary_constraints_from_memory_init_teardown(
+            &mut first_row_boundary_constraints,
+            &mut one_before_last_row_boundary_constraints,
+            compiled_circuit,
+            aux_boundary_values,
+        );
+    }
+
     let stage_3_output = stage3::prover_stage_3_for_unrolled_circuit(
         &mut seed,
         compiled_circuit,
@@ -201,8 +217,8 @@ pub fn prove_configured_for_unrolled_circuits<
         &stage_1_output,
         &stage_2_output,
         &setup_precomputations,
-        vec![],
-        vec![],
+        first_row_boundary_constraints,
+        one_before_last_row_boundary_constraints,
         aux_boundary_values,
         precomputations,
         lde_precomputations,

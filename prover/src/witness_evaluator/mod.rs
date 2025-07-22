@@ -18,11 +18,8 @@ use memory_witness::delegation_circuit::process_delegation_requests_execution;
 use memory_witness::main_circuit::process_delegation_requests;
 use memory_witness::main_circuit::process_lazy_init_work;
 use memory_witness::main_circuit::process_shuffle_ram_accesses;
-use risc_v_simulator::abstractions::csr_processor::*;
 use risc_v_simulator::abstractions::non_determinism::*;
-use risc_v_simulator::abstractions::tracer::Tracer;
 use risc_v_simulator::cycle::state::NUM_REGISTERS;
-use risc_v_simulator::mmu::*;
 use std::alloc::Allocator;
 use std::alloc::Global;
 use std::collections::HashMap;
@@ -319,7 +316,7 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
     worker: &Worker,
 ) {
     // it's just fine to copy in the non-parallel manner for the range-check 16 and timestamp
-    {
+    if range_16_multiplicity_subcounters.len() > 0 {
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
@@ -357,7 +354,7 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
     }
 
     // add up and write timestamp multiplicities
-    {
+    if timestamp_range_check_multiplicity_subcounters.len() > 0 {
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
@@ -548,7 +545,7 @@ pub(crate) unsafe fn evaluate_witness_inner_static_work<O: Oracle<Mersenne31Fiel
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     oracle: &O,
     absolute_row_idx: usize,
-    is_last_cycle: bool,
+    is_one_before_last_row: bool,
     lazy_init_data: &[LazyInitAndTeardown],
     timestamp_high_from_circuit_sequence: TimestampScalar,
 ) {
@@ -566,7 +563,7 @@ pub(crate) unsafe fn evaluate_witness_inner_static_work<O: Oracle<Mersenne31Fiel
         memory_row,
         compiled_circuit,
         absolute_row_idx,
-        is_last_cycle,
+        is_one_before_last_row,
         lazy_init_data,
     );
 

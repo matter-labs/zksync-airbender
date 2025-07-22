@@ -15,6 +15,7 @@ use quote::quote;
 use std::collections::BTreeSet;
 
 mod bytecode_preprocessed_executor;
+mod compile_init_and_teardown_circuit;
 mod compile_layout;
 mod decoder_compilation;
 mod executor_compilation;

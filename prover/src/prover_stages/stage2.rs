@@ -109,7 +109,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         delegation_processor_layout,
         process_delegations,
         delegation_processing_aux_poly,
-        offset_for_grand_product_accumulation_poly,
 
         range_check_16_multiplicities_src,
         range_check_16_multiplicities_dst,
@@ -206,20 +205,16 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         .stage_2_layout
         .delegation_processing_aux_poly
     {
-        assert_eq!(
-            el.full_range().end,
-            compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_argument
-                .start()
-        );
         num_batch_inverses += el.num_elements();
     }
     num_batch_inverses += compiled_circuit
         .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown
+        .num_elements();
+    num_batch_inverses += compiled_circuit
+        .stage_2_layout
         .intermediate_polys_for_memory_argument
-        .num_elements()
-        - 1; // we do not need last inverse where we only accumulate grand product
+        .num_elements();
 
     let range_check_16_width_1_lookups_access_ref = &range_check_16_width_1_lookups_access;
     let range_check_16_width_1_lookups_access_via_expressions_ref =
@@ -249,6 +244,11 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let width_3_intermediate_polys_offset = compiled_circuit
         .stage_2_layout
         .intermediate_polys_for_generic_lookup
+        .start();
+
+    let offset_for_grand_product_poly = compiled_circuit
+        .stage_2_layout
+        .intermediate_poly_for_grand_product
         .start();
 
     unsafe {
@@ -288,10 +288,17 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         let stage_2_trace = stage_2_trace_view.current_row();
                         let lookup_indexes_view_row = lookup_indexes_view.current_row_ref();
 
+                        // we treat `total_accumulated` as the value we previously accumulated at this chunk, so we write it "at this row",
+                        // and the value that we will accumulate at this row will be written in the next iteration
+                        stage_2_trace
+                            .as_mut_ptr()
+                            .add(offset_for_grand_product_poly)
+                            .cast::<Mersenne31Quartic>()
+                            .write(total_accumulated);
+
                         use crate::prover_stages::unrolled_prover::stage_2_shared::stage2_process_range_check_16_trivial_checks;
                         stage2_process_range_check_16_trivial_checks(
                             witness_trace_row,
-                            memory_trace_row,
                             stage_2_trace,
                             range_check_16_preprocessing_ref,
                             &range_check_16_width_1_lookups_access_ref[..],
@@ -312,7 +319,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                             process_lazy_init_range_checks(
                                 memory_trace_row,
-                                witness_trace_row,
                                 stage_2_trace,
                                 range_check_16_preprocessing_ref,
                                 &lazy_init_address_range_check_16,
@@ -546,26 +552,22 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         // either individual or batched RAM accesses
 
                         // timestamp high is STATIC from the index of access, and setup value
-                        assert_eq!(
-                            compiled_circuit
-                                .setup_layout
-                                .timestamp_setup_columns
-                                .width(),
-                            2
-                        );
 
                         // now we can continue to accumulate
-                        stage2_process_ram_access(
-                            memory_trace_row,
-                            setup_row,
-                            stage_2_trace,
-                            compiled_circuit,
-                            &mut numerator_acc_value,
-                            &mut denom_acc_value,
-                            &memory_argument_challenges,
-                            &mut batch_inverses_input,
-                            memory_timestamp_high_from_circuit_idx,
-                        );
+
+                        if compiled_circuit.memory_layout.shuffle_ram_access_sets.len() > 0 {
+                            stage2_process_ram_access(
+                                memory_trace_row,
+                                setup_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                                memory_timestamp_high_from_circuit_idx,
+                            );
+                        }
 
                         if process_batch_ram_access {
                             panic!("deprecated");
@@ -603,18 +605,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                                 &delegation_write_timestamp_contribution,
                             );
                         }
-
-                        // and we also write previously accumulated over chunk value ("at this row"),
-                        // before(!) updating it (that would be value "at next row")
-                        let offset_for_grand_product_poly = compiled_circuit
-                            .stage_2_layout
-                            .intermediate_poly_for_grand_product
-                            .start();
-                        stage_2_trace
-                            .as_mut_ptr()
-                            .add(offset_for_grand_product_poly)
-                            .cast::<Mersenne31Quartic>()
-                            .write(total_accumulated);
 
                         assert_eq!(num_batch_inverses, batch_inverses_input.len());
                         batch_inverse_with_buffer(
@@ -732,12 +722,6 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     println!("Generation of stage 2 trace took {:?}", now.elapsed());
     drop(lookup_mapping);
-
-    let offset_for_grand_product_poly = compiled_circuit
-        .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .get_range(offset_for_grand_product_accumulation_poly)
-        .start;
 
     // unfortunately we have to go over it again, to finish grand product accumulation
     // here we should wait for all threads to finish and go over them again in maybe not too cache convenient manner

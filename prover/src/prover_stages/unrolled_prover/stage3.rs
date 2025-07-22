@@ -79,7 +79,6 @@ pub fn prover_stage_3_for_unrolled_circuit<
         delegation_processor_layout,
         process_delegations,
         delegation_processing_aux_poly,
-        // offset_for_grand_product_accumulation_poly,
         range_check_16_multiplicities_src,
         range_check_16_setup_column,
 
@@ -264,8 +263,6 @@ pub fn prover_stage_3_for_unrolled_circuit<
     let mut lookup_argument_two_gamma = lookup_argument_gamma;
     lookup_argument_two_gamma.double();
 
-    const SHIFT_16: Mersenne31Field = Mersenne31Field(1u32 << 16);
-
     let first_row_boundary_constraints_ref = &first_row_boundary_constraints;
     let one_before_last_row_boundary_constraints_ref = &one_before_last_row_boundary_constraints;
 
@@ -284,6 +281,11 @@ pub fn prover_stage_3_for_unrolled_circuit<
     assert!(
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram.is_empty()
     );
+
+    let offset_for_grand_product_poly = compiled_circuit
+        .stage_2_layout
+        .intermediate_poly_for_grand_product
+        .start();
 
     unsafe {
         worker.scope(trace_len, |scope, geometry| {
@@ -359,6 +361,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         // we should multiply the terms below by either tau^H/2 or tau^H where needed
 
                         let mut other_challenges_ptr = other_challenges.as_ptr();
+
                         // if we handle delegation, but have multiplicity == 0, then we must enforce
                         // that incoming values are trivial, timestamps are zeroes, etc
                         if process_delegations {
@@ -464,21 +467,26 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             &memory_timestamp_high_from_circuit_idx,
                         );
 
-                        evaluate_decoder_table_access(
-                            compiled_circuit,
-                            witness_trace_view_row,
-                            memory_trace_view_row,
-                            setup_trace_view_row,
-                            stage_2_trace_view_row,
-                            &tau_in_domain,
-                            &tau_in_domain_by_half,
-                            absolute_row_idx,
-                            is_last_row,
-                            &mut quotient_term,
-                            &mut other_challenges_ptr,
-                            &stage_2_output.decoder_table_linearization_challenges,
-                            &stage_2_output.decoder_table_gamma,
-                        );
+                        if compiled_circuit
+                            .memory_layout
+                            .intermediate_state_layout.is_some() {
+
+                            evaluate_decoder_table_access(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &stage_2_output.decoder_table_linearization_challenges,
+                                &stage_2_output.decoder_table_gamma,
+                            );
+                        }
 
                         // width-3 generic lookup
                         evaluate_width_3_lookups(
@@ -582,13 +590,18 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         );
 
                         // write timestamps come from cycle itself, and are used for multiple things below
-                        let intermediate_state_layout = compiled_circuit.memory_layout.intermediate_state_layout.unwrap();
-                        let write_timestamp_low = *memory_trace_view_row
-                            .get_unchecked(intermediate_state_layout.timestamp.start());
-                        let write_timestamp_high = *memory_trace_view_row
-                            .get_unchecked(
-                                intermediate_state_layout.timestamp.start() + 1,
-                            );
+                        let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {
+                            let write_timestamp_low = *memory_trace_view_row
+                                .get_unchecked(intermediate_state_layout.timestamp.start());
+                            let write_timestamp_high = *memory_trace_view_row
+                                .get_unchecked(
+                                    intermediate_state_layout.timestamp.start() + 1,
+                                );
+
+                            (write_timestamp_low, write_timestamp_high)
+                        } else {
+                            (Mersenne31Field::ZERO, Mersenne31Field::ZERO)
+                        };
 
                         // either process set equality for delegation requests or processings
                         if handle_delegation_requests {
@@ -740,15 +753,14 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             let mut previous = permutation_argument_src.read();
                             previous.mul_assign_by_base(&tau_in_domain_by_half);
 
-                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
                             let accumulator_this_row = stage_2_trace_view_row
                                 .as_ptr()
-                                .add(offset)
+                                .add(offset_for_grand_product_poly)
                                 .cast::<Mersenne31Quartic>()
                                 .read();
                             let accumulator_next_row = stage_2_trace_view_next_row
                                 .as_ptr()
-                                .add(offset)
+                                .add(offset_for_grand_product_poly)
                                 .cast::<Mersenne31Quartic>()
                                 .read();
 
@@ -845,10 +857,9 @@ pub fn prover_stage_3_for_unrolled_circuit<
 
                         // 1 constraint for memory accumulator initial value == 1
                         {
-                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
                             let memory_accumulators_ptr = stage_2_trace_view_row
                                 .as_ptr()
-                                .add(offset)
+                                .add(offset_for_grand_product_poly)
                                 .cast::<Mersenne31Quartic>();
                             debug_assert!(memory_accumulators_ptr.is_aligned());
                             let accumulator = memory_accumulators_ptr.read();
@@ -907,10 +918,9 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         let mut last_row_challenges_ptr = alphas_for_last_row.as_ptr();
 
                         {
-                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
                             let memory_accumulators_ptr = stage_2_trace_view_row
                                 .as_ptr()
-                                .add(offset)
+                                .add(offset_for_grand_product_poly)
                                 .cast::<Mersenne31Quartic>();
                             debug_assert!(memory_accumulators_ptr.is_aligned());
                             let accumulator = memory_accumulators_ptr.read();

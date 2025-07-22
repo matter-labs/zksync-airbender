@@ -55,7 +55,7 @@ pub fn evaluate_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                 for i in 0..chunk_size {
                     let absolute_row_idx = chunk_start + i;
-                    let _is_last_cycle = absolute_row_idx == cycles - 1;
+                    let is_one_before_last_row = absolute_row_idx == trace_len - 2;
 
                     let memory_trace_view_row = memory_trace_view.current_row();
 
@@ -66,7 +66,7 @@ pub fn evaluate_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
                             compiled_circuit,
                             oracle,
                             absolute_row_idx,
-                            _is_last_cycle,
+                            is_one_before_last_row,
                             lazy_init_data,
                         );
                     }
@@ -197,15 +197,16 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
     memory_row: &mut [Mersenne31Field],
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     absolute_row_idx: usize,
-    _is_last_cycle: bool,
+    is_one_before_last_row: bool,
     lazy_init_data: &[LazyInitAndTeardown],
 ) {
+    // NOTE: we "order" inits and teardowns in columns,
+    // but here we need to fill "row", so we should properly "stride" it
     #[cfg(feature = "profiling")]
     let t = std::time::Instant::now();
-    let len = compiled_circuit
-        .memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .len();
+    let trace_len = compiled_circuit.trace_len;
+    assert!(trace_len.is_power_of_two());
+    let column_size = trace_len - 1;
     for (i, (lazy_init_and_teardown, lazy_init_address_aux_vars)) in compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
@@ -213,7 +214,8 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
         .zip(compiled_circuit.lazy_init_address_aux_vars.iter())
         .enumerate()
     {
-        let lazy_init = lazy_init_data[absolute_row_idx * len + i];
+        let absolute_source_idx = absolute_row_idx + (i * column_size);
+        let lazy_init = lazy_init_data[absolute_source_idx];
 
         let LazyInitAndTeardown {
             address: this_row_lazy_init_address,
@@ -248,8 +250,29 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
                 final_borrow,
             } = *lazy_init_address_aux_vars;
 
-            // lazy init ordering
-            if let Some(next_row_lazy_init) = lazy_init_data.get(absolute_row_idx + 1).copied() {
+            // lazy init ordering - it holds everywhere EXCEPT ends of columns,
+            // so we will branch here
+            if is_one_before_last_row {
+                // VERY important
+
+                // We can not place any witness at the "last row" (and we can not peek into such value),
+                // but we still want our "conventions" to hold "as if" they were defined at every row except last,
+                // and not at every row except last two, so we manually right here write an artificial
+                // value for it to hold - it must be `1`
+                write_value(
+                    final_borrow,
+                    Mersenne31Field::from_boolean(true),
+                    witness_row,
+                    &mut [],
+                );
+            } else {
+                let Some(next_row_lazy_init) = lazy_init_data.get(absolute_source_idx + 1).copied()
+                else {
+                    panic!(
+                        "missing data at the middle of the column for row {} column {}",
+                        absolute_row_idx, i
+                    );
+                };
                 let LazyInitAndTeardown {
                     address: next_row_lazy_init_address,
                     ..
@@ -286,31 +309,21 @@ pub(crate) unsafe fn process_lazy_init_work<const COMPUTE_WITNESS: bool>(
                 if final_borrow_value == false {
                     assert_eq!(
                         this_row_lazy_init_address, 0,
-                        "lazy init address is invalid for row {} in case of padding",
-                        absolute_row_idx,
+                        "lazy init address is invalid for row {} column {} in case of padding",
+                        absolute_row_idx, i,
                     );
                     assert_eq!(
                         this_row_teardown_value, 0,
-                        "lazy teardown value is invalid for row {} in case of padding",
-                        absolute_row_idx,
+                        "lazy teardown value is invalid for row {} column {} in case of padding",
+                        absolute_row_idx, i,
                     );
                     assert_eq!(
                         this_row_teardown_timestamp.as_scalar(),
                         0,
-                        "lazy teardown timestamp is invalid for row {} in case of padding",
-                        absolute_row_idx,
+                        "lazy teardown timestamp is invalid for row {} column {} in case of padding",
+                        absolute_row_idx, i,
                     );
                 }
-            } else {
-                // VERY important - we will use the fact that final borrow value is unconstrainted
-                // when we will define lazy init/teardown padding constraint, so we manually right here write it
-                // to the proper value - it must be `1`
-                write_value(
-                    final_borrow,
-                    Mersenne31Field::from_boolean(true),
-                    witness_row,
-                    &mut [],
-                );
             }
         }
     }
@@ -515,7 +528,7 @@ pub(crate) unsafe fn evaluate_memory_witness_inner<O: Oracle<Mersenne31Field>>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     oracle: &O,
     absolute_row_idx: usize,
-    is_last_cycle: bool,
+    is_one_before_last_row: bool,
     lazy_init_data: &[LazyInitAndTeardown],
 ) {
     process_lazy_init_work::<false>(
@@ -523,7 +536,7 @@ pub(crate) unsafe fn evaluate_memory_witness_inner<O: Oracle<Mersenne31Field>>(
         memory_row,
         compiled_circuit,
         absolute_row_idx,
-        is_last_cycle,
+        is_one_before_last_row,
         lazy_init_data,
     );
 

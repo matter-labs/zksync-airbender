@@ -11,7 +11,7 @@ pub mod main_risc_v_circuit;
 
 pub fn chunk_lazy_init_and_teardown<A: GoodAllocator>(
     total_num_chunks: usize,
-    trace_chunk_size: usize,
+    inits_chunk_size: usize,
     data: &[Vec<(u32, (TimestampScalar, u32))>],
     worker: &Worker,
 ) -> (
@@ -21,11 +21,9 @@ pub fn chunk_lazy_init_and_teardown<A: GoodAllocator>(
     let now = std::time::Instant::now();
 
     assert!(data.len() > 0);
-    assert!((trace_chunk_size + 1).is_power_of_two());
-    let trace_len = trace_chunk_size + 1;
     let total_input_len: usize = data.iter().map(|el| el.len()).sum();
 
-    let num_non_empty_ones = total_input_len.next_multiple_of(trace_chunk_size) / trace_chunk_size;
+    let num_non_empty_ones = total_input_len.next_multiple_of(inits_chunk_size) / inits_chunk_size;
 
     assert!(num_non_empty_ones <= total_num_chunks);
 
@@ -43,7 +41,7 @@ pub fn chunk_lazy_init_and_teardown<A: GoodAllocator>(
     let mut current_end = (data.len() - 1, data.last().unwrap().len());
 
     for _ in 0..num_non_empty_ones {
-        let mut to_fill = trace_chunk_size;
+        let mut to_fill = inits_chunk_size;
         let (idx, pos) = current_end;
         let mut chunk = Chunk {
             starting_idx: idx,
@@ -103,7 +101,7 @@ pub fn chunk_lazy_init_and_teardown<A: GoodAllocator>(
             Worker::smart_spawn(scope, i == geometry.len() - 1, move |_| {
                 for (dst, src) in dst_chunk.iter_mut().zip(src.iter()) {
                     let mut lazy_init_data: Vec<LazyInitAndTeardown, A> =
-                        Vec::with_capacity_in(trace_len, A::default());
+                        Vec::with_capacity_in(chunk_size.next_power_of_two(), A::default());
 
                     let mut src = *src;
 
@@ -145,7 +143,7 @@ pub fn chunk_lazy_init_and_teardown<A: GoodAllocator>(
                         }
                     }
 
-                    assert_eq!(lazy_init_data.len(), trace_chunk_size);
+                    assert_eq!(lazy_init_data.len(), inits_chunk_size);
 
                     let data = ShuffleRamSetupAndTeardown { lazy_init_data };
                     dst.write(data);

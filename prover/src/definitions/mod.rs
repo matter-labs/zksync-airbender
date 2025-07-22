@@ -436,6 +436,52 @@ fn split_u32_into_pair_u16(num: u32) -> (u32, u32) {
     (low_word, high_word)
 }
 
+/// (PC, timestamp)
+pub fn produce_pc_into_permutation_accumulator_raw(
+    initial_pc: u32,
+    initial_timestamp: (u32, u32),
+    final_pc: u32,
+    final_timestamp: (u32, u32),
+    state_permutation_argument_linearization_challenges: &[Mersenne31Quartic;
+        NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: &Mersenne31Quartic,
+) -> Mersenne31Quartic {
+    let mut write_set_contribution = Mersenne31Quartic::ONE;
+    let mut read_set_contribution = Mersenne31Quartic::ONE;
+
+    for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
+        .into_iter()
+        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+    {
+        let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
+        // PC low without challenge
+        let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low as u32));
+        // PC high
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(pc_high as u32));
+        contribution.add_assign(&t);
+        // timestamp low
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(ts_low));
+        contribution.add_assign(&t);
+        // timestamp high
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(ts_high));
+        contribution.add_assign(&t);
+        // additive term
+        contribution.add_assign(state_permutation_argument_gamma);
+        dst.mul_assign(&contribution);
+    }
+
+    let mut result = write_set_contribution;
+    result.mul_assign(&read_set_contribution.inverse().unwrap());
+
+    result
+}
+
 // Joint structure for RAM init/teardown
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,

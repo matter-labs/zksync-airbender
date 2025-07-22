@@ -152,11 +152,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 ) -> FourthStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
 
-    let ProverCachedData {
-        offset_for_grand_product_accumulation_poly,
-        trace_len,
-        ..
-    } = cached_data.clone();
+    let ProverCachedData { trace_len, .. } = cached_data.clone();
 
     let mut transcript_challenges =
         [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -227,9 +223,8 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     // and accumulator for grand product in stage 2
     let offset_for_grand_product_poly = compiled_circuit
         .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .get_range(offset_for_grand_product_accumulation_poly)
-        .start;
+        .intermediate_poly_for_grand_product
+        .start();
 
     assert_eq!(
         num_deep_poly_terms_at_z_omega,

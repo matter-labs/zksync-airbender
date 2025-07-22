@@ -575,101 +575,18 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
             (memory_subtree_placement, vec![], vec![], Some(aux_vars))
         } else {
-            // first we will manually add extra space for constraint that lazy init values are unique
-
-            // In general, if we do not want to remove restriction that number of cycles can be larger than formal
-            // RAM address space, we could use constraint in the form
-            // - (borrow(this) << 16) + addr_low(this) - addr_low(next) = tmp_low(this),
-            // - 2^16 + addr_high(this) - addr_high(next) - borrow(this) = tmp_high(this),
-            // reflecting that address(next) > address(this), of that address(this) - address(next) is with borrow
-
-            // And to allow pre-padding of lazy init with just multiple rows with values that "cancel" each other in
-            // a sense that their controbutions to read and write set are trivial and equal, we modily the constraint
-            // - (intermediate_borrow(this) << 16) + addr_low(this) - addr_low(next) = tmp_low(this),
-            // - (final_borrow(this) << 16 + addr_high(this) - addr_high(next) - borrow(this) = tmp_high(this)
-            // - (1 - final_borrow(this)) * addr_low(this) = 0
-            // - (1 - final_borrow(this)) * addr_high(this) = 0
-            // - (1 - final_borrow(this)) * teardown_value_low(this) = 0
-            // - (1 - final_borrow(this)) * teardown_value_high(this) = 0
-            // - (1 - final_borrow(this)) * teardown_timestamp_low(this) = 0
-            // - (1 - final_borrow(this)) * teardown_timestamp_high(this) = 0
-
-            // this way we require that unless values are ordered as this < next, we have formal init record of
-            // address = 0 (constrained), ts = 0 (hardcoded), value = 0 (hardcoded), and teardown record also
-            // address = 0 (same variable), ts = 0 (constrained), value = 0 (constrained), canceling each other in permutation grand product
-
-            // NOTE: lookup expressions do not allow to express a relation between two rows,
-            // so we will pay to materialize intermediate subtraction result variables
-
             // NOTE: we assume 1 lazy init/teardown per cycle here
 
-            let mut lazy_init_aux_set = vec![];
-
-            for _ in 0..1 {
-                let tmp_low_var =
-                    add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
-                let tmp_high_var =
-                    add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
-                let intermediate_borrow_var =
-                    add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
-                let final_borrow_var =
-                    add_compiler_defined_variable(&mut num_variables, &mut all_variables_to_place);
-
-                lazy_init_aux_set.push((
-                    [tmp_low_var, tmp_high_var],
-                    intermediate_borrow_var,
-                    final_borrow_var,
-                ));
-                range_check_expressions.push(RangeCheckQuery::new(
-                    tmp_low_var,
-                    LARGE_RANGE_CHECK_TABLE_WIDTH,
-                ));
-                range_check_expressions.push(RangeCheckQuery::new(
-                    tmp_high_var,
-                    LARGE_RANGE_CHECK_TABLE_WIDTH,
-                ));
-                boolean_vars.push(intermediate_borrow_var);
-                boolean_vars.push(final_borrow_var);
-            }
-
-            let shuffle_ram_init_addresses = add_multiple_compiler_defined_variables::<REGISTER_SIZE>(
-                &mut num_variables,
-                &mut all_variables_to_place,
-            );
-            let shuffle_ram_teardown_values = add_multiple_compiler_defined_variables::<
-                REGISTER_SIZE,
-            >(
-                &mut num_variables, &mut all_variables_to_place
-            );
-            let shuffle_ram_teardown_timestamps = add_multiple_compiler_defined_variables::<
-                NUM_TIMESTAMP_COLUMNS_FOR_RAM,
-            >(
-                &mut num_variables, &mut all_variables_to_place
-            );
-
-            // NOTE: here we use only register width because it's implied 0-value column for "is_register",
-            // as we zero-init only RAM and not the registers
-
-            // NOTE: we will separately add to the quotient and range check 16 layouts in stage 2 parts the fact that
-            // lazy init addresses are under range check 16
-            let lazy_init_addresses_columns = layout_memory_subtree_multiple_variables(
-                &mut memory_tree_offset,
-                shuffle_ram_init_addresses,
-                &mut all_variables_to_place,
-                &mut layout,
-            );
-            let lazy_teardown_values_columns = layout_memory_subtree_multiple_variables(
-                &mut memory_tree_offset,
-                shuffle_ram_teardown_values,
-                &mut all_variables_to_place,
-                &mut layout,
-            );
-            let lazy_teardown_timestamps_columns = layout_memory_subtree_multiple_variables(
-                &mut memory_tree_offset,
-                shuffle_ram_teardown_timestamps,
-                &mut all_variables_to_place,
-                &mut layout,
-            );
+            let (shuffle_ram_inits_and_teardowns, lazy_init_aux_set) =
+                Self::compile_inits_and_teardowns(
+                    1,
+                    &mut boolean_vars,
+                    &mut range_check_expressions,
+                    &mut num_variables,
+                    &mut memory_tree_offset,
+                    &mut all_variables_to_place,
+                    &mut layout,
+                );
 
             assert!(shuffle_ram_queries
                 .is_sorted_by(|a, b| a.local_timestamp_in_cycle < b.local_timestamp_in_cycle));
@@ -871,14 +788,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 None
             };
 
-            let shuffle_ram_inits_and_teardowns = ShuffleRamInitAndTeardownLayout {
-                lazy_init_addresses_columns,
-                lazy_teardown_values_columns,
-                lazy_teardown_timestamps_columns,
-            };
-
             let memory_subtree_placement = MemorySubtree {
-                shuffle_ram_inits_and_teardowns: vec![shuffle_ram_inits_and_teardowns],
+                shuffle_ram_inits_and_teardowns,
                 shuffle_ram_access_sets,
                 delegation_request_layout,
                 delegation_processor_layout: None,
@@ -1203,6 +1114,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &witness_layout,
             &memory_subtree_placement,
             &setup_layout,
+            false,
             false,
         );
 

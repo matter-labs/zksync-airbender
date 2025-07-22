@@ -6,13 +6,12 @@ use std::collections::HashMap;
 
 use crate::tracers::main_cycle_optimized::DelegationTracingData;
 use crate::tracers::main_cycle_optimized::RamTracingData;
-use cs::definitions::{TimestampData, TimestampScalar, TIMESTAMP_STEP};
+use cs::definitions::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use risc_v_simulator::cycle::IMStandardIsaConfig;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::machine_mode_only_unrolled::*;
 
 pub(crate) const NUM_OPCODE_FAMILIES_NO_RAM: usize = 4;
-const NUM_OPCODE_FAMILIES_WITH_RAM: usize = 2;
 
 pub(crate) const RS1_ACCESS_IDX: TimestampScalar = 0;
 pub(crate) const RS2_ACCESS_IDX: TimestampScalar = 1;

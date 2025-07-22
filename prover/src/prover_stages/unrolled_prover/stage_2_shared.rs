@@ -271,7 +271,6 @@ pub(crate) fn preprocess_executor_family_decoder_table<const N: usize, A: GoodAl
 
 pub(crate) unsafe fn stage2_process_range_check_16_trivial_checks(
     witness_trace_row: &[Mersenne31Field],
-    _memory_trace_row: &[Mersenne31Field],
     stage_2_trace: &mut [Mersenne31Field],
     range_check_16_preprocessing_ref: &[Mersenne31Quartic],
     range_check_16_width_1_lookups_access_ref: &[LookupWidth1SourceDestInformation],
@@ -281,16 +280,25 @@ pub(crate) unsafe fn stage2_process_range_check_16_trivial_checks(
         let a = *witness_trace_row.get_unchecked(lookup_set.a_col);
         let b = *witness_trace_row.get_unchecked(lookup_set.b_col);
         if DEBUG_QUOTIENT {
-            assert!(a.to_reduced_u32() < 1 << 16);
-            assert!(b.to_reduced_u32() < 1 << 16);
+            assert!(
+                a.to_reduced_u32() < 1 << 16,
+                "value {} is beyond the range",
+                a.to_reduced_u32()
+            );
+            assert!(
+                b.to_reduced_u32() < 1 << 16,
+                "value {} is beyond the range",
+                b.to_reduced_u32()
+            );
         }
 
-        let mut quad = a;
-        quad.mul_assign(&b);
+        let mut c = a;
+        c.mul_assign(&b);
+
         stage_2_trace
             .as_mut_ptr()
             .add(lookup_set.base_field_quadratic_oracle_col)
-            .write(quad);
+            .write(c);
 
         // we made a * b = some temporary variable,
         // and now would use this temporary variable to more efficiently prove
@@ -330,8 +338,16 @@ pub(crate) unsafe fn stage2_process_range_check_16_expressions(
         let a = a.evaluate_at_row_on_main_domain(witness_trace_row, memory_trace_row);
         let b = b.evaluate_at_row_on_main_domain(witness_trace_row, memory_trace_row);
         if DEBUG_QUOTIENT {
-            assert!(a.to_reduced_u32() < 1 << 16);
-            assert!(b.to_reduced_u32() < 1 << 16);
+            assert!(
+                a.to_reduced_u32() < 1 << 16,
+                "value {} is beyond the range",
+                a.to_reduced_u32()
+            );
+            assert!(
+                b.to_reduced_u32() < 1 << 16,
+                "value {} is beyond the range",
+                b.to_reduced_u32()
+            );
         }
 
         let mut quad = a;
@@ -734,12 +750,17 @@ pub(crate) fn process_delegation_requests(
 
         if DEBUG_QUOTIENT {
             if m == Mersenne31Field::ZERO {
-                let valid_convention = memory_trace_row
+                // Conventions depend quite a lot on simulator/witness gen internals, so we are free do disable
+                // these checks as there is no contribution to the delegation argument anyway in case of 0 multiplicity
+
+                let mut valid_convention = memory_trace_row
                     .get_unchecked(delegation_request_layout.delegation_type.start())
-                    .is_zero()
-                    && memory_trace_row
+                    .is_zero();
+                if delegation_request_layout.abi_mem_offset_high.num_elements() > 0 {
+                    valid_convention &= memory_trace_row
                         .get_unchecked(delegation_request_layout.abi_mem_offset_high.start())
                         .is_zero();
+                };
                 assert!(
                     valid_convention,
                     "Delegation request violates convention with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
@@ -771,7 +792,6 @@ pub(crate) fn process_delegation_requests(
 }
 
 pub(crate) unsafe fn process_lazy_init_range_checks(
-    _witness_trace_row: &[Mersenne31Field],
     memory_trace_row: &[Mersenne31Field],
     stage_2_trace: &mut [Mersenne31Field],
     range_check_16_preprocessing_ref: &[Mersenne31Quartic],
@@ -791,11 +811,22 @@ pub(crate) unsafe fn process_lazy_init_range_checks(
         let a = *memory_trace_row.get_unchecked(a_col);
         let b = *memory_trace_row.get_unchecked(b_col);
         if DEBUG_QUOTIENT {
-            assert!(a.to_reduced_u32() < 1 << 16);
-            assert!(b.to_reduced_u32() < 1 << 16);
+            assert!(
+                a.to_reduced_u32() < 1 << 16,
+                "value {} (low) is beyond the range for lazy init addresses check number {}",
+                a.to_reduced_u32(),
+                i
+            );
+            assert!(
+                b.to_reduced_u32() < 1 << 16,
+                "value {} (high) is beyond the range for lazy init addresses check number {}",
+                b.to_reduced_u32(),
+                i
+            );
         }
-        let mut quad = a;
-        quad.mul_assign(&b);
+        let mut c = a;
+        c.mul_assign(&b);
+
         stage_2_trace
             .as_mut_ptr()
             .add(
@@ -804,14 +835,14 @@ pub(crate) unsafe fn process_lazy_init_range_checks(
                     .get_range(i)
                     .start,
             )
-            .write(quad);
+            .write(c);
 
         let a_idx = a.to_reduced_u32() as usize;
         let b_idx = b.to_reduced_u32() as usize;
         let mut final_value = *range_check_16_preprocessing_ref.get_unchecked(a_idx);
         final_value.add_assign(range_check_16_preprocessing_ref.get_unchecked(b_idx));
 
-        stage_2_trace
+        let ptr = stage_2_trace
             .as_mut_ptr()
             .add(
                 lazy_init_address_range_check_16
@@ -819,7 +850,9 @@ pub(crate) unsafe fn process_lazy_init_range_checks(
                     .get_range(i)
                     .start,
             )
-            .cast::<Mersenne31Quartic>()
-            .write(final_value);
+            .cast::<Mersenne31Quartic>();
+        debug_assert!(ptr.is_aligned());
+
+        ptr.write(final_value);
     }
 }

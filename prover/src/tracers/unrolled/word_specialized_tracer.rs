@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::tracers::main_cycle_optimized::DelegationTracingData;
 use crate::tracers::main_cycle_optimized::RamTracingData;
-use cs::definitions::{TimestampData, TimestampScalar, TIMESTAMP_STEP};
+use cs::definitions::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use risc_v_simulator::cycle::IMStandardIsaConfig;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::machine_mode_only_unrolled::*;

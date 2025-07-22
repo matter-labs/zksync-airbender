@@ -1,3 +1,4 @@
+use cs::definitions::INITIAL_TIMESTAMP;
 use cs::machine::ops::unrolled::{
     load_store_subword_only::{
         subword_only_load_store_circuit_with_preprocessed_bytecode,
@@ -10,11 +11,19 @@ use cs::machine::ops::unrolled::{
     },
 };
 
-use crate::unrolled::run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization;
+use crate::unrolled::{
+    evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,
+    run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization,
+};
+
+use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 
 use super::*;
 
 const SUPPORT_SIGNED: bool = false;
+const INITIAL_PC: u32 = 0;
+const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
+const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
@@ -38,16 +47,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     let worker = Worker::new_with_num_threads(1);
     // load binary
 
-    // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
+    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .array_chunks::<4>()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
+    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .array_chunks::<4>()
@@ -68,7 +77,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
     let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, 1 << 21 as usize); // use full RAM
     for (idx, insn) in binary.iter().enumerate() {
-        memory.populate(0 + idx as u32 * 4, *insn);
+        memory.populate(INITIAL_PC + idx as u32 * 4, *insn);
     }
 
     use crate::tracers::delegation::*;
@@ -106,9 +115,10 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
     let (
         final_pc,
+        final_timestamp,
         family_circuits,
         (word_mem_circuits, subword_mem_circuits),
-        delegation_circuits,
+        mut delegation_circuits,
         register_final_state,
         shuffle_ram_touched_addresses,
     ) = if SUPPORT_SIGNED {
@@ -117,7 +127,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             IMStandardIsaConfig,
         >(
             NUM_CYCLES_PER_CHUNK,
-            0,
+            INITIAL_PC,
             csr_processor,
             &mut memory,
             1 << 21,
@@ -134,7 +144,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             IMStandardIsaConfigWithUnsignedMulDiv,
         >(
             NUM_CYCLES_PER_CHUNK,
-            0,
+            INITIAL_PC,
             csr_processor,
             &mut memory,
             1 << 21,
@@ -146,6 +156,18 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         )
     };
+
+    use crate::tracers::oracles::chunk_lazy_init_and_teardown;
+
+    let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global>(
+        1,
+        NUM_CYCLES_PER_CHUNK * NUM_INIT_AND_TEARDOWN_SETS,
+        &shuffle_ram_touched_addresses,
+        &worker,
+    );
+    assert_eq!(num_trivial, 0, "trivial padding is not expected in tests");
+
+    let _ = shuffle_ram_touched_addresses;
 
     println!("Finished at PC = 0x{:08x}", final_pc);
     for (reg_idx, reg) in register_final_state.iter().enumerate() {
@@ -243,23 +265,20 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         .try_into()
         .unwrap();
 
-    let external_values = ExternalValues {
-        challenges: ExternalChallenges {
-            memory_argument: ExternalMemoryArgumentChallenges {
-                memory_argument_linearization_challenges:
-                    memory_argument_linearization_challenges_powers,
-                memory_argument_gamma,
-            },
-            delegation_argument: Some(ExternalDelegationArgumentChallenges {
-                delegation_argument_linearization_challenges,
-                delegation_argument_gamma,
-            }),
-            machine_state_permutation_argument: Some(ExternalMachineStateArgumentChallenges {
-                linearization_challenges,
-                additive_term: state_permutation_argument_gamma,
-            }),
+    let external_challenges = ExternalChallenges {
+        memory_argument: ExternalMemoryArgumentChallenges {
+            memory_argument_linearization_challenges:
+                memory_argument_linearization_challenges_powers,
+            memory_argument_gamma,
         },
-        aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+        delegation_argument: Some(ExternalDelegationArgumentChallenges {
+            delegation_argument_linearization_challenges,
+            delegation_argument_gamma,
+        }),
+        machine_state_permutation_argument: Some(ExternalMachineStateArgumentChallenges {
+            linearization_challenges,
+            additive_term: state_permutation_argument_gamma,
+        }),
     };
 
     // evaluate memory witness
@@ -289,7 +308,34 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         )
     };
 
-    if false {
+    let mut delegation_argument_accumulator = Mersenne31Quartic::ZERO;
+
+    let mut permutation_argument_accumulator = produce_pc_into_permutation_accumulator_raw(
+        INITIAL_PC,
+        split_timestamp(INITIAL_TIMESTAMP),
+        final_pc,
+        split_timestamp(final_timestamp),
+        &external_challenges
+            .machine_state_permutation_argument
+            .as_ref()
+            .unwrap()
+            .linearization_challenges,
+        &external_challenges
+            .machine_state_permutation_argument
+            .as_ref()
+            .unwrap()
+            .additive_term,
+    );
+    let t = produce_register_contribution_into_memory_accumulator(
+        &register_final_state,
+        external_challenges
+            .memory_argument
+            .memory_argument_linearization_challenges,
+        external_challenges.memory_argument.memory_argument_gamma,
+    );
+    permutation_argument_accumulator.mul_assign(&t);
+
+    if true {
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
 
         let add_sub_circuit = {
@@ -314,10 +360,13 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             default_pc_value_in_padding: 4,
         };
 
+        let is_empty = oracle.inner.is_empty();
+
         // println!(
         //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[4].opcode_data.opcode
+        //     family_data[0].data[9].opcode_data.opcode
         // );
+        // dbg!(family_data[0].data[9]);
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &add_sub_circuit,
@@ -378,7 +427,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &add_sub_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -392,9 +441,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert!(proof.delegation_argument_accumulator.is_none());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
 
         use crate::cs::machine::ops::unrolled::jump_branch_slt::*;
@@ -422,6 +481,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             decoder_table: witness_gen_data,
             default_pc_value_in_padding: 0, // we conditionally manupulate PC, and if no opcodes are applied in padding - it would end up in 0
         };
+
+        let is_empty = oracle.inner.is_empty();
 
         // println!(
         //     "Opcode = 0x{:08x}",
@@ -487,7 +548,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &jump_branch_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -501,6 +562,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert!(proof.delegation_argument_accumulator.is_none());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
@@ -509,7 +580,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
-    if false {
+    if true {
         println!("Will try to prove XOR/AND/OR/SHIFT/CSR circuit");
         use crate::cs::machine::ops::unrolled::shift_binary_csr::*;
 
@@ -548,9 +619,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             default_pc_value_in_padding: 4,
         };
 
+        let is_empty = oracle.inner.is_empty();
+
         // println!(
         //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[26].opcode_data.opcode
+        //     family_data[0].data[2].opcode_data.opcode
         // );
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
@@ -612,7 +685,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &shift_binop_csrrw_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -626,9 +699,23 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert_eq!(
+            proof.delegation_argument_accumulator.unwrap(),
+            Mersenne31Quartic::ZERO
+        );
+
+        delegation_argument_accumulator.add_assign(&proof.delegation_argument_accumulator.unwrap());
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove MUL/DIV circuit");
 
         use crate::cs::machine::ops::unrolled::mul_div::*;
@@ -663,6 +750,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             decoder_table: witness_gen_data,
             default_pc_value_in_padding: 4,
         };
+
+        let is_empty = oracle.inner.is_empty();
 
         // println!(
         //     "Opcode = 0x{:08x}",
@@ -728,7 +817,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &mul_div_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -742,6 +831,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert!(proof.delegation_argument_accumulator.is_none());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     if true {
@@ -785,6 +884,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             inner: &family_data[0].data,
             decoder_table: witness_gen_data,
         };
+
+        let is_empty = oracle.inner.is_empty();
 
         // println!(
         //     "Opcode = 0x{:08x}",
@@ -851,7 +952,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &word_load_store_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -865,6 +966,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert!(proof.delegation_argument_accumulator.is_none());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     if true {
@@ -910,6 +1021,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             inner: &family_data[0].data,
             decoder_table: witness_gen_data,
         };
+
+        let is_empty = oracle.inner.is_empty();
 
         // println!(
         //     "Opcode = 0x{:08x}",
@@ -975,7 +1088,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         >(
             &subword_load_store_circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
             &[],
             &setup,
@@ -990,8 +1103,283 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         println!("Proving time is {:?}", now.elapsed());
 
-        dbg!(proof.permutation_grand_product_accumulator);
+        if is_empty {
+            assert_eq!(
+                proof.permutation_grand_product_accumulator,
+                Mersenne31Quartic::ONE
+            );
+        }
+        assert!(proof.delegation_argument_accumulator.is_none());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
+
+    if true {
+        println!("Will try to prove memory inits and teardowns circuit");
+
+        let compiler = OneRowCompiler::<Mersenne31Field>::default();
+        let inits_and_teardowns_circuit =
+            compiler.compile_init_and_teardown_circuit(NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2);
+
+        let table_driver = TableDriver::<Mersenne31Field>::new();
+
+        let inits_data = &inits_and_teardowns[0];
+
+        let memory_trace = evaluate_init_and_teardown_memory_witness::<Global>(
+            &inits_and_teardowns_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &inits_data.lazy_init_data,
+            &worker,
+            Global,
+        );
+
+        let full_trace = evaluate_init_and_teardown_witness::<Global>(
+            &inits_and_teardowns_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &inits_data.lazy_init_data,
+            &worker,
+            Global,
+        );
+
+        let WitnessEvaluationData {
+            aux_data,
+            exec_trace,
+            num_witness_columns,
+            lookup_mapping,
+        } = full_trace;
+        let full_trace = WitnessEvaluationDataForExecutionFamily {
+            aux_data: ExecutorFamilyWitnessEvaluationAuxData {},
+            exec_trace,
+            num_witness_columns,
+            lookup_mapping,
+        };
+
+        println!("Checking if satisfied");
+        let is_satisfied = check_satisfied(
+            &inits_and_teardowns_circuit,
+            &full_trace.exec_trace,
+            full_trace.num_witness_columns,
+        );
+        assert!(is_satisfied);
+
+        println!("Precomputing twiddles");
+        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+        println!("Precomputing LDE factors");
+        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+        println!("Precomputing setup");
+        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+            &table_driver,
+            &[],
+            trace_len,
+            &inits_and_teardowns_circuit.setup_layout,
+            &twiddles,
+            &lde_precomputations,
+            lde_factor,
+            tree_cap_size,
+            &worker,
+        );
+
+        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
+        //     Some(witness.lookup_mapping.clone())
+        // } else {
+        //     None
+        // };
+
+        println!("Trying to prove");
+
+        let now = std::time::Instant::now();
+        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+            DEFAULT_TRACE_PADDING_MULTIPLE,
+            _,
+            DefaultTreeConstructor,
+        >(
+            &inits_and_teardowns_circuit,
+            &vec![],
+            &external_challenges,
+            full_trace,
+            &aux_data.aux_boundary_data,
+            &setup,
+            &twiddles,
+            &lde_precomputations,
+            None,
+            lde_factor,
+            tree_cap_size,
+            53,
+            28,
+            &worker,
+        );
+        println!("Proving time is {:?}", now.elapsed());
+
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+    }
+
+    if false {
+        // now prove delegation circuits
+        let mut external_values = ExternalValues {
+            challenges: external_challenges,
+            aux_boundary_values: Default::default(),
+        };
+        external_values.aux_boundary_values = Default::default();
+
+        let (circuit, table_driver) = {
+            use crate::cs::cs::cs_reference::BasicAssembly;
+            use cs::delegation::blake2_round_with_extended_control::define_blake2_with_extended_control_delegation_circuit;
+            let mut cs = BasicAssembly::<Mersenne31Field>::new();
+            define_blake2_with_extended_control_delegation_circuit(&mut cs);
+            let (circuit_output, _) = cs.finalize();
+            let table_driver = circuit_output.table_driver.clone();
+            let compiler = OneRowCompiler::default();
+            let circuit = compiler.compile_to_evaluate_delegations(
+                circuit_output,
+                (NUM_DELEGATION_CYCLES + 1).trailing_zeros() as usize,
+            );
+
+            (circuit, table_driver)
+        };
+
+        let delegation_circuits = delegation_circuits
+            .remove(&(BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16))
+            .unwrap();
+        for delegation_witness in delegation_circuits.into_iter() {
+            println!("Will try to prove Blake delegation");
+
+            assert_eq!(
+                delegation_witness.delegation_type as u32,
+                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID
+            );
+
+            // evaluate a witness and memory-only witness for each
+
+            let delegation_type = delegation_witness.delegation_type;
+
+            let oracle = DelegationCircuitOracle {
+                cycle_data: &delegation_witness,
+            };
+            #[cfg(feature = "debug_logs")]
+            println!(
+                "Evaluating memory-only witness for delegation circuit {}",
+                delegation_type
+            );
+            let mem_only_witness = evaluate_delegation_memory_witness(
+                &circuit,
+                NUM_DELEGATION_CYCLES,
+                &oracle,
+                &worker,
+                Global,
+            );
+
+            let eval_fn = super::blake2s_delegation_with_gpu_tracer::witness_eval_fn;
+
+            #[cfg(feature = "debug_logs")]
+            println!(
+                "Evaluating witness for delegation circuit {}",
+                delegation_type
+            );
+            let full_witness = evaluate_witness(
+                &circuit,
+                eval_fn,
+                NUM_DELEGATION_CYCLES,
+                &oracle,
+                &[],
+                &table_driver,
+                0,
+                &worker,
+                Global,
+            );
+
+            let trace_len = NUM_DELEGATION_CYCLES + 1;
+
+            // create setup
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+
+            let setup = SetupPrecomputations::from_tables_and_trace_len(
+                &table_driver,
+                NUM_DELEGATION_CYCLES + 1,
+                &circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
+
+            let is_satisfied = check_satisfied(
+                &circuit,
+                &full_witness.exec_trace,
+                full_witness.num_witness_columns,
+            );
+            assert!(is_satisfied);
+
+            // let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
+            //     Some(witness.witness.lookup_mapping.clone())
+            // } else {
+            //     None
+            // };
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
+                &circuit,
+                &[],
+                &external_values,
+                full_witness,
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                0,
+                Some(delegation_type),
+                lde_factor,
+                tree_cap_size,
+                53,
+                28,
+                &worker,
+            );
+            println!(
+                "Delegation circuit type {} proving time is {:?}",
+                delegation_type,
+                now.elapsed()
+            );
+
+            // if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
+            //     let log_n = work_type.trace_len.trailing_zeros();
+            //     assert_eq!(work_type.trace_len, 1 << log_n);
+            //     let dummy_public_inputs = Vec::<Mersenne31Field>::new();
+            //     let gpu_comparison_args = GpuComparisonArgs {
+            //         circuit: &work_type.compiled_circuit,
+            //         setup: &setup,
+            //         external_values: &external_values,
+            //         public_inputs: &dummy_public_inputs,
+            //         twiddles: &twiddles,
+            //         lde_precomputations: &lde_precomputations,
+            //         table_driver: &work_type.table_driver,
+            //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+            //         log_n: log_n as usize,
+            //         circuit_sequence: 0,
+            //         delegation_processing_type: Some(delegation_type),
+            //         prover_data: &prover_data,
+            //     };
+            //     gpu_comparison_hook(&gpu_comparison_args);
+            // }
+
+            // if !for_gpu_comparison {
+            //     serialize_to_file(&proof, "blake2s_delegator_proof");
+            // }
+
+            dbg!(prover_data.stage_2_result.grand_product_accumulator);
+            dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+
+            permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
+            delegation_argument_accumulator
+                .sub_assign(&proof.delegation_argument_accumulator.unwrap());
+        }
+    }
+
+    dbg!(permutation_argument_accumulator);
+    dbg!(delegation_argument_accumulator);
+
+    assert_eq!(permutation_argument_accumulator, Mersenne31Quartic::ONE);
+    assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
 
     // if !for_gpu_comparison {
     //     serialize_to_file(&proof, "delegation_proof");
