@@ -1733,7 +1733,7 @@ fn eval_fn_50<
     let mut v_26 = v_24;
     W::Field::add_assign(&mut v_26, &v_25);
     let v_27 = W::Field::select(&v_3, &v_26, &v_24);
-    witness_proxy.set_witness_place(68usize, v_27);
+    witness_proxy.set_witness_place(109usize, v_27);
 }
 #[allow(unused_variables)]
 fn eval_fn_51<
@@ -1777,7 +1777,7 @@ fn eval_fn_51<
     let mut v_19 = v_17;
     W::Field::add_assign(&mut v_19, &v_18);
     let v_20 = W::Field::select(&v_5, &v_19, &v_17);
-    witness_proxy.set_witness_place(72usize, v_20);
+    witness_proxy.set_witness_place(110usize, v_20);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1807,7 +1807,7 @@ fn eval_fn_52<
     let mut v_7 = v_5;
     W::Field::add_assign(&mut v_7, &v_6);
     let v_8 = W::Field::select(&v_2, &v_7, &v_5);
-    witness_proxy.set_witness_place(76usize, v_8);
+    witness_proxy.set_witness_place(111usize, v_8);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1837,7 +1837,7 @@ fn eval_fn_53<
     let mut v_7 = v_5;
     W::Field::add_assign(&mut v_7, &v_6);
     let v_8 = W::Field::select(&v_2, &v_7, &v_5);
-    witness_proxy.set_witness_place(80usize, v_8);
+    witness_proxy.set_witness_place(112usize, v_8);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1897,7 +1897,7 @@ fn eval_fn_55<
     let mut v_2 = v_0;
     W::Field::sub_assign(&mut v_2, &v_1);
     let v_3 = W::Field::inverse_or_zero(&v_2);
-    witness_proxy.set_witness_place(111usize, v_3);
+    witness_proxy.set_witness_place(115usize, v_3);
     let v_5 = W::Field::equal(&v_2, &v_1);
     witness_proxy.set_witness_place_boolean(43usize, v_5);
 }
@@ -2676,7 +2676,7 @@ fn eval_fn_76<
     let v_0 = witness_proxy.get_witness_place(65usize);
     let v_1 = witness_proxy.get_witness_place(66usize);
     let v_2 = witness_proxy.get_witness_place(67usize);
-    let v_3 = witness_proxy.get_witness_place_u16(68usize);
+    let v_3 = witness_proxy.get_witness_place_u16(109usize);
     let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 7usize);
 }
 #[allow(unused_variables)]
@@ -2872,7 +2872,7 @@ fn eval_fn_80<
     let v_0 = witness_proxy.get_witness_place(69usize);
     let v_1 = witness_proxy.get_witness_place(70usize);
     let v_2 = witness_proxy.get_witness_place(71usize);
-    let v_3 = witness_proxy.get_witness_place_u16(72usize);
+    let v_3 = witness_proxy.get_witness_place_u16(110usize);
     let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 8usize);
 }
 #[allow(unused_variables)]
@@ -3003,7 +3003,7 @@ fn eval_fn_84<
     let v_0 = witness_proxy.get_witness_place(73usize);
     let v_1 = witness_proxy.get_witness_place(74usize);
     let v_2 = witness_proxy.get_witness_place(75usize);
-    let v_3 = witness_proxy.get_witness_place_u16(76usize);
+    let v_3 = witness_proxy.get_witness_place_u16(111usize);
     let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 9usize);
 }
 #[allow(unused_variables)]
@@ -3125,7 +3125,7 @@ fn eval_fn_88<
     let v_0 = witness_proxy.get_witness_place(77usize);
     let v_1 = witness_proxy.get_witness_place(78usize);
     let v_2 = witness_proxy.get_witness_place(79usize);
-    let v_3 = witness_proxy.get_witness_place_u16(80usize);
+    let v_3 = witness_proxy.get_witness_place_u16(112usize);
     let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 10usize);
 }
 #[allow(unused_variables)]
@@ -3211,7 +3211,7 @@ fn eval_fn_89<
     let mut v_51 = v_49;
     W::Field::add_assign_product(&mut v_51, &v_50, &v_15);
     let v_52 = W::Field::select(&v_2, &v_51, &v_49);
-    witness_proxy.set_witness_place(109usize, v_52);
+    witness_proxy.set_witness_place(113usize, v_52);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -3230,7 +3230,7 @@ fn eval_fn_90<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(109usize);
+    let v_0 = witness_proxy.get_witness_place(113usize);
     let v_1 = witness_proxy.get_witness_place(43usize);
     let v_2 = W::Field::constant(Mersenne31Field(0u32));
     let mut v_3 = v_0;
@@ -3239,7 +3239,7 @@ fn eval_fn_90<
     W::Field::sub_assign(&mut v_4, &v_3);
     let mut v_5 = v_4;
     W::Field::add_assign(&mut v_5, &v_0);
-    witness_proxy.set_witness_place(112usize, v_5);
+    witness_proxy.set_witness_place(116usize, v_5);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -3435,7 +3435,7 @@ fn eval_fn_95<
     let mut v_46 = v_44;
     W::Field::add_assign_product(&mut v_46, &v_45, &v_14);
     let v_47 = W::Field::select(&v_2, &v_46, &v_44);
-    witness_proxy.set_witness_place(110usize, v_47);
+    witness_proxy.set_witness_place(114usize, v_47);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -3454,7 +3454,7 @@ fn eval_fn_96<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(110usize);
+    let v_0 = witness_proxy.get_witness_place(114usize);
     let v_1 = witness_proxy.get_witness_place(43usize);
     let v_2 = W::Field::constant(Mersenne31Field(0u32));
     let mut v_3 = v_0;
@@ -3463,7 +3463,7 @@ fn eval_fn_96<
     W::Field::sub_assign(&mut v_4, &v_3);
     let mut v_5 = v_4;
     W::Field::add_assign(&mut v_5, &v_0);
-    witness_proxy.set_witness_place(113usize, v_5);
+    witness_proxy.set_witness_place(117usize, v_5);
 }
 #[allow(unused_variables)]
 fn eval_fn_97<
@@ -3530,10 +3530,10 @@ fn eval_fn_97<
     let v_43 = WitnessComputationCore::select(&v_3, &v_25, &v_42);
     let v_44 = WitnessComputationCore::select(&v_5, &v_21, &v_43);
     let v_45 = v_44.truncate();
-    witness_proxy.set_witness_place_u16(114usize, v_45);
+    witness_proxy.set_witness_place_u16(118usize, v_45);
     let v_47 = v_44.shr(16u32);
     let v_48 = v_47.truncate();
-    witness_proxy.set_witness_place_u16(115usize, v_48);
+    witness_proxy.set_witness_place_u16(119usize, v_48);
 }
 #[allow(dead_code)]
 pub fn evaluate_witness_fn<
