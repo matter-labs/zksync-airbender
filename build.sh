@@ -14,6 +14,8 @@ cargo test compile_blake2_with_extended_control
 cargo test blake_delegation_get_witness_graph
 cargo test compile_u256_ops_extended_control
 cargo test bigint_delegation_get_witness_graph
+cargo test compile_keccak_special5
+cargo test keccak_delegation_get_witness_graph
 
 cd ../witness_eval_generator
 cargo test gen_for_prover_tests

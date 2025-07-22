@@ -169,6 +169,10 @@ const ALL_LAYOUTS: &[(
         create_bigint_with_control_delegation_layout,
         "bigint_with_control",
     ),
+    (
+        create_keccak_with_control_delegation_layout,
+        "keccak_with_control",
+    ),
 ];
 
 fn main() {

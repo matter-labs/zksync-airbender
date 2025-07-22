@@ -203,7 +203,7 @@ pub fn keccak_special5_with_control_factory_fn<A: GoodAllocator>(
 
     let x11_indirect_access_properties: Vec<_> = (0..12)
         .map(|el| IndirectAccessLocation {
-            use_writes: false,
+            use_writes: true,
             index: el,
         })
         .collect();
@@ -213,7 +213,7 @@ pub fn keccak_special5_with_control_factory_fn<A: GoodAllocator>(
         num_register_accesses_per_delegation: 2,
         num_indirect_reads_per_delegation: 0, // ????
         num_indirect_writes_per_delegation: 12,
-        base_register_index: 10, // ????
+        base_register_index: 11, // ????
         delegation_type,
         indirect_accesses_properties: vec![
             x11_indirect_access_properties,

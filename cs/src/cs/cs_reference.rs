@@ -136,11 +136,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                     t.get_value(var)
                 }
             } else {
-                dbg!("NO GOOD WITNESSS PLACER", var);
                 None
             }
         } else {
-            dbg!("NO WITNESSS PLACER", var);
             None
         }
     }
@@ -602,6 +600,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             table: if let Num::Constant(c) = table_type {LookupQueryTableType::Constant(TableType::get_table_from_id(c.as_u64() as u32))} 
                    else if let Num::Var(v) = table_type {LookupQueryTableType::Variable(v)} else {unreachable!()},
         };
+        dbg!(&format!("{}({:?})", self.lookup_storage.len(), query.table));
         self.lookup_storage.push(query);
     }
 

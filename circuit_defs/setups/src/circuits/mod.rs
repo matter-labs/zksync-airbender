@@ -2,6 +2,7 @@ use super::*;
 
 mod bigint_ops_with_control_circuit;
 mod blake2_with_compression_circuit;
+mod keccak_with_control_circuit;
 mod final_reduced_riscv;
 mod main_riscv;
 mod reduced_riscv;
