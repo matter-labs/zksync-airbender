@@ -812,9 +812,9 @@
     },
     "scratch_space_columns_range": {
       "start": 110,
-      "num_elements": 59
+      "num_elements": 63
     },
-    "total_width": 169
+    "total_width": 173
   },
   "memory_layout": {
     "shuffle_ram_inits_and_teardowns": {
@@ -5519,7 +5519,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 97
+            "WitnessSubtree": 156
           }
         ]
       ],
@@ -5811,7 +5811,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 101
+            "WitnessSubtree": 157
           }
         ]
       ],
@@ -6098,12 +6098,6 @@
           }
         ],
         [
-          2147483646,
-          {
-            "WitnessSubtree": 105
-          }
-        ],
-        [
           24,
           {
             "WitnessSubtree": 138
@@ -6113,6 +6107,12 @@
           39,
           {
             "WitnessSubtree": 139
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 158
           }
         ]
       ],
@@ -6327,15 +6327,15 @@
           }
         ],
         [
-          2147483646,
-          {
-            "WitnessSubtree": 109
-          }
-        ],
-        [
           39,
           {
             "WitnessSubtree": 138
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 159
           }
         ]
       ],
@@ -6505,7 +6505,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 156
+            "WitnessSubtree": 160
           }
         ]
       ],
@@ -6527,7 +6527,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 157
+            "WitnessSubtree": 161
           }
         ]
       ],
@@ -6558,7 +6558,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 158
+            "WitnessSubtree": 162
           }
         ]
       ],
@@ -6589,7 +6589,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 159
+            "WitnessSubtree": 163
           }
         ]
       ],
@@ -6611,7 +6611,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 160
+            "WitnessSubtree": 164
           }
         ]
       ],
@@ -6633,7 +6633,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 161
+            "WitnessSubtree": 165
           }
         ]
       ],
@@ -6685,13 +6685,13 @@
         [
           1,
           {
-            "WitnessSubtree": 156
+            "WitnessSubtree": 160
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 158
+            "WitnessSubtree": 162
           }
         ]
       ],
@@ -6797,13 +6797,13 @@
         [
           1,
           {
-            "WitnessSubtree": 157
+            "WitnessSubtree": 161
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 159
+            "WitnessSubtree": 163
           }
         ]
       ],
@@ -6903,7 +6903,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 160
+            "WitnessSubtree": 164
           }
         ]
       ],
@@ -6973,7 +6973,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 161
+            "WitnessSubtree": 165
           }
         ]
       ],
@@ -7121,7 +7121,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 162
+            "WitnessSubtree": 166
           }
         ]
       ],
@@ -7284,7 +7284,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 163
+            "WitnessSubtree": 167
           }
         ]
       ],
@@ -7340,7 +7340,7 @@
             "WitnessSubtree": 33
           },
           {
-            "WitnessSubtree": 164
+            "WitnessSubtree": 168
           }
         ],
         [
@@ -7349,7 +7349,7 @@
             "WitnessSubtree": 81
           },
           {
-            "WitnessSubtree": 164
+            "WitnessSubtree": 168
           }
         ],
         [
@@ -7358,7 +7358,7 @@
             "WitnessSubtree": 86
           },
           {
-            "WitnessSubtree": 164
+            "WitnessSubtree": 168
           }
         ],
         [
@@ -7367,7 +7367,7 @@
             "WitnessSubtree": 87
           },
           {
-            "WitnessSubtree": 164
+            "WitnessSubtree": 168
           }
         ]
       ],
@@ -7389,7 +7389,7 @@
             "WitnessSubtree": 72
           },
           {
-            "WitnessSubtree": 162
+            "WitnessSubtree": 166
           }
         ]
       ],
@@ -7397,13 +7397,13 @@
         [
           1,
           {
-            "WitnessSubtree": 162
+            "WitnessSubtree": 166
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 165
+            "WitnessSubtree": 169
           }
         ]
       ],
@@ -7417,7 +7417,7 @@
             "WitnessSubtree": 72
           },
           {
-            "WitnessSubtree": 163
+            "WitnessSubtree": 167
           }
         ]
       ],
@@ -7425,13 +7425,13 @@
         [
           1,
           {
-            "WitnessSubtree": 163
+            "WitnessSubtree": 167
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 166
+            "WitnessSubtree": 170
           }
         ]
       ],
@@ -7703,7 +7703,7 @@
             "WitnessSubtree": 36
           },
           {
-            "WitnessSubtree": 165
+            "WitnessSubtree": 169
           }
         ],
         [
@@ -7721,7 +7721,7 @@
             "WitnessSubtree": 37
           },
           {
-            "WitnessSubtree": 165
+            "WitnessSubtree": 169
           }
         ],
         [
@@ -7739,7 +7739,7 @@
             "WitnessSubtree": 40
           },
           {
-            "WitnessSubtree": 165
+            "WitnessSubtree": 169
           }
         ],
         [
@@ -7757,7 +7757,7 @@
             "WitnessSubtree": 41
           },
           {
-            "WitnessSubtree": 165
+            "WitnessSubtree": 169
           }
         ],
         [
@@ -7781,7 +7781,7 @@
             "WitnessSubtree": 36
           },
           {
-            "WitnessSubtree": 166
+            "WitnessSubtree": 170
           }
         ],
         [
@@ -7799,7 +7799,7 @@
             "WitnessSubtree": 37
           },
           {
-            "WitnessSubtree": 166
+            "WitnessSubtree": 170
           }
         ],
         [
@@ -7817,7 +7817,7 @@
             "WitnessSubtree": 40
           },
           {
-            "WitnessSubtree": 166
+            "WitnessSubtree": 170
           }
         ],
         [
@@ -7835,7 +7835,7 @@
             "WitnessSubtree": 41
           },
           {
-            "WitnessSubtree": 166
+            "WitnessSubtree": 170
           }
         ],
         [
@@ -8005,7 +8005,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 167
+            "WitnessSubtree": 171
           }
         ]
       ],
@@ -8399,7 +8399,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 168
+            "WitnessSubtree": 172
           }
         ]
       ],
@@ -8490,7 +8490,7 @@
   "state_linkage_constraints": [
     [
       {
-        "WitnessSubtree": 167
+        "WitnessSubtree": 171
       },
       {
         "WitnessSubtree": 21
@@ -8498,7 +8498,7 @@
     ],
     [
       {
-        "WitnessSubtree": 168
+        "WitnessSubtree": 172
       },
       {
         "WitnessSubtree": 78
@@ -8521,13 +8521,13 @@
     [
       "OneBeforeLastRow",
       {
-        "WitnessSubtree": 167
+        "WitnessSubtree": 171
       }
     ],
     [
       "OneBeforeLastRow",
       {
-        "WitnessSubtree": 168
+        "WitnessSubtree": 172
       }
     ]
   ],
@@ -8905,7 +8905,7 @@
       "WitnessSubtree": 96
     },
     "124": {
-      "WitnessSubtree": 97
+      "WitnessSubtree": 156
     },
     "125": {
       "WitnessSubtree": 98
@@ -8917,7 +8917,7 @@
       "WitnessSubtree": 100
     },
     "128": {
-      "WitnessSubtree": 101
+      "WitnessSubtree": 157
     },
     "129": {
       "WitnessSubtree": 102
@@ -8929,7 +8929,7 @@
       "WitnessSubtree": 104
     },
     "132": {
-      "WitnessSubtree": 105
+      "WitnessSubtree": 158
     },
     "133": {
       "WitnessSubtree": 106
@@ -8941,7 +8941,7 @@
       "WitnessSubtree": 108
     },
     "136": {
-      "WitnessSubtree": 109
+      "WitnessSubtree": 159
     },
     "137": {
       "OptimizedOut": 1
@@ -8962,25 +8962,25 @@
       "OptimizedOut": 6
     },
     "143": {
-      "WitnessSubtree": 156
+      "WitnessSubtree": 160
     },
     "144": {
-      "WitnessSubtree": 157
+      "WitnessSubtree": 161
     },
     "145": {
       "OptimizedOut": 7
     },
     "146": {
-      "WitnessSubtree": 158
+      "WitnessSubtree": 162
     },
     "147": {
-      "WitnessSubtree": 159
+      "WitnessSubtree": 163
     },
     "148": {
-      "WitnessSubtree": 160
+      "WitnessSubtree": 164
     },
     "149": {
-      "WitnessSubtree": 161
+      "WitnessSubtree": 165
     },
     "150": {
       "WitnessSubtree": 9
@@ -9046,31 +9046,31 @@
       "WitnessSubtree": 20
     },
     "171": {
-      "WitnessSubtree": 162
+      "WitnessSubtree": 166
     },
     "172": {
-      "WitnessSubtree": 163
+      "WitnessSubtree": 167
     },
     "173": {
       "OptimizedOut": 8
     },
     "174": {
-      "WitnessSubtree": 164
+      "WitnessSubtree": 168
     },
     "175": {
       "WitnessSubtree": 72
     },
     "176": {
-      "WitnessSubtree": 165
+      "WitnessSubtree": 169
     },
     "177": {
-      "WitnessSubtree": 166
+      "WitnessSubtree": 170
     },
     "178": {
-      "WitnessSubtree": 167
+      "WitnessSubtree": 171
     },
     "179": {
-      "WitnessSubtree": 168
+      "WitnessSubtree": 172
     },
     "180": {
       "WitnessSubtree": 31
@@ -9238,6 +9238,12 @@
     5185793,
     6234369,
     6365441,
+    6496513,
+    6496513,
+    6496513,
+    6496513,
+    6496513,
+    6496513,
     6496513
   ],
   "total_tables_size": 6496513

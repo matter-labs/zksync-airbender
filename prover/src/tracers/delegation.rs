@@ -200,7 +200,6 @@ pub fn keccak_special5_with_control_factory_fn<A: GoodAllocator>(
     //     capacity
     // );
 
-
     let x11_indirect_access_properties: Vec<_> = (0..12)
         .map(|el| IndirectAccessLocation {
             use_writes: true,
@@ -215,9 +214,7 @@ pub fn keccak_special5_with_control_factory_fn<A: GoodAllocator>(
         num_indirect_writes_per_delegation: 12,
         base_register_index: 11, // ????
         delegation_type,
-        indirect_accesses_properties: vec![
-            x11_indirect_access_properties,
-        ], // rest is unreachable
+        indirect_accesses_properties: vec![x11_indirect_access_properties], // rest is unreachable
 
         write_timestamp: Vec::with_capacity_in(capacity, A::default()),
 

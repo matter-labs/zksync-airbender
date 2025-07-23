@@ -194,9 +194,7 @@ impl Generator {
                 let type_ident = Self::ident_for_integer_unop(lhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let new_ident = self.create_var();
-                self.push(&format!(
-                    "INOT({type_ident}, {new_ident}, {lhs})\n"
-                ));
+                self.push(&format!("INOT({type_ident}, {new_ident}, {lhs})\n"));
             }
             FixedWidthIntegerNodeExpression::LowestBits { value, num_bits } => {
                 let type_ident = Self::ident_for_integer_unop(value);
@@ -317,27 +315,21 @@ impl Generator {
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
-                self.push(&format!(
-                    "IAND({type_ident}, {new_ident}, {lhs}, {rhs})\n"
-                ));
+                self.push(&format!("IAND({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
             }
             FixedWidthIntegerNodeExpression::BinaryOr { lhs, rhs } => {
                 let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
-                self.push(&format!(
-                    "IOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"
-                ));
+                self.push(&format!("IOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
             }
             FixedWidthIntegerNodeExpression::BinaryXor { lhs, rhs } => {
                 let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
-                self.push(&format!(
-                    "IXOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"
-                ));
+                self.push(&format!("IXOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
             }
         };
     }

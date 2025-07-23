@@ -91,7 +91,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         "trying to use table with ID {:?}, but it's not initialized in table driver",
                         table_type
                     );
-                }else {
+                } else {
                     // dbg!("CHANGED THIS FOR KECCAK");
                     // dbg!("NOT ANYMORE: all lookups must use fixed table IDx");
                 };

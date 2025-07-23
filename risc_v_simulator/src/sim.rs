@@ -233,7 +233,7 @@ mod diag {
 
             if let Some(d) = config.diagnostics {
                 if let Some(p) = d.profiler_config {
-                    Self{
+                    Self {
                         symbol_info: SymbolInfo::new(d.symbols_path),
                         frequency_recip: p.frequency_recip,
                         reverse_graph: p.reverse_graph,
@@ -241,7 +241,8 @@ mod diag {
                         stacktraces: StacktraceSet::new(),
                         dwarf_cache,
                         stats: ProfilerStats::default(),
-                    }.to(Some)
+                    }
+                    .to(Some)
                 } else {
                     None
                 }

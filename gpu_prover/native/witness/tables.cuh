@@ -46,6 +46,12 @@ enum TableType : u16 {
   StoreByteSourceContribution,
   StoreByteExistingContribution,
   TruncateShift,
+  KeccakPermutationIndices12,
+  KeccakPermutationIndices34,
+  KeccakPermutationIndices56,
+  XorSpecialIota,
+  AndN,
+  RotL,
   DynamicPlaceholder,
 };
 
@@ -88,6 +94,55 @@ template <unsigned N> DEVICE_FORCEINLINE void set_to_zero(bf *values) {
 }
 
 template <> DEVICE_FORCEINLINE void set_to_zero<0>(bf *) {}
+
+__constant__ constexpr u64 KECCAK_PERMUTATIONS_ADJUSTED[25 * 25] = {
+    0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 0,  6,  12, 18, 24, 3,  9,  10, 16, 22, 1,  7,
+    13, 19, 20, 4,  5,  11, 17, 23, 2,  8,  14, 15, 21, 0,  9,  13, 17, 21, 18, 22, 1,  5,  14, 6,  10, 19, 23, 2,  24, 3,  7,  11, 15, 12, 16, 20, 4,
+    8,  0,  22, 19, 11, 8,  17, 14, 6,  3,  20, 9,  1,  23, 15, 12, 21, 18, 10, 7,  4,  13, 5,  2,  24, 16, 0,  14, 23, 7,  16, 11, 20, 9,  18, 2,  22,
+    6,  15, 4,  13, 8,  17, 1,  10, 24, 19, 3,  12, 21, 5,  0,  20, 15, 10, 5,  7,  2,  22, 17, 12, 14, 9,  4,  24, 19, 16, 11, 6,  1,  21, 23, 18, 13,
+    8,  3,  0,  2,  4,  1,  3,  10, 12, 14, 11, 13, 20, 22, 24, 21, 23, 5,  7,  9,  6,  8,  15, 17, 19, 16, 18, 0,  12, 24, 6,  18, 1,  13, 20, 7,  19,
+    2,  14, 21, 8,  15, 3,  10, 22, 9,  16, 4,  11, 23, 5,  17, 0,  13, 21, 9,  17, 6,  19, 2,  10, 23, 12, 20, 8,  16, 4,  18, 1,  14, 22, 5,  24, 7,
+    15, 3,  11, 0,  19, 8,  22, 11, 9,  23, 12, 1,  15, 13, 2,  16, 5,  24, 17, 6,  20, 14, 3,  21, 10, 4,  18, 7,  0,  23, 16, 14, 7,  22, 15, 13, 6,
+    4,  19, 12, 5,  3,  21, 11, 9,  2,  20, 18, 8,  1,  24, 17, 10, 0,  15, 5,  20, 10, 14, 4,  19, 9,  24, 23, 13, 3,  18, 8,  7,  22, 12, 2,  17, 16,
+    6,  21, 11, 1,  0,  4,  3,  2,  1,  20, 24, 23, 22, 21, 15, 19, 18, 17, 16, 10, 14, 13, 12, 11, 5,  9,  8,  7,  6,  0,  24, 18, 12, 6,  2,  21, 15,
+    14, 8,  4,  23, 17, 11, 5,  1,  20, 19, 13, 7,  3,  22, 16, 10, 9,  0,  21, 17, 13, 9,  12, 8,  4,  20, 16, 24, 15, 11, 7,  3,  6,  2,  23, 19, 10,
+    18, 14, 5,  1,  22, 0,  8,  11, 19, 22, 13, 16, 24, 2,  5,  21, 4,  7,  10, 18, 9,  12, 15, 23, 1,  17, 20, 3,  6,  14, 0,  16, 7,  23, 14, 19, 5,
+    21, 12, 3,  8,  24, 10, 1,  17, 22, 13, 4,  15, 6,  11, 2,  18, 9,  20, 0,  5,  10, 15, 20, 23, 3,  8,  13, 18, 16, 21, 1,  6,  11, 14, 19, 24, 4,
+    9,  7,  12, 17, 22, 2,  0,  3,  1,  4,  2,  15, 18, 16, 19, 17, 5,  8,  6,  9,  7,  20, 23, 21, 24, 22, 10, 13, 11, 14, 12, 0,  18, 6,  24, 12, 4,
+    17, 5,  23, 11, 3,  16, 9,  22, 10, 2,  15, 8,  21, 14, 1,  19, 7,  20, 13, 0,  17, 9,  21, 13, 24, 11, 3,  15, 7,  18, 5,  22, 14, 1,  12, 4,  16,
+    8,  20, 6,  23, 10, 2,  19, 0,  11, 22, 8,  19, 21, 7,  18, 4,  10, 17, 3,  14, 20, 6,  13, 24, 5,  16, 2,  9,  15, 1,  12, 23, 0,  7,  14, 16, 23,
+    8,  10, 17, 24, 1,  11, 18, 20, 2,  9,  19, 21, 3,  5,  12, 22, 4,  6,  13, 15, 0,  10, 20, 5,  15, 16, 1,  11, 21, 6,  7,  17, 2,  12, 22, 23, 8,
+    18, 3,  13, 14, 24, 9,  19, 4,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+};
+
+__constant__ constexpr u64 KECCAK_ROUND_CONSTANTS_ADJUSTED[24] = {
+    0,
+    1,
+    32898,
+    9223372036854808714,
+    9223372039002292224,
+    32907,
+    2147483649,
+    9223372039002292353,
+    9223372036854808585,
+    138,
+    136,
+    2147516425,
+    2147483658,
+    2147516555,
+    9223372036854775947,
+    9223372036854808713,
+    9223372036854808579,
+    9223372036854808578,
+    9223372036854775936,
+    32778,
+    9223372039002259466,
+    9223372039002292353,
+    9223372036854808704,
+    2147483649,
+};
+
+__constant__ constexpr u64 KECCAK_PRECOMPILE_THETA_RHO_IDCOLS[5] = {29, 25, 26, 27, 28};
 
 template <unsigned K, unsigned V> struct TableDriver {
   static_assert(K + V == 3);
@@ -457,6 +512,141 @@ template <unsigned K, unsigned V> struct TableDriver {
     return get_absolute_index<TruncateShift>(index);
   }
 
+  template <TableType T, unsigned I, unsigned J> DEVICE_FORCEINLINE u32 kecak_permutation_indices(const bf keys[K], bf *values) const {
+    auto setter = [](const u32 index, u32 *result) {
+      const u32 iter = __clz(static_cast<int>(__brev((index >> 5) & 0b11111)));
+      const u32 round = index >> 10;
+      u64 indices[6] = {0, 1, 2, 3, 4, 5};
+      if (iter < 5 && round < 24) {
+        constexpr u32 PRECOMPILE_IOTA_COLUMNXOR = 0;
+        constexpr u32 PRECOMPILE_COLUMNMIX = 1;
+        constexpr u32 PRECOMPILE_THETA_RHO = 2;
+        constexpr u32 PRECOMPILE_CHI1 = 3;
+        constexpr u32 PRECOMPILE_CHI2 = 4;
+        const u32 precompile = __clz(static_cast<int>(__brev(index & 0b11111)));
+        switch (precompile) {
+        case PRECOMPILE_IOTA_COLUMNXOR: {
+          const auto pi = &KECCAK_PERMUTATIONS_ADJUSTED[round * 25]; // indices before applying round permutation
+          const u64 idcol = 25 + iter;
+          const u64 idx0 = pi[iter];
+          const u64 idx5 = pi[iter + 5];
+          const u64 idx10 = pi[iter + 10];
+          const u64 idx15 = pi[iter + 15];
+          const u64 idx20 = pi[iter + 20];
+          indices[0] = idx0;
+          indices[1] = idx5;
+          indices[2] = idx10;
+          indices[3] = idx15;
+          indices[4] = idx20;
+          indices[5] = idcol;
+          break;
+        }
+        case PRECOMPILE_COLUMNMIX:
+          indices[0] = 25;
+          indices[1] = 26;
+          indices[2] = 27;
+          indices[3] = 28;
+          indices[4] = 29;
+          indices[5] = 0;
+          break;
+        case PRECOMPILE_THETA_RHO: {
+          const auto pi = &KECCAK_PERMUTATIONS_ADJUSTED[round * 25]; // indices before applying round permutation
+          const u64 idcol = KECCAK_PRECOMPILE_THETA_RHO_IDCOLS[iter];
+          const u64 idx0 = pi[iter];
+          const u64 idx5 = pi[iter + 5];
+          const u64 idx10 = pi[iter + 10];
+          const u64 idx15 = pi[iter + 15];
+          const u64 idx20 = pi[iter + 20];
+          indices[0] = idx0;
+          indices[1] = idx5;
+          indices[2] = idx10;
+          indices[3] = idx15;
+          indices[4] = idx20;
+          indices[5] = idcol;
+          break;
+        }
+        case PRECOMPILE_CHI1: {
+          const auto pi = &KECCAK_PERMUTATIONS_ADJUSTED[(round + 1) * 25]; // indices after applying round permutation
+          const u64 idx = iter * 5;
+          const u64 idx1 = pi[idx + 1];
+          const u64 idx2 = pi[idx + 2];
+          const u64 idx3 = pi[idx + 3];
+          const u64 idx4 = pi[idx + 4];
+          indices[0] = idx1;
+          indices[1] = idx2;
+          indices[2] = idx3;
+          indices[3] = idx4;
+          indices[4] = 25;
+          indices[5] = 26;
+          break;
+        }
+        case PRECOMPILE_CHI2: {
+          const auto pi = &KECCAK_PERMUTATIONS_ADJUSTED[(round + 1) * 25]; // indices after applying round permutation
+          const u64 idx = iter * 5;
+          const u64 idx0 = pi[idx];
+          const u64 idx3 = pi[idx + 3];
+          const u64 idx4 = pi[idx + 4];
+          indices[0] = idx0;
+          indices[1] = idx3;
+          indices[2] = idx4;
+          indices[3] = 25;
+          indices[4] = 26;
+          indices[5] = 27;
+          break;
+        }
+        default:
+          break;
+        }
+      }
+      result[0] = indices[I];
+      result[1] = indices[J];
+    };
+    return set_values_from_single_key<T>(keys, values, setter);
+  }
+
+  DEVICE_FORCEINLINE u32 xor_special_iota(const bf keys[K], bf *values) const {
+    u32 binary_keys[2];
+    keys_into_binary_keys<2>(keys, binary_keys);
+    const u32 index = index_for_binary_keys<0, 8>(binary_keys);
+    if (V != 0) {
+      const u32 a = binary_keys[0];
+      const u32 b_control = binary_keys[1];
+      const u32 round_if_iter0 = b_control & 0b11111;
+      const u32 u8_position = b_control >> 5;
+      u32 b = 0;
+      if (round_if_iter0 < 24) {
+        const u64 round_constant = KECCAK_ROUND_CONSTANTS_ADJUSTED[round_if_iter0];
+        b = round_constant >> (u8_position * 8) & 0xff;
+      }
+      const u32 result = a ^ b;
+      values[0] = bf(result);
+    }
+    return get_absolute_index<XorSpecialIota>(index);
+  }
+
+  DEVICE_FORCEINLINE u32 andn(const bf keys[K], bf *values) const {
+    u32 binary_keys[2];
+    keys_into_binary_keys<2>(keys, binary_keys);
+    const u32 index = index_for_binary_keys<0, 8>(binary_keys);
+    if (V != 0) {
+      const u32 a = binary_keys[0];
+      const u32 b = binary_keys[1];
+      const u32 result = !a & b;
+      values[0] = bf(result);
+    }
+    return get_absolute_index<AndN>(index);
+  }
+
+  DEVICE_FORCEINLINE u32 rotl(const bf keys[K], bf *values) const {
+    auto setter = [](const u32 index, u32 *result) {
+      const u32 word = index & 0xffff;
+      const u32 rot_const = index >> 16;
+      result[0] = word >> (16 - rot_const);
+      result[1] = word << rot_const & 0xffff;
+    };
+    return set_values_from_single_key<RotL>(keys, values, setter);
+  }
+
   DEVICE_FORCEINLINE u32 get_index_and_set_values(const TableType table_type, const bf keys[K], bf *values) const {
     switch (table_type) {
     case ZeroEntry:
@@ -534,6 +724,18 @@ template <unsigned K, unsigned V> struct TableDriver {
       return store_byte_existing_contribution(keys, values);
     case TruncateShift:
       return truncate_shift(keys, values);
+    case KeccakPermutationIndices12:
+      return kecak_permutation_indices<KeccakPermutationIndices12, 0, 1>(keys, values);
+    case KeccakPermutationIndices34:
+      return kecak_permutation_indices<KeccakPermutationIndices34, 2, 3>(keys, values);
+    case KeccakPermutationIndices56:
+      return kecak_permutation_indices<KeccakPermutationIndices56, 4, 5>(keys, values);
+    case XorSpecialIota:
+      return xor_special_iota(keys, values);
+    case AndN:
+      return andn(keys, values);
+    case RotL:
+      return rotl(keys, values);
     default:
       __trap();
     }

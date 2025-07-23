@@ -111,16 +111,16 @@ pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
     BinaryNot(Box<Self>),
     BinaryAnd {
         lhs: Box<Self>,
-        rhs: Box<Self>
+        rhs: Box<Self>,
     },
     BinaryOr {
         lhs: Box<Self>,
-        rhs: Box<Self>
+        rhs: Box<Self>,
     },
     BinaryXor {
         lhs: Box<Self>,
-        rhs: Box<Self>
-    }
+        rhs: Box<Self>,
+    },
 }
 
 impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
@@ -217,8 +217,8 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             Self::U16SubExpression(..) => 16u32,
             Self::U32SubExpression(..) => 32u32,
             Self::BinaryNot(lhs) => lhs.bit_width(),
-            Self::BinaryAnd { lhs, rhs } 
-            | Self::BinaryOr { lhs, rhs } 
+            Self::BinaryAnd { lhs, rhs }
+            | Self::BinaryOr { lhs, rhs }
             | Self::BinaryXor { lhs, rhs } => {
                 assert_eq!(lhs.bit_width(), rhs.bit_width());
                 lhs.bit_width()
@@ -262,7 +262,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::I32FromU32(inner)
             | Self::U32FromI32(inner)
             | Self::WrappingShl { lhs: inner, .. }
-            | Self::WrappingShr { lhs: inner, .. } 
+            | Self::WrappingShr { lhs: inner, .. }
             | Self::BinaryNot(inner) => {
                 inner.report_origins(dst, oracles, lookup_fn);
             }
@@ -278,8 +278,8 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::SignedMulLowBits { lhs, rhs }
             | Self::SignedMulHighBits { lhs, rhs }
             | Self::SignedByUnsignedMulLowBits { lhs, rhs }
-            | Self::SignedByUnsignedMulHighBits { lhs, rhs } 
-            | Self::BinaryAnd { lhs, rhs } 
+            | Self::SignedByUnsignedMulHighBits { lhs, rhs }
+            | Self::BinaryAnd { lhs, rhs }
             | Self::BinaryOr { lhs, rhs }
             | Self::BinaryXor { lhs, rhs } => {
                 lhs.report_origins(dst, oracles, lookup_fn);
@@ -350,7 +350,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::I32FromU32(inner)
             | Self::U32FromI32(inner)
             | Self::WrappingShl { lhs: inner, .. }
-            | Self::WrappingShr { lhs: inner, .. } 
+            | Self::WrappingShr { lhs: inner, .. }
             | Self::BinaryNot(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_integer_subexprs(inner);
@@ -367,8 +367,8 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::SignedMulLowBits { lhs, rhs }
             | Self::SignedMulHighBits { lhs, rhs }
             | Self::SignedByUnsignedMulLowBits { lhs, rhs }
-            | Self::SignedByUnsignedMulHighBits { lhs, rhs } 
-            | Self::BinaryAnd { lhs, rhs } 
+            | Self::SignedByUnsignedMulHighBits { lhs, rhs }
+            | Self::BinaryAnd { lhs, rhs }
             | Self::BinaryOr { lhs, rhs }
             | Self::BinaryXor { lhs, rhs } => {
                 lhs.make_subexpressions(set, lookup_fn);
@@ -593,21 +593,21 @@ impl<F: PrimeField> WitnessComputationalInteger<u8> for FixedWidthIntegerNodeExp
         Self::BinaryNot(Box::new(self.clone()))
     }
     fn and(&self, other: &Self) -> Self {
-        Self::BinaryAnd { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn or(&self, other: &Self) -> Self {
-        Self::BinaryOr { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn xor(&self, other: &Self) -> Self {
-        Self::BinaryXor { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
 }
@@ -711,21 +711,21 @@ impl<F: PrimeField> WitnessComputationalInteger<u16> for FixedWidthIntegerNodeEx
         Self::BinaryNot(Box::new(self.clone()))
     }
     fn and(&self, other: &Self) -> Self {
-        Self::BinaryAnd { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn or(&self, other: &Self) -> Self {
-        Self::BinaryOr { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn xor(&self, other: &Self) -> Self {
-        Self::BinaryXor { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
 }
@@ -829,21 +829,21 @@ impl<F: PrimeField> WitnessComputationalInteger<u32> for FixedWidthIntegerNodeEx
         Self::BinaryNot(Box::new(self.clone()))
     }
     fn and(&self, other: &Self) -> Self {
-        Self::BinaryAnd { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn or(&self, other: &Self) -> Self {
-        Self::BinaryOr { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
     fn xor(&self, other: &Self) -> Self {
-        Self::BinaryXor { 
-            lhs: Box::new(self.clone()), 
-            rhs: Box::new(other.clone()) 
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
 }

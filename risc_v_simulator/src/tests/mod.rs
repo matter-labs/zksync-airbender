@@ -11,6 +11,7 @@ use std::collections::HashMap;
 mod add;
 mod addi;
 mod beq;
+mod keccak;
 mod mul;
 mod mulh;
 mod mulhu;
@@ -18,7 +19,6 @@ mod rem;
 mod slt;
 mod sltu;
 mod sra;
-mod keccak;
 
 const INITIAL_PC: u32 = 0;
 

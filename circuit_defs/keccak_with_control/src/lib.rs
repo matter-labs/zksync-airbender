@@ -48,11 +48,11 @@ pub fn get_delegation_circuit() -> DelegationProcessorDescription {
 }
 
 pub fn get_ssa_form() -> Vec<Vec<RawExpression<Mersenne31Field>>> {
-    use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
     use crate::field::Mersenne31Field;
     use cs::cs::circuit::Circuit;
     use cs::cs::cs_reference::BasicAssembly;
     use cs::cs::witness_placer::graph_description::WitnessGraphCreator;
+    use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
 
     let mut cs = BasicAssembly::<Mersenne31Field, WitnessGraphCreator<Mersenne31Field>>::new();
     cs.witness_placer = Some(WitnessGraphCreator::<Mersenne31Field>::new());

@@ -28,8 +28,8 @@ use worker::Worker;
 
 pub use bigint_with_control;
 pub use blake2_with_compression;
-pub use keccak_with_control;
 pub use final_reduced_risc_v_machine;
+pub use keccak_with_control;
 pub use machine_without_signed_mul_div;
 pub use prover;
 pub use reduced_risc_v_machine;
@@ -140,8 +140,7 @@ pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
             ]
             .into_iter(),
         )
-    } else if is_machine_without_signed_mul_div_configuration::<C>()
-    {
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
         // blake and bigint
         HashMap::from_iter(
             [

@@ -19,8 +19,14 @@ pub enum Term<F: PrimeField> {
 impl<F: PrimeField> fmt::Display for Term<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Constant(c) => { write!(f, "{c}") },
-            Self::Expression { coeff, inner, degree } => {
+            Self::Constant(c) => {
+                write!(f, "{c}")
+            }
+            Self::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
                 let coeff = coeff.as_u64_reduced();
                 let coeff_opp = F::CHARACTERISTICS - coeff;
                 if coeff < coeff_opp {

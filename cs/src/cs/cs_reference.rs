@@ -561,7 +561,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         table_type: Num<F>,
     ) {
         assert_eq!(M + N, COMMON_TABLE_WIDTH);
-        assert!(table_type != TableType::ZeroEntry.to_num() && table_type != TableType::DynamicPlaceholder.to_num());
+        assert!(
+            table_type != TableType::ZeroEntry.to_num()
+                && table_type != TableType::DynamicPlaceholder.to_num()
+        );
 
         if M == COMMON_TABLE_WIDTH {
             assert_eq!(N, 0);
@@ -579,7 +582,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                 <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(c.as_u64() as u16)
             } else if let Num::Var(v) = table_type {
                 placer.get_u16(v)
-            } else {unreachable!()};
+            } else {
+                unreachable!()
+            };
             let output_values = placer.lookup::<M, N>(&input_values, &table_id);
             for (var, value) in output_variables.iter().zip(output_values.iter()) {
                 placer.assign_field(*var, value);
@@ -597,8 +602,13 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         });
         let query = LookupQuery {
             row,
-            table: if let Num::Constant(c) = table_type {LookupQueryTableType::Constant(TableType::get_table_from_id(c.as_u64() as u32))} 
-                   else if let Num::Var(v) = table_type {LookupQueryTableType::Variable(v)} else {unreachable!()},
+            table: if let Num::Constant(c) = table_type {
+                LookupQueryTableType::Constant(TableType::get_table_from_id(c.as_u64() as u32))
+            } else if let Num::Var(v) = table_type {
+                LookupQueryTableType::Variable(v)
+            } else {
+                unreachable!()
+            },
         };
         // dbg!(&format!("{}({:?})", self.lookup_storage.len(), query.table));
         self.lookup_storage.push(query);

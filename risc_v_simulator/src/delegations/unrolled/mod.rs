@@ -11,8 +11,8 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 
 pub mod blake2_round_function_with_compression_mode;
-pub mod u256_ops_with_control;
 pub mod keccak_special5;
+pub mod u256_ops_with_control;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DelegationsCSRProcessor;

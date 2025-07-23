@@ -1,4 +1,5 @@
 use prover::risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+use prover::risc_v_simulator::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
 use prover::risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -40,6 +41,7 @@ pub enum MainCircuitType {
 pub enum DelegationCircuitType {
     BigIntWithControl = U256_OPS_WITH_CONTROL_ACCESS_ID,
     Blake2WithCompression = BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+    KeccakWithControl = KECCAK_SPECIAL5_ACCESS_ID,
 }
 
 impl From<u16> for DelegationCircuitType {
@@ -49,6 +51,7 @@ impl From<u16> for DelegationCircuitType {
             BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
                 DelegationCircuitType::Blake2WithCompression
             }
+            KECCAK_SPECIAL5_ACCESS_ID => DelegationCircuitType::KeccakWithControl,
             _ => panic!("unknown delegation type {}", delegation_type),
         }
     }

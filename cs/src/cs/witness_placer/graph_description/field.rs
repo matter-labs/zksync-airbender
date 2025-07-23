@@ -55,34 +55,71 @@ impl<F: PrimeField> PartialEq for FieldNodeExpression<F> {
     fn eq(&self, other: &Self) -> bool {
         use FieldNodeExpression::*;
         match (self, other) {
-            (Place(a), Place(b))                           => a == b,
-            (SubExpression(a), SubExpression(b))           => a == b,
-            (Constant(a), Constant(b))                     => a == b,
-            (FromInteger(a), FromInteger(b))               => a == b,
-            (FromMask(a), FromMask(b))                     => a == b,
-            (OracleValue { placeholder: p1, subindex: s1 },
-             OracleValue { placeholder: p2, subindex: s2 })=> p1 == p2 && s1 == s2,
-            (Add { lhs: l1, rhs: r1 },
-             Add { lhs: l2, rhs: r2 })                     => l1 == l2 && r1 == r2,
-            (Sub { lhs: l1, rhs: r1 },
-             Sub { lhs: l2, rhs: r2 })                     => l1 == l2 && r1 == r2,
-            (Mul { lhs: l1, rhs: r1 },
-             Mul { lhs: l2, rhs: r2 })                     => l1 == l2 && r1 == r2,
-            (AddProduct { additive_term: a1, mul_0: m01, mul_1: m11 },
-             AddProduct { additive_term: a2, mul_0: m02, mul_1: m12 })
-                                                         => a1 == a2 && m01 == m02 && m11 == m12,
-            (Select { selector: s1, if_true: t1, if_false: f1 },
-             Select { selector: s2, if_true: t2, if_false: f2 })
-                                                         => s1 == s2 && t1 == t2 && f1 == f2,
-            (InverseUnchecked(a), InverseUnchecked(b))     => a == b,
-            (InverseOrZero(a),    InverseOrZero(b))        => a == b,
-            (LookupOutput { lookup_idx: i1, output_idx: o1 },
-             LookupOutput { lookup_idx: i2, output_idx: o2 })
-                                                         => i1 == i2 && o1 == o2,
-            (MaybeLookupOutput { lookup_idx: i1, output_idx: o1 },
-             MaybeLookupOutput { lookup_idx: i2, output_idx: o2 })
-                                                         => i1 == i2 && o1 == o2,
-            _                                              => false,
+            (Place(a), Place(b)) => a == b,
+            (SubExpression(a), SubExpression(b)) => a == b,
+            (Constant(a), Constant(b)) => a == b,
+            (FromInteger(a), FromInteger(b)) => a == b,
+            (FromMask(a), FromMask(b)) => a == b,
+            (
+                OracleValue {
+                    placeholder: p1,
+                    subindex: s1,
+                },
+                OracleValue {
+                    placeholder: p2,
+                    subindex: s2,
+                },
+            ) => p1 == p2 && s1 == s2,
+            (Add { lhs: l1, rhs: r1 }, Add { lhs: l2, rhs: r2 }) => l1 == l2 && r1 == r2,
+            (Sub { lhs: l1, rhs: r1 }, Sub { lhs: l2, rhs: r2 }) => l1 == l2 && r1 == r2,
+            (Mul { lhs: l1, rhs: r1 }, Mul { lhs: l2, rhs: r2 }) => l1 == l2 && r1 == r2,
+            (
+                AddProduct {
+                    additive_term: a1,
+                    mul_0: m01,
+                    mul_1: m11,
+                },
+                AddProduct {
+                    additive_term: a2,
+                    mul_0: m02,
+                    mul_1: m12,
+                },
+            ) => a1 == a2 && m01 == m02 && m11 == m12,
+            (
+                Select {
+                    selector: s1,
+                    if_true: t1,
+                    if_false: f1,
+                },
+                Select {
+                    selector: s2,
+                    if_true: t2,
+                    if_false: f2,
+                },
+            ) => s1 == s2 && t1 == t2 && f1 == f2,
+            (InverseUnchecked(a), InverseUnchecked(b)) => a == b,
+            (InverseOrZero(a), InverseOrZero(b)) => a == b,
+            (
+                LookupOutput {
+                    lookup_idx: i1,
+                    output_idx: o1,
+                },
+                LookupOutput {
+                    lookup_idx: i2,
+                    output_idx: o2,
+                },
+            ) => i1 == i2 && o1 == o2,
+            (
+                MaybeLookupOutput {
+                    lookup_idx: i1,
+                    output_idx: o1,
+                },
+                MaybeLookupOutput {
+                    lookup_idx: i2,
+                    output_idx: o2,
+                },
+            ) => i1 == i2 && o1 == o2,
+            _ => false,
         }
     }
 }
@@ -93,26 +130,54 @@ impl<F: PrimeField> Hash for FieldNodeExpression<F> {
     #[inline(never)]
     fn hash<H: Hasher>(&self, state: &mut H) {
         use FieldNodeExpression::*;
-        std::mem::discriminant(self).hash(state);          // include variant tag
+        std::mem::discriminant(self).hash(state); // include variant tag
         match self {
-            Place(v)                         => v.hash(state),
-            SubExpression(i)                 => i.hash(state),
-            Constant(c)                      => c.hash(state),
-            FromInteger(e)                   => e.hash(state),          // calls FixedWidthIntegerNodeExpression::hash
-            FromMask(b)                      => b.hash(state),
-            OracleValue { placeholder, subindex }
-                                            => { placeholder.hash(state); subindex.hash(state); },
-            Add { lhs, rhs }                | Sub { lhs, rhs }
-                                            | Mul { lhs, rhs }           => { lhs.hash(state); rhs.hash(state); },
-            AddProduct { additive_term, mul_0, mul_1 }
-                                            => { additive_term.hash(state); mul_0.hash(state); mul_1.hash(state); },
-            Select { selector, if_true, if_false }
-                                            => { selector.hash(state); if_true.hash(state); if_false.hash(state); },
-            InverseUnchecked(x)
-                                            | InverseOrZero(x)          => x.hash(state),
-            LookupOutput { lookup_idx, output_idx }
-                                            | MaybeLookupOutput { lookup_idx, output_idx }
-                                            => { lookup_idx.hash(state); output_idx.hash(state); },
+            Place(v) => v.hash(state),
+            SubExpression(i) => i.hash(state),
+            Constant(c) => c.hash(state),
+            FromInteger(e) => e.hash(state), // calls FixedWidthIntegerNodeExpression::hash
+            FromMask(b) => b.hash(state),
+            OracleValue {
+                placeholder,
+                subindex,
+            } => {
+                placeholder.hash(state);
+                subindex.hash(state);
+            }
+            Add { lhs, rhs } | Sub { lhs, rhs } | Mul { lhs, rhs } => {
+                lhs.hash(state);
+                rhs.hash(state);
+            }
+            AddProduct {
+                additive_term,
+                mul_0,
+                mul_1,
+            } => {
+                additive_term.hash(state);
+                mul_0.hash(state);
+                mul_1.hash(state);
+            }
+            Select {
+                selector,
+                if_true,
+                if_false,
+            } => {
+                selector.hash(state);
+                if_true.hash(state);
+                if_false.hash(state);
+            }
+            InverseUnchecked(x) | InverseOrZero(x) => x.hash(state),
+            LookupOutput {
+                lookup_idx,
+                output_idx,
+            }
+            | MaybeLookupOutput {
+                lookup_idx,
+                output_idx,
+            } => {
+                lookup_idx.hash(state);
+                output_idx.hash(state);
+            }
         }
     }
 }
