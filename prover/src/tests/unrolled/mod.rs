@@ -556,7 +556,6 @@ pub fn run_basic_unrolled_test_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &add_sub_circuit,
             &full_trace.exec_trace,
@@ -564,11 +563,8 @@ pub fn run_basic_unrolled_test_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &TableDriver::new(),
             &decoder_table_data,
@@ -665,7 +661,6 @@ pub fn run_basic_unrolled_test_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &jump_branch_circuit,
             &full_trace.exec_trace,
@@ -673,11 +668,8 @@ pub fn run_basic_unrolled_test_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -790,7 +782,6 @@ pub fn run_basic_unrolled_test_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &shift_binop_csrrw_circuit,
             &full_trace.exec_trace,
@@ -798,11 +789,8 @@ pub fn run_basic_unrolled_test_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -906,7 +894,6 @@ pub fn run_basic_unrolled_test_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &mul_div_circuit,
             &full_trace.exec_trace,
@@ -914,11 +901,8 @@ pub fn run_basic_unrolled_test_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -1023,7 +1007,6 @@ pub fn run_basic_unrolled_test_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &load_store_circuit,
             &full_trace.exec_trace,
@@ -1031,11 +1014,8 @@ pub fn run_basic_unrolled_test_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,

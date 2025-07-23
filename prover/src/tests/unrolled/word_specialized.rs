@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::machine::ops::unrolled::{
     load_store_subword_only::{
@@ -24,6 +26,155 @@ const SUPPORT_SIGNED: bool = false;
 const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
+
+unsafe fn read_u32(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> u32 {
+    let low = trace_row[columns.start()].to_reduced_u32();
+    let high = trace_row[columns.start() + 1].to_reduced_u32();
+
+    (high << 16) | low
+}
+
+unsafe fn read_u16(trace_row: &[Mersenne31Field], columns: ColumnSet<1>) -> u16 {
+    let low = trace_row[columns.start()].to_reduced_u32();
+
+    low as u16
+}
+
+unsafe fn read_timestamp(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> TimestampScalar {
+    let low = trace_row[columns.start()].to_reduced_u32();
+    let high = trace_row[columns.start() + 1].to_reduced_u32();
+
+    ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
+}
+
+unsafe fn parse_state_permutation_elements(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    trace_row: &[Mersenne31Field],
+    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
+    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
+) {
+    let intermediate_state_layout = compiled_circuit
+        .memory_layout
+        .intermediate_state_layout
+        .unwrap();
+    let machine_state_layout = compiled_circuit.memory_layout.machine_state_layout.unwrap();
+    // intermediate_state_layout -> machine_state_layout
+    let execute = intermediate_state_layout.execute;
+    let is_active = trace_row[execute.start()].as_boolean();
+    let initial_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
+    let final_ts = read_timestamp(trace_row, machine_state_layout.timestamp);
+
+    let initial_pc = read_u32(trace_row, intermediate_state_layout.pc);
+    let final_pc = read_u32(trace_row, machine_state_layout.pc);
+
+    if is_active {
+        let is_unique = write_set.insert((final_pc, final_ts));
+        if is_unique == false {
+            panic!("Duplicate entry {:?} in write set", (final_pc, final_ts));
+        }
+
+        let is_unique = read_set.insert((initial_pc, initial_ts));
+        if is_unique == false {
+            panic!("Duplicate entry {:?} in read set", (initial_pc, initial_ts));
+        }
+    }
+}
+
+unsafe fn parse_shuffle_ram_accesses(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    trace_row: &[Mersenne31Field],
+    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+) {
+    let intermediate_state_layout = compiled_circuit
+        .memory_layout
+        .intermediate_state_layout
+        .unwrap();
+    let execute = intermediate_state_layout.execute;
+    let is_active = trace_row[execute.start()].as_boolean();
+    if is_active {
+        let base_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
+        assert!(base_ts >= INITIAL_TIMESTAMP);
+        for (access_idx, access) in compiled_circuit
+            .memory_layout
+            .shuffle_ram_access_sets
+            .iter()
+            .enumerate()
+        {
+            let read_ts = read_timestamp(trace_row, access.get_read_timestamp_columns());
+            let read_value = read_u32(trace_row, access.get_read_value_columns());
+            let mut write_value = read_value;
+            if let ShuffleRamQueryColumns::Write(write) = access {
+                write_value = read_u32(trace_row, write.write_value);
+            }
+            let write_ts = base_ts + (access_idx as TimestampScalar);
+            let mut is_register = true;
+            let address;
+            match access.get_address() {
+                ShuffleRamAddress::RegisterOnly(reg_idx) => {
+                    let reg_idx = read_u16(trace_row, reg_idx.register_index);
+                    address = reg_idx as u32;
+                }
+                ShuffleRamAddress::RegisterOrRam(reg_or_ram) => {
+                    is_register = read_u16(trace_row, reg_or_ram.is_register) != 0;
+                    address = read_u32(trace_row, reg_or_ram.address);
+                }
+            }
+
+            let to_write = (is_register, address, write_ts, write_value);
+            let is_unique = write_set.insert(to_write);
+            if is_unique == false {
+                dbg!(trace_row);
+                dbg!(access_idx);
+                panic!("Duplicate entry {:?} in write set", to_write);
+            }
+
+            let to_read = (is_register, address, read_ts, read_value);
+            let is_unique = read_set.insert(to_read);
+            if is_unique == false {
+                dbg!(trace_row);
+                dbg!(access_idx);
+                panic!("Duplicate entry {:?} in read set", to_read);
+            }
+        }
+    }
+}
+
+fn parse_state_permutation_elements_from_full_trace<const N: usize>(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
+    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
+    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
+) {
+    let mut trace = witness
+        .exec_trace
+        .row_view(0..(witness.exec_trace.len() - 1));
+    for _ in 0..(witness.exec_trace.len() - 1) {
+        unsafe {
+            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
+            parse_state_permutation_elements(compiled_circuit, &*memory, write_set, read_set);
+            trace.advance_row();
+        }
+    }
+}
+
+fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
+    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+) {
+    let mut trace = witness
+        .exec_trace
+        .row_view(0..(witness.exec_trace.len() - 1));
+    for _ in 0..(witness.exec_trace.len() - 1) {
+        unsafe {
+            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
+            parse_shuffle_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
+            trace.advance_row();
+        }
+    }
+}
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
@@ -116,6 +267,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     let (
         final_pc,
         final_timestamp,
+        cycles_used,
         family_circuits,
         (word_mem_circuits, subword_mem_circuits),
         mut delegation_circuits,
@@ -157,7 +309,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         )
     };
 
+    assert_eq!(
+        (cycles_used as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP,
+        final_timestamp
+    );
+
     use crate::tracers::oracles::chunk_lazy_init_and_teardown;
+    let total_unique_teardowns: usize = shuffle_ram_touched_addresses
+        .iter()
+        .map(|el| el.len())
+        .sum();
 
     let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global>(
         1,
@@ -335,6 +496,25 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     );
     permutation_argument_accumulator.mul_assign(&t);
 
+    let mut write_set = BTreeSet::<(u32, TimestampScalar)>::new();
+    let mut read_set = BTreeSet::<(u32, TimestampScalar)>::new();
+
+    write_set.insert((INITIAL_PC, INITIAL_TIMESTAMP));
+    read_set.insert((final_pc, final_timestamp));
+
+    let mut memory_read_set = BTreeSet::new();
+    let mut memory_write_set = BTreeSet::new();
+
+    for i in 0..32 {
+        memory_write_set.insert((true, i as u32, 0, 0));
+        memory_read_set.insert((
+            true,
+            i as u32,
+            register_final_state[i].last_access_timestamp,
+            register_final_state[i].current_value,
+        ));
+    }
+
     if true {
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
 
@@ -386,7 +566,27 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        // let mut trace = full_trace.exec_trace.row_view(0..family_data[0].data.len());
+        // for _ in 0..family_data[0].data.len() {
+        //     unsafe {
+        //         let (_, memory) = trace.current_row_split(full_trace.num_witness_columns);
+        //         dbg!(&*memory);
+        //     }
+        // }
+
+        parse_state_permutation_elements_from_full_trace(
+            &add_sub_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &add_sub_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &add_sub_circuit,
             &full_trace.exec_trace,
@@ -394,11 +594,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &TableDriver::new(),
             &decoder_table_data,
@@ -507,7 +704,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        parse_state_permutation_elements_from_full_trace(
+            &jump_branch_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &jump_branch_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &jump_branch_circuit,
             &full_trace.exec_trace,
@@ -515,11 +724,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -644,7 +850,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        parse_state_permutation_elements_from_full_trace(
+            &shift_binop_csrrw_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &shift_binop_csrrw_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &shift_binop_csrrw_circuit,
             &full_trace.exec_trace,
@@ -652,11 +870,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -776,7 +991,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        parse_state_permutation_elements_from_full_trace(
+            &mul_div_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &mul_div_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &mul_div_circuit,
             &full_trace.exec_trace,
@@ -784,11 +1011,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -911,7 +1135,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        parse_state_permutation_elements_from_full_trace(
+            &word_load_store_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &word_load_store_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &word_load_store_circuit,
             &full_trace.exec_trace,
@@ -919,11 +1155,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -1047,7 +1280,19 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             Global,
         );
 
-        println!("Checking if satisfied");
+        parse_state_permutation_elements_from_full_trace(
+            &subword_load_store_circuit,
+            &full_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &subword_load_store_circuit,
+            &full_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
+
         let is_satisfied = check_satisfied(
             &subword_load_store_circuit,
             &full_trace.exec_trace,
@@ -1055,11 +1300,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &decoder_table_data,
@@ -1114,6 +1356,41 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
+    // Machine state permutation ended
+
+    for (pc, ts) in write_set.iter().copied() {
+        if read_set.contains(&(pc, ts)) == false {
+            panic!("read set doesn't contain a pair {:?}", (pc, ts));
+        }
+    }
+
+    for (pc, ts) in read_set.iter().copied() {
+        if write_set.contains(&(pc, ts)) == false {
+            panic!("write set doesn't contain a pair {:?}", (pc, ts));
+        }
+    }
+
+    let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
+    let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
+    assert_eq!(expected_init_set.len(), expected_teardown_set.len());
+    assert_eq!(total_unique_teardowns, expected_teardown_set.len());
+
+    for (is_register, _, ts, init_value) in expected_init_set.iter() {
+        assert!(*is_register == false);
+        assert_eq!(*ts, 0);
+        assert_eq!(*init_value, 0);
+    }
+    for (is_register, _, ts, _) in expected_teardown_set.iter() {
+        assert!(*is_register == false);
+        assert!(*ts > INITIAL_TIMESTAMP);
+    }
+
+    for ((_, addr0, _, _), (_, addr1, _, _)) in
+        expected_init_set.iter().zip(expected_teardown_set.iter())
+    {
+        assert_eq!(*addr0, *addr1);
+    }
+
     if true {
         println!("Will try to prove memory inits and teardowns circuit");
 
@@ -1154,7 +1431,6 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lookup_mapping,
         };
 
-        println!("Checking if satisfied");
         let is_satisfied = check_satisfied(
             &inits_and_teardowns_circuit,
             &full_trace.exec_trace,
@@ -1162,11 +1438,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         assert!(is_satisfied);
 
-        println!("Precomputing twiddles");
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        println!("Precomputing LDE factors");
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        println!("Precomputing setup");
         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
             &table_driver,
             &[],

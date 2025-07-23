@@ -357,8 +357,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
         non_determinism_source: &mut ND,
         csr_processor: &mut CSR,
         num_cycles: usize,
-    ) {
-        for _ in 0..num_cycles {
+    ) -> usize {
+        for cycle_number in 0..num_cycles {
             tracer.at_cycle_start(&*self);
 
             // println!("PC = 0x{:08x}", self.pc);
@@ -1177,9 +1177,11 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
 
             if pc == self.pc {
                 // we are looping, and there are no interrupts
-                break;
+                return cycle_number + 1;
             }
         }
+
+        num_cycles
     }
 
     // pub fn pretty_dump(&self) {

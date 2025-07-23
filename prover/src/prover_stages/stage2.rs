@@ -184,6 +184,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let timestamp_range_check_preprocessing: Vec<Mersenne31Quartic, A> =
         preprocess_timestamp_range_check_table::<A>(trace_len, lookup_argument_gamma, worker);
 
+    #[cfg(feature = "debug_logs")]
     println!("Lookup preprocessing took {:?}", now.elapsed());
 
     // now we can make stage 2 trace on the main domain. We will still have some batch inverses along the way,
@@ -227,6 +228,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     #[cfg(feature = "debug_logs")]
     println!("Evaluating main stage 2 logic");
+
     let mut grand_product_accumulators = vec![Mersenne31Quartic::ZERO; worker.num_cores];
 
     // NOTE on trace_len - 1 below: because we work with grand products, we want to stop accumulating them when our meaningful
@@ -720,7 +722,9 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         });
     }
 
+    #[cfg(feature = "debug_logs")]
     println!("Generation of stage 2 trace took {:?}", now.elapsed());
+
     drop(lookup_mapping);
 
     // unfortunately we have to go over it again, to finish grand product accumulation

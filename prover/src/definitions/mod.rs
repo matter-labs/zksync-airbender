@@ -455,11 +455,11 @@ pub fn produce_pc_into_permutation_accumulator_raw(
     {
         let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
         // PC low without challenge
-        let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low as u32));
+        let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low));
         // PC high
         let mut t = state_permutation_argument_linearization_challenges
             [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
-        t.mul_assign_by_base(&Mersenne31Field(pc_high as u32));
+        t.mul_assign_by_base(&Mersenne31Field(pc_high));
         contribution.add_assign(&t);
         // timestamp low
         let mut t = state_permutation_argument_linearization_challenges

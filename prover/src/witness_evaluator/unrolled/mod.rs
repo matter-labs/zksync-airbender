@@ -209,6 +209,7 @@ pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
 ) -> (
     u32,
     TimestampScalar,
+    usize,
     HashMap<u8, Vec<NonMemTracingFamilyChunk>>,
     (Vec<MemTracingFamilyChunk>, Vec<MemTracingFamilyChunk>),
     HashMap<u16, Vec<DelegationWitness>>,
@@ -246,13 +247,15 @@ pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
         delegation_tracer,
     );
 
-    state.run_cycles(
+    let cycles_used = state.run_cycles(
         memory,
         &mut tracer,
         &mut non_determinism,
         &mut custom_csr_processor,
         num_cycles,
     );
+
+    dbg!(cycles_used);
 
     let WordSpecializedTracer {
         bookkeeping_aux_data,
@@ -378,6 +381,7 @@ pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
     (
         final_pc,
         final_timestamp,
+        cycles_used,
         completed_family_chunks,
         (
             completed_word_sized_mem_family_chunks,

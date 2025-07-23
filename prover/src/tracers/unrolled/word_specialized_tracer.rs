@@ -190,9 +190,9 @@ impl<
         if TRACE_FOR_PROVING {
             let data = NonMemoryOpcodeTracingDataWithTimestamp {
                 opcode_data: data,
-                rs1_read_timestamp: TimestampData::EMPTY,
-                rs2_read_timestamp: TimestampData::EMPTY,
-                rd_read_timestamp: TimestampData::EMPTY,
+                rs1_read_timestamp,
+                rs2_read_timestamp,
+                rd_read_timestamp,
                 cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
             };
             let dst = &mut self.current_family_chunks[family as usize - 1];
