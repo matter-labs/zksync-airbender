@@ -3,7 +3,7 @@ use super::precomputations::CircuitPrecomputationsHost;
 use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
-use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::prover::context::{HostAllocator, ProverContext, ProverContextConfig};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
@@ -31,6 +31,13 @@ type BF = Mersenne31Field;
 
 const NUM_QUERIES: usize = 53;
 const POW_BITS: u32 = 28;
+
+// represents a request to generate and cache a device-side setup from a host-side setup for later use in the GPU worker
+#[derive(Clone)]
+pub struct SetupToCache<A: GoodAllocator, B: GoodAllocator = Global> {
+    pub circuit_type: CircuitType,
+    pub precomputations: CircuitPrecomputationsHost<A, B>,
+}
 
 pub struct MemoryCommitmentRequest<A: GoodAllocator, B: GoodAllocator = Global> {
     pub batch_id: u64,
@@ -79,17 +86,19 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
     }
 }
 
-pub fn get_gpu_worker_func<C: ProverContext>(
+pub fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
+    setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator + 'static>>>,
-    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator + 'static>>>,
+    results: Sender<Option<WorkerResult<HostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let result = gpu_worker::<C>(
+        let result = gpu_worker(
             device_id,
             prover_context_config,
+            setups_to_cache,
             is_initialized,
             requests,
             results,
@@ -101,9 +110,9 @@ pub fn get_gpu_worker_func<C: ProverContext>(
     }
 }
 
-enum JobType<'a, C: ProverContext> {
-    MemoryCommitment(MemoryCommitmentJob<'a, C>),
-    Proof(ProofJob<'a, C>),
+enum JobType<'a> {
+    MemoryCommitment(MemoryCommitmentJob<'a>),
+    Proof(ProofJob<'a>),
 }
 
 const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
@@ -111,17 +120,18 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
 }
 
 #[derive(Clone)]
-struct SetupHolder<'a, C: ProverContext> {
-    pub setup: Rc<RefCell<SetupPrecomputations<'a, C>>>,
-    pub trace: Arc<Vec<BF, C::HostAllocator>>,
+struct SetupHolder<'a> {
+    pub setup: Rc<RefCell<SetupPrecomputations<'a>>>,
+    pub trace: Arc<Vec<BF, HostAllocator>>,
 }
 
-fn gpu_worker<C: ProverContext>(
+fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
+    setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<C::HostAllocator, impl GoodAllocator>>>,
-    results: Sender<Option<WorkerResult<C::HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator>>>,
+    results: Sender<Option<WorkerResult<HostAllocator>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
@@ -133,18 +143,57 @@ fn gpu_worker<C: ProverContext>(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let context = C::new(&prover_context_config)?;
+    let mut context = ProverContext::new(&prover_context_config)?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
+    let mut setups = vec![];
+    for setup in setups_to_cache {
+        let SetupToCache {
+            circuit_type,
+            precomputations,
+        } = setup;
+        let lde_factor = precomputations.lde_precomputations.lde_factor;
+        assert!(lde_factor.is_power_of_two());
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let domain_size = precomputations.lde_precomputations.domain_size;
+        assert!(domain_size.is_power_of_two());
+        let log_domain_size = domain_size.trailing_zeros();
+        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+        let mut setup = SetupPrecomputations::new(
+            &precomputations.compiled_circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            &context,
+        )?;
+        match circuit_type {
+            CircuitType::Main(main) => trace!("GPU_WORKER[{device_id}] transferring setup trace for main circuit {main:?}"),
+            CircuitType::Delegation(delegation) => trace!("GPU_WORKER[{device_id}] transferring setup trace for delegation circuit {delegation:?}"),
+        }
+        let trace = precomputations.setup.clone();
+        setup.schedule_transfer(trace.clone(), &context)?;
+        match circuit_type {
+            CircuitType::Main(main) => {
+                trace!("GPU_WORKER[{device_id}] generating setup for main circuit {main:?}")
+            }
+            CircuitType::Delegation(delegation) => trace!(
+                "GPU_WORKER[{device_id}] generating setup for delegation circuit {delegation:?}"
+            ),
+        }
+        setup.ensure_commitment_produced(&context)?;
+        let setup = Rc::new(RefCell::new(setup));
+        let holder = SetupHolder { setup, trace };
+        setups.push(holder);
+    }
     is_initialized.send(()).unwrap();
     drop(is_initialized);
-    let mut current_setup: Option<SetupHolder<C>> = None;
-    let mut current_transfer = None;
-    let mut current_job = None;
+    let mut even_odd_index = 0;
+    let mut current_phase_one = None;
+    let mut current_phase_two = None;
     for request in requests {
-        let mut transfer = if let Some(request) = request {
+        context.set_reversed_allocation_placement(even_odd_index == 1);
+        let mut phase_one = if let Some(request) = request {
             let (batch_id, circuit_type, circuit_sequence, setup, tracing_data) = match &request {
                 GpuWorkRequest::MemoryCommitment(request) => (
                     request.batch_id,
@@ -154,42 +203,12 @@ fn gpu_worker<C: ProverContext>(
                     request.tracing_data.clone(),
                 ),
                 GpuWorkRequest::Proof(request) => {
-                    let batch_id = request.batch_id;
                     let precomputations = &request.precomputations;
-                    let setup = if let Some(holder) = &current_setup
-                        && Arc::ptr_eq(&holder.trace, &precomputations.setup)
-                    {
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for delegation circuit {delegation:?}"),
-                        }
-                        holder.setup.clone()
-                    } else {
-                        let lde_factor = precomputations.lde_precomputations.lde_factor;
-                        assert!(lde_factor.is_power_of_two());
-                        let log_lde_factor = lde_factor.trailing_zeros();
-                        let domain_size = precomputations.lde_precomputations.domain_size;
-                        assert!(domain_size.is_power_of_two());
-                        let log_domain_size = domain_size.trailing_zeros();
-                        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-                        let mut setup = SetupPrecomputations::new(
-                            &precomputations.compiled_circuit,
-                            log_lde_factor,
-                            log_tree_cap_size,
-                            &context,
-                        )?;
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for delegation circuit {delegation:?}"),
-                        }
-                        setup.schedule_transfer(precomputations.setup.clone(), &context)?;
-                        let setup = Rc::new(RefCell::new(setup));
-                        current_setup = Some(SetupHolder {
-                            setup: setup.clone(),
-                            trace: precomputations.setup.clone(),
-                        });
-                        setup
-                    };
+                    let holder = setups
+                        .iter()
+                        .find(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup))
+                        .unwrap();
+                    let setup = holder.setup.clone();
                     (
                         request.batch_id,
                         request.circuit_type,
@@ -209,8 +228,9 @@ fn gpu_worker<C: ProverContext>(
         } else {
             None
         };
-        mem::swap(&mut current_transfer, &mut transfer);
-        let mut job = if let Some((request, setup, transfer)) = transfer {
+        mem::swap(&mut current_phase_one, &mut phase_one);
+        context.set_reversed_allocation_placement(even_odd_index == 0);
+        let mut phase_two = if let Some((request, setup, transfer)) = phase_one {
             let job = match &request {
                 GpuWorkRequest::MemoryCommitment(request) => {
                     let batch_id = request.batch_id;
@@ -309,8 +329,9 @@ fn gpu_worker<C: ProverContext>(
         } else {
             None
         };
-        mem::swap(&mut current_job, &mut job);
-        let result = if let Some((request, job)) = job {
+        mem::swap(&mut current_phase_two, &mut phase_two);
+        even_odd_index = 1 - even_odd_index;
+        let result = if let Some((request, job)) = phase_two {
             match request {
                 GpuWorkRequest::MemoryCommitment(request) => {
                     let MemoryCommitmentRequest {
@@ -388,8 +409,8 @@ fn gpu_worker<C: ProverContext>(
         };
         results.send(result).unwrap()
     }
-    assert!(current_transfer.is_none());
-    assert!(current_job.is_none());
+    assert!(current_phase_one.is_none());
+    assert!(current_phase_two.is_none());
     trace!("GPU_WORKER[{device_id}] finished");
     Ok(())
 }
