@@ -250,11 +250,6 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
             for (indirect_access_idx, indirect_access) in
                 mem_query.indirect_accesses.iter().enumerate()
             {
-                debug_assert_eq!(
-                    indirect_access_idx * 4,
-                    indirect_access.get_offset() as usize
-                );
-
                 write_timestamp_placeholder_into_columns(
                     indirect_access.get_read_timestamp_columns(),
                     Placeholder::DelegationIndirectReadTimestamp {
@@ -288,19 +283,28 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                     );
                 }
 
-                if indirect_access_idx > 0 {
-                    let carry_bit_column =
-                        indirect_access.get_address_derivation_carry_bit_column();
-                    if carry_bit_column.num_elements() > 0 {
-                        // and the only non-trivial part is to compute address derivation carry bit
-                        let (derived_address, of) = base_address.overflowing_add(
-                            (indirect_access_idx * std::mem::size_of::<u32>()) as u32,
-                        );
-                        assert!(of == false);
-                        let carry_bit = (derived_address >> 16) != high;
+                let carry_bit_column = indirect_access.get_address_derivation_carry_bit_column();
 
-                        memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
-                    }
+                if carry_bit_column.num_elements() > 0 {
+                    assert!(indirect_access.variable_dependent().is_none());
+                    // and the only non-trivial part is to compute address derivation carry bit
+                    let (derived_address, of) = base_address
+                        .overflowing_add((indirect_access_idx * std::mem::size_of::<u32>()) as u32);
+                    assert!(of == false);
+                    let carry_bit = (derived_address >> 16) != high;
+
+                    memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
+                }
+
+                if let Some((_, v)) = indirect_access.variable_dependent() {
+                    // need oracle support for that, as we can not have a generic logic to derive it
+                    let placeholder = Placeholder::DelegationIndirectAccessVariableOffset {
+                        register_index,
+                        word_index: indirect_access_idx,
+                    };
+                    let offset =
+                        oracle.get_u16_witness_from_placeholder(placeholder, absolute_row_idx);
+                    memory_row[v.start()] = Mersenne31Field(offset as u32);
                 }
 
                 if COMPUTE_WITNESS {

@@ -10,7 +10,7 @@
     {
       "Integer": {
         "U16OracleValue": {
-          "placeholder": "DegelationABIOffset"
+          "placeholder": "DelegationABIOffset"
         }
       }
     },

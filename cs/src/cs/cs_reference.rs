@@ -310,8 +310,29 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
         let mut indirect_accesses = vec![];
 
-        for (indirect_access_idx, is_write) in request.indirect_accesses.into_iter().enumerate() {
-            let access = if is_write {
+        for (indirect_access_idx, access_description) in
+            request.indirect_accesses.into_iter().enumerate()
+        {
+            if let Some((c, _)) = access_description.variable_dependent {
+                assert!(
+                    c < 1 << 16,
+                    "constant multiplier {} is too large and unsupported",
+                    c
+                );
+                assert!(
+                    access_description.assume_no_alignment_overflow,
+                    "overflowing address generation with variable part is not yet supported"
+                );
+            }
+            if access_description.variable_dependent.is_none() {
+                if access_description.assume_no_alignment_overflow {
+                    assert!(
+                        access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
+                            <= (1 << request.indirects_alignment_log2)
+                    );
+                }
+            }
+            let access = if access_description.is_write_access {
                 let read_low = self.add_variable();
                 let read_high = self.add_variable();
 
@@ -351,6 +372,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                 IndirectAccessType::Write {
                     read_value: [read_low, read_high],
                     write_value: [write_low, write_high],
+                    variable_dependent: access_description.variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
                 }
             } else {
                 let read_low = self.add_variable();
@@ -388,6 +412,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
                 IndirectAccessType::Read {
                     read_value: [read_low, read_high],
+                    variable_dependent: access_description.variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
                 }
             };
 

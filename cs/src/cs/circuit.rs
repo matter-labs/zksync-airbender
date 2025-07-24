@@ -189,11 +189,19 @@ pub enum BatchedMemoryAccessType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IndirectAccessOffset {
+    pub variable_dependent: Option<(u32, Variable)>,
+    pub offset_constant: u32,
+    pub assume_no_alignment_overflow: bool,
+    pub is_write_access: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RegisterAccessRequest {
     pub register_index: u32,
     pub register_write: bool,
     pub indirects_alignment_log2: u32,
-    pub indirect_accesses: Vec<bool>,
+    pub indirect_accesses: Vec<IndirectAccessOffset>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -211,11 +219,54 @@ pub enum RegisterAccessType {
 pub enum IndirectAccessType {
     Read {
         read_value: [Variable; REGISTER_SIZE],
+        variable_dependent: Option<(u32, Variable)>,
+        offset_constant: u32,
+        assume_no_alignment_overflow: bool,
     },
     Write {
         read_value: [Variable; REGISTER_SIZE],
         write_value: [Variable; REGISTER_SIZE],
+        variable_dependent: Option<(u32, Variable)>,
+        offset_constant: u32,
+        assume_no_alignment_overflow: bool,
     },
+}
+
+impl IndirectAccessType {
+    pub const fn consider_aligned(&self) -> bool {
+        match self {
+            Self::Read {
+                assume_no_alignment_overflow,
+                ..
+            } => *assume_no_alignment_overflow,
+            Self::Write {
+                assume_no_alignment_overflow,
+                ..
+            } => *assume_no_alignment_overflow,
+        }
+    }
+
+    pub const fn offset_constant(&self) -> u32 {
+        match self {
+            Self::Read {
+                offset_constant, ..
+            } => *offset_constant,
+            Self::Write {
+                offset_constant, ..
+            } => *offset_constant,
+        }
+    }
+
+    pub const fn variable_dependent(&self) -> Option<(u32, Variable)> {
+        match self {
+            Self::Read {
+                variable_dependent, ..
+            } => *variable_dependent,
+            Self::Write {
+                variable_dependent, ..
+            } => *variable_dependent,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -435,12 +435,19 @@ pub(crate) unsafe fn stage_2_register_access_assemble_address_contribution(
 #[inline(always)]
 pub(crate) unsafe fn stage_2_indirect_access_assemble_address_contribution(
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: (u32, u16),
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
 ) -> Mersenne31Quartic {
     let (base_low, base_high) = base_value;
-    let (address_low, of) = base_low.overflowing_add(offset);
-    let (address_high, of) = base_high.overflowing_add(of as u16);
+    // NOTE: we assume no contribution into the high part
+    let extra = variable_dependent
+        .0
+        .wrapping_mul(variable_dependent.1 as u32);
+    let extra_low = extra as u16;
+    let (address_low, of_low_0) = base_low.overflowing_add(constant_offset);
+    let (address_low, of_low_1) = address_low.overflowing_add(extra_low);
+    let (address_high, of) = base_high.overflowing_add((of_low_0 | of_low_1) as u16);
     assert!(of == false);
 
     // Numerator is write set, denom is read set
@@ -591,15 +598,24 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_read_contribution(
     read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: Option<(u32, ColumnSet<1>)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
+    let variable_dependent = variable_dependent
+        .map(|(c, v)| {
+            let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
+
+            (c, v)
+        })
+        .unwrap_or_default();
     let address_contribution = stage_2_indirect_access_assemble_address_contribution(
         base_value,
-        offset,
+        constant_offset,
+        variable_dependent,
         &memory_argument_challenges,
     );
 
@@ -643,15 +659,24 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_write_contribution(
     read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: Option<(u32, ColumnSet<1>)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
+    let variable_dependent = variable_dependent
+        .map(|(c, v)| {
+            let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
+
+            (c, v)
+        })
+        .unwrap_or_default();
     let address_contribution = stage_2_indirect_access_assemble_address_contribution(
         base_value,
-        offset,
+        constant_offset,
+        variable_dependent,
         &memory_argument_challenges,
     );
 

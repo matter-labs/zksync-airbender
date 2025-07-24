@@ -493,10 +493,11 @@ pub(crate) unsafe fn process_registers_and_indirect_access_in_delegation(
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp,
                     read_value,
-                    offset,
+                    offset_constant,
+                    variable_dependent,
                     ..
                 } => {
-                    debug_assert!(*offset < 1 << 16);
+                    debug_assert!(*offset_constant < 1 << 16);
 
                     use crate::prover_stages::stage2_utils::stage_2_indirect_access_assemble_read_contribution;
                     stage_2_indirect_access_assemble_read_contribution(
@@ -505,7 +506,8 @@ pub(crate) unsafe fn process_registers_and_indirect_access_in_delegation(
                         *read_timestamp,
                         &delegation_write_timestamp_contribution,
                         base_value,
-                        *offset as u16,
+                        *offset_constant as u16,
+                        *variable_dependent,
                         &memory_argument_challenges,
                         numerator_acc_value,
                         denom_acc_value,
@@ -526,10 +528,11 @@ pub(crate) unsafe fn process_registers_and_indirect_access_in_delegation(
                     read_timestamp,
                     read_value,
                     write_value,
-                    offset,
+                    offset_constant,
+                    variable_dependent,
                     ..
                 } => {
-                    debug_assert!(*offset < 1 << 16);
+                    debug_assert!(*offset_constant < 1 << 16);
                     use crate::prover_stages::stage2_utils::stage_2_indirect_access_assemble_write_contribution;
                     stage_2_indirect_access_assemble_write_contribution(
                         memory_trace_row,
@@ -538,7 +541,8 @@ pub(crate) unsafe fn process_registers_and_indirect_access_in_delegation(
                         *read_timestamp,
                         &delegation_write_timestamp_contribution,
                         base_value,
-                        *offset as u16,
+                        *offset_constant as u16,
+                        *variable_dependent,
                         &memory_argument_challenges,
                         numerator_acc_value,
                         denom_acc_value,

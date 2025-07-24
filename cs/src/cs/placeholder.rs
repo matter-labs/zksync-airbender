@@ -87,6 +87,10 @@ pub enum Placeholder {
     DecodedExecutorFamilyMask,
     LoadStoreRamValue,
     MemStoreAddress,
+    DelegationIndirectAccessVariableOffset {
+        register_index: usize,
+        word_index: usize,
+    },
 }
 
 impl std::fmt::Display for Placeholder {

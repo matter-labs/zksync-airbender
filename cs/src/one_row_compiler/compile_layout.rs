@@ -344,17 +344,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
                     compiled_extra_range_check_16_expressions.push(expression);
                 }
 
-                let consider_aligned =
-                    if indirects_alignment_log2 < std::mem::align_of::<u32>().trailing_zeros() {
-                        false
-                    } else {
-                        indirect_accesses.len()
-                            <= 1 << (indirects_alignment_log2
-                                - std::mem::size_of::<u32>().trailing_zeros())
-                    };
-
                 // now process potential indirects
-                for (idx, access) in indirect_accesses.into_iter().enumerate() {
+                for (_idx, access) in indirect_accesses.into_iter().enumerate() {
                     let indirect_timestamp_borrow_var = add_compiler_defined_variable(
                         &mut num_variables,
                         &mut all_variables_to_place,
@@ -411,14 +402,16 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
                     // NOTE: we do NOT add it into boolean vars array, otherwise it would be placed in the witness tree.
                     // Instead we manually place it
-                    let address_carry_column = if idx == 0 {
-                        // nothing is needed
+                    let address_carry_column = if access.consider_aligned() {
                         ColumnSet::empty()
                     } else {
-                        if consider_aligned {
-                            // we do not need to perform additional comparison, as adding constant offset
-                            // would not trigger carries
+                        if access.variable_dependent().is_some() {
+                            unreachable!(
+                                "unsupported to have unaligned access with variable dependent part"
+                            );
+                        }
 
+                        if access.offset_constant() == 0 {
                             ColumnSet::empty()
                         } else {
                             let address_carry_var = add_compiler_defined_variable(
@@ -435,16 +428,27 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         }
                     };
 
-                    let offset = (idx * core::mem::size_of::<u32>()) as u32;
                     assert!(
-                        offset < 1 << 16,
-                        "offset {} is too large and not supported",
-                        offset
+                        access.offset_constant() < 1 << 16,
+                        "constant offset {} is too large and not supported",
+                        access.offset_constant()
                     );
 
+                    // layout variable part column
+                    let variable_part = access.variable_dependent().map(|(offset, var)| {
+                        let variable_column = layout_memory_subtree_variable(
+                            &mut memory_tree_offset,
+                            var,
+                            &mut all_variables_to_place,
+                            &mut layout,
+                        );
+
+                        (offset, variable_column)
+                    });
+
                     // we enforce address derivation for our indirect accesses via lookup expressions
-                    if idx > 0 {
-                        // TODO: since we add constants and also have very small range of them,
+                    if address_carry_column.num_elements() > 0 {
+                        // TODO: since we add can be constants and also have very small range of them,
                         // and do not want any overflows in high register, then we can save on range checks:
                         // - imagine register value as [low, high]
                         // - we need to somehow "materialize" and enforce lowest 16 limbs of the e.g. [low + 4],
@@ -453,45 +457,43 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         // - for [high] part we do not allow overflows, so we want to ensure that [high + carry] != 2^16
                         // latter can be done via single extra witness (1 column), that is cheaper than range check (2.5 columns)
 
-                        if consider_aligned == false {
-                            assert!(address_carry_column.num_elements() > 0);
+                        assert!(access.variable_dependent().is_none());
 
-                            // low
-                            let mut compiled_linear_terms = vec![];
-                            let place = ColumnAddress::MemorySubtree(
-                                request.register_access.get_read_value_columns().start(),
-                            );
-                            compiled_linear_terms.push((F::ONE, place));
-                            let place = ColumnAddress::MemorySubtree(address_carry_column.start());
-                            let mut coeff = F::from_u64_unchecked(SHIFT_16);
-                            coeff.negate();
-                            compiled_linear_terms.push((coeff, place));
-                            let compiled_constraint = CompiledDegree1Constraint {
-                                linear_terms: compiled_linear_terms.into_boxed_slice(),
-                                constant_term: F::from_u64_unchecked(offset as u64),
-                            };
-                            let expression = LookupExpression::Expression(compiled_constraint);
-                            compiled_extra_range_check_16_expressions.push(expression);
+                        // low
+                        let mut compiled_linear_terms = vec![];
+                        let place = ColumnAddress::MemorySubtree(
+                            request.register_access.get_read_value_columns().start(),
+                        );
+                        compiled_linear_terms.push((F::ONE, place));
+                        let place = ColumnAddress::MemorySubtree(address_carry_column.start());
+                        let mut coeff = F::from_u64_unchecked(SHIFT_16);
+                        coeff.negate();
+                        compiled_linear_terms.push((coeff, place));
+                        let compiled_constraint = CompiledDegree1Constraint {
+                            linear_terms: compiled_linear_terms.into_boxed_slice(),
+                            constant_term: F::from_u64_unchecked(access.offset_constant() as u64),
+                        };
+                        let expression = LookupExpression::Expression(compiled_constraint);
+                        compiled_extra_range_check_16_expressions.push(expression);
 
-                            // high
-                            let mut compiled_linear_terms = vec![];
-                            let place = ColumnAddress::MemorySubtree(
-                                request.register_access.get_read_value_columns().start() + 1,
-                            );
-                            compiled_linear_terms.push((F::ONE, place));
-                            let place = ColumnAddress::MemorySubtree(address_carry_column.start());
-                            compiled_linear_terms.push((F::ONE, place));
-                            let compiled_constraint = CompiledDegree1Constraint {
-                                linear_terms: compiled_linear_terms.into_boxed_slice(),
-                                constant_term: F::ZERO,
-                            };
-                            let expression = LookupExpression::Expression(compiled_constraint);
-                            compiled_extra_range_check_16_expressions.push(expression);
-                        }
+                        // high
+                        let mut compiled_linear_terms = vec![];
+                        let place = ColumnAddress::MemorySubtree(
+                            request.register_access.get_read_value_columns().start() + 1,
+                        );
+                        compiled_linear_terms.push((F::ONE, place));
+                        let place = ColumnAddress::MemorySubtree(address_carry_column.start());
+                        compiled_linear_terms.push((F::ONE, place));
+                        let compiled_constraint = CompiledDegree1Constraint {
+                            linear_terms: compiled_linear_terms.into_boxed_slice(),
+                            constant_term: F::ZERO,
+                        };
+                        let expression = LookupExpression::Expression(compiled_constraint);
+                        compiled_extra_range_check_16_expressions.push(expression);
                     }
 
                     let indirect_access = match access {
-                        IndirectAccessType::Read { read_value } => {
+                        IndirectAccessType::Read { read_value, .. } => {
                             let indirect_read_value_columns =
                                 layout_memory_subtree_multiple_variables(
                                     &mut memory_tree_offset,
@@ -503,8 +505,9 @@ impl<F: PrimeField> OneRowCompiler<F> {
                             let request = IndirectAccessColumns::ReadAccess {
                                 read_timestamp: indirect_read_timestamp_columns,
                                 read_value: indirect_read_value_columns,
-                                offset,
                                 address_derivation_carry_bit: address_carry_column,
+                                variable_dependent: variable_part,
+                                offset_constant: access.offset_constant(),
                             };
 
                             request
@@ -512,6 +515,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                         IndirectAccessType::Write {
                             read_value,
                             write_value,
+                            ..
                         } => {
                             let indirect_read_value_columns =
                                 layout_memory_subtree_multiple_variables(
@@ -532,8 +536,9 @@ impl<F: PrimeField> OneRowCompiler<F> {
                                 read_timestamp: indirect_read_timestamp_columns,
                                 read_value: indirect_read_value_columns,
                                 write_value: indirect_write_value_columns,
-                                offset,
                                 address_derivation_carry_bit: address_carry_column,
+                                variable_dependent: variable_part,
+                                offset_constant: access.offset_constant(),
                             };
 
                             request

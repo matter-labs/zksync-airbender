@@ -348,7 +348,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                             .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start()));
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value low is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value low is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -363,7 +363,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                         );
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value high is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value high is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -374,7 +374,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                     }
 
                     // We only derive with non-trivial addition if it's not-first access
-                    if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
+                    if address_derivation_carry_bit.num_elements() > 0 {
                         let carry_bit = *memory_trace_view_row
                             .get_unchecked(address_derivation_carry_bit.start());
                         let mut term_contribution = *tau_in_domain_by_half;
@@ -384,7 +384,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                         term_contribution.mul_assign(&tau_in_domain_by_half);
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: carry bit is not boolean at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: carry bit is not boolean at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -410,7 +410,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                             .mul_assign_by_base(memory_trace_view_row.get_unchecked(set.start()));
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value low is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value low is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -425,7 +425,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                         );
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value high is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: read timestamp/read value/write value high is 0 if predicate is 0 at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -436,7 +436,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                     }
 
                     // We only derive with non-trivial addition if it's not-first access
-                    if indirect_access_idx > 0 && address_derivation_carry_bit.num_elements() > 0 {
+                    if address_derivation_carry_bit.num_elements() > 0 {
                         let carry_bit = *memory_trace_view_row
                             .get_unchecked(address_derivation_carry_bit.start());
                         let mut term_contribution = *tau_in_domain_by_half;
@@ -446,7 +446,7 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
                         term_contribution.mul_assign(&tau_in_domain_by_half);
                         if DEBUG_QUOTIENT {
                             if is_last_row == false {
-                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: carry bit is not boolean at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.get_offset());
+                                assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied for delegation convention: carry bit is not boolean at row {} for access to register {} indirect access with offset {}", absolute_row_idx, access.register_access.get_register_index(), indirect_access.offset_constant());
                             }
                         }
                         add_quotient_term_contribution_in_ext2(
@@ -2430,63 +2430,68 @@ pub(crate) unsafe fn evaluate_register_and_indirect_memory_accesses(
             let read_timestamp_columns = indirect_access_columns.get_read_timestamp_columns();
             let carry_bit_column =
                 indirect_access_columns.get_address_derivation_carry_bit_column();
-            let offset = indirect_access_columns.get_offset();
+            let offset_constant = indirect_access_columns.offset_constant();
             assert!(
-                offset < 1 << 16,
-                "offset {} is too large and not supported",
-                offset
+                offset_constant < 1 << 16,
+                "constant offset {} is too large and not supported",
+                offset_constant
             );
-            // we expect offset == 0 for the first indirect access and offset > 0 for others
-            assert_eq!(indirect_access_idx == 0, offset == 0);
             // address contribution is literal constant common, but a little convoluated
 
             // let will multiply offset by inverse of tau in domain by half to make our live simpler below
             let mut offset_adjusted = *tau_in_domain_by_half_inv;
-            offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset));
+            offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset_constant));
 
-            let address_contribution =
-                if indirect_access_idx == 0 || carry_bit_column.num_elements() == 0 {
-                    let mem_offset_low = register_read_value_low;
-                    let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
-                    mem_offset_low.add_assign_base(&offset_adjusted);
+            if let Some((c, v)) = indirect_access_columns.variable_dependent() {
+                let mut t: Mersenne31Field = *memory_trace_view_row.get_unchecked(v.start());
+                t.mul_assign(&Mersenne31Field(c));
+                offset_adjusted.add_assign_base(&t);
+            }
 
-                    let mut address_contribution = memory_argument_challenges
-                        .memory_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    address_contribution.mul_assign_by_base(&mem_offset_low);
+            let address_contribution = if carry_bit_column.num_elements() == 0 {
+                let mem_offset_low = register_read_value_low;
+                let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
+                mem_offset_low.add_assign_base(&offset_adjusted);
 
-                    let mut t = memory_argument_challenges.memory_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                    t.mul_assign_by_base(&register_read_value_high);
-                    address_contribution.add_assign(&t);
+                let mut address_contribution = memory_argument_challenges
+                    .memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                address_contribution.mul_assign_by_base(&mem_offset_low);
 
-                    address_contribution
-                } else {
-                    // we compute an absolute address as read value + offset, so low part is register_low + offset - 2^16 * carry_bit
-                    let carry_bit = *memory_trace_view_row.get_unchecked(carry_bit_column.start());
-                    let mut carry_bit_shifted = SHIFT_16;
-                    carry_bit_shifted.mul_assign(&carry_bit);
+                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                t.mul_assign_by_base(&register_read_value_high);
+                address_contribution.add_assign(&t);
 
-                    let mut mem_offset_low = register_read_value_low;
-                    mem_offset_low.sub_assign(&carry_bit_shifted);
-                    let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
-                    mem_offset_low.add_assign(&offset_adjusted);
+                address_contribution
+            } else {
+                assert!(indirect_access_columns.variable_dependent().is_none());
 
-                    let mut address_contribution = memory_argument_challenges
-                        .memory_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    address_contribution.mul_assign_by_base(&mem_offset_low);
+                // we compute an absolute address as read value + offset, so low part is register_low + offset - 2^16 * carry_bit
+                let carry_bit = *memory_trace_view_row.get_unchecked(carry_bit_column.start());
+                let mut carry_bit_shifted = SHIFT_16;
+                carry_bit_shifted.mul_assign(&carry_bit);
 
-                    let mut mem_offset_high = register_read_value_high;
-                    mem_offset_high.add_assign(&carry_bit);
+                let mut mem_offset_low = register_read_value_low;
+                mem_offset_low.sub_assign(&carry_bit_shifted);
+                let mut mem_offset_low = Mersenne31Complex::from_base(mem_offset_low);
+                mem_offset_low.add_assign(&offset_adjusted);
 
-                    let mut t = memory_argument_challenges.memory_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                    t.mul_assign_by_base(&mem_offset_high);
-                    address_contribution.add_assign(&t);
+                let mut address_contribution = memory_argument_challenges
+                    .memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                address_contribution.mul_assign_by_base(&mem_offset_low);
 
-                    address_contribution
-                };
+                let mut mem_offset_high = register_read_value_high;
+                mem_offset_high.add_assign(&carry_bit);
+
+                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                t.mul_assign_by_base(&mem_offset_high);
+                address_contribution.add_assign(&t);
+
+                address_contribution
+            };
 
             // we access RAM and not registers
             debug_assert_eq!(read_value_columns.width(), 2);

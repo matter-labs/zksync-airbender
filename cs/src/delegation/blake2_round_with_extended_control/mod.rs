@@ -60,18 +60,38 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let _execute = cs.process_delegation_request();
 
+    let state_accesses = (0..24)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: true,
+            is_write_access: true,
+        })
+        .collect();
+
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
         indirects_alignment_log2: 7, // 128 bytes - 32 + 64 for state and extended state are needed
-        indirect_accesses: vec![true; 24],
+        indirect_accesses: state_accesses,
     };
+
+    let input_accesses = (0..16)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: false,
+            is_write_access: false,
+        })
+        .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
         indirects_alignment_log2: 2, // just aligned by machine words
-        indirect_accesses: vec![false; 16],
+        indirect_accesses: input_accesses,
     };
 
     let x12_request = RegisterAccessRequest {
@@ -104,6 +124,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let IndirectAccessType::Write {
             read_value,
             write_value,
+            ..
         } = x10_and_indirects.indirect_accesses[i]
         else {
             panic!()
@@ -119,6 +140,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let IndirectAccessType::Write {
             read_value,
             write_value,
+            ..
         } = x10_and_indirects.indirect_accesses[i]
         else {
             panic!()
@@ -130,7 +152,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let mut input_words = vec![];
     for i in 0..16 {
-        let IndirectAccessType::Read { read_value } = x11_and_indirects.indirect_accesses[i] else {
+        let IndirectAccessType::Read { read_value, .. } = x11_and_indirects.indirect_accesses[i]
+        else {
             panic!()
         };
 
