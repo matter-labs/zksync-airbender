@@ -1,12 +1,12 @@
-# Machine Configuration Documentation for zkSync Airbender
+# Machine Configuration Documentation for ZKsync Airbender
 
-zkSync Airbender is implemented with multiple machine configurations. This is a distinct sets of RISC-V instruction support and parameters to optimize the proving circuit for different use cases.
+ZKsync Airbender is implemented with multiple machine configurations. Machine configurations are distinct sets of RISC-V supported instructions and parameters used to optimize the proving circuit for different use cases.
 
-Each configuration is defined in the `cs/src/machine/machine_configurations`. Despite differences in supported features, all configurations share the same design: a 32-bit RISC-V execution model (RV32I base, with optional M extension for multiplication/division + precompiles) running in machine mode with a fixed fetch-decode-execute loop enforced every cycle.
+Each configuration is defined in `cs/src/machine/machine_configurations`. Despite differences in supported features, all configurations share the same design: a 32-bit RISC-V execution model (RV32I base, with optional M extension for multiplication/division + precompiles) running in machine mode with a fixed fetch-decode-execute loop enforced every cycle.
 
-We use a Mersenne prime field (2³¹−1) for arithmetic in constraints, which influences how 32-bit values are represented and checked. Its the best that can we get for u32 bit value. Mersenne prime covers 31 bits so to represent u32, you need to use two separate elements.  
+We use a Mersenne prime field (2³¹−1) for arithmetic in constraints, which influences how 32-bit values are represented and checked: machine words and registers are split into two separate 16-bit elements.  
 
-All 32 general purpose registers are memory mapped. They reside in a reserved region of RAM rather than as separate circuit wires. Only minimal processor state (like the program counter) is kept as explicit state between cycles. All other state transitions (register updates, memory writes, etc.) are handled via the unified RAM consistency logic.
+All 32 general purpose registers are memory mapped. They reside in a reserved region of RAM rather than as separate circuit wires. Only minimal processor state (e.g. program counter) is kept as explicit state across cycles. All other state transitions (register updates, memory writes, etc.) are handled via the unified RAM consistency logic.
 
 ---
 
@@ -16,7 +16,7 @@ Every configuration here is a **no-exceptions** variant, meaning the VM does not
 
 In practice, the bytecode is statically verified to use only supported instructions and aligned memory accesses.
 
-This design was chosen to avoiding the overhead of modeling trap handling in the circuit.
+This design was chosen to avoid the overhead of modeling trap handling in circuit.
 
 All configurations set `OUTPUT_EXACT_EXCEPTIONS = false` to indicate that exceptions are not recorded in final state.
 
@@ -24,7 +24,7 @@ Likewise, `ASSUME_TRUSTED_CODE` is set to `true` for these configs, reflecting t
 
 Every instruction bit pattern that does not correspond to a supported operation is marked **invalid** by the decoder, and under the trusted-code assumption this invalid-case flag can be constrained to never be 1 during execution. In other words, all executed opcodes must fall into the defined set of instructions for the given configuration.
 
-The decode stage uses a fixed lookup table over the 32-bit opcode space to enforce this: any combination of bits not recognized by the machine maps to an invalid-opcode flag, and with trusted code we require this flag to be zero on every cycle.
+The decode stage uses a fixed lookup table over parts of the 32-bit opcode space to enforce this: any combination of bits not recognized by the machine maps to an invalid-opcode flag, and with trusted code we require this flag to be zero on every cycle.
 
 This ensures that only legal opcodes propagate through the execution logic, and is critical for security since we don’t model traps.
 
@@ -34,7 +34,7 @@ Memory accesses are likewise constrained to be aligned to their operand size (e.
 
 ## ROM and RAM Layout
 
-All configurations use a ROM for bytecode storage (`USE_ROM_FOR_BYTECODE = true`). The program code is pre-loaded into a designated read-only memory region, and instructions are fetched from this ROM region on each cycle, rather than from the general-purpose RAM.
+All configurations use a ROM for bytecode storage (`USE_ROM_FOR_BYTECODE = true`). The program code is pre-loaded into a designated read-only virtual memory region, and instructions are fetched from this ROM region on each cycle, rather than from the general-purpose RAM.
 
 In the circuit, the ROM is handled via a fixed-size lookup table that maps each valid instruction address to the corresponding 32-bit instruction, with out-of-range addresses mapping to a special **UNIMP** (unimplemented) opcode. The ROM size is a power-of-two bound determined by configuration.
 
@@ -64,24 +64,25 @@ By omitting both *delegation* instructions and exception modelling, this configu
 
 #### Key Types & Constants
 
-* **State type** – a minimal struct that only keeps the program counter (`pc`). All 32 architectural registers live in memory, reads/writes are performed via memory diffs each cycle.
+* **State type** – a minimal struct that only keeps the program counter (`pc`). All 32 architectural registers live in memory, reads/writes are performed via memory argument queries each cycle.
 * `ASSUME_TRUSTED_CODE = true` and `OUTPUT_EXACT_EXCEPTIONS = false` – traps are not modelled, so any illegal condition simply makes constraints unsatisfiable.
 * `USE_ROM_FOR_BYTECODE = true` – instructions are fetched from the fixed ROM lookup-table each step.
-* No CSR usage: standard CSR opcodes (`CSRRW`, `CSRRS`, etc.) are *not* in the supported list. Access to the custom non-determinism CSR `0x7C0` is disallowed.
+* No standard CSR usage: standard CSR opcodes (`CSRRC`, `CSRRS`, etc.) are *not* in the supported list, with the exception of `CSRRW` which is used for accessing supported precompiles and the non-determinism CSR `0x7C0` (i.e. long-term storage access).
 
 ---
 
 #### Supported Instructions
 
-This configuration’s `all_supported_opcodes()` returns **every** RV32I and RV32M opcode:
+Our base machine configuration's `all_supported_opcodes()` returns nearly every RV32I+M operation:
 
 * **RV32I base**
   * Loads: `LB`, `LH`, `LW`, plus unsigned variants `LBU`, `LHU`  
   * Stores: `SB`, `SH`, `SW`  
   * ALU immediates: `ADDI`, `SLTI`, `SLTIU`, `ANDI`, `ORI`, `XORI`, `SLLI`, `SRLI`, `SRAI`  
   * ALU register-register: `ADD`, `SUB`, `SLL`, `SRL`, `SRA`, `SLT`, `SLTU`, `AND`, `OR`, `XOR`  
-  * Control-flow: `LUI`, `AUIPC`, unconditional `JAL`, register jump `JALR`, conditional branches `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`  
-  * (Optionally) system `ECALL` / `EBREAK` are marked **invalid** under the trusted-code assumption and therefore must never appear.
+  * Control-flow: `LUI`, `AUIPC`, unconditional jump `JAL`, unconditional register jump `JALR`, conditional branches `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`  
+  * (Optionally) system `ECALL` / `EBREAK` / `WFI` are marked **invalid** under the trusted-code assumption and therefore must never appear.
+  * system register access instructions `CSRRC` / `CSRRS` and their immediate counterparts `CSRRCI` / `CSRRSI` are disallowed, while `CSRRW` is only enabled for precompiles and non-determinism (storage), while `CSRRWI` is optionally allowed (but usually disabled).
 * **RV32M extension** – multiplication/division:
   * Multiply: `MUL`, `MULH`, `MULHU`, `MULHSU`  
   * Division / Remainder: `DIV`, `DIVU`, `REM`, `REMU`
@@ -92,19 +93,19 @@ The last one operations are among the more complex ones to encode in constraints
 
 1. **Fetch** – PC must be 4-byte aligned and within ROM bounds; the instruction word is obtained via the ROM lookup table.
 2. **Decode** – Boolean flags from the decoder table classify the instruction; invalid combinations are asserted to be zero (trusted code).
-3. **Operand preparation** – Source register values are read from RAM; when signed semantics are required, the `RegisterDecompositionWithSign` helper provides sign bits.
+3. **Operand preparation** – Source register values are read from RAM; when signed semantics are required, the `RegisterDecompositionWithSign` helper provides sign bits (usually extracted with lookups or special constraints).
 4. **Execute** – The dedicated `MachineOp::apply` implementation for each opcode adds constraints that compute the result and, where relevant, memory diffs (loads/stores) or register diffs.
 5. **State update** –
-   * Apply at most one RAM diff (register write or memory store).  
+   * Apply at most one RAM write diff (register write or memory store).  
    * Enforce that `x0` remains zero.  
    * Set `pc_next` according to branch/jump logic or `pc + 4` for linear execution.
-6. **Global invariants** – All executed opcodes must be in the supported set; all addresses must be within the RAM range and properly aligned, divide-by-zero is disallowed by the trusted-code premise.
+6. **Global invariants** – All executed opcodes must be in the supported set; all addresses must be within the RAM range and properly aligned.
 
 ---
 
 #### When to Use
 
-`FullIsaNoExceptions` is the go-to configuration for proving fully-featured, deterministic RISC-V binaries that **need** the M extension but **do not** rely on delegation, syscalls, or trap handling. It provides a faithful model of a standard RV32IM core while keeping the constraint system lean by excluding exception paths.
+`FullIsaNoExceptions` is the go-to configuration for proving fully-featured, deterministic RISC-V binaries that **need** the M extension but **do not** rely on delegation syscalls, or trap handling. It provides a faithful model of a standard RV32IM core while keeping the constraint system lean by excluding exception paths.
 
 ---
 
@@ -112,13 +113,13 @@ The last one operations are among the more complex ones to encode in constraints
 
 Purpose: This configuration extends the *Full ISA (No Exceptions)* model by enabling **delegation** through controlled CSR (Control & Status Register) accesses. It targets kernel-level programs that need to invoke pre-compiled cryptographic gadgets or inject non-deterministic witness data during execution.
 
-In Airbender, delegation is exposed via a **single custom CSR at address `0x7C0`** (often referred to as `Mcustom`). A CSR read/write to this address serves as a call-out to an external proof or circuit (e.g. Blake2s hashing, recursive proof verification). While the core VM does **not** compute those operations itself, it constrains their inputs/outputs and relies on a companion circuit to prove correctness.
+In Airbender, delegation of storage access is exposed via a **single custom CSR at address `0x7C0`** (often referred to as "non-determinism" or `Mcustom`). A CSR read/write to a CSR index serves as a call-out to an external storage query. While the core VM does **not** compute those operations itself, it constrains their inputs/outputs and relies on companion [zksync-os](https://github.com/matter-labs/zksync-os) code to prove correctness.
 
 ---
 
 #### Key Types & Constants
 
-* Inherits the minimal `State` struct (only `pc`), with all 32 registers resident in memory.  
+* Inherits the minimal `State` struct (only `pc`), with all 32 registers residing in memory.  
 * `ASSUME_TRUSTED_CODE = true`, `OUTPUT_EXACT_EXCEPTIONS = false`, `USE_ROM_FOR_BYTECODE = true` – same rationale as the base Full ISA config.
 * **Delegation flags**  
   * `allow_non_determinism_csr = true`  
@@ -143,7 +144,7 @@ Everything from *Full ISA (No Exceptions)* **plus** the CSR instruction(s) requi
 2. **Execute** – The `CSRRW` implementation:
    * Consumes the *source* register value (e.g. an opcode or pointer for the external gadget).
    * Produces an **unconstrained witness value** that will be written to the *destination* register.
-3. **External proof** – Outside the core VM, a separate circuit verifies that the produced witness value indeed equals the result of the requested operation. During aggregation, the main proof checks that every row of the delegation table is covered by a valid proof.
+3. **External proof** – Outside the core VM, a separate program verifies that the produced witness value indeed equals the result of the requested operation. During aggregation, the main proof checks that every row of the delegation table is covered by a valid proof.
 4. **State update** – From the VM’s perspective `CSRRW` is a single-cycle instruction: it writes the returned value to `rd`, applies normal diffs, and increments `pc` by 4.
 
 ---
