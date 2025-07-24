@@ -2016,8 +2016,8 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
 pub fn create_xor_special_keccakiota_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [0, 1, 32898, 9223372036854808714, 9223372039002292224, 32907, 2147483649, 9223372039002292353, 9223372036854808585, 138, 136, 2147516425, 2147483658, 2147516555, 9223372036854775947, 9223372036854808713, 9223372036854808579, 9223372036854808578, 9223372036854775936, 32778, 9223372039002259466, 9223372039002292353, 9223372036854808704, 2147483649];
     let mut keys = Vec::with_capacity(1 << 16);
-    for a in 0..1<<8 {
-        for b in 0..1<<8 {
+    for b in 0..1<<8 {
+        for a in 0..1<<8 {
             let key = [F::from_u64_unchecked(a), F::from_u64_unchecked(b), F::ZERO];
             keys.push(key);
         }
@@ -2052,8 +2052,8 @@ pub fn create_xor_special_keccakiota_table<F: PrimeField>(id: u32) -> LookupTabl
 }
 pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let mut keys = Vec::with_capacity(1 << 16);
-    for a in 0..1<<8 {
-        for b in 0..1<<8 {
+    for b in 0..1<<8 {
+        for a in 0..1<<8 {
             let key = [F::from_u64_unchecked(a), F::from_u64_unchecked(b), F::ZERO];
             keys.push(key);
         }
@@ -2081,8 +2081,8 @@ pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
 }
 pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let mut keys = Vec::with_capacity(1 << 20);
-    for word_u16 in 0..1<<16 {
-        for rot_const in 0..16 {
+    for rot_const in 0..16 {
+        for word_u16 in 0..1<<16 {
             let key = [F::from_u64_unchecked(word_u16 | rot_const<<16), F::ZERO, F::ZERO];
             keys.push(key);
         }
