@@ -42,8 +42,8 @@ impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 12,
-            allocation_block_log_size: 22,
-            device_slack_blocks: 40,
+            allocation_block_log_size: 22, // 4 MB blocks
+            device_slack_blocks: 64,       // 256 MB slack
         }
     }
 }
@@ -91,14 +91,15 @@ impl ProverContext {
     }
 
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        assert!(ConcurrentStaticHostAllocator::is_initialized_global());
+        let slack_size = config.device_slack_blocks << config.allocation_block_log_size;
+        let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
+        let device_id = get_device()?;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
         let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let device_id = get_device()?;
         let (free, _) = memory_get_info()?;
-        let mut size = (free >> config.allocation_block_log_size) - config.device_slack_blocks;
+        let mut size = free >> config.allocation_block_log_size;
         let allocation = loop {
             let result = era_cudart::memory::DeviceAllocation::<u8>::alloc(
                 size << config.allocation_block_log_size,
@@ -116,6 +117,7 @@ impl ProverContext {
                 Err(e) => return Err(e),
             };
         };
+        slack.free()?;
         let device_allocator = NonConcurrentStaticDeviceAllocator::new(
             [StaticDeviceAllocationBackend::DeviceAllocation(allocation)],
             config.allocation_block_log_size,
