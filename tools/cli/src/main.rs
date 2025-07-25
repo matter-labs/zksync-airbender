@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use cli_lib::generate_constants::generate_constants_for_binary;
 use cli_lib::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
+    generate_oracle_data_from_metadata_and_proof_list, proof_list_and_metadata_from_program_proof,
     serialize_to_file, u32_from_hex_string, ProvingLimit, VerifierCircuitsIdentifiers,
     DEFAULT_CYCLES,
 };
@@ -158,9 +159,9 @@ enum Commands {
     /// Both proofs must have the same recursion chain hash.
     FlattenTwo {
         #[arg(long)]
-        first_metadata: String,
+        prev_program_proof: String,
         #[arg(long)]
-        second_metadata: String,
+        curr_program_proof: String,
         #[arg(long)]
         output_file: String,
     },
@@ -343,11 +344,13 @@ fn main() {
             input_metadata,
             output_file,
         } => flatten_all(input_metadata, output_file),
+        /// Combines two Program Proofs into a single input stream.
+        /// Sample usage CLI flatten-two --prev-program-proof program_proof_block_1.json --curr-program-proof program_proof_block_2.json --output proof_input.bin)
         Commands::FlattenTwo {
-            first_metadata,
-            second_metadata,
+            prev_program_proof,
+            curr_program_proof,
             output_file,
-        } => flatten_two(first_metadata, second_metadata, output_file),
+        } => flatten_two(prev_program_proof, curr_program_proof, output_file),
         Commands::GenerateConstants {
             bin,
             universal_verifier,
@@ -513,20 +516,33 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     u32_to_file(output_file, &oracle);
 }
 
-fn flatten_two(first_metadata: &String, second_metadata: &String, output_file: &String) {
-    let (metadata, mut oracle) = generate_oracle_data_from_metadata(first_metadata);
-    let (metadata2, oracle2) = generate_oracle_data_from_metadata(second_metadata);
+fn flatten_two(
+    prev_program_proof_path: &String,
+    curr_program_proof_path: &String,
+    output_file: &String,
+) {
+    let curr_program_proof: ProgramProof = deserialize_from_file(curr_program_proof_path);
+    let prev_program_proof: ProgramProof = deserialize_from_file(prev_program_proof_path);
 
-    oracle.extend(oracle2);
-    assert!(metadata.reduced_proof_count > 0);
-    assert!(metadata2.reduced_proof_count > 0);
+    let (curr_metadata, curr_proof_list) =
+        proof_list_and_metadata_from_program_proof(curr_program_proof);
+    let (prev_metadata, prev_proof_list) =
+        proof_list_and_metadata_from_program_proof(prev_program_proof);
+    let curr_oracle =
+        generate_oracle_data_from_metadata_and_proof_list(&curr_metadata, &curr_proof_list);
+    let mut prev_oracle =
+        generate_oracle_data_from_metadata_and_proof_list(&prev_metadata, &prev_proof_list);
 
-    oracle.insert(
+    prev_oracle.extend(curr_oracle);
+    assert!(curr_metadata.reduced_proof_count > 0);
+    assert!(prev_metadata.reduced_proof_count > 0);
+
+    prev_oracle.insert(
         0,
         VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32,
     );
 
-    u32_to_file(output_file, &oracle);
+    u32_to_file(output_file, &prev_oracle);
 }
 
 #[cfg(feature = "include_verifiers")]
