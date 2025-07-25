@@ -128,6 +128,7 @@ impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
             chunk
         };
         dst.fill_with(|| unsafe { self.iterator.next().unwrap_unchecked() });
+        self.next_chunk_index += 1;
     }
 
     pub fn skip_next_chunk(&mut self) {
@@ -139,6 +140,7 @@ impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
             self.chunk_size
         };
         self.iterator.advance_by(count).unwrap();
+        self.next_chunk_index += 1;
     }
 }
 

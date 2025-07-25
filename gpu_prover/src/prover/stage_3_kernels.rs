@@ -1997,7 +1997,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::Context;
+    use crate::device_context::DeviceContext;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use std::alloc::Global;
 
@@ -2244,7 +2244,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_stage_3_for_delegation_circuit() {
-        let ctx = Context::create(12).unwrap();
+        let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
