@@ -173,7 +173,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     // this is handled automatically by custom stage3 constraint to mask all mem accesses
     // then you just need to ensure that all 0 execute flags does not break/unsatisfy the circuit
     // therefore: you can safely ignore this variable, but the circuit author must be careful
-    let _execute = cs.process_delegation_request();
+    let execute = cs.process_delegation_request();
 
     // STEP1: process all memory accesses
     let control = {
@@ -294,8 +294,8 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     let [is_iota_columnxor, is_columnmix, is_theta_rho, is_chi1, is_chi2] = precompile_bitmask;
     let [is_iter0, is_iter1, is_iter2, is_iter3, is_iter4] = iter_bitmask;
     // NOT STRICTLY NECESSARY but it's free \_(o_O)_/
-    cs.add_constraint_allow_explicit_linear(Constraint::from(is_iota_columnxor) + Term::from(is_columnmix) + Term::from(is_theta_rho) + Term::from(is_chi1) + Term::from(is_chi2) - Term::from(1));
-    cs.add_constraint_allow_explicit_linear(Constraint::from(is_iter0) + Term::from(is_iter1) + Term::from(is_iter2) + Term::from(is_iter3) + Term::from(is_iter4) - Term::from(1));
+    cs.add_constraint(Constraint::from(execute) * (Term::from(is_iota_columnxor) + Term::from(is_columnmix) + Term::from(is_theta_rho) + Term::from(is_chi1) + Term::from(is_chi2) - Term::from(1)));
+    cs.add_constraint(Constraint::from(execute) * (Term::from(is_iter0) + Term::from(is_iter1) + Term::from(is_iter2) + Term::from(is_iter3) + Term::from(is_iter4) - Term::from(1)));
     let [is_theta_rho_iter0, is_theta_rho_iter1, is_theta_rho_iter2, is_theta_rho_iter3, is_theta_rho_iter4] =
         [Boolean::and(&is_theta_rho, &is_iter0, cs), Boolean::and(&is_theta_rho, &is_iter1, cs), Boolean::and(&is_theta_rho, &is_iter2, cs), Boolean::and(&is_theta_rho, &is_iter3, cs), Boolean::and(&is_theta_rho, &is_iter4, cs)];
 
@@ -317,9 +317,16 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
 
     // TODO: not sure if 8bit mask is necessary (probably safer like this..)
     let p0_round_constant_control_reg = {
+        // ORIGINAL
         let round_if_iter0 = cs.add_variable_from_constraint(round*Term::from(is_iter0));
         let chunks_u8: [Constraint<F>; 8] = from_fn(|i| Constraint::from(round_if_iter0) + Term::from(1<<5)*Term::from(i as u64));
         let chunks_u16: [Num<F>; 4] = from_fn(|i| cs.add_variable_from_constraint_allow_explicit_linear(chunks_u8[i*2].clone() + Term::from(1<<8)*chunks_u8[i*2+1].clone())).map(Num::Var);
+
+       
+        // NEW (but worse performance ??)
+        // let round_if_iter0 = round * Term::from(is_iter0);
+        // let chunks_u8: [Constraint<F>; 8] = from_fn(|i| round_if_iter0.clone() + Term::from(1<<5)*Term::from(i as u64));
+        // let chunks_u16: [Num<F>; 4] = from_fn(|i| cs.add_variable_from_constraint(chunks_u8[i*2].clone() + Term::from(1<<8)*chunks_u8[i*2+1].clone())).map(Num::Var);
         LongRegister{
             low32: Register([chunks_u16[0], chunks_u16[1]]),
             high32: Register([chunks_u16[2], chunks_u16[3]])
@@ -471,8 +478,6 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             };
             let (p3_state_output_values, p3_tmp_values) = {
                 let [idx1_value, idx2_value, idx3_value, idx4_value, _i25_value, _i26_value] = state_input_values.clone();
-                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
-                let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
                 let tmp1_value = andn(&idx2_value, &idx3_value);
                 let idx1_new_value = xor(&idx1_value, &tmp1_value);
                 let tmp2_value = andn(&idx3_value, &idx4_value);
@@ -488,8 +493,6 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             };
             let (p4_state_output_values, p4_tmp_values) = {
                 let [idx0_value, idx3_value, idx4_value, i25_value, i26_value, _i27_value] = state_input_values;
-                let table_id_xor_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::Xor.to_table_id() as u16);
-                let table_id_andn_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(TableType::AndN.to_table_id() as u16);
                 let idx0_new_value = xor(&idx0_value, &i25_value);
                 let tmp1_value = andn(&idx4_value, &idx0_value);
                 let idx3_new_value = xor(&idx3_value, &tmp1_value);
