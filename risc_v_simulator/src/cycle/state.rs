@@ -3,12 +3,15 @@ use std::hint::unreachable_unchecked;
 
 use super::{status_registers::*, MachineConfig};
 use crate::abstractions::csr_processor::CustomCSRProcessor;
-use crate::abstractions::memory::{AccessType, MemorySource};
-use crate::abstractions::non_determinism::NonDeterminismCSRSource;
+use crate::abstractions::memory::{AccessType, MemorySource, VectorMemoryImpl};
+use crate::abstractions::non_determinism::{
+    NonDeterminismCSRSource, QuasiUARTSource, QuasiUARTSourceState,
+};
 use crate::abstractions::tracer::Tracer;
 use crate::abstractions::{mem_read, mem_write};
 use crate::cycle::IMStandardIsaConfig;
-use crate::mmu::MMUImplementation;
+use crate::mmu::{MMUImplementation, NoMMU};
+use crate::sim::RiscV32Machine;
 use crate::utils::*;
 
 #[cfg(feature = "delegation")]
@@ -22,6 +25,97 @@ pub const NUM_REGISTERS: usize = 32;
 pub const MAX_MEMORY_OPS_PER_CYCLE: u32 = 3;
 pub const NON_DETERMINISM_CSR: u32 = 0x7c0;
 pub const MARKER_CSR: u32 = 0x7ff;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct RiscV32ObservableState {
+    pub registers: [u32; NUM_REGISTERS],
+    pub pc: u32,
+}
+
+pub(crate) struct RiscV32MachineV1<MS, TR, MMU, ND, C = IMStandardIsaConfig>
+where
+    MS: MemorySource,
+    TR: Tracer<C>,
+    MMU: MMUImplementation<MS, TR, C>,
+    ND: NonDeterminismCSRSource<MS>,
+    C: MachineConfig,
+{
+    pub(crate) state: RiscV32State<C>,
+    pub(crate) memory_source: MS,
+    pub(crate) memory_tracer: TR,
+    pub(crate) mmu: MMU,
+    pub(crate) non_determinism_source: ND,
+}
+
+impl<ND, C> RiscV32MachineV1<VectorMemoryImpl, (), NoMMU, ND, C>
+where
+    ND: NonDeterminismCSRSource<VectorMemoryImpl>,
+    C: MachineConfig,
+{
+    pub fn with_nd(entry_point: u32, non_determinism_source: ND) -> Self {
+        let state = RiscV32State::initial(entry_point);
+        let memory_tracer = ();
+        let mmu = crate::mmu::NoMMU { sapt: state.sapt };
+
+        let mut memory = crate::abstractions::memory::VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
+
+        Self {
+            state,
+            memory_source: memory,
+            memory_tracer,
+            mmu,
+            non_determinism_source,
+        }
+    }
+}
+
+impl<ND, MS, TR, MMU, C> RiscV32Machine<ND, MS, TR, MMU, C> for RiscV32MachineV1<MS, TR, MMU, ND, C>
+where
+    ND: NonDeterminismCSRSource<MS>,
+    MS: MemorySource,
+    TR: Tracer<C>,
+    MMU: MMUImplementation<MS, TR, C>,
+    C: MachineConfig,
+{
+    fn cycle(&mut self) {
+        self.state.cycle(
+            &mut self.memory_source,
+            &mut self.memory_tracer,
+            &mut self.mmu,
+            &mut self.non_determinism_source,
+        );
+    }
+
+    fn state(&self) -> &RiscV32ObservableState {
+        &self.state.observable
+    }
+
+    // fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR) {
+    //     (
+    //         self.state.observable,
+    //         self.memory_source,
+    //         self.non_determinism_source,
+    //         self.memory_tracer,
+    //     )
+    // }
+
+    fn collect_stacktrace(
+        &mut self,
+        symbol_info: &crate::sim::diag::SymbolInfo,
+        dwarf_cache: &mut crate::sim::diag::DwarfCache,
+        cycle: usize,
+    ) -> crate::sim::diag::StacktraceCollectionResult {
+        crate::sim::diag::collect_stacktrace::<_, _, _, C>(
+            symbol_info,
+            dwarf_cache,
+            &self.state.observable,
+            &mut self.memory_source,
+            &mut self.memory_tracer,
+            &mut self.mmu,
+            cycle,
+        )
+    }
+}
 
 // static CSR_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -242,23 +336,23 @@ impl ExtraFlags {
 }
 
 #[derive(Clone, Debug)]
-pub struct StateTracer<C: MachineConfig = IMStandardIsaConfig> {
-    tracer: Vec<RiscV32State<C>>,
+pub struct StateTracer {
+    tracer: Vec<RiscV32ObservableState>,
 }
 
-impl<C: MachineConfig> StateTracer<C> {
+impl StateTracer {
     pub fn new_for_num_cycles(num_cycles: usize) -> Self {
         Self {
             tracer: Vec::with_capacity(num_cycles + 1),
         }
     }
 
-    pub fn insert(&mut self, idx: usize, state: RiscV32State<C>) {
+    pub fn insert(&mut self, idx: usize, state: RiscV32ObservableState) {
         assert_eq!(self.tracer.len(), idx, "trying to insert out of order");
         self.tracer.push(state);
     }
 
-    pub fn get(&self, idx: usize) -> Option<&RiscV32State<C>> {
+    pub fn get(&self, idx: usize) -> Option<&RiscV32ObservableState> {
         self.tracer.get(idx)
     }
 }
@@ -266,8 +360,9 @@ impl<C: MachineConfig> StateTracer<C> {
 #[deprecated]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RiscV32State<Config: MachineConfig = IMStandardIsaConfig> {
-    pub registers: [u32; NUM_REGISTERS],
-    pub pc: u32,
+    pub observable: RiscV32ObservableState,
+    // pub registers: [u32; NUM_REGISTERS],
+    // pub pc: u32,
     pub extra_flags: ExtraFlags, // everything that doesn't need full register
 
     pub timer: u64,
@@ -313,8 +408,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         OPCODES_COUNTER.with_borrow_mut(|el| el.clear());
 
         Self {
-            registers,
-            pc,
+            observable: RiscV32ObservableState { registers, pc },
             extra_flags,
             timer,
             timer_match,
@@ -360,8 +454,10 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         };
 
         let state = RiscV32State {
-            registers: std::array::from_fn(|i| if i > 0 { rng.gen() } else { 0 }),
-            pc: initial_pc,
+            observable: RiscV32ObservableState {
+                registers: std::array::from_fn(|i| if i > 0 { rng.gen() } else { 0 }),
+                pc: initial_pc,
+            },
             extra_flags,
 
             timer,
@@ -379,7 +475,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
     #[must_use]
     #[inline(always)]
     pub fn get_first_register<TR: Tracer<Config>>(&self, reg_idx: u32, tracer: &mut TR) -> u32 {
-        let res = unsafe { *self.registers.get_unchecked(reg_idx as usize) };
+        let res = unsafe { *self.observable.registers.get_unchecked(reg_idx as usize) };
         tracer.trace_rs1_read(reg_idx, res);
 
         res
@@ -388,7 +484,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
     #[must_use]
     #[inline(always)]
     pub fn get_second_register<TR: Tracer<Config>>(&self, reg_idx: u32, tracer: &mut TR) -> u32 {
-        let res = unsafe { *self.registers.get_unchecked(reg_idx as usize) };
+        let res = unsafe { *self.observable.registers.get_unchecked(reg_idx as usize) };
         tracer.trace_rs2_read(reg_idx, res);
 
         res
@@ -404,8 +500,8 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         if reg_idx == 0 {
             value = 0;
         }
-        let read_value = self.registers[reg_idx as usize];
-        self.registers[reg_idx as usize] = value;
+        let read_value = self.observable.registers[reg_idx as usize];
+        self.observable.registers[reg_idx as usize] = value;
         tracer.trace_rd_write(reg_idx, read_value, value);
     }
 
@@ -487,7 +583,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         }
 
         let current_privilege_mode = self.extra_flags.get_current_mode();
-        let mut pc = self.pc;
+        let mut pc = self.observable.pc;
         // println!("PC = 0x{:08x}", pc);
         let mut ret_val: u32 = 0;
         let mut trap = TrapReason::NoTrap;
@@ -1442,7 +1538,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
             }
         }
 
-        self.pc = pc;
+        self.observable.pc = pc;
 
         // for debugging
         self.sapt = mmu.read_sapt(current_privilege_mode, &mut trap);
@@ -1456,9 +1552,18 @@ impl<Config: MachineConfig> RiscV32State<Config> {
     pub fn pretty_dump(&self) {
         println!(
             "PC = 0x{:08x}, RA = 0x{:08x}, SP = 0x{:08x}, GP = 0x{:08x}",
-            self.pc, self.registers[1], self.registers[2], self.registers[3]
+            self.observable.pc,
+            self.observable.registers[1],
+            self.observable.registers[2],
+            self.observable.registers[3]
         );
-        for chunk in self.registers.iter().enumerate().array_chunks::<4>() {
+        for chunk in self
+            .observable
+            .registers
+            .iter()
+            .enumerate()
+            .array_chunks::<4>()
+        {
             for (idx, reg) in chunk.iter() {
                 print!("x{:02} = 0x{:08x}, ", idx, reg);
             }

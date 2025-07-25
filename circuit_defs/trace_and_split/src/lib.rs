@@ -117,7 +117,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
         );
 
         if finished {
-            println!("Ended at address 0x{:08x}", state.pc);
+            println!("Ended at address 0x{:08x}", state.observable.pc);
             println!("Took {} circuits to finish execution", circuits_needed);
             end_reached = true;
             break;
@@ -198,7 +198,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
     for register_idx in 0..32 {
         let last_timestamp = register_last_live_timestamps[register_idx];
         let register_state = FinalRegisterValue {
-            value: state.registers[register_idx],
+            value: state.observable.registers[register_idx],
             last_access_timestamp: last_timestamp,
         };
         registers_final_states.push(register_state);
@@ -229,7 +229,7 @@ pub fn run_till_end_for_gpu_for_machine_config<
     assert_eq!(circuits_needed, traced_chunks.len());
 
     (
-        state.pc,
+        state.observable.pc,
         traced_chunks,
         all_per_type_logs,
         registers_final_states,
@@ -288,7 +288,7 @@ pub fn run_till_end_for_machine_config_without_tracing<
         );
 
         if finished {
-            println!("Ended at address 0x{:08x}", state.pc);
+            println!("Ended at address 0x{:08x}", state.observable.pc);
             println!("Took {} circuits to finish execution", circuits_needed);
             end_reached = true;
             break;
@@ -305,7 +305,7 @@ pub fn run_till_end_for_machine_config_without_tracing<
         speed, cycles_upper_bound, elapsed
     );
 
-    (state.pc, state.registers)
+    (state.observable.pc, state.observable.registers)
 }
 
 pub fn commit_memory_tree_for_riscv_circuit_using_gpu_tracer<C: MachineConfig, A: GoodAllocator>(

@@ -31,7 +31,7 @@ lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 [features]
 opcode_stats = []
 cycle_marker = []
-default = ["field"]
+default = ["field", "delegation"]
 # default = ["delegation"]
 delegation = ["blake2s_u32", "field", "poseidon2", "ruint"]
 

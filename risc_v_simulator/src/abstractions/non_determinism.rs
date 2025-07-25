@@ -1,5 +1,5 @@
 // there is no interpretation of methods here, it's just read/write and that's all
-pub trait NonDeterminismCSRSource<M: MemorySource> {
+pub trait NonDeterminismCSRSource<M: MemorySource + ?Sized> {
     const SHOULD_MOCK_READS_BEFORE_WRITES: bool = true;
     const SHOULD_IGNORE_WRITES_AFTER_READS: bool = true;
 
