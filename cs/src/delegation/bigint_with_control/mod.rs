@@ -397,7 +397,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     cs.set_values(value_fn);
 
     {
-        for (i, input) in additive_ops_result.array_chunks::<2>().enumerate() {
+        for (i, input) in additive_ops_result.as_chunks::<2>().0.iter().enumerate() {
             let register = Register::<F>(input.map(|el| Num::Var(el)));
             if let Some(value) = register.get_value_unsigned(&*cs) {
                 println!("Prepared result U256 element word {} = 0x{:08x}", i, value);
@@ -603,14 +603,14 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     }
 
     {
-        for (i, input) in product_low.array_chunks::<2>().enumerate() {
+        for (i, input) in product_low.as_chunks::<2>().0.iter().enumerate() {
             let register = Register::<F>(input.map(|el| Num::Var(el)));
             if let Some(value) = register.get_value_unsigned(&*cs) {
                 println!("Product low U256 element word {} = 0x{:08x}", i, value);
             }
         }
 
-        for (i, input) in product_high.array_chunks::<2>().enumerate() {
+        for (i, input) in product_high.as_chunks::<2>().0.iter().enumerate() {
             let register = Register::<F>(input.map(|el| Num::Var(el)));
             if let Some(value) = register.get_value_unsigned(&*cs) {
                 println!("Product high U256 element word {} = 0x{:08x}", i, value);
@@ -650,7 +650,8 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
                 10 => TableType::RangeCheck10x10,
                 _ => unreachable!(),
             };
-            let mut it = checks.array_chunks::<2>();
+            let (chunks, remainder) = checks.as_chunks::<2>();
+            let mut it = chunks.iter();
             for [a, b] in &mut it {
                 let a = LookupInput::from(a.clone());
                 let b = LookupInput::from(b.clone());
@@ -660,7 +661,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
                     false,
                 );
             }
-            let remainder = it.remainder();
             if remainder.len() > 0 {
                 let a = &remainder[0];
                 let a = LookupInput::from(a.clone());

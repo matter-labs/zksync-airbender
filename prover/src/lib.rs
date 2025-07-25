@@ -5,7 +5,6 @@
 #![feature(iter_array_chunks)]
 #![feature(raw_slice_split)]
 #![feature(ptr_as_ref_unchecked)]
-#![feature(array_chunks)]
 #![feature(slice_from_ptr_range)]
 #![feature(vec_push_within_capacity)]
 #![feature(maybe_uninit_slice)]

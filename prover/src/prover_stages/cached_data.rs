@@ -50,7 +50,7 @@ pub fn get_timestamp_range_check_lookup_accesses(
         .witness_layout
         .timestamp_range_check_lookup_expressions[..offset];
     assert!(src.len() % 2 == 0);
-    for [a, b] in src.array_chunks::<2>() {
+    for [a, b] in src.as_chunks::<2>().0.iter() {
         let (base_col, ext_col) = timestamp_range_check_dst_it.next().unwrap();
         assert_eq!(base_col.len(), 1);
         let dst_col = base_col.start;
@@ -82,7 +82,7 @@ pub fn get_timestamp_range_check_lookup_accesses(
         .witness_layout
         .timestamp_range_check_lookup_expressions[offset..];
     assert!(src.len() % 2 == 0);
-    for [a, b] in src.array_chunks::<2>() {
+    for [a, b] in src.as_chunks::<2>().0.iter() {
         let (base_col, ext_col) = timestamp_range_check_dst_it.next().unwrap();
         assert_eq!(base_col.len(), 1);
         let dst_col = base_col.start;
@@ -227,7 +227,7 @@ pub fn get_range_check_16_lookup_accesses(
         .range_check_16_columns
         .num_elements()..];
     assert!(src.len() % 2 == 0);
-    for [a, b] in src.array_chunks::<2>() {
+    for [a, b] in src.as_chunks::<2>().0.iter() {
         let (base_col, ext_col) = range_check_16_dst_it.next().unwrap();
         assert_eq!(base_col.len(), 1);
         let dst_col = base_col.start;
