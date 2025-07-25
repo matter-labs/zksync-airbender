@@ -1,5 +1,5 @@
 use super::*;
-use crate::cycle::state::NON_DETERMINISM_CSR;
+use crate::cycle::state::{NON_DETERMINISM_CSR, NUM_REGISTERS};
 use cs::definitions::{TimestampData, TimestampScalar};
 use ruint::aliases::{U256, U512};
 
@@ -17,25 +17,19 @@ pub const EQ_OP_BIT_IDX: usize = 5;
 pub const CARRY_BIT_IDX: usize = 6;
 pub const MEMCOPY_BIT_IDX: usize = 7;
 
-pub fn u256_ops_with_control_impl<
-    M: MemorySource,
-    TR: Tracer<C>,
-    MMU: MMUImplementation<M, TR, C>,
-    C: MachineConfig,
->(
-    state: &mut RiscV32State<C>,
+pub fn u256_ops_with_control_impl<M: MemorySource, TR: Tracer<C>, C: MachineConfig>(
+    registers: &mut [u32; NUM_REGISTERS],
     memory_source: &mut M,
     tracer: &mut TR,
-    _mmu: &mut MMU,
     rs1_value: u32,
     trap: &mut TrapReason,
 ) {
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
     // read registers first
-    let x10 = state.registers[10];
-    let x11 = state.registers[11];
-    let x12 = state.registers[12];
+    let x10 = registers[10];
+    let x11 = registers[11];
+    let x12 = registers[12];
 
     assert!(x10 % 32 == 0, "input pointer is unaligned");
     assert!(x11 % 32 == 0, "input pointer is unaligned");
@@ -160,7 +154,7 @@ pub fn u256_ops_with_control_impl<
     write_indirect_accesses::<_, 8>(x10 as usize, &a_accesses, memory_source);
 
     // update register
-    state.registers[12] = of as u32;
+    registers[12] = of as u32;
 
     // make witness structures
     let mut register_accesses = [

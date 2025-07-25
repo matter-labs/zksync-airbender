@@ -5,7 +5,7 @@ use blake2s_u32::{
     BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS, BLAKE2S_STATE_WIDTH_IN_U32_WORDS, CONFIGURED_IV, IV,
     SIGMAS,
 };
-use cs::definitions::{TimestampData, TimestampScalar};
+use cs::definitions::{TimestampData, TimestampScalar, NUM_REGISTERS};
 
 use super::*;
 
@@ -20,23 +20,21 @@ const BASE_ABI_REGISTER: u32 = 10;
 pub fn blake2_round_function_with_extended_control<
     M: MemorySource,
     TR: Tracer<C>,
-    MMU: MMUImplementation<M, TR, C>,
     C: MachineConfig,
 >(
-    state: &mut RiscV32State<C>,
+    registers: &mut [u32; NUM_REGISTERS],
     memory_source: &mut M,
     tracer: &mut TR,
-    _mmu: &mut MMU,
     rs1_value: u32,
     trap: &mut TrapReason,
 ) {
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
     // read registers first
-    let x10 = state.registers[10];
-    let x11 = state.registers[11];
-    let x12 = state.registers[12];
-    let x13 = state.registers[13];
+    let x10 = registers[10];
+    let x11 = registers[11];
+    let x12 = registers[12];
+    let x13 = registers[13];
 
     assert!(x10 % 128 == 0, "input pointer is unaligned");
     assert!(x11 % 4 == 0, "input pointer is unaligned");

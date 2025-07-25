@@ -2,10 +2,12 @@ use std::path::Path;
 
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::non_determinism::QuasiUARTSource;
+use crate::alternative_simulator;
 use crate::cycle::state::StateTracer;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::NoMMU;
+use crate::run_alternative_simulator;
 use crate::sim::Simulator;
 use crate::sim::SimulatorConfig;
 use crate::{abstractions::memory::VectorMemoryImpl, cycle::state::RiscV32State};
@@ -50,7 +52,7 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     C: MachineConfig,
 >(
     config: SimulatorConfig,
-    non_determinism_source: S,
+    mut non_determinism_source: S,
 ) -> (S, RiscV32State<C>) {
     let state = RiscV32State::<C>::initial(config.entry_point);
     let memory_tracer = ();
@@ -59,18 +61,28 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     let mut memory = VectorMemoryImpl::new_for_byte_size(1 << 30); // use 1 GB RAM
     memory.load_image(config.entry_point, read_bin(&config.bin_path).into_iter());
 
-    let mut sim = Simulator::new(
-        config,
-        state,
-        memory,
-        memory_tracer,
-        mmu,
-        non_determinism_source,
-    );
+    if false {
+        let mut sim = Simulator::new(
+            config,
+            state,
+            memory,
+            memory_tracer,
+            mmu,
+            non_determinism_source,
+        );
 
-    sim.run(|_, _| {}, |_, _| {});
+        sim.run(|_, _| {}, |_, _| {});
+        non_determinism_source = sim.non_determinism_source;
+    } else {
+        let program = read_bin(&config.bin_path)
+            .into_iter()
+            .array_chunks()
+            .map(u32::from_le_bytes)
+            .collect::<Vec<_>>();
+        run_alternative_simulator(&program, &mut non_determinism_source, memory);
+    }
 
-    (sim.non_determinism_source, sim.state)
+    (non_determinism_source, state)
 }
 
 pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C: MachineConfig>(

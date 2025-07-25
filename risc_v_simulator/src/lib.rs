@@ -6,6 +6,7 @@
 #![feature(let_chains)]
 
 pub mod abstractions;
+mod alternative_simulator;
 pub mod cycle;
 pub mod mmio;
 pub mod mmu;
@@ -19,3 +20,5 @@ pub mod delegations;
 
 #[cfg(test)]
 mod tests;
+
+pub use alternative_simulator::run_alternative_simulator;
