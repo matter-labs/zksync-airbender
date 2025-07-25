@@ -1,5 +1,6 @@
 # Use a specific version of Rust for reproducibility
-FROM debian:bullseye-slim as builder
+# FROM debian:bullseye-slim as builder
+FROM debian:bullseye-slim@sha256:f527627d07c18abf87313c341ee8ef1b36f106baa8b6b6dc33f4c872d988b651 AS builder
 
 RUN apt-get update && apt-get install -y \
     curl \
