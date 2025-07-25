@@ -1,6 +1,5 @@
 /.idea
 /target
-/Cargo.lock
 /output
 rustc-ice-*.*
 .DS_Store
