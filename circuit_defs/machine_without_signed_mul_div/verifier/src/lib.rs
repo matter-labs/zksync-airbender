@@ -1,5 +1,4 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(array_chunks)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(slice_from_ptr_range)]
 #![feature(allocator_api)]
@@ -122,7 +121,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let lookup_argument_linearization_challenges: [Mersenne31Quartic;
         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
         Mersenne31Quartic::from_array_of_base(
@@ -155,7 +154,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let quotient_alpha = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
@@ -186,7 +185,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let z = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
@@ -211,7 +210,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let deep_poly_alpha = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
@@ -240,7 +239,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = transcript_challenges.array_chunks::<4>();
+        let mut it = transcript_challenges.as_chunks::<4>().0.iter();
         *challenge = Mersenne31Quartic::from_array_of_base(
             it.next()
                 .unwrap_unchecked()
@@ -266,7 +265,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = transcript_challenges.array_chunks::<4>();
+        let mut it = transcript_challenges.as_chunks::<4>().0.iter();
         *dst = Mersenne31Quartic::from_array_of_base(
             it.next()
                 .unwrap_unchecked()
@@ -914,7 +913,11 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     proof_state_dst.delegation_type = skeleton.delegation_type;
     // - input and output state variables
     if NUM_STATE_ELEMENTS > 0 {
-        let mut it = skeleton.public_inputs.array_chunks::<NUM_STATE_ELEMENTS>();
+        let mut it = skeleton
+            .public_inputs
+            .as_chunks::<NUM_STATE_ELEMENTS>()
+            .0
+            .iter();
         proof_input_dst.input_state_variables = *it.next().unwrap_unchecked();
         proof_input_dst.output_state_variables = *it.next().unwrap_unchecked();
     }

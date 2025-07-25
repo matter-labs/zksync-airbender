@@ -3,11 +3,9 @@
 #![feature(generic_const_exprs)]
 #![feature(btree_cursors)]
 #![feature(pointer_is_aligned_to)]
-#![feature(array_chunks)]
 #![feature(new_zeroed_alloc)]
 #![feature(vec_push_within_capacity)]
 #![feature(iter_array_chunks)]
-#![feature(let_chains)]
 #![feature(iter_advance_by)]
 
 pub mod allocator;

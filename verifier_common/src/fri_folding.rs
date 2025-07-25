@@ -31,7 +31,7 @@ pub unsafe fn fri_fold_by_log_n<const FOLDING_DEGREE_LOG2: usize>(
     let mut leaf_parsed =
         MaybeUninit::<[Mersenne31Quartic; MAX_SIZE_FOR_LEAF]>::uninit().assume_init();
     if core::mem::align_of::<Mersenne31Quartic>() != core::mem::align_of::<Mersenne31Field>() {
-        let mut it = leaf.array_chunks::<4>();
+        let mut it = leaf.as_chunks::<4>().0.iter();
         for i in 0..(1 << FOLDING_DEGREE_LOG2) {
             // NOTE: field elements are reduced in the query already!
             *leaf_parsed.get_unchecked_mut(i) =
