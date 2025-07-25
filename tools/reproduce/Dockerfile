@@ -14,9 +14,9 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-202
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN rustup target add riscv32i-unknown-none-elf
-RUN cargo install cargo-binutils
 RUN rustup component add llvm-tools-preview
-run rustup component add rust-src
+RUN rustup component add rust-src
+RUN cargo install cargo-binutils
 
 # RUN git clone  --depth 1 -b mmzk_0608_reproduce  https://github.com/matter-labs/zksync-airbender.git
 COPY . zksync-airbender
