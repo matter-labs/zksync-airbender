@@ -1,14 +1,14 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(array_chunks)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(allocator_api)]
 #![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use core::mem::MaybeUninit;
-
+#[cfg(any(test, feature = "proof_utils"))]
 extern crate alloc;
+
+use core::mem::MaybeUninit;
 use field::{Mersenne31Field, Mersenne31Quartic};
 use prover::definitions::*;
 

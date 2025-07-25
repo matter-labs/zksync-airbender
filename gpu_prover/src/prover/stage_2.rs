@@ -1,9 +1,10 @@
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 pub(crate) use super::stage_2_kernels::*;
 use super::trace_holder::{flatten_tree_caps, TraceHolder};
 use super::{BF, E4};
+use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::set_by_ref;
 use crate::prover::arg_utils::LookupChallenges;
@@ -13,6 +14,7 @@ use cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
@@ -21,25 +23,22 @@ use std::ops::{Deref, DerefMut};
 use std::slice;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct StageTwoOutput<'a, C: ProverContext> {
-    pub(crate) trace_holder: TraceHolder<BF, C>,
-    pub(crate) lookup_challenges: Option<Arc<Mutex<Box<LookupChallenges, C::HostAllocator>>>>,
-    pub(crate) last_row: Option<Arc<Vec<BF, C::HostAllocator>>>,
+pub(crate) struct StageTwoOutput<'a> {
+    pub(crate) trace_holder: TraceHolder<BF>,
+    pub(crate) lookup_challenges: Option<Arc<Mutex<Box<LookupChallenges, HostAllocator>>>>,
+    pub(crate) last_row: Option<Arc<Vec<BF, HostAllocator>>>,
     pub(crate) offset_for_grand_product_poly: usize,
     pub(crate) offset_for_sum_over_delegation_poly: Option<usize>,
     pub(crate) callbacks: Option<Callbacks<'a>>,
 }
 
-impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
+impl<'a> StageTwoOutput<'a> {
     pub fn allocate_trace_evaluations(
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        context: &C,
-    ) -> CudaResult<Self>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
         let log_domain_size = trace_len.trailing_zeros();
@@ -69,13 +68,10 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         seed: Arc<Mutex<Seed>>,
         circuit: &CompiledCircuitArtifact<BF>,
         cached_data: &ProverCachedData,
-        setup: &SetupPrecomputations<C>,
-        stage_1_output: &mut StageOneOutput<C>,
-        context: &C,
-    ) -> CudaResult<()>
-    where
-        C::HostAllocator: 'a,
-    {
+        setup: &SetupPrecomputations,
+        stage_1_output: &mut StageOneOutput,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
         let log_domain_size = trace_len.trailing_zeros();
@@ -84,7 +80,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let mut callbacks = Callbacks::new();
         let lookup_challenges = Arc::new(Mutex::new(Box::<LookupChallenges, _>::new_in(
             Default::default(),
-            C::HostAllocator::default(),
+            HostAllocator::default(),
         )));
         let stream = context.get_exec_stream();
         let lookup_challenges_clone = lookup_challenges.clone();
@@ -95,7 +91,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
             let mut guard = seed_clone.lock().unwrap();
             Transcript::draw_randomness(&mut guard, &mut transcript_challenges);
-            let mut it = transcript_challenges.array_chunks::<4>();
+            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
             let linearization_challenges = std::array::from_fn(|_| get_challenge());
@@ -121,13 +117,38 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let trace_holder = &mut self.trace_holder;
         let trace = trace_holder.get_evaluations_mut();
         let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
-        let num_e4_scratch_elems = get_stage_2_e4_scratch_elems(trace_len, circuit);
-        let mut d_alloc_e4_scratch = context.alloc(num_e4_scratch_elems)?;
-        let cub_scratch_bytes = get_stage_2_cub_scratch_bytes(trace_len, num_stage_2_bf_cols)?;
-        let mut d_alloc_scratch_for_cub_ops = context.alloc(cub_scratch_bytes)?;
-        let num_bf_scratch_elems = get_stage_2_bf_scratch_elems(num_stage_2_bf_cols);
-        let mut d_alloc_scratch_for_col_sums = context.alloc(num_bf_scratch_elems)?;
-        let mut d_lookup_challenges = context.alloc(1)?;
+        let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
+        let mut d_alloc_e4_scratch =
+            context.alloc(num_e4_scratch_elems, AllocationPlacement::BestFit)?;
+        let (cub_scratch_bytes, batch_reduce_intermediate_elems) =
+            get_stage_2_cub_and_batch_reduce_intermediate_scratch(
+                trace_len,
+                num_stage_2_bf_cols,
+                cached_data.handle_delegation_requests,
+                cached_data.process_delegations,
+                context.get_device_properties(),
+            )?;
+        let mut d_alloc_scratch_for_cub_ops =
+            context.alloc(cub_scratch_bytes, AllocationPlacement::BestFit)?;
+        let mut maybe_batch_reduce_intermediates_alloc = if batch_reduce_intermediate_elems > 0 {
+            let alloc = context.alloc(
+                batch_reduce_intermediate_elems,
+                AllocationPlacement::BestFit,
+            )?;
+            Some(alloc)
+        } else {
+            None
+        };
+        let mut maybe_batch_reduce_intermediates: Option<&mut DeviceSlice<BF>> =
+            if let Some(ref mut d_alloc) = maybe_batch_reduce_intermediates_alloc {
+                Some(d_alloc)
+            } else {
+                None
+            };
+        let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
+        let mut d_alloc_scratch_for_col_sums =
+            context.alloc(col_sums_scratch_elems, AllocationPlacement::BestFit)?;
+        let mut d_lookup_challenges = context.alloc(1, AllocationPlacement::BestFit)?;
         let guard = lookup_challenges.lock().unwrap();
         memory_copy_async(
             d_lookup_challenges.deref_mut(),
@@ -148,6 +169,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             &mut d_stage_2_cols,
             &mut d_alloc_e4_scratch,
             &mut d_alloc_scratch_for_cub_ops,
+            &mut maybe_batch_reduce_intermediates,
             &mut d_alloc_scratch_for_col_sums,
             &d_lookup_challenges[0],
             cached_data,
@@ -155,17 +177,25 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
             circuit.total_tables_size,
             log_domain_size,
             stream,
+            context.get_device_properties(),
         )?;
-        drop(generic_lookup_mappings);
+        generic_lookup_mappings.free();
+        d_alloc_e4_scratch.free();
+        d_alloc_scratch_for_cub_ops.free();
+        if let Some(allocation) = maybe_batch_reduce_intermediates_alloc {
+            allocation.free();
+        }
+        d_alloc_scratch_for_col_sums.free();
+        d_lookup_challenges.free();
         trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;
         trace_holder.produce_tree_caps(context)?;
-        let mut d_last_row = context.alloc(num_stage_2_cols)?;
+        let mut d_last_row = context.alloc(num_stage_2_cols, AllocationPlacement::BestFit)?;
         let last_row_src =
             DeviceMatrixChunk::new(trace_holder.get_evaluations(), trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
-        let mut last_row = Vec::with_capacity_in(num_stage_2_cols, C::HostAllocator::default());
+        let mut last_row = Vec::with_capacity_in(num_stage_2_cols, HostAllocator::default());
         unsafe { last_row.set_len(num_stage_2_cols) };
         memory_copy_async(&mut last_row, d_last_row.deref(), stream)?;
         let last_row = Arc::new(last_row);

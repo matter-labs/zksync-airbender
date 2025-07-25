@@ -1,5 +1,5 @@
 use super::callbacks::Callbacks;
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::pow::PowOutput;
 use super::queries::QueriesOutput;
 use super::setup::SetupPrecomputations;
@@ -26,32 +26,32 @@ use prover::transcript::Seed;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-pub struct ProofJob<'a, C: ProverContext> {
+pub struct ProofJob<'a> {
     ranges: Vec<device_tracing::Range<'a>>,
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     external_values: ExternalValues,
     public_inputs: Arc<Mutex<Vec<BF>>>,
-    witness_tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    memory_tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    setup_tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    stage_2_tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    stage_2_last_row: Arc<Vec<BF, C::HostAllocator>>,
+    witness_tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    memory_tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    setup_tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    stage_2_tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    stage_2_last_row: Arc<Vec<BF, HostAllocator>>,
     stage_2_offset_for_memory_grand_product_poly: usize,
     stage_2_offset_for_delegation_argument_poly: Option<usize>,
-    quotient_tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    evaluations_at_random_points: Arc<Vec<E4, C::HostAllocator>>,
-    deep_poly_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
-    intermediate_fri_oracle_caps: Vec<Arc<Vec<Vec<Digest, C::HostAllocator>>>>,
-    last_fri_step_plain_leaf_values: Arc<Vec<Vec<E4, C::HostAllocator>>>,
+    quotient_tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    evaluations_at_random_points: Arc<Vec<E4, HostAllocator>>,
+    deep_poly_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    intermediate_fri_oracle_caps: Vec<Arc<Vec<Vec<Digest, HostAllocator>>>>,
+    last_fri_step_plain_leaf_values: Arc<Vec<Vec<E4, HostAllocator>>>,
     final_monomial_form: Arc<Mutex<Vec<E4>>>,
-    pow_output: PowOutput<C>,
-    queries_output: QueriesOutput<'a, C>,
+    pow_output: PowOutput,
+    queries_output: QueriesOutput<'a>,
     circuit_sequence: u16,
     delegation_type: u16,
 }
 
-impl<'a, C: ProverContext> ProofJob<'a, C> {
+impl<'a> ProofJob<'a> {
     pub fn is_finished(&self) -> CudaResult<bool> {
         self.is_finished_event.query()
     }
@@ -102,11 +102,11 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
         let memory_tree_caps = transform_tree_caps(&memory_tree_caps);
         let setup_tree_caps = transform_tree_caps(&setup_tree_caps);
         let stage_2_tree_caps = transform_tree_caps(&stage_2_tree_caps);
-        let memory_grand_product_accumulator = StageTwoOutput::<C>::get_grand_product_accumulator(
+        let memory_grand_product_accumulator = StageTwoOutput::get_grand_product_accumulator(
             stage_2_offset_for_memory_grand_product_poly,
             &stage_2_last_row,
         );
-        let delegation_argument_accumulator = StageTwoOutput::<C>::get_sum_over_delegation_poly(
+        let delegation_argument_accumulator = StageTwoOutput::get_sum_over_delegation_poly(
             stage_2_offset_for_delegation_argument_poly,
             &stage_2_last_row,
         );
@@ -151,11 +151,11 @@ impl<'a, C: ProverContext> ProofJob<'a, C> {
     }
 }
 
-pub fn prove<'a, C: ProverContext>(
+pub fn prove<'a>(
     circuit: Arc<CompiledCircuitArtifact<BF>>,
     external_values: ExternalValues,
-    setup: &mut SetupPrecomputations<C>,
-    tracing_data_transfer: TracingDataTransfer<'a, C>,
+    setup: &mut SetupPrecomputations,
+    tracing_data_transfer: TracingDataTransfer<'a>,
     twiddles: &Twiddles<Mersenne31Complex, impl GoodAllocator>,
     lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     circuit_sequence: usize,
@@ -164,13 +164,13 @@ pub fn prove<'a, C: ProverContext>(
     num_queries: usize,
     pow_bits: u32,
     external_pow_nonce: Option<u64>,
-    context: &C,
-) -> CudaResult<ProofJob<'a, C>>
+    context: &ProverContext,
+) -> CudaResult<ProofJob<'a>>
 where
-    C::HostAllocator: 'a,
+    HostAllocator: 'a,
 {
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("initial")?;
+    context.log_gpu_mem_usage("initial");
 
     let trace_len = circuit.trace_len;
     assert!(trace_len.is_power_of_two());
@@ -207,7 +207,7 @@ where
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_1.allocate_trace_holders")?;
+    context.log_gpu_mem_usage("after stage_1.allocate_trace_holders");
 
     let mut stage_2_output = StageTwoOutput::allocate_trace_evaluations(
         &circuit,
@@ -216,7 +216,7 @@ where
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_2.allocate_trace_evaluations")?;
+    context.log_gpu_mem_usage("after stage_2.allocate_trace_evaluations");
 
     // witness_generation
     let witness_generation_range = device_tracing::Range::new("witness_generation")?;
@@ -230,7 +230,7 @@ where
     )?;
     witness_generation_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after generate_witness")?;
+    context.log_gpu_mem_usage("after generate_witness");
 
     // stage 1
     let stage_1_range = device_tracing::Range::new("stage_1")?;
@@ -238,12 +238,12 @@ where
     stage_1_output.commit_witness(&circuit, context)?;
     stage_1_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_1")?;
+    context.log_gpu_mem_usage("after stage_1");
 
     setup.trace_holder.produce_tree_caps(context)?;
 
     // seed
-    let seed = initialize_seed::<C>(
+    let seed = initialize_seed(
         &circuit,
         external_values.clone(),
         circuit_sequence,
@@ -267,7 +267,7 @@ where
     )?;
     stage_2_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_2")?;
+    context.log_gpu_mem_usage("after stage_2");
 
     // stage 3
     let stage_3_range = device_tracing::Range::new("stage_3")?;
@@ -288,7 +288,7 @@ where
     )?;
     stage_3_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_3")?;
+    context.log_gpu_mem_usage("after stage_3");
 
     // stage 4
     let stage_4_range = device_tracing::Range::new("stage_4")?;
@@ -309,7 +309,7 @@ where
     )?;
     stage_4_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_4 ")?;
+    context.log_gpu_mem_usage("after stage_4 ");
 
     // stage 5
     let stage_5_range = device_tracing::Range::new("stage_5")?;
@@ -327,7 +327,7 @@ where
     )?;
     stage_5_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after stage_5 ")?;
+    context.log_gpu_mem_usage("after stage_5 ");
 
     // pow
     let pow_range = device_tracing::Range::new("pow")?;
@@ -341,7 +341,7 @@ where
     )?;
     pow_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after pow ")?;
+    context.log_gpu_mem_usage("after pow ");
 
     // pow
     let queries_range = device_tracing::Range::new("queries")?;
@@ -362,7 +362,7 @@ where
     )?;
     queries_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_mem_pool_stats("after queries")?;
+    context.log_gpu_mem_usage("after queries");
 
     // ensure no transfer spilling back to previously scheduled proofs
     {
@@ -428,18 +428,18 @@ where
     Ok(proof_job)
 }
 
-fn initialize_seed<'a, C: ProverContext>(
+fn initialize_seed<'a>(
     circuit: &Arc<CompiledCircuitArtifact<Mersenne31Field>>,
     external_values: ExternalValues,
     circuit_sequence: usize,
     delegation_processing_type: u16,
-    setup: &SetupPrecomputations<C>,
-    stage_1_output: &StageOneOutput<C>,
+    setup: &SetupPrecomputations,
+    stage_1_output: &StageOneOutput,
     callbacks: &mut Callbacks<'a>,
     stream: &CudaStream,
 ) -> CudaResult<Arc<Mutex<Seed>>>
 where
-    C::HostAllocator: 'a,
+    HostAllocator: 'a,
 {
     let seed = Arc::new(Mutex::new(Seed(Default::default())));
     let seed_clone = seed.clone();

@@ -386,12 +386,12 @@ fn should_stop_recursion(proof_metadata: &ProofMetadata) -> bool {
 
 // For now, we share the setup cache, only for GPU (as we really care for performance there).
 #[cfg(feature = "gpu")]
-pub struct GpuSharedState<'a> {
-    pub prover: gpu_prover::execution::prover::ExecutionProver<'a, usize>,
+pub struct GpuSharedState {
+    pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
 }
 
 #[cfg(feature = "gpu")]
-impl<'a> GpuSharedState<'a> {
+impl GpuSharedState {
     const MAIN_BINARY_KEY: usize = 0;
     const RECURSION_BINARY_KEY: usize = 1;
 

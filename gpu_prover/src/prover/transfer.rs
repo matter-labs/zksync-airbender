@@ -8,28 +8,26 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-pub struct Transfer<'a, C: ProverContext> {
+pub struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
     pub(crate) transferred: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
-    _phantom: std::marker::PhantomData<C>,
 }
 
-impl<'a, C: ProverContext> Transfer<'a, C> {
+impl<'a> Transfer<'a> {
     pub(crate) fn new() -> CudaResult<Self> {
         Ok(Self {
             allocated: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
             transferred: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
             callbacks: Callbacks::new(),
-            _phantom: std::marker::PhantomData,
         })
     }
 
-    pub(crate) fn record_allocated(&self, context: &C) -> CudaResult<()> {
+    pub(crate) fn record_allocated(&self, context: &ProverContext) -> CudaResult<()> {
         self.allocated.record(context.get_exec_stream())
     }
 
-    pub(crate) fn ensure_allocated(&self, context: &C) -> CudaResult<()> {
+    pub(crate) fn ensure_allocated(&self, context: &ProverContext) -> CudaResult<()> {
         context
             .get_h2d_stream()
             .wait_event(&self.allocated, CudaStreamWaitEventFlags::DEFAULT)
@@ -39,7 +37,7 @@ impl<'a, C: ProverContext> Transfer<'a, C> {
         &mut self,
         src: Arc<impl CudaSlice<T> + Send + Sync + ?Sized + 'a>,
         dst: &mut (impl CudaSliceMut<T> + ?Sized),
-        context: &C,
+        context: &ProverContext,
     ) -> CudaResult<()> {
         assert_eq!(src.len(), dst.len());
         self.ensure_allocated(context)?;
@@ -52,11 +50,11 @@ impl<'a, C: ProverContext> Transfer<'a, C> {
         self.callbacks.schedule(f, stream)
     }
 
-    pub(crate) fn record_transferred(&self, context: &C) -> CudaResult<()> {
+    pub(crate) fn record_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         self.transferred.record(context.get_h2d_stream())
     }
 
-    pub fn ensure_transferred(&self, context: &C) -> CudaResult<()> {
+    pub fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         context
             .get_exec_stream()
             .wait_event(&self.transferred, CudaStreamWaitEventFlags::DEFAULT)
@@ -66,14 +64,15 @@ impl<'a, C: ProverContext> Transfer<'a, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prover::context::{MemPoolProverContext, ProverContextConfig};
+    use crate::allocator::tracker::AllocationPlacement;
+    use crate::prover::context::ProverContextConfig;
 
     #[test]
     fn test_transfer() -> CudaResult<()> {
-        let context = MemPoolProverContext::new(&ProverContextConfig::default())?;
+        let context = ProverContext::new(&ProverContextConfig::default())?;
         let src = Arc::new(vec![0; 1024]);
         let mut transfer = Transfer::new()?;
-        let mut dst = context.alloc(1024)?;
+        let mut dst = context.alloc(1024, AllocationPlacement::BestFit)?;
         transfer.record_allocated(&context)?;
         transfer.schedule(src, &mut dst, &context)?;
         transfer.record_transferred(&context)?;

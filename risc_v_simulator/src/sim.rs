@@ -231,19 +231,21 @@ mod diag {
                 unit_data: HashMap::new(),
             };
 
-            if let Some(d) = config.diagnostics
-                && let Some(p) = d.profiler_config
-            {
-                Self {
-                    symbol_info: SymbolInfo::new(d.symbols_path),
-                    frequency_recip: p.frequency_recip,
-                    reverse_graph: p.reverse_graph,
-                    output_path: p.output_path,
-                    stacktraces: StacktraceSet::new(),
-                    dwarf_cache,
-                    stats: ProfilerStats::default(),
+            if let Some(d) = config.diagnostics {
+                if let Some(p) = d.profiler_config {
+                    Self {
+                        symbol_info: SymbolInfo::new(d.symbols_path),
+                        frequency_recip: p.frequency_recip,
+                        reverse_graph: p.reverse_graph,
+                        output_path: p.output_path,
+                        stacktraces: StacktraceSet::new(),
+                        dwarf_cache,
+                        stats: ProfilerStats::default(),
+                    }
+                    .to(Some)
+                } else {
+                    None
                 }
-                .to(Some)
             } else {
                 None
             }

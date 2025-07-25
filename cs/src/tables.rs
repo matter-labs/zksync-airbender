@@ -796,7 +796,6 @@ impl TableType {
             TableType::TruncateShift => {
                 LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
             }
-
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -1641,7 +1640,7 @@ pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,
-        3,
+        2,
         |keys| {
             let a = keys[0].as_u64_reduced();
             let b = keys[1].as_u64_reduced();

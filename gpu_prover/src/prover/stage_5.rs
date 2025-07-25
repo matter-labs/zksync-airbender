@@ -1,6 +1,7 @@
-use super::context::ProverContext;
+use super::context::{DeviceAllocation, HostAllocator, ProverContext};
 use super::stage_4::StageFourOutput;
 use super::{BF, E2, E4};
+use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
 use crate::ops_complex::fold;
 use crate::prover::callbacks::Callbacks;
@@ -21,34 +22,31 @@ use std::iter;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct FRIStep<C: ProverContext> {
-    pub ldes: Vec<C::Allocation<E4>>,
-    pub trees: Vec<C::Allocation<Digest>>,
-    pub tree_caps: Arc<Vec<Vec<Digest, C::HostAllocator>>>,
+pub(crate) struct FRIStep {
+    pub ldes: Vec<DeviceAllocation<E4>>,
+    pub trees: Vec<DeviceAllocation<Digest>>,
+    pub tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
 }
 
-pub(crate) struct StageFiveOutput<'a, C: ProverContext> {
-    pub(crate) fri_oracles: Vec<FRIStep<C>>,
-    pub(crate) last_fri_step_plain_leaf_values: Arc<Vec<Vec<E4, C::HostAllocator>>>,
+pub(crate) struct StageFiveOutput<'a> {
+    pub(crate) fri_oracles: Vec<FRIStep>,
+    pub(crate) last_fri_step_plain_leaf_values: Arc<Vec<Vec<E4, HostAllocator>>>,
     pub(crate) final_monomials: Arc<Mutex<Vec<E4>>>,
     pub(crate) callbacks: Callbacks<'a>,
 }
 
-impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
+impl<'a> StageFiveOutput<'a> {
     pub fn new(
         seed: Arc<Mutex<Seed>>,
-        stage_4_output: &StageFourOutput<C>,
+        stage_4_output: &StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         folding_description: &FoldingDescription,
         num_queries: usize,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         twiddles: &Twiddles<E2, impl GoodAllocator>,
-        context: &C,
-    ) -> CudaResult<Self>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         assert_eq!(log_domain_size, stage_4_output.trace_holder.log_domain_size);
         let log_tree_cap_size = folding_description.total_caps_size_log2 as u32;
         let lde_factor = 1usize << log_lde_factor;
@@ -58,10 +56,10 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             .as_ref()
             .unwrap()
             .taus;
-        let mut taus = Vec::with_capacity_in(taus_ref.len(), C::HostAllocator::default());
+        let mut taus = Vec::with_capacity_in(taus_ref.len(), HostAllocator::default());
         taus.extend_from_slice(taus_ref);
         let taus = Arc::new(Mutex::new(taus));
-        let mut fri_oracles: Vec<FRIStep<C>> = vec![];
+        let mut fri_oracles: Vec<FRIStep> = vec![];
         let mut last_fri_step_plain_leaf_values = Default::default();
         let mut callbacks = Callbacks::new();
         let stream = context.get_exec_stream();
@@ -77,7 +75,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             let log_num_leafs = log_folded_domain_size - next_log_fold;
             let mut ldes = Vec::with_capacity(lde_factor);
             for _ in 0..lde_factor {
-                ldes.push(context.alloc(1 << log_folded_domain_size)?);
+                ldes.push(context.alloc(1 << log_folded_domain_size, AllocationPlacement::Bottom)?);
             }
             let folding_inputs = if i == 0 {
                 &stage_4_output.trace_holder.ldes
@@ -85,8 +83,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 &fri_oracles[i - 1].ldes
             };
             let challenges_len = lde_factor * current_log_fold;
-            let mut h_challenges =
-                Vec::with_capacity_in(challenges_len, C::HostAllocator::default());
+            let mut h_challenges = Vec::with_capacity_in(challenges_len, HostAllocator::default());
             unsafe { h_challenges.set_len(challenges_len) };
             let h_challenges = Arc::new(Mutex::new(h_challenges));
             let seed_clone = seed.clone();
@@ -101,7 +98,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 );
             };
             callbacks.schedule(set_folding_challenges_fn, stream)?;
-            let mut d_challenges = context.alloc(challenges_len)?;
+            let mut d_challenges = context.alloc(challenges_len, AllocationPlacement::BestFit)?;
             memory_copy_async(
                 &mut d_challenges,
                 h_challenges.lock().unwrap().deref(),
@@ -120,6 +117,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                     context,
                 )?;
             }
+            d_challenges.free();
             let expose_all_leafs = if i == oracles_count - 1 {
                 let log_bound = num_queries.next_power_of_two().trailing_zeros();
                 log_num_leafs + 1 - log_lde_factor <= log_bound
@@ -130,7 +128,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 let mut leaf_values = vec![];
                 for d_coset in ldes.iter() {
                     let len = d_coset.len();
-                    let mut h_coset = Vec::with_capacity_in(len, C::HostAllocator::default());
+                    let mut h_coset = Vec::with_capacity_in(len, HostAllocator::default());
                     unsafe { h_coset.set_len(len) };
                     memory_copy_async(&mut h_coset, d_coset, stream)?;
                     leaf_values.push(h_coset);
@@ -156,9 +154,11 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             } else {
                 let mut trees = Vec::with_capacity(lde_factor);
                 for _ in 0..lde_factor {
-                    trees.push(context.alloc(1 << (log_num_leafs + 1))?);
+                    trees.push(
+                        context.alloc(1 << (log_num_leafs + 1), AllocationPlacement::Bottom)?,
+                    );
                 }
-                let mut tree_caps = allocate_tree_caps::<C>(log_lde_factor, log_tree_cap_size);
+                let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size);
                 let next_log_fold = folding_description.folding_sequence[i + 1] as u32;
                 let log_num_leafs = log_folded_domain_size - next_log_fold;
                 let log_cap_size = folding_description.total_caps_size_log2 as u32;
@@ -211,8 +211,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
         let final_monomials = {
             let log_folding_degree = *folding_description.folding_sequence.last().unwrap() as u32;
             let challenges_len = log_folding_degree as usize;
-            let mut h_challenges =
-                Vec::with_capacity_in(challenges_len, C::HostAllocator::default());
+            let mut h_challenges = Vec::with_capacity_in(challenges_len, HostAllocator::default());
             unsafe { h_challenges.set_len(challenges_len) };
             let h_challenges = Arc::new(Mutex::new(h_challenges));
             let seed_clone = seed.clone();
@@ -227,7 +226,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 );
             };
             callbacks.schedule(set_folding_challenges_fn, stream)?;
-            let mut d_challenges = context.alloc(challenges_len)?;
+            let mut d_challenges = context.alloc(challenges_len, AllocationPlacement::BestFit)?;
             memory_copy_async(
                 &mut d_challenges,
                 &h_challenges.lock().unwrap().deref(),
@@ -235,7 +234,8 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             )?;
             let log_folded_domain_size = log_current_domain_size - log_folding_degree;
             let folded_domain_size = 1 << log_folded_domain_size;
-            let mut d_folded_domain = context.alloc(folded_domain_size)?;
+            let mut d_folded_domain =
+                context.alloc(folded_domain_size, AllocationPlacement::BestFit)?;
             Self::fold_coset(
                 log_folding_degree,
                 &d_challenges,
@@ -244,7 +244,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
                 context,
             )?;
             let mut h_folded_domain =
-                Vec::with_capacity_in(folded_domain_size, C::HostAllocator::default());
+                Vec::with_capacity_in(folded_domain_size, HostAllocator::default());
             unsafe { h_folded_domain.set_len(folded_domain_size) };
             memory_copy_async(&mut h_folded_domain, d_folded_domain.deref(), stream)?;
             log_current_domain_size -= log_folding_degree;
@@ -300,7 +300,9 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             [0u32; 4usize.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
         Transcript::draw_randomness(seed, &mut transcript_challenges);
         let coeffs = transcript_challenges
-            .array_chunks::<4>()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .next()
             .unwrap()
             .map(BF::from_nonreduced_u32);
@@ -335,16 +337,16 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
     fn fold_coset(
         log_degree: u32,
         challenges: &DeviceSlice<E4>,
-        input: &C::Allocation<E4>,
-        output: &mut C::Allocation<E4>,
-        context: &C,
+        input: &DeviceAllocation<E4>,
+        output: &mut DeviceAllocation<E4>,
+        context: &ProverContext,
     ) -> CudaResult<()> {
         let log_degree = log_degree as usize;
         assert_eq!(log_degree, challenges.len());
         let domain_size = input.len();
         assert!(domain_size.is_power_of_two());
         let log_domain_size = domain_size.trailing_zeros();
-        let mut temp_alloc: Option<C::Allocation<E4>> = None;
+        let mut temp_alloc: Option<DeviceAllocation<E4>> = None;
         let mut output = Some(output);
         let stream = context.get_exec_stream();
         for i in 0..log_degree {
@@ -359,7 +361,8 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             let dst = if i == log_degree - 1 {
                 output.take().unwrap()
             } else {
-                temp_alloc = Some(context.alloc(1 << log_next_domain_size)?);
+                temp_alloc =
+                    Some(context.alloc(1 << log_next_domain_size, AllocationPlacement::BestFit)?);
                 temp_alloc.as_mut().unwrap()
             };
             fold(&challenges[i], src, dst, 0, stream)?;

@@ -4,6 +4,7 @@ use super::cpu_worker::{
 use super::gpu_manager::{GpuManager, GpuWorkBatch};
 use super::gpu_worker::{
     GpuWorkRequest, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
+    SetupToCache,
 };
 use super::messages::WorkerResult;
 use super::precomputations::CircuitPrecomputationsHost;
@@ -11,7 +12,6 @@ use super::tracer::CycleTracingData;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use crate::cudart::device::get_device_count;
-use crate::prover::context::MemPoolProverContext;
 use crate::prover::context::ProverContext;
 use crate::prover::tracing_data::TracingDataHost;
 use crate::witness::trace_main::MainTraceHost;
@@ -73,9 +73,9 @@ struct BinaryHolder {
     precomputations: CircuitPrecomputationsHost<A>,
 }
 
-pub struct ExecutionProver<'a, K: Debug + Eq + Hash> {
+pub struct ExecutionProver<K: Debug + Eq + Hash> {
     device_count: usize,
-    gpu_manager: GpuManager<MemPoolProverContext<'a>>,
+    gpu_manager: GpuManager,
     worker: Worker,
     wait_group: Option<WaitGroup>,
     binaries: HashMap<K, BinaryHolder>,
@@ -123,7 +123,7 @@ impl<A: GoodAllocator> ChunksCache<A> {
     }
 }
 
-impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
+impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
     ///  Creates a new instance of `ExecutionProver`.
     ///
     /// # Arguments
@@ -185,10 +185,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
         let host_allocations_count = total_gb_needed + device_count * 2;
         info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
-        MemPoolProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22)
-            .unwrap();
+        ProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22).unwrap();
         info!("PROVER host allocator initialized");
-        let gpu_manager = GpuManager::new();
         let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
         for _ in 0..setup_and_teardowns_count {
             let lazy_init_data = Vec::with_capacity_in(max_num_cycles, A::default());
@@ -221,7 +219,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             worker.num_cores
         );
         let wait_group = Some(WaitGroup::new());
-        let binaries = binaries
+        let binaries: HashMap<K, BinaryHolder> = binaries
             .into_iter()
             .map(|b| {
                 let ExecutableBinary {
@@ -250,12 +248,32 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
             })
             .collect();
         info!("PROVER producing precomputations for all delegation circuits");
-        let delegation_circuits_precomputations =
-            setups::all_delegation_circuits_precomputations(&worker)
-                .into_iter()
-                .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
-                .collect();
+        let delegation_circuits_precomputations: HashMap<
+            DelegationCircuitType,
+            CircuitPrecomputationsHost<A>,
+        > = setups::all_delegation_circuits_precomputations(&worker)
+            .into_iter()
+            .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
+            .collect();
         info!("PROVER produced precomputations for all delegation circuits");
+        let mut setups_to_cache = vec![];
+        for value in binaries.values() {
+            let setup = SetupToCache {
+                circuit_type: CircuitType::Main(value.circuit_type),
+                precomputations: value.precomputations.clone(),
+            };
+            setups_to_cache.push(setup);
+        }
+        for (&circuit_type, precomputations) in delegation_circuits_precomputations.iter() {
+            let setup = SetupToCache {
+                circuit_type: CircuitType::Delegation(circuit_type),
+                precomputations: precomputations.clone(),
+            };
+            setups_to_cache.push(setup);
+        }
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager = GpuManager::new(setups_to_cache, gpu_wait_group.clone());
+        gpu_wait_group.wait();
         Self {
             device_count,
             gpu_manager,
@@ -1185,7 +1203,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<'_, K> {
     }
 }
 
-impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<'a, K> {
+impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<K> {
     fn drop(&mut self) {
         trace!("PROVER waiting for all threads to finish");
         self.wait_group.take().unwrap().wait();

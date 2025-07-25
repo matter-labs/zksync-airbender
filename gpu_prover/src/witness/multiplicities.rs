@@ -1,4 +1,5 @@
 use super::BF;
+use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{
     DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl, MutPtrAndStride,
     PtrAndStride,
@@ -32,10 +33,10 @@ cuda_kernel!(GenerateMultiplicities,
     )
 );
 
-pub(crate) fn generate_generic_lookup_multiplicities<C: ProverContext>(
+pub(crate) fn generate_generic_lookup_multiplicities(
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     multiplicities: &mut impl DeviceMatrixMutImpl<BF>,
-    context: &C,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     let stride = lookup_mapping.stride();
     assert!(stride.is_power_of_two());
@@ -48,7 +49,8 @@ pub(crate) fn generate_generic_lookup_multiplicities<C: ProverContext>(
     )?;
     let lookup_mapping_slice = lookup_mapping.slice();
     let lookup_mapping_size = lookup_mapping_slice.len();
-    let mut sorted_lookup_mapping = context.alloc(lookup_mapping_size)?;
+    let mut sorted_lookup_mapping =
+        context.alloc(lookup_mapping_size, AllocationPlacement::BestFit)?;
     assert!(lookup_mapping_size <= u32::MAX as usize);
     let lookup_mapping_size = lookup_mapping_size as u32;
     let lookup_mapping_bits_count = multiplicities
@@ -62,8 +64,10 @@ pub(crate) fn generate_generic_lookup_multiplicities<C: ProverContext>(
         0,
         lookup_mapping_bits_count,
     )?;
-    let mut mapping_sort_temp_storage =
-        context.alloc::<u8>(lookup_mapping_sort_temp_storage_size)?;
+    let mut mapping_sort_temp_storage = context.alloc::<u8>(
+        lookup_mapping_sort_temp_storage_size,
+        AllocationPlacement::BestFit,
+    )?;
     sort_keys(
         false,
         &mut mapping_sort_temp_storage,
@@ -75,12 +79,14 @@ pub(crate) fn generate_generic_lookup_multiplicities<C: ProverContext>(
     )?;
     drop(mapping_sort_temp_storage);
     let multiplicities_size = multiplicities.slice().len();
-    let mut unique_lookup_mapping = context.alloc(multiplicities_size)?;
-    let mut counts = context.alloc(multiplicities_size)?;
-    let mut num_runs = context.alloc(1)?;
+    let mut unique_lookup_mapping =
+        context.alloc(multiplicities_size, AllocationPlacement::BestFit)?;
+    let mut counts = context.alloc(multiplicities_size, AllocationPlacement::BestFit)?;
+    let mut num_runs = context.alloc(1, AllocationPlacement::BestFit)?;
     let encode_temp_storage_bytes =
         get_encode_temp_storage_bytes::<u32>(lookup_mapping_size as i32)?;
-    let mut encode_temp_storage = context.alloc::<u8>(encode_temp_storage_bytes)?;
+    let mut encode_temp_storage =
+        context.alloc::<u8>(encode_temp_storage_bytes, AllocationPlacement::BestFit)?;
     encode(
         &mut encode_temp_storage,
         &sorted_lookup_mapping,
@@ -125,14 +131,14 @@ cuda_kernel!(GenerateRangeCheckLookupMappings,
     )
 );
 
-pub(crate) fn generate_range_check_multiplicities<C: ProverContext>(
+pub(crate) fn generate_range_check_multiplicities(
     circuit: &CompiledCircuitArtifact<BF>,
     d_setup: &impl DeviceMatrixImpl<BF>,
     d_witness: &mut impl DeviceMatrixMutImpl<BF>,
     d_memory: &impl DeviceMatrixImpl<BF>,
     timestamp_high_from_circuit_sequence: TimestampScalar,
     trace_len: usize,
-    context: &C,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(trace_len.is_power_of_two());
     let num_witness_cols = circuit.witness_layout.total_width;
@@ -223,8 +229,10 @@ pub(crate) fn generate_range_check_multiplicities<C: ProverContext>(
         num_range_check_16_explicit_cols + num_range_check_16_expressions;
     // A circuit with no range check 16s would be strange
     assert!(num_range_check_16_lookup_mapping_cols > 0);
-    let mut d_range_check_16_lookup_mapping_alloc =
-        context.alloc(num_range_check_16_lookup_mapping_cols * trace_len)?;
+    let mut d_range_check_16_lookup_mapping_alloc = context.alloc(
+        num_range_check_16_lookup_mapping_cols * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
     let mut d_range_check_16_lookup_mapping =
         DeviceMatrixMut::new(&mut d_range_check_16_lookup_mapping_alloc, trace_len);
     set_by_val(
@@ -244,8 +252,10 @@ pub(crate) fn generate_range_check_multiplicities<C: ProverContext>(
         2 * expressions_for_shuffle_ram_layout.num_expression_pairs as usize;
     // A circuit with no range check 16s would be strange
     assert!(num_timestamp_lookup_mapping_cols > 0);
-    let mut d_timestamp_lookup_mapping_alloc =
-        context.alloc(num_timestamp_lookup_mapping_cols * trace_len)?;
+    let mut d_timestamp_lookup_mapping_alloc = context.alloc(
+        num_timestamp_lookup_mapping_cols * trace_len,
+        AllocationPlacement::BestFit,
+    )?;
     let mut d_timestamp_lookup_mapping =
         DeviceMatrixMut::new(&mut d_timestamp_lookup_mapping_alloc, trace_len);
     set_by_val(

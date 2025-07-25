@@ -1,9 +1,10 @@
-use super::context::ProverContext;
+use super::context::{HostAllocator, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
 use super::{BF, E2, E4};
+use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::prover::arg_utils::LookupChallenges;
 use crate::prover::callbacks::Callbacks;
@@ -27,12 +28,12 @@ use std::ops::{Deref, DerefMut};
 use std::slice;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct StageThreeOutput<'a, C: ProverContext> {
-    pub(crate) trace_holder: TraceHolder<BF, C>,
+pub(crate) struct StageThreeOutput<'a> {
+    pub(crate) trace_holder: TraceHolder<BF>,
     pub(crate) callbacks: Callbacks<'a>,
 }
 
-impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
+impl<'a> StageThreeOutput<'a> {
     pub fn new(
         seed: Arc<Mutex<Seed>>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
@@ -40,16 +41,13 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         twiddles: &Twiddles<E2, impl GoodAllocator>,
         external_values: ExternalValues,
-        setup: &SetupPrecomputations<C>,
-        stage_1_output: &StageOneOutput<C>,
-        stage_2_output: &StageTwoOutput<C>,
+        setup: &SetupPrecomputations,
+        stage_1_output: &StageOneOutput,
+        stage_2_output: &StageTwoOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        context: &C,
-    ) -> CudaResult<Self>
-    where
-        C::HostAllocator: 'a,
-    {
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         const COSET_INDEX: usize = 1;
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
@@ -73,14 +71,14 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
             .unwrap()
             .coset_offset;
         let mut h_alpha_powers =
-            Vec::with_capacity_in(alpha_powers_count, C::HostAllocator::default());
+            Vec::with_capacity_in(alpha_powers_count, HostAllocator::default());
         unsafe { h_alpha_powers.set_len(alpha_powers_count) };
-        let h_beta_powers = Box::new_in([E4::ZERO; BETA_POWERS_COUNT], C::HostAllocator::default());
-        let mut h_helpers = Vec::with_capacity_in(MAX_HELPER_VALUES, C::HostAllocator::default());
+        let h_beta_powers = Box::new_in([E4::ZERO; BETA_POWERS_COUNT], HostAllocator::default());
+        let mut h_helpers = Vec::with_capacity_in(MAX_HELPER_VALUES, HostAllocator::default());
         unsafe { h_helpers.set_len(MAX_HELPER_VALUES) };
         let h_constants_times_challenges = Box::new_in(
             ConstantsTimesChallenges::default(),
-            C::HostAllocator::default(),
+            HostAllocator::default(),
         );
         let h_alpha_powers = Arc::new(Mutex::new(h_alpha_powers));
         let h_beta_powers = Arc::new(Mutex::new(h_beta_powers));
@@ -109,7 +107,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
                 &mut seed_clone.lock().unwrap(),
                 &mut transcript_challenges,
             );
-            let mut it = transcript_challenges.array_chunks::<4>();
+            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
             let alpha = get_challenge();
@@ -127,11 +125,11 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
                 .lock()
                 .unwrap()
                 .copy_from_slice(&beta_powers);
-            let grand_product_accumulator = StageTwoOutput::<C>::get_grand_product_accumulator(
+            let grand_product_accumulator = StageTwoOutput::get_grand_product_accumulator(
                 stage_2_offset_for_grand_product_poly,
                 &stage_2_last_row_clone,
             );
-            let sum_over_delegation_poly = StageTwoOutput::<C>::get_sum_over_delegation_poly(
+            let sum_over_delegation_poly = StageTwoOutput::get_sum_over_delegation_poly(
                 offset_for_sum_over_delegation_poly,
                 &stage_2_last_row_clone,
             )
@@ -157,10 +155,11 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
             h_helpers_clone.lock().unwrap().copy_from_slice(&helpers);
         };
         callbacks.schedule(get_challenges_and_helpers_fn, stream)?;
-        let mut d_alpha_powers = context.alloc(alpha_powers_count)?;
-        let mut d_beta_powers = context.alloc(BETA_POWERS_COUNT)?;
-        let mut d_helpers = context.alloc(MAX_HELPER_VALUES)?;
-        let mut d_constants_times_challenges_sum = context.alloc(1)?;
+        let mut d_alpha_powers = context.alloc(alpha_powers_count, AllocationPlacement::BestFit)?;
+        let mut d_beta_powers = context.alloc(BETA_POWERS_COUNT, AllocationPlacement::BestFit)?;
+        let mut d_helpers = context.alloc(MAX_HELPER_VALUES, AllocationPlacement::BestFit)?;
+        let mut d_constants_times_challenges_sum =
+            context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             d_alpha_powers.deref_mut(),
             h_alpha_powers.lock().unwrap().deref(),

@@ -1,4 +1,5 @@
 use crate::allocator::allocation_data::StaticAllocationData;
+use crate::allocator::tracker::AllocationPlacement;
 use crate::allocator::{
     ConcurrentInnerStaticAllocatorWrapper, InnerStaticAllocatorWrapper,
     NonConcurrentInnerStaticAllocatorWrapper, StaticAllocation, StaticAllocationBackend,
@@ -87,9 +88,17 @@ impl<T, W: InnerStaticHostAllocatorWrapper> DerefMut
 unsafe impl Allocator for ConcurrentStaticHostAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let len = layout.size();
-        if let Ok(data) = self.inner.lock().unwrap().alloc(len) {
+        if let Ok(data) = self
+            .inner
+            .lock()
+            .unwrap()
+            .alloc(len, AllocationPlacement::BestFit)
+        {
             let ptr = data.ptr;
             assert!(ptr.is_aligned_to(layout.align()));
+            assert_eq!(data.len, len);
+            let len = data.alloc_len;
+            assert_eq!(data.len.next_multiple_of(1 << self.log_chunk_size), len);
             Ok(NonNull::slice_from_raw_parts(ptr, len))
         } else {
             error!("allocation of {len} bytes in ConcurrentStaticHostAllocator failed");
@@ -98,8 +107,9 @@ unsafe impl Allocator for ConcurrentStaticHostAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        let len = layout.size().next_multiple_of(1 << self.log_chunk_size);
-        let data = StaticAllocationData::new(ptr, len);
+        let len = layout.size();
+        let alloc_len = len.next_multiple_of(1 << self.log_chunk_size);
+        let data = StaticAllocationData::new(ptr, len, alloc_len);
         self.inner.lock().unwrap().free(data);
     }
 }

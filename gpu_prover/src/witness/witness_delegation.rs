@@ -4,7 +4,6 @@ use crate::circuit_type::DelegationCircuitType;
 use crate::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
-use crate::prover::context::ProverContext;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -25,9 +24,9 @@ cuda_kernel!(GenerateWitnessDelegationKernel,
 generate_witness_delegation_kernel!(generate_bigint_with_control_witness_kernel);
 generate_witness_delegation_kernel!(generate_blake2_with_compression_witness_kernel);
 
-pub fn generate_witness_values_delegation<C: ProverContext>(
+pub fn generate_witness_values_delegation(
     circuit_type: DelegationCircuitType,
-    trace: &DelegationTraceDevice<C>,
+    trace: &DelegationTraceDevice,
     generic_lookup_tables: &DeviceMatrix<BF>,
     memory: &DeviceMatrix<BF>,
     witness: &mut DeviceMatrixMut<BF>,
