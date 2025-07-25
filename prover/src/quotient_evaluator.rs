@@ -59,10 +59,49 @@ pub fn compute_divisors_trace<A: GoodAllocator>(
                 let powers_of_x = &powers_of_x_ref[range];
 
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    // Prepare batch inversion
+                    // We need to invert 4 values per row:
+                    // 1. (x - omega^0) for first row divisor
+                    // 2. (x - omega^-2) for one before last row divisor
+                    // 3. (x - omega^-1) for last row divisor
+                    // 4. x for last row and zero divisor
+
+                    let batch_size = chunk_size * 4;
+                    let mut to_invert = Vec::with_capacity(batch_size);
+                    let mut tmp_buffer = vec![Mersenne31Complex::ZERO; batch_size];
+
+                    // Collect all values to invert
+                    for i in 0..chunk_size {
+                        let x = powers_of_x[i];
+
+                        // (x - omega^0) = (x - 1)
+                        let mut f = x;
+                        f.sub_assign_base(&Mersenne31Field::ONE);
+                        to_invert.push(f);
+
+                        // (x - omega^-2)
+                        let mut oo = x;
+                        oo.sub_assign(&omega_inv_squared);
+                        to_invert.push(oo);
+
+                        // (x - omega^-1)
+                        let mut ll = x;
+                        ll.sub_assign(&omega_inv);
+                        to_invert.push(ll);
+
+                        // x
+                        to_invert.push(x);
+                    }
+
+                    // Perform batch inversion
+                    batch_inverse_inplace(&mut to_invert, &mut tmp_buffer);
+
+                    // Now distribute the inverted values
                     for i in 0..chunk_size {
                         let trace_view_row: &mut [Mersenne31Field] = trace_view.current_row();
                         let x = powers_of_x[i];
                         let mut dst = trace_view_row.as_mut_ptr().cast::<Mersenne31Complex>();
+
                         // everywhere except last is (x - omega^-1) / (x^n - 1)
                         let mut t = x;
                         t.sub_assign(&omega_inv);
@@ -77,32 +116,30 @@ pub fn compute_divisors_trace<A: GoodAllocator>(
                         dst.write(tt);
                         dst = dst.add(1);
 
-                        // TODO: batch inverse below
+                        // Get inverted values from batch
+                        let base_idx = i * 4;
 
                         // first row is 1 / (x - omega^0)
-                        let mut f = x;
-                        f.sub_assign_base(&Mersenne31Field::ONE);
-                        let f = f.inverse().unwrap();
-                        dst.write(f);
+                        let f_inv = to_invert[base_idx];
+                        dst.write(f_inv);
                         dst = dst.add(1);
 
                         // one before last row is 1/(x - omega^-2)
-                        let mut oo = x;
-                        oo.sub_assign(&omega_inv_squared);
-                        let oo = oo.inverse().unwrap();
-                        dst.write(oo);
+                        let oo_inv = to_invert[base_idx + 1];
+                        dst.write(oo_inv);
                         dst = dst.add(1);
 
-                        // last row is is 1/(x - omega^-1)
-                        let mut ll = x;
-                        ll.sub_assign(&omega_inv);
-                        let ll = ll.inverse().unwrap();
-                        dst.write(ll);
+                        // last row is 1/(x - omega^-1)
+                        let ll_inv = to_invert[base_idx + 2];
+                        dst.write(ll_inv);
                         dst = dst.add(1);
 
-                        // and last row and zero are  1 / x * (x - omega^-1)
-                        let mut tmp = x.inverse().unwrap();
-                        tmp.mul_assign(&ll);
+                        // and last row and zero are 1 / (x * (x - omega^-1))
+                        // ll_inv is already 1/(x - omega^-1), and x_inv is 1/x
+                        // so we need: 1 / (x * (x - omega^-1)) = (1/x) * (1/(x - omega^-1)) = x_inv * ll_inv
+                        let x_inv = to_invert[base_idx + 3];
+                        let mut tmp = x_inv;
+                        tmp.mul_assign(&ll_inv);
                         dst.write(tmp);
 
                         // and go to the next row
