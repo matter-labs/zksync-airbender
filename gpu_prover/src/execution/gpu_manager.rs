@@ -3,7 +3,6 @@ use super::messages::WorkerResult;
 use crate::cudart::device::get_device_count;
 use crate::cudart::result::CudaResult;
 use crate::prover::context::{HostAllocator, ProverContextConfig};
-use crossbeam_channel::internal::SelectHandle;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
@@ -120,6 +119,24 @@ fn gpu_manager(
             .enumerate()
             .map(|(worker_id, r)| (select.recv(r), worker_id))
             .collect();
+        let worker_senders_indexes: HashMap<_, _> = worker_senders
+            .iter()
+            .enumerate()
+            .filter_map(|(worker_id, s)| {
+                let worker_queue = &worker_queues[worker_id];
+                let advance = worker_queue.len() == 2
+                    && worker_queue[0].is_none()
+                    && worker_queue[1].is_some();
+                let flush = worker_queue
+                    .iter()
+                    .any(|item| item.is_some_and(|batch_id| batches_to_flush.contains(&batch_id)));
+                if !work_queue.is_empty() || advance || flush {
+                    Some((select.send(s), worker_id))
+                } else {
+                    None
+                }
+            })
+            .collect();
         let op = select.select();
         match op.index() {
             index if batches_index == Some(index) => {
@@ -183,7 +200,7 @@ fn gpu_manager(
                         _ => unreachable!(),
                     };
                     batch_senders[&batch_id].send(result).unwrap();
-                    if !batch_receivers.contains_key(&batch_id)
+                    if batches_to_flush.contains(&batch_id)
                         && !work_queue
                             .iter()
                             .any(|request| request.batch_id() == batch_id)
@@ -193,9 +210,42 @@ fn gpu_manager(
                             .any(|item| item.is_some_and(|id| id == batch_id))
                     {
                         trace!("BATCH[{batch_id}] GPU_MANAGER batch completed");
+                        assert!(batches_to_flush.remove(&batch_id));
                         batch_senders.remove(&batch_id);
                     }
                 }
+            }
+            index if worker_senders_indexes.contains_key(&index) => {
+                let worker_id = worker_senders_indexes[&index];
+                let worker_sender = &worker_senders[worker_id];
+                let worker_queue = &mut worker_queues[worker_id];
+                let (request, batch_id) = if work_queue.is_empty() {
+                    let advance = worker_queue.len() == 2
+                        && worker_queue[0].is_none()
+                        && worker_queue[1].is_some();
+                    let flush = worker_queue.iter().any(|item| {
+                        item.is_some_and(|batch_id| batches_to_flush.contains(&batch_id))
+                    });
+                    assert!(advance || flush);
+                    trace!(
+                        "GPU_MANAGER {} queue for worker id {worker_id}",
+                        if advance { "advancing" } else { "flushing" }
+                    );
+                    (None, None)
+                } else {
+                    let request = work_queue.pop_front().unwrap();
+                    let batch_id = request.batch_id();
+                    trace!(
+                        "BATCH[{batch_id}] GPU_MANAGER sending {} request to worker id {worker_id}",
+                        match &request {
+                            GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
+                            GpuWorkRequest::Proof(_) => "proof",
+                        }
+                    );
+                    (Some(request), Some(batch_id))
+                };
+                op.send(worker_sender, request).unwrap();
+                worker_queue.push_back(batch_id);
             }
             _ => unreachable!(),
         };
@@ -225,40 +275,6 @@ fn gpu_manager(
                     worker_queues[worker_id].push_back(Some(batch_id));
                 }
                 Err(_) => break,
-            }
-        }
-        if work_queue.is_empty() {
-            for (worker_id, queue) in worker_queues.iter_mut().enumerate() {
-                if queue.len() == 2 && queue[0].is_none() && queue[1].is_some() {
-                    trace!("GPU_MANAGER advancing queue for worker id {worker_id}");
-                    worker_senders[worker_id].send(None).unwrap();
-                    queue.push_back(None);
-                }
-            }
-        }
-        if !batches_to_flush.is_empty() {
-            for batch_id in batches_to_flush.clone().into_iter() {
-                if !worker_queues
-                    .iter()
-                    .flatten()
-                    .any(|&id| id == Some(batch_id))
-                {
-                    assert!(batches_to_flush.remove(&batch_id));
-                    trace!("BATCH[{batch_id}] GPU_MANAGER batch flushed");
-                }
-            }
-        }
-        if !batches_to_flush.is_empty() {
-            for (worker_id, sender) in worker_senders.iter().enumerate() {
-                if sender.is_ready()
-                    && worker_queues[worker_id].iter().any(|item| {
-                        item.is_some_and(|batch_id| batches_to_flush.contains(&batch_id))
-                    })
-                {
-                    trace!("GPU_MANAGER flushing worker id {worker_id}");
-                    sender.send(None).unwrap();
-                    worker_queues[worker_id].push_back(None);
-                }
             }
         }
         if batches_receiver.is_none() && batch_senders.is_empty() {
