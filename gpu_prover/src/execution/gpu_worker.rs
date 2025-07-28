@@ -408,7 +408,7 @@ fn gpu_worker(
             None
         };
         results.send(result).unwrap();
-        std::thread::sleep(std::time::Duration::new(1, 0));
+        // std::thread::sleep(std::time::Duration::new(2, 0));
     }
     assert!(current_phase_one.is_none());
     assert!(current_phase_two.is_none());
