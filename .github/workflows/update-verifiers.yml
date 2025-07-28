@@ -23,6 +23,8 @@ jobs:
 
       - name: Fail if any files were modified
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git status --porcelain
           git diff --name-only
           if [ -n "$(git diff --name-only)" ]; then
