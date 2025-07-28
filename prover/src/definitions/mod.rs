@@ -124,7 +124,7 @@ impl ExternalChallenges {
                         .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
-                let mut it = transcript_challenges.array_chunks::<4>();
+                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
                 let memory_argument_linearization_challenges: [Mersenne31Quartic;
                     NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
                     Mersenne31Quartic::from_coeffs_in_base(
@@ -158,7 +158,7 @@ impl ExternalChallenges {
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
-                let mut it = transcript_challenges.array_chunks::<4>();
+                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
                 let memory_argument_linearization_challenges: [Mersenne31Quartic;
                     NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
                     Mersenne31Quartic::from_coeffs_in_base(

@@ -91,7 +91,7 @@ impl<'a> StageTwoOutput<'a> {
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
             let mut guard = seed_clone.lock().unwrap();
             Transcript::draw_randomness(&mut guard, &mut transcript_challenges);
-            let mut it = transcript_challenges.array_chunks::<4>();
+            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
             let linearization_challenges = std::array::from_fn(|_| get_challenge());

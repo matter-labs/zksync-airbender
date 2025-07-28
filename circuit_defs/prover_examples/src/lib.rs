@@ -1,7 +1,6 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
-#![feature(array_chunks)]
 
 use std::alloc::Global;
 use std::collections::HashMap;
@@ -704,7 +703,7 @@ mod test {
         let mut buffer = vec![];
         file.read_to_end(&mut buffer).expect("must read the file");
         let mut binary = vec![];
-        for el in buffer.array_chunks::<4>() {
+        for el in buffer.as_chunks::<4>().0 {
             binary.push(u32::from_le_bytes(*el));
         }
         setups::pad_bytecode_for_proving(&mut binary);

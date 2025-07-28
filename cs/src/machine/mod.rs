@@ -430,7 +430,9 @@ mod test {
         let isa = rv_isa::rv32;
         assert!(binary.len() % 4 == 0);
         let binary: Vec<_> = binary
-            .array_chunks::<4>()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|el| u32::from_le_bytes(*el))
             .collect();
         let unsupported_places =

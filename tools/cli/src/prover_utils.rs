@@ -6,7 +6,7 @@ use execution_utils::{
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use trace_and_split::FinalRegisterValue;
-use verifier_common::parse_field_els_as_u32_checked;
+use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
 use prover::{
     cs::utils::split_timestamp,
@@ -742,8 +742,10 @@ pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<See
         return None;
     }
 
-    let end_pc =
-        parse_field_els_as_u32_checked([last_proof.public_inputs[2], last_proof.public_inputs[3]]);
+    let end_pc = parse_field_els_as_u32_from_u16_limbs_checked([
+        last_proof.public_inputs[2],
+        last_proof.public_inputs[3],
+    ]);
 
     // We have to compute the the hash of the final program counter, and program binary (setup tree).
     let mut hasher = Blake2sBufferingTranscript::new();

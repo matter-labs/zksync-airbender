@@ -300,7 +300,9 @@ impl<'a> StageFiveOutput<'a> {
             [0u32; 4usize.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
         Transcript::draw_randomness(seed, &mut transcript_challenges);
         let coeffs = transcript_challenges
-            .array_chunks::<4>()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .next()
             .unwrap()
             .map(BF::from_nonreduced_u32);

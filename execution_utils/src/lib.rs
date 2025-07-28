@@ -1,6 +1,5 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
-#![feature(array_chunks)]
 #![feature(allocator_api)]
 
 use std::collections::BTreeMap;
@@ -87,7 +86,9 @@ pub fn universal_circuit_no_delegation_verifier_vk() -> VerificationKey {
 
 pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
     let mut bytecode = binary
-        .array_chunks::<4>()
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     trace_and_split::setups::pad_bytecode_for_proving(&mut bytecode);
@@ -259,7 +260,9 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
     assert!(binary.len() % 4 == 0);
 
     let binary: Vec<u32> = binary
-        .array_chunks::<4>()
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -425,7 +428,9 @@ mod test {
         let text_section = BASE_PROGRAM_TEXT_SECTION;
         assert!(text_section.len() % 4 == 0);
         let text_section: Vec<u32> = text_section
-            .array_chunks::<4>()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|el| u32::from_le_bytes(*el))
             .collect();
 

@@ -4,6 +4,8 @@
 
 set -e  # Exit on any error
 
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+
 # create a fresh docker
 docker build -t airbender-verifiers  -f tools/reproduce/Dockerfile .
 

@@ -1,14 +1,14 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(array_chunks)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(allocator_api)]
 #![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use core::mem::MaybeUninit;
-
+#[cfg(any(test, feature = "proof_utils"))]
 extern crate alloc;
+
+use core::mem::MaybeUninit;
 use field::{Mersenne31Field, Mersenne31Quartic};
 use prover::definitions::*;
 
@@ -144,7 +144,7 @@ impl<const NUM_STATE_ELEMENTS: usize> ProofPublicInputs<NUM_STATE_ELEMENTS> {
     }
 }
 
-pub fn parse_field_els_as_u32_checked(input: [Mersenne31Field; 2]) -> u32 {
+pub fn parse_field_els_as_u32_from_u16_limbs_checked(input: [Mersenne31Field; 2]) -> u32 {
     let [low, high] = input;
     let low = low.to_reduced_u32();
     let high = high.to_reduced_u32();

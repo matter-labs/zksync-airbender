@@ -1,5 +1,4 @@
 #![expect(warnings)]
-#![feature(array_chunks)]
 
 use ::prover::*;
 use prover::cs::one_row_compiler::*;

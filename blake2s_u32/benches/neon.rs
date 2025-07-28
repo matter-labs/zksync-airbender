@@ -1,4 +1,3 @@
-#![feature(array_chunks)]
 #[cfg(target_arch = "aarch64")]
 use blake2s_u32::vectorized_impls::arm_neon;
 use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
@@ -11,7 +10,7 @@ fn naive(crit: &mut Criterion) {
     crit.bench_function("Naive impl reduced rounds", |b| {
         b.iter(|| {
             hasher.reset();
-            for chunk in data.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>() {
+            for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
                 hasher.absorb::<true>(&chunk);
             }
         });
@@ -20,7 +19,7 @@ fn naive(crit: &mut Criterion) {
     crit.bench_function("Naive impl full rounds", |b| {
         b.iter(|| {
             hasher.reset();
-            for chunk in data.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>() {
+            for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
                 hasher.absorb::<false>(&chunk);
             }
         });
@@ -35,7 +34,7 @@ fn neon(crit: &mut Criterion) {
     crit.bench_function("Neon impl reduced rounds", |b| {
         b.iter(|| {
             hasher.reset();
-            for chunk in data.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>() {
+            for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
                 hasher.absorb::<true>(&chunk);
             }
         });
@@ -44,7 +43,7 @@ fn neon(crit: &mut Criterion) {
     crit.bench_function("Neon impl full rounds", |b| {
         b.iter(|| {
             hasher.reset();
-            for chunk in data.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>() {
+            for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
                 hasher.absorb::<false>(&chunk);
             }
         });
