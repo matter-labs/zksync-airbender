@@ -1,0 +1,40 @@
+name: Update verifiers
+
+on:
+  pull_request:
+    types: [ synchronize, opened ]
+
+
+permissions:
+  contents: write
+  packages: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  update_verifiers:
+    runs-on: [ matterlabs-ci-runner-highmem ]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Build fresh verifiers
+        run: |
+          tools/reproduce/reproduce.sh
+
+      - name: Fail if any files were modified
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git status --porcelain
+          git diff --name-only
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ The following files were modified."
+            git diff --name-only
+
+            git stash push -m "local-changes"
+            git fetch origin ${{ github.head_ref }}
+            git checkout ${{ github.head_ref }}
+            git stash pop || echo "Nothing to pop"
+            git commit -a -m "chore: auto-update verifier binaries"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
