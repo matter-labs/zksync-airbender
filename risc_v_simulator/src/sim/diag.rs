@@ -58,16 +58,14 @@ impl Profiler {
         };
 
         config.diagnostics.and_then(|d| {
-            d.profiler_config.map(|p| {
-                Self {
-                    symbol_info: SymbolInfo::new(d.symbols_path),
-                    frequency_recip: p.frequency_recip,
-                    reverse_graph: p.reverse_graph,
-                    output_path: p.output_path,
-                    stacktraces: StacktraceSet::new(),
-                    dwarf_cache,
-                    stats: ProfilerStats::default(),
-                }
+            d.profiler_config.map(|p| Self {
+                symbol_info: SymbolInfo::new(d.symbols_path),
+                frequency_recip: p.frequency_recip,
+                reverse_graph: p.reverse_graph,
+                output_path: p.output_path,
+                stacktraces: StacktraceSet::new(),
+                dwarf_cache,
+                stats: ProfilerStats::default(),
             })
         })
     }

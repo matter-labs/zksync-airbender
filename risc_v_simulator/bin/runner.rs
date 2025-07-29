@@ -1,6 +1,5 @@
 use risc_v_simulator::{runner::run_simple_simulator, sim::SimulatorConfig};
 
-
 pub fn main() {
     // let args: Vec<String> = std::env::args().collect();
     // dbg!(&args);
