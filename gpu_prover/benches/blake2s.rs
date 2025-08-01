@@ -7,13 +7,11 @@ use era_cudart::memory::DeviceAllocation;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use std::cell::RefCell;
-use std::mem::size_of;
-use std::ops::DerefMut;
-
 use gpu_prover::blake2s::*;
 use gpu_prover::field::BaseField;
 use gpu_prover::ops_simple::set_by_val;
+use std::cell::RefCell;
+use std::mem::size_of;
 
 type BF = BaseField;
 type LeavesFn = fn(&DeviceSlice<BF>, &mut DeviceSlice<Digest>, u32, &CudaStream) -> CudaResult<()>;
@@ -129,7 +127,7 @@ fn pow(c: &mut Criterion<CudaMeasurement>) {
     let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
     let mut d_result = DeviceAllocation::alloc(1).unwrap();
     let stream = CudaStream::default();
-    set_by_val(42u32, d_seed.deref_mut(), &stream).unwrap();
+    set_by_val(42u32, &mut d_seed, &stream).unwrap();
     let mut group = c.benchmark_group("pow");
     for bits_count in MIN_BITS_COUNT..=MAX_BITS_COUNT {
         let max_nonce = 1 << bits_count;

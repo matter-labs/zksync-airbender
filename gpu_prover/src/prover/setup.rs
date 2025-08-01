@@ -1,9 +1,10 @@
-use super::context::{HostAllocator, ProverContext};
+use super::context::ProverContext;
 use super::trace_holder::TraceHolder;
+use super::transfer::Transfer;
 use super::BF;
-use crate::prover::transfer::Transfer;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::result::CudaResult;
+use fft::GoodAllocator;
 use std::sync::Arc;
 
 pub struct SetupPrecomputations<'a> {
@@ -43,7 +44,7 @@ impl<'a> SetupPrecomputations<'a> {
 
     pub fn schedule_transfer(
         &mut self,
-        trace: Arc<Vec<BF, HostAllocator>>,
+        trace: Arc<Vec<BF, impl GoodAllocator + 'a>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let dst = self.trace_holder.get_evaluations_mut();

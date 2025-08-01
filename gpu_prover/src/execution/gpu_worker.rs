@@ -1,9 +1,10 @@
 use super::messages::WorkerResult;
 use super::precomputations::CircuitPrecomputationsHost;
+use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
-use crate::prover::context::{HostAllocator, ProverContext, ProverContextConfig};
+use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
@@ -89,10 +90,12 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
 pub fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>,
+    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator + 'static>>>,
-    results: Sender<Option<WorkerResult<HostAllocator>>>,
+    requests: Receiver<
+        Option<GpuWorkRequest<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
+    >,
+    results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
         let result = gpu_worker(
@@ -122,16 +125,16 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
 #[derive(Clone)]
 struct SetupHolder<'a> {
     pub setup: Rc<RefCell<SetupPrecomputations<'a>>>,
-    pub trace: Arc<Vec<BF, HostAllocator>>,
+    pub trace: Arc<Vec<BF, ConcurrentStaticHostAllocator>>,
 }
 
 fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>,
+    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<HostAllocator, impl GoodAllocator>>>,
-    results: Sender<Option<WorkerResult<HostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator, impl GoodAllocator>>>,
+    results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;

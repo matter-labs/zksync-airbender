@@ -1,4 +1,5 @@
 use super::arg_utils::*;
+use super::context::DeviceProperties;
 use crate::device_structures::{
     DeviceMatrix, DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut,
     DeviceMatrixChunkMutImpl, DeviceMatrixMut, MutPtrAndStride, PtrAndStride,
@@ -11,7 +12,6 @@ use crate::ops_cub::device_reduce::{
 };
 use crate::ops_cub::device_scan::{get_scan_temp_storage_bytes, scan, ScanOperation};
 use crate::ops_simple::{set_to_zero, sub_into_x};
-use crate::prover::context::DeviceProperties;
 use crate::utils::WARP_SIZE;
 
 use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE, TIMESTAMP_COLUMNS_NUM_BITS};

@@ -1,4 +1,6 @@
-use super::context::{DeviceAllocation, DeviceProperties, HostAllocator, ProverContext};
+use super::context::{
+    DeviceAllocation, DeviceProperties, HostAllocation, ProverContext, UnsafeAccessor,
+};
 use super::BF;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
@@ -16,13 +18,13 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 use era_cudart::stream::CudaStream;
-use fft::GoodAllocator;
 use field::Field;
 use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use prover::prover_stages::Transcript;
+use prover::transcript::Seed;
 use std::mem::size_of;
-use std::ops::DerefMut;
-use std::sync::Arc;
+use std::ops::{Deref, DerefMut};
 
 pub struct TraceHolder<T> {
     pub(crate) log_domain_size: u32,
@@ -33,7 +35,7 @@ pub struct TraceHolder<T> {
     pub(crate) padded_to_even: bool,
     pub(crate) ldes: Vec<DeviceAllocation<T>>,
     pub(crate) trees: Vec<DeviceAllocation<Digest>>,
-    pub(crate) tree_caps: Option<Arc<Vec<Vec<Digest, HostAllocator>>>>,
+    pub(crate) tree_caps: Option<Vec<HostAllocation<[Digest]>>>,
 }
 
 impl TraceHolder<BF> {
@@ -181,7 +183,8 @@ impl<T> TraceHolder<T> {
         if self.tree_caps.is_some() {
             return Ok(());
         }
-        let mut tree_caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size);
+        let mut tree_caps =
+            allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
         transfer_tree_caps(
             &self.trees,
             &mut tree_caps,
@@ -189,12 +192,30 @@ impl<T> TraceHolder<T> {
             self.log_tree_cap_size,
             context.get_exec_stream(),
         )?;
-        self.tree_caps = Some(Arc::new(tree_caps));
+        self.tree_caps = Some(tree_caps);
         Ok(())
     }
 
-    pub fn get_tree_caps(&self) -> Arc<Vec<Vec<Digest, HostAllocator>>> {
-        self.tree_caps.clone().unwrap()
+    pub fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
+        self.tree_caps
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(HostAllocation::get_accessor)
+            .collect_vec()
+    }
+
+    pub fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
+        let tree_caps_accessors = self.get_tree_caps_accessors();
+        let seed_accessor = seed.get_mut_accessor();
+        move || unsafe {
+            let tree_caps = tree_caps_accessors
+                .iter()
+                .map(|cap| cap.get())
+                .collect_vec();
+            let input = flatten_tree_caps(&tree_caps).collect_vec();
+            Transcript::commit_with_seed(seed_accessor.get_mut(), &input);
+        }
     }
 }
 
@@ -235,14 +256,14 @@ pub(crate) fn allocate_trees(
 pub(crate) fn allocate_tree_caps(
     log_lde_factor: u32,
     log_tree_cap_size: u32,
-) -> Vec<Vec<Digest, HostAllocator>> {
+    context: &ProverContext,
+) -> Vec<HostAllocation<[Digest]>> {
     let lde_factor = 1 << log_lde_factor;
     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
     let coset_tree_cap_size = 1 << log_coset_tree_cap_size;
     let mut result = Vec::with_capacity(lde_factor);
     for _ in 0..lde_factor {
-        let mut tree_cap = Vec::with_capacity_in(coset_tree_cap_size, HostAllocator::default());
-        unsafe { tree_cap.set_len(coset_tree_cap_size) };
+        let tree_cap = unsafe { context.alloc_host_uninit_slice(coset_tree_cap_size) };
         result.push(tree_cap);
     }
     result
@@ -433,9 +454,9 @@ pub(crate) fn populate_trees_from_trace_ldes(
     Ok(())
 }
 
-pub(crate) fn transfer_tree_caps<A: GoodAllocator, T: DerefMut<Target = DeviceSlice<Digest>>>(
+pub(crate) fn transfer_tree_caps<T: DerefMut<Target = DeviceSlice<Digest>>>(
     trees: &[T],
-    caps: &mut [Vec<Digest, A>],
+    caps: &mut [HostAllocation<[Digest]>],
     log_lde_factor: u32,
     log_tree_cap_size: u32,
     stream: &CudaStream,
@@ -444,19 +465,22 @@ pub(crate) fn transfer_tree_caps<A: GoodAllocator, T: DerefMut<Target = DeviceSl
     let log_subtree_cap_size = log_tree_cap_size - log_lde_factor;
     for (subtree, h_cap) in trees.iter().zip(caps.iter_mut()) {
         let d_cap = merkle_tree_cap(subtree, log_subtree_cap_size);
-        memory_copy_async(h_cap, d_cap, stream)?;
+        memory_copy_async(unsafe { h_cap.get_mut_accessor().get_mut() }, d_cap, stream)?;
     }
     Ok(())
 }
 
-pub(crate) fn flatten_tree_caps<A: GoodAllocator>(
-    caps: &[Vec<Digest, A>],
-) -> impl Iterator<Item = u32> + use<'_, A> {
-    caps.iter().flatten().flatten().copied()
+pub(crate) fn flatten_tree_caps<C: Deref<Target = [Digest]>>(
+    caps: &[C],
+) -> impl Iterator<Item = u32> + use<'_, C> {
+    caps.iter()
+        .flat_map(|slice| slice.deref())
+        .flatten()
+        .copied()
 }
 
-pub(crate) fn transform_tree_caps(
-    caps: &[Vec<Digest, impl GoodAllocator>],
+pub(crate) fn transform_tree_caps<C: Deref<Target = [Digest]>>(
+    caps: &[C],
 ) -> Vec<MerkleTreeCapVarLength> {
     caps.iter()
         .map(|cap| cap.iter().copied().collect_vec())
@@ -467,15 +491,15 @@ pub(crate) fn transform_tree_caps(
 #[allow(dead_code)]
 #[cfg(test)]
 mod test {
+    use super::BF;
     use crate::blake2s::Digest;
-    use crate::prover::trace_holder::DerefMut;
-    use crate::prover::BF;
     use era_cudart::memory::memory_copy;
     use era_cudart::slice::DeviceSlice;
     use fft::GoodAllocator;
     use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use prover::merkle_trees::MerkleTreeConstructor;
     use prover::prover_stages::CosetBoundTracePart;
+    use std::ops::DerefMut;
 
     pub(crate) fn compare_row_major_trace_ldes<
         const N: usize,

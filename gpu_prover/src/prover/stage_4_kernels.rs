@@ -1,10 +1,10 @@
+use super::arg_utils::get_grand_product_col;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride,
     PtrAndStride,
 };
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
-use crate::prover::arg_utils::get_grand_product_col;
 use crate::utils::WARP_SIZE;
 
 use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};

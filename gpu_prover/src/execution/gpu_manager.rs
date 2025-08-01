@@ -1,8 +1,9 @@
 use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest, SetupToCache};
 use super::messages::WorkerResult;
+use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::cudart::device::get_device_count;
 use crate::cudart::result::CudaResult;
-use crate::prover::context::{HostAllocator, ProverContextConfig};
+use crate::prover::context::ProverContextConfig;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
@@ -22,12 +23,14 @@ pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
 
 pub struct GpuManager<A: GoodAllocator + 'static = Global> {
     wait_group: Option<WaitGroup>,
-    batches_sender: Option<Sender<GpuWorkBatch<HostAllocator, A>>>,
+    batches_sender: Option<Sender<GpuWorkBatch<ConcurrentStaticHostAllocator, A>>>,
 }
 
 impl<A: GoodAllocator + 'static> GpuManager<A> {
     pub fn new(
-        setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>, // vector of setups to cache on the device by each GPU worker
+        setups_to_cache: Vec<
+            SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>,
+        >, // vector of setups to cache on the device by each GPU worker
         initialized_wait_group: WaitGroup, // wait group is a synchronization mechanism to signal that all GPU workers are initialized and ready to process requests
     ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
@@ -51,7 +54,7 @@ impl<A: GoodAllocator + 'static> GpuManager<A> {
         }
     }
 
-    pub fn send_batch(&self, batch: GpuWorkBatch<HostAllocator, A>) {
+    pub fn send_batch(&self, batch: GpuWorkBatch<ConcurrentStaticHostAllocator, A>) {
         self.batches_sender.as_ref().unwrap().send(batch).unwrap()
     }
 }
@@ -66,8 +69,10 @@ impl<A: GoodAllocator + 'static> Drop for GpuManager<A> {
 }
 fn gpu_manager(
     initialized_wait_group: WaitGroup,
-    setups_to_cache: Vec<SetupToCache<HostAllocator, impl GoodAllocator + 'static>>,
-    batches_receiver: Receiver<GpuWorkBatch<HostAllocator, impl GoodAllocator + 'static>>,
+    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
+    batches_receiver: Receiver<
+        GpuWorkBatch<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>,
+    >,
     scope: &Scope,
 ) -> CudaResult<()> {
     let device_count = get_device_count()? as usize;

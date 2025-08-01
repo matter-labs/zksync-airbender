@@ -185,7 +185,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
         let host_allocations_count = total_gb_needed + device_count * 2;
         info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
-        ProverContext::initialize_host_allocator(host_allocations_count, 1 << 8, 22).unwrap();
+        ProverContext::initialize_concurrent_host_allocator(host_allocations_count, 1 << 8, 22)
+            .unwrap();
         info!("PROVER host allocator initialized");
         let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
         for _ in 0..setup_and_teardowns_count {

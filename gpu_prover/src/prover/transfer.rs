@@ -1,12 +1,11 @@
+use super::context::ProverContext;
 use crate::prover::callbacks::Callbacks;
-use crate::prover::context::ProverContext;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut};
 use era_cudart::stream::CudaStreamWaitEventFlags;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
@@ -42,10 +41,9 @@ impl<'a> Transfer<'a> {
         assert_eq!(src.len(), dst.len());
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
-        memory_copy_async(dst, src.deref(), stream)?;
-        let src = Mutex::new(Some(src));
+        memory_copy_async(dst, src.as_ref(), stream)?;
         let f = move || {
-            src.lock().unwrap().take();
+            let _ = src.clone();
         };
         self.callbacks.schedule(f, stream)
     }
@@ -63,9 +61,9 @@ impl<'a> Transfer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::context::{ProverContext, ProverContextConfig};
     use super::*;
     use crate::allocator::tracker::AllocationPlacement;
-    use crate::prover::context::ProverContextConfig;
 
     #[test]
     fn test_transfer() -> CudaResult<()> {

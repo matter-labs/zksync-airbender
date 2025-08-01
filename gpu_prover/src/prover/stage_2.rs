@@ -1,4 +1,6 @@
-use super::context::{HostAllocator, ProverContext};
+use super::arg_utils::LookupChallenges;
+use super::callbacks::Callbacks;
+use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 pub(crate) use super::stage_2_kernels::*;
@@ -7,8 +9,6 @@ use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::set_by_ref;
-use crate::prover::arg_utils::LookupChallenges;
-use crate::prover::callbacks::Callbacks;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -16,23 +16,21 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
+use itertools::Itertools;
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::transcript::Seed;
-use std::ops::{Deref, DerefMut};
 use std::slice;
-use std::sync::{Arc, Mutex};
 
-pub(crate) struct StageTwoOutput<'a> {
+pub(crate) struct StageTwoOutput {
     pub(crate) trace_holder: TraceHolder<BF>,
-    pub(crate) lookup_challenges: Option<Arc<Mutex<Box<LookupChallenges, HostAllocator>>>>,
-    pub(crate) last_row: Option<Arc<Vec<BF, HostAllocator>>>,
+    pub(crate) lookup_challenges: Option<HostAllocation<LookupChallenges>>,
+    pub(crate) last_row: Option<HostAllocation<[BF]>>,
     pub(crate) offset_for_grand_product_poly: usize,
     pub(crate) offset_for_sum_over_delegation_poly: Option<usize>,
-    pub(crate) callbacks: Option<Callbacks<'a>>,
 }
 
-impl<'a> StageTwoOutput<'a> {
+impl StageTwoOutput {
     pub fn allocate_trace_evaluations(
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
@@ -59,17 +57,17 @@ impl<'a> StageTwoOutput<'a> {
             last_row: None,
             offset_for_grand_product_poly: 0,
             offset_for_sum_over_delegation_poly: None,
-            callbacks: None,
         })
     }
 
     pub fn generate(
         &mut self,
-        seed: Arc<Mutex<Seed>>,
+        seed: &mut HostAllocation<Seed>,
         circuit: &CompiledCircuitArtifact<BF>,
         cached_data: &ProverCachedData,
         setup: &SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
+        callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let trace_len = circuit.trace_len;
@@ -77,31 +75,21 @@ impl<'a> StageTwoOutput<'a> {
         let log_domain_size = trace_len.trailing_zeros();
         let layout = circuit.stage_2_layout;
         let num_stage_2_cols = layout.total_width;
-        let mut callbacks = Callbacks::new();
-        let lookup_challenges = Arc::new(Mutex::new(Box::<LookupChallenges, _>::new_in(
-            Default::default(),
-            HostAllocator::default(),
-        )));
+        let mut lookup_challenges = unsafe { context.alloc_host_uninit::<LookupChallenges>() };
         let stream = context.get_exec_stream();
-        let lookup_challenges_clone = lookup_challenges.clone();
-        let seed_clone = seed.clone();
-        let lookup_challenges_fn = move || {
+        let seed_accessor = seed.get_mut_accessor();
+        let lookup_challenges_accessor = lookup_challenges.get_mut_accessor();
+        let lookup_challenges_fn = move || unsafe {
             let mut transcript_challenges = [0u32;
                 ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            let mut guard = seed_clone.lock().unwrap();
-            Transcript::draw_randomness(&mut guard, &mut transcript_challenges);
+            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
-            let linearization_challenges = std::array::from_fn(|_| get_challenge());
-            let gamma = get_challenge();
-            let challenges = LookupChallenges {
-                linearization_challenges,
-                gamma,
-            };
-            let mut guard = lookup_challenges_clone.lock().unwrap();
-            *guard.deref_mut().deref_mut() = challenges;
+            let challenges = lookup_challenges_accessor.get_mut();
+            challenges.linearization_challenges = std::array::from_fn(|_| get_challenge());
+            challenges.gamma = get_challenge();
         };
         callbacks.schedule(lookup_challenges_fn, stream)?;
         let num_stage_2_bf_cols = layout.num_base_field_polys();
@@ -148,14 +136,13 @@ impl<'a> StageTwoOutput<'a> {
         let col_sums_scratch_elems = get_stage_2_col_sums_scratch(num_stage_2_bf_cols);
         let mut d_alloc_scratch_for_col_sums =
             context.alloc(col_sums_scratch_elems, AllocationPlacement::BestFit)?;
-        let mut d_lookup_challenges = context.alloc(1, AllocationPlacement::BestFit)?;
-        let guard = lookup_challenges.lock().unwrap();
+        let mut d_lookup_challenges =
+            context.alloc::<LookupChallenges>(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
-            d_lookup_challenges.deref_mut(),
-            slice::from_ref(guard.deref().deref()),
+            &mut d_lookup_challenges,
+            slice::from_ref(unsafe { lookup_challenges_accessor.get() }),
             stream,
         )?;
-        drop(guard);
         self.lookup_challenges = Some(lookup_challenges);
         let d_witness_cols =
             DeviceMatrix::new(&stage_1_output.witness_holder.get_evaluations(), trace_len);
@@ -195,11 +182,9 @@ impl<'a> StageTwoOutput<'a> {
             DeviceMatrixChunk::new(trace_holder.get_evaluations(), trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
-        let mut last_row = Vec::with_capacity_in(num_stage_2_cols, HostAllocator::default());
-        unsafe { last_row.set_len(num_stage_2_cols) };
-        memory_copy_async(&mut last_row, d_last_row.deref(), stream)?;
-        let last_row = Arc::new(last_row);
-        let last_row_clone = last_row.clone();
+        let mut last_row = unsafe { context.alloc_host_uninit_slice(num_stage_2_cols) };
+        let last_row_accessor = last_row.get_mut_accessor();
+        memory_copy_async(unsafe { last_row_accessor.get_mut() }, &d_last_row, stream)?;
         self.last_row = Some(last_row);
         let offset_for_grand_product_poly = layout
             .intermediate_polys_for_memory_argument
@@ -217,12 +202,17 @@ impl<'a> StageTwoOutput<'a> {
             .stage_2_layout
             .delegation_processing_aux_poly
             .is_some();
-        let tree_caps = trace_holder.get_tree_caps();
-        let update_seed_fn = move || {
+        let tree_caps_accessors = trace_holder.get_tree_caps_accessors();
+        let update_seed_fn = move || unsafe {
             let mut transcript_input = vec![];
+            let last_row = last_row_accessor.get();
+            let tree_caps = tree_caps_accessors
+                .iter()
+                .map(|cap| cap.get())
+                .collect_vec();
             transcript_input.extend(flatten_tree_caps(&tree_caps));
             transcript_input.extend(
-                Self::get_grand_product_accumulator(offset_for_grand_product_poly, &last_row_clone)
+                Self::get_grand_product_accumulator(offset_for_grand_product_poly, last_row)
                     .into_coeffs_in_base()
                     .iter()
                     .map(BF::to_reduced_u32),
@@ -231,7 +221,7 @@ impl<'a> StageTwoOutput<'a> {
                 transcript_input.extend(
                     Self::get_sum_over_delegation_poly(
                         offset_for_sum_over_delegation_poly,
-                        &last_row_clone,
+                        last_row,
                     )
                     .unwrap_or_default()
                     .into_coeffs_in_base()
@@ -239,10 +229,9 @@ impl<'a> StageTwoOutput<'a> {
                     .map(BF::to_reduced_u32),
                 );
             }
-            Transcript::commit_with_seed(&mut seed.lock().unwrap(), &transcript_input);
+            Transcript::commit_with_seed(seed_accessor.get_mut(), &transcript_input);
         };
         callbacks.schedule(update_seed_fn, stream)?;
-        self.callbacks = Some(callbacks);
         Ok(())
     }
 

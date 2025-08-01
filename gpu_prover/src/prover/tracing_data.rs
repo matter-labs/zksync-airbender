@@ -1,8 +1,8 @@
+use super::context::ProverContext;
+use super::transfer::Transfer;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
 use crate::ops_simple::set_to_zero;
-use crate::prover::context::{HostAllocator, ProverContext};
-use crate::prover::transfer::Transfer;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_main::{
     MainTraceDevice, MainTraceHost, ShuffleRamSetupAndTeardownDevice,
@@ -28,17 +28,17 @@ pub enum TracingDataHost<A: GoodAllocator> {
     Delegation(DelegationTraceHost<A>),
 }
 
-pub struct TracingDataTransfer<'a> {
+pub struct TracingDataTransfer<'a, A: GoodAllocator> {
     pub circuit_type: CircuitType,
-    pub data_host: TracingDataHost<HostAllocator>,
+    pub data_host: TracingDataHost<A>,
     pub data_device: TracingDataDevice,
     pub transfer: Transfer<'a>,
 }
 
-impl<'a> TracingDataTransfer<'a> {
+impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
     pub fn new(
         circuit_type: CircuitType,
-        data_host: TracingDataHost<HostAllocator>,
+        data_host: TracingDataHost<A>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let data_device = match &data_host {

@@ -1,11 +1,11 @@
-use super::context::{DeviceAllocation, HostAllocator, ProverContext};
+use super::callbacks::Callbacks;
+use super::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use super::stage_4::StageFourOutput;
+use super::trace_holder::{allocate_tree_caps, flatten_tree_caps, transfer_tree_caps};
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
 use crate::ops_complex::fold;
-use crate::prover::callbacks::Callbacks;
-use crate::prover::trace_holder::{allocate_tree_caps, flatten_tree_caps, transfer_tree_caps};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -19,25 +19,31 @@ use itertools::Itertools;
 use prover::definitions::{FoldingDescription, Transcript};
 use prover::transcript::Seed;
 use std::iter;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
 
 pub(crate) struct FRIStep {
     pub ldes: Vec<DeviceAllocation<E4>>,
     pub trees: Vec<DeviceAllocation<Digest>>,
-    pub tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    pub tree_caps: Vec<HostAllocation<[Digest]>>,
 }
 
-pub(crate) struct StageFiveOutput<'a> {
+impl FRIStep {
+    pub fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
+        self.tree_caps
+            .iter()
+            .map(HostAllocation::get_accessor)
+            .collect_vec()
+    }
+}
+
+pub(crate) struct StageFiveOutput {
     pub(crate) fri_oracles: Vec<FRIStep>,
-    pub(crate) last_fri_step_plain_leaf_values: Arc<Vec<Vec<E4, HostAllocator>>>,
-    pub(crate) final_monomials: Arc<Mutex<Vec<E4>>>,
-    pub(crate) callbacks: Callbacks<'a>,
+    pub(crate) last_fri_step_plain_leaf_values: Vec<HostAllocation<[E4]>>,
+    pub(crate) final_monomials: HostAllocation<[E4]>,
 }
 
-impl<'a> StageFiveOutput<'a> {
-    pub fn new(
-        seed: Arc<Mutex<Seed>>,
+impl StageFiveOutput {
+    pub fn new<'a>(
+        seed: &mut HostAllocation<Seed>,
         stage_4_output: &StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -45,6 +51,7 @@ impl<'a> StageFiveOutput<'a> {
         num_queries: usize,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         twiddles: &Twiddles<E2, impl GoodAllocator>,
+        callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert_eq!(log_domain_size, stage_4_output.trace_holder.log_domain_size);
@@ -52,17 +59,21 @@ impl<'a> StageFiveOutput<'a> {
         let lde_factor = 1usize << log_lde_factor;
         let mut log_current_domain_size = log_domain_size;
         let oracles_count = folding_description.folding_sequence.len() - 1;
-        let taus_ref = &lde_precomputations.domain_bound_precomputations[0]
-            .as_ref()
-            .unwrap()
-            .taus;
-        let mut taus = Vec::with_capacity_in(taus_ref.len(), HostAllocator::default());
-        taus.extend_from_slice(taus_ref);
-        let taus = Arc::new(Mutex::new(taus));
         let mut fri_oracles: Vec<FRIStep> = vec![];
         let mut last_fri_step_plain_leaf_values = Default::default();
-        let mut callbacks = Callbacks::new();
         let stream = context.get_exec_stream();
+        let seed_accessor = seed.get_mut_accessor();
+        let taus_clone = lde_precomputations.domain_bound_precomputations[0]
+            .as_ref()
+            .unwrap()
+            .taus
+            .clone();
+        let mut taus = unsafe { context.alloc_host_uninit_slice(taus_clone.len()) };
+        let taus_accessor = taus.get_mut_accessor();
+        let set_taus_fn = move || unsafe {
+            taus_accessor.get_mut().copy_from_slice(&taus_clone);
+        };
+        callbacks.schedule(set_taus_fn, stream)?;
         for (i, &current_log_fold) in folding_description
             .folding_sequence
             .iter()
@@ -83,17 +94,13 @@ impl<'a> StageFiveOutput<'a> {
                 &fri_oracles[i - 1].ldes
             };
             let challenges_len = lde_factor * current_log_fold;
-            let mut h_challenges = Vec::with_capacity_in(challenges_len, HostAllocator::default());
-            unsafe { h_challenges.set_len(challenges_len) };
-            let h_challenges = Arc::new(Mutex::new(h_challenges));
-            let seed_clone = seed.clone();
-            let taus_clone = taus.clone();
-            let h_challenges_clone = h_challenges.clone();
-            let set_folding_challenges_fn = move || {
+            let mut h_challenges = unsafe { context.alloc_host_uninit_slice(challenges_len) };
+            let h_challenges_accessor = h_challenges.get_mut_accessor();
+            let set_folding_challenges_fn = move || unsafe {
                 Self::set_folding_challenges(
-                    &mut seed_clone.lock().unwrap(),
-                    &mut taus_clone.lock().unwrap(),
-                    &mut h_challenges_clone.lock().unwrap(),
+                    seed_accessor.get_mut(),
+                    taus_accessor.get_mut(),
+                    h_challenges_accessor.get_mut(),
                     current_log_fold,
                 );
             };
@@ -101,7 +108,7 @@ impl<'a> StageFiveOutput<'a> {
             let mut d_challenges = context.alloc(challenges_len, AllocationPlacement::BestFit)?;
             memory_copy_async(
                 &mut d_challenges,
-                h_challenges.lock().unwrap().deref(),
+                unsafe { h_challenges_accessor.get() },
                 stream,
             )?;
             for ((folding_input, folding_output), challenges) in folding_inputs
@@ -128,29 +135,32 @@ impl<'a> StageFiveOutput<'a> {
                 let mut leaf_values = vec![];
                 for d_coset in ldes.iter() {
                     let len = d_coset.len();
-                    let mut h_coset = Vec::with_capacity_in(len, HostAllocator::default());
-                    unsafe { h_coset.set_len(len) };
-                    memory_copy_async(&mut h_coset, d_coset, stream)?;
+                    let mut h_coset = unsafe { context.alloc_host_uninit_slice(len) };
+                    memory_copy_async(
+                        unsafe { h_coset.get_mut_accessor().get_mut() },
+                        d_coset,
+                        stream,
+                    )?;
                     leaf_values.push(h_coset);
                 }
-                last_fri_step_plain_leaf_values = Arc::new(leaf_values);
-                let leaf_values_clone = last_fri_step_plain_leaf_values.clone();
-                let seed_clone = seed.clone();
-                let commit_fn = move || {
+                last_fri_step_plain_leaf_values = leaf_values;
+                let leaf_values_accessors = last_fri_step_plain_leaf_values
+                    .iter()
+                    .map(|x| x.get_accessor())
+                    .collect_vec();
+                let commit_fn = move || unsafe {
                     let mut transcript_input = vec![];
-                    for values in leaf_values_clone.iter() {
+                    for values in leaf_values_accessors.iter() {
                         let it = values
+                            .get()
                             .iter()
                             .flat_map(|x| x.into_coeffs_in_base().map(|y: BF| y.to_reduced_u32()));
                         transcript_input.extend(it);
                     }
-                    Transcript::commit_with_seed(
-                        &mut seed_clone.lock().unwrap(),
-                        &transcript_input,
-                    );
+                    Transcript::commit_with_seed(seed_accessor.get_mut(), &transcript_input);
                 };
                 callbacks.schedule(commit_fn, stream)?;
-                (vec![], Arc::new(vec![]))
+                (vec![], vec![])
             } else {
                 let mut trees = Vec::with_capacity(lde_factor);
                 for _ in 0..lde_factor {
@@ -158,7 +168,7 @@ impl<'a> StageFiveOutput<'a> {
                         context.alloc(1 << (log_num_leafs + 1), AllocationPlacement::Bottom)?,
                     );
                 }
-                let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size);
+                let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size, context);
                 let next_log_fold = folding_description.folding_sequence[i + 1] as u32;
                 let log_num_leafs = log_folded_domain_size - next_log_fold;
                 let log_cap_size = folding_description.total_caps_size_log2 as u32;
@@ -185,12 +195,17 @@ impl<'a> StageFiveOutput<'a> {
                     log_tree_cap_size,
                     stream,
                 )?;
-                let tree_caps = Arc::new(tree_caps);
-                let tree_caps_clone = tree_caps.clone();
-                let seed_clone = seed.clone();
-                let update_seed_fn = move || {
-                    let input = flatten_tree_caps(&tree_caps_clone).collect_vec();
-                    Transcript::commit_with_seed(&mut seed_clone.lock().unwrap(), &input);
+                let tree_caps_accessors = tree_caps
+                    .iter()
+                    .map(HostAllocation::get_accessor)
+                    .collect_vec();
+                let update_seed_fn = move || unsafe {
+                    let tree_caps = tree_caps_accessors
+                        .iter()
+                        .map(|cap| cap.get())
+                        .collect_vec();
+                    let input = flatten_tree_caps(&tree_caps).collect_vec();
+                    Transcript::commit_with_seed(seed_accessor.get_mut(), &input);
                 };
                 callbacks.schedule(update_seed_fn, stream)?;
                 (trees, tree_caps)
@@ -211,17 +226,13 @@ impl<'a> StageFiveOutput<'a> {
         let final_monomials = {
             let log_folding_degree = *folding_description.folding_sequence.last().unwrap() as u32;
             let challenges_len = log_folding_degree as usize;
-            let mut h_challenges = Vec::with_capacity_in(challenges_len, HostAllocator::default());
-            unsafe { h_challenges.set_len(challenges_len) };
-            let h_challenges = Arc::new(Mutex::new(h_challenges));
-            let seed_clone = seed.clone();
-            let taus_clone = taus.clone();
-            let h_challenges_clone = h_challenges.clone();
-            let set_folding_challenges_fn = move || {
+            let mut h_challenges = unsafe { context.alloc_host_uninit_slice(challenges_len) };
+            let h_challenges_accessor = h_challenges.get_mut_accessor();
+            let set_folding_challenges_fn = move || unsafe {
                 Self::set_folding_challenges(
-                    &mut seed_clone.lock().unwrap(),
-                    &mut taus_clone.lock().unwrap()[..1],
-                    &mut h_challenges_clone.lock().unwrap(),
+                    seed_accessor.get_mut(),
+                    &mut taus_accessor.get_mut()[..1],
+                    h_challenges_accessor.get_mut(),
                     log_folding_degree as usize,
                 );
             };
@@ -229,7 +240,7 @@ impl<'a> StageFiveOutput<'a> {
             let mut d_challenges = context.alloc(challenges_len, AllocationPlacement::BestFit)?;
             memory_copy_async(
                 &mut d_challenges,
-                &h_challenges.lock().unwrap().deref(),
+                unsafe { h_challenges_accessor.get() },
                 stream,
             )?;
             let log_folded_domain_size = log_current_domain_size - log_folding_degree;
@@ -244,40 +255,42 @@ impl<'a> StageFiveOutput<'a> {
                 context,
             )?;
             let mut h_folded_domain =
-                Vec::with_capacity_in(folded_domain_size, HostAllocator::default());
-            unsafe { h_folded_domain.set_len(folded_domain_size) };
-            memory_copy_async(&mut h_folded_domain, d_folded_domain.deref(), stream)?;
+                unsafe { context.alloc_host_uninit_slice(folded_domain_size) };
+            let h_folded_domain_accessor = h_folded_domain.get_mut_accessor();
+            memory_copy_async(
+                unsafe { h_folded_domain_accessor.get_mut() },
+                &d_folded_domain,
+                stream,
+            )?;
             log_current_domain_size -= log_folding_degree;
             let domain_size = 1 << log_current_domain_size;
-            let monomials = Arc::new(Mutex::new(vec![]));
-            let monomials_clone = monomials.clone();
+            let mut monomials = unsafe { context.alloc_host_uninit_slice(domain_size) };
+            let monomials_accessor = monomials.get_mut_accessor();
             let mut inverse_twiddles = Vec::with_capacity(twiddles.inverse_twiddles.len());
             inverse_twiddles.extend_from_slice(&twiddles.inverse_twiddles);
-            let monomials_fn = move || {
-                let mut monomials = monomials_clone.lock().unwrap();
-                let mut c0 = Vec::with_capacity(domain_size);
-                let mut c1 = Vec::with_capacity(domain_size);
-                for el in h_folded_domain.iter() {
-                    c0.push(el.c0);
-                    c1.push(el.c1);
-                }
+            let monomials_fn = move || unsafe {
+                let h_folded_domain = h_folded_domain_accessor.get();
+                let mut c0 = h_folded_domain.iter().map(|el| el.c0).collect_vec();
+                let mut c1 = h_folded_domain.iter().map(|el| el.c1).collect_vec();
                 assert_eq!(c0.len(), domain_size);
                 assert_eq!(c1.len(), domain_size);
                 bitreverse_enumeration_inplace(&mut c0);
                 bitreverse_enumeration_inplace(&mut c1);
                 Self::interpolate(&mut c0, &inverse_twiddles);
                 Self::interpolate(&mut c1, &inverse_twiddles);
-                for (c0, c1) in c0.into_iter().zip(c1.into_iter()) {
-                    let el = E4 { c0, c1 };
-                    monomials.push(el);
-                }
-                assert_eq!(monomials.len(), domain_size);
+                let coeffs = c0
+                    .into_iter()
+                    .zip(c1.into_iter())
+                    .map(|(c0, c1)| E4 { c0, c1 })
+                    .collect_vec();
+                monomials_accessor.get_mut().copy_from_slice(&coeffs);
                 let mut transcript_input = vec![];
-                let it = monomials
+                let it = monomials_accessor
+                    .get()
                     .iter()
                     .flat_map(|x| x.into_coeffs_in_base().map(|y: BF| y.to_reduced_u32()));
                 transcript_input.extend(it);
-                Transcript::commit_with_seed(&mut seed.lock().unwrap(), &transcript_input);
+                Transcript::commit_with_seed(seed_accessor.get_mut(), &transcript_input);
             };
             callbacks.schedule(monomials_fn, stream)?;
             monomials
@@ -290,7 +303,6 @@ impl<'a> StageFiveOutput<'a> {
             fri_oracles,
             last_fri_step_plain_leaf_values,
             final_monomials,
-            callbacks,
         };
         Ok(result)
     }

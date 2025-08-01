@@ -19,7 +19,7 @@ pub static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator> = Once
 
 impl StaticAllocationBackend for HostAllocation<u8> {
     fn as_non_null(&mut self) -> NonNull<u8> {
-        unsafe { NonNull::new_unchecked(self.deref_mut().as_mut_ptr()) }
+        unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
     }
 
     fn len(&self) -> usize {
@@ -85,14 +85,12 @@ impl<T, W: InnerStaticHostAllocatorWrapper> DerefMut
     }
 }
 
-unsafe impl Allocator for ConcurrentStaticHostAllocator {
+unsafe impl<W: InnerStaticHostAllocatorWrapper> Allocator for StaticHostAllocator<W> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let len = layout.size();
         if let Ok(data) = self
             .inner
-            .lock()
-            .unwrap()
-            .alloc(len, AllocationPlacement::BestFit)
+            .execute(|inner| inner.alloc(len, AllocationPlacement::BestFit))
         {
             let ptr = data.ptr;
             assert!(ptr.is_aligned_to(layout.align()));
@@ -110,7 +108,7 @@ unsafe impl Allocator for ConcurrentStaticHostAllocator {
         let len = layout.size();
         let alloc_len = len.next_multiple_of(1 << self.log_chunk_size);
         let data = StaticAllocationData::new(ptr, len, alloc_len);
-        self.inner.lock().unwrap().free(data);
+        self.inner.execute(|inner| inner.free(data));
     }
 }
 

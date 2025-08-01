@@ -1,4 +1,5 @@
-use super::context::{DeviceAllocation, HostAllocator, ProverContext};
+use super::callbacks::Callbacks;
+use super::context::{DeviceAllocation, HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::trace_holder::TraceHolder;
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
@@ -6,7 +7,6 @@ use super::BF;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::{set_by_ref, set_to_zero};
-use crate::prover::callbacks::Callbacks;
 use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
 use crate::witness::memory_main::generate_memory_and_witness_values_main;
 use crate::witness::multiplicities::{
@@ -21,18 +21,18 @@ use cs::definitions::{
 use cs::one_row_compiler::{read_value, CompiledCircuitArtifact};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use fft::GoodAllocator;
+use itertools::Itertools;
+use std::sync::Arc;
 
-pub(crate) struct StageOneOutput<'a> {
+pub(crate) struct StageOneOutput {
     pub witness_holder: TraceHolder<BF>,
     pub memory_holder: TraceHolder<BF>,
     pub generic_lookup_mapping: Option<DeviceAllocation<u32>>,
-    pub callbacks: Option<Callbacks<'a>>,
-    pub public_inputs: Option<Arc<Mutex<Vec<BF>>>>,
+    pub public_inputs: Option<HostAllocation<[BF]>>,
 }
 
-impl<'a> StageOneOutput<'a> {
+impl StageOneOutput {
     pub fn allocate_trace_holders(
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
@@ -66,17 +66,17 @@ impl<'a> StageOneOutput<'a> {
             witness_holder,
             memory_holder,
             generic_lookup_mapping: None,
-            callbacks: None,
             public_inputs: None,
         })
     }
 
-    pub fn generate_witness(
+    pub fn generate_witness<'a>(
         &mut self,
         circuit: &CompiledCircuitArtifact<BF>,
         setup: &SetupPrecomputations,
-        tracing_data_transfer: TracingDataTransfer<'a>,
+        tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
         circuit_sequence: usize,
+        callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let trace_len = circuit.trace_len;
@@ -94,7 +94,7 @@ impl<'a> StageOneOutput<'a> {
             transfer,
         } = tracing_data_transfer;
         transfer.ensure_transferred(context)?;
-        self.callbacks = Some(transfer.callbacks);
+        callbacks.extend(transfer.callbacks);
         let stream = context.get_exec_stream();
         assert_eq!(COMMON_TABLE_WIDTH, 3);
         assert_eq!(NUM_COLUMNS_FOR_COMMON_TABLE_WIDTH_SETUP, 4);
@@ -201,6 +201,7 @@ impl<'a> StageOneOutput<'a> {
     pub fn commit_witness(
         &mut self,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<()> {
         self.memory_holder
@@ -209,20 +210,21 @@ impl<'a> StageOneOutput<'a> {
         self.witness_holder
             .make_evaluations_sum_to_zero_extend_and_commit(context)?;
         self.witness_holder.produce_tree_caps(context)?;
-        self.produce_public_inputs(circuit, context)?;
+        self.produce_public_inputs(circuit, callbacks, context)?;
         Ok(())
     }
 
     pub fn produce_public_inputs(
         &mut self,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<()> {
         if self.public_inputs.is_some() {
             return Ok(());
         }
         if circuit.public_inputs.is_empty() {
-            self.public_inputs = Some(Arc::new(Mutex::new(Vec::with_capacity(0))));
+            self.public_inputs = Some(unsafe { context.alloc_host_uninit_slice(0) });
             return Ok(());
         }
         let holder = &self.witness_holder;
@@ -232,12 +234,12 @@ impl<'a> StageOneOutput<'a> {
         let mut d_witness_first_row = context.alloc(columns_count, AllocationPlacement::BestFit)?;
         let mut d_witness_one_before_last_row =
             context.alloc(columns_count, AllocationPlacement::BestFit)?;
-        let mut h_witness_first_row =
-            Vec::with_capacity_in(columns_count, HostAllocator::default());
+        let mut h_witness_first_row = unsafe { context.alloc_host_uninit_slice(columns_count) };
+        let h_witness_first_row_accessor = h_witness_first_row.get_mut_accessor();
         let mut h_witness_one_before_last_row =
-            Vec::with_capacity_in(columns_count, HostAllocator::default());
-        unsafe { h_witness_first_row.set_len(columns_count) };
-        unsafe { h_witness_one_before_last_row.set_len(columns_count) };
+            unsafe { context.alloc_host_uninit_slice(columns_count) };
+        let h_witness_one_before_last_row_accessor =
+            h_witness_one_before_last_row.get_mut_accessor();
         let first_row_src = DeviceMatrixChunk::new(holder.get_evaluations(), trace_len, 0, 1);
         let one_before_last_row_src =
             DeviceMatrixChunk::new(holder.get_evaluations(), trace_len, trace_len - 2, 1);
@@ -251,30 +253,32 @@ impl<'a> StageOneOutput<'a> {
             stream,
         )?;
         memory_copy_async(
-            &mut h_witness_first_row,
-            d_witness_first_row.deref(),
+            unsafe { h_witness_first_row_accessor.get_mut() },
+            &d_witness_first_row,
             stream,
         )?;
         memory_copy_async(
-            &mut h_witness_one_before_last_row,
-            d_witness_one_before_last_row.deref(),
+            unsafe { h_witness_one_before_last_row_accessor.get_mut() },
+            &d_witness_one_before_last_row,
             stream,
         )?;
-        let public_inputs = Arc::new(Mutex::new(Vec::with_capacity(circuit.public_inputs.len())));
-        let public_inputs_clone = public_inputs.clone();
+        let mut public_inputs =
+            unsafe { context.alloc_host_uninit_slice(circuit.public_inputs.len()) };
+        let unsage_public_inputs = public_inputs.get_mut_accessor();
         let circuit_clone = circuit.clone();
-        let function = move || {
+        let function = move || unsafe {
             let mut first_row_public_inputs = vec![];
             let mut one_before_last_row_public_inputs = vec![];
+            let witness_first_row = h_witness_first_row_accessor.get();
+            let witness_one_before_last_row = h_witness_one_before_last_row_accessor.get();
             for (location, column_address) in circuit_clone.public_inputs.iter() {
                 match location {
                     BoundaryConstraintLocation::FirstRow => {
-                        let value = read_value(*column_address, &h_witness_first_row, &[]);
+                        let value = read_value(*column_address, witness_first_row, &[]);
                         first_row_public_inputs.push(value);
                     }
                     BoundaryConstraintLocation::OneBeforeLastRow => {
-                        let value =
-                            read_value(*column_address, &h_witness_one_before_last_row, &[]);
+                        let value = read_value(*column_address, witness_one_before_last_row, &[]);
                         one_before_last_row_public_inputs.push(value);
                     }
                     BoundaryConstraintLocation::LastRow => {
@@ -282,19 +286,13 @@ impl<'a> StageOneOutput<'a> {
                     }
                 }
             }
-            let mut guard = public_inputs_clone.lock().unwrap();
-            guard.extend(first_row_public_inputs);
-            guard.extend(one_before_last_row_public_inputs);
+            let public_inputs = unsage_public_inputs.get_mut();
+            let mut iter = public_inputs.iter_mut();
+            iter.set_from(first_row_public_inputs);
+            iter.set_from(one_before_last_row_public_inputs);
         };
-        self.callbacks
-            .as_mut()
-            .unwrap()
-            .schedule(function, stream)?;
+        callbacks.schedule(function, stream)?;
         self.public_inputs = Some(public_inputs);
         Ok(())
-    }
-
-    pub fn get_public_inputs(&self) -> Arc<Mutex<Vec<BF>>> {
-        self.public_inputs.clone().unwrap()
     }
 }

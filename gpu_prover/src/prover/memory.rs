@@ -1,8 +1,7 @@
-use super::context::{HostAllocator, ProverContext};
+use super::context::{ProverContext, UnsafeMutAccessor};
 use super::trace_holder::{transform_tree_caps, TraceHolder};
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::{device_tracing, BF};
-use crate::blake2s::Digest;
 use crate::device_structures::DeviceMatrixMut;
 use crate::prover::callbacks::Callbacks;
 use crate::witness::memory_delegation::generate_memory_values_delegation;
@@ -10,14 +9,15 @@ use crate::witness::memory_main::generate_memory_values_main;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
+use fft::GoodAllocator;
+use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use std::sync::Arc;
 
 pub struct MemoryCommitmentJob<'a> {
-    range: device_tracing::Range<'a>,
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    tree_caps: Arc<Vec<Vec<Digest, HostAllocator>>>,
+    tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
+    range: device_tracing::Range<'a>,
 }
 
 impl<'a> MemoryCommitmentJob<'a> {
@@ -27,21 +27,21 @@ impl<'a> MemoryCommitmentJob<'a> {
 
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
-            range,
             is_finished_event,
             callbacks,
             tree_caps,
+            range,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
+        let tree_caps = tree_caps.unwrap();
         let commitment_time_ms = range.elapsed()?;
-        let tree_caps = transform_tree_caps(&tree_caps);
         Ok((tree_caps, commitment_time_ms))
     }
 }
 
 pub fn commit_memory<'a>(
-    tracing_data_transfer: TracingDataTransfer<'a>,
+    tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
     circuit: &CompiledCircuitArtifact<BF>,
     log_lde_factor: u32,
     log_tree_cap_size: u32,
@@ -95,16 +95,30 @@ pub fn commit_memory<'a>(
     };
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
     memory_holder.produce_tree_caps(context)?;
+    let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();
+    let mut tree_caps = Box::new(None);
+    let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
+    let transform_tree_caps_fn = move || unsafe {
+        let tree_caps = src_tree_cap_accessors
+            .iter()
+            .map(|accessor| accessor.get())
+            .collect_vec();
+        let tree_caps = transform_tree_caps(&tree_caps);
+        assert!(dst_tree_caps_accessor
+            .get_mut()
+            .replace(tree_caps)
+            .is_none());
+    };
+    let mut callbacks = transfer.callbacks;
+    callbacks.schedule(transform_tree_caps_fn, stream)?;
     range.end(stream)?;
-    let tree_caps = memory_holder.get_tree_caps();
-    let callbacks = transfer.callbacks;
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
     let job = MemoryCommitmentJob {
-        range,
         is_finished_event,
         callbacks,
         tree_caps,
+        range,
     };
     Ok(job)
 }

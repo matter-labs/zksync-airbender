@@ -42,6 +42,7 @@ prover = { workspace = true, features = ["default", "test"] }
 rand = { workspace = true, default-features = false }
 trace_and_split = { workspace = true }
 trace_holder = { workspace = true }
+env_logger = "0.11"
 era_criterion_cuda = "0.2"
 criterion = "0.5"
 serial_test = "3"

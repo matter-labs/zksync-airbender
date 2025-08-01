@@ -19,8 +19,8 @@ impl Deref for StaticDeviceAllocationBackend {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::DeviceAllocation(allocation) => allocation.deref(),
-            Self::DevicePoolAllocation(allocation) => allocation.deref(),
+            Self::DeviceAllocation(allocation) => allocation,
+            Self::DevicePoolAllocation(allocation) => allocation,
         }
     }
 }
@@ -28,30 +28,23 @@ impl Deref for StaticDeviceAllocationBackend {
 impl DerefMut for StaticDeviceAllocationBackend {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Self::DeviceAllocation(allocation) => allocation.deref_mut(),
-            Self::DevicePoolAllocation(allocation) => allocation.deref_mut(),
+            Self::DeviceAllocation(allocation) => allocation,
+            Self::DevicePoolAllocation(allocation) => allocation,
         }
     }
 }
 
 impl StaticAllocationBackend for StaticDeviceAllocationBackend {
     fn as_non_null(&mut self) -> NonNull<u8> {
-        unsafe { NonNull::new_unchecked(self.deref_mut().as_mut_ptr()) }
+        unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
     }
 
     fn len(&self) -> usize {
-        match self {
-            Self::DeviceAllocation(allocation) => allocation.deref(),
-            Self::DevicePoolAllocation(allocation) => allocation.deref(),
-        }
-        .len()
+        self.deref().len()
     }
 
     fn is_empty(&self) -> bool {
-        match self {
-            Self::DeviceAllocation(allocation) => allocation.deref().is_empty(),
-            Self::DevicePoolAllocation(allocation) => allocation.deref().is_empty(),
-        }
+        self.deref().is_empty()
     }
 }
 

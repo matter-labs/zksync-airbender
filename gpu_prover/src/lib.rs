@@ -7,6 +7,7 @@
 #![feature(vec_push_within_capacity)]
 #![feature(iter_array_chunks)]
 #![feature(iter_advance_by)]
+#![feature(sync_unsafe_cell)]
 
 pub mod allocator;
 pub mod barycentric;
