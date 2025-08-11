@@ -16,7 +16,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     strategy:
       matrix:
-        cuda: [ "12.6.0-devel-ubuntu22.04" ]
+        cuda: [ "13.0.0-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
@@ -86,14 +86,14 @@ jobs:
       #  run: |
       #    nvidia-smi
 
-      - name: Download test binary built with CUDA 12.6
+      - name: Download test binary built with CUDA 13.0
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-12.6.0-devel-ubuntu22.04-${{ matrix.package }}-test-binary
-          path: zksync-airbender-test-binary/12.6/
+          name: zksync-airbender-13.0.0-devel-ubuntu22.04-${{ matrix.package }}-test-binary
+          path: zksync-airbender-test-binary/13.0/
 
-      - name: Run test binary built with CUDA 12.6
-        id: test_cuda_12_6
+      - name: Run test binary built with CUDA 13.0
+        id: test_cuda_13_0
         run: |
-          chmod +x zksync-airbender-test-binary/12.6/${{ matrix.package }}
-          zksync-airbender-test-binary/12.6/${{ matrix.package }} --nocapture
+          chmod +x zksync-airbender-test-binary/13.0/${{ matrix.package }}
+          zksync-airbender-test-binary/13.0/${{ matrix.package }} --nocapture

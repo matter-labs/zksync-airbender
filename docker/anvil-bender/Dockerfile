@@ -1,7 +1,7 @@
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │                             STAGE 1: BUILDER                             │
 # └──────────────────────────────────────────────────────────────────────────┘
-FROM nvidia/cuda:12.6.0-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.0-devel-ubuntu24.04 AS builder
 
 # Install Git (required to clone) and any other build‐time dependencies.
 RUN apt-get update \
@@ -45,7 +45,7 @@ RUN CUDAARCHS=80 cargo +${RUST_VERSION} build --release -p zksmith
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │                          STAGE 2: RUNTIME IMAGE                          │
 # └──────────────────────────────────────────────────────────────────────────┘
-FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
 
 # Create a non‐root user (optional but recommended)
 RUN useradd --no-create-home --shell /usr/sbin/nologin appuser
