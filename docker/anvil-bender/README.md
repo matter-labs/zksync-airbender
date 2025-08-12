@@ -33,7 +33,7 @@ cast send -r http://localhost:8011 0x5fbdb2315678afecb367f032d93f642f64180aa3 --
 You can check if your GPUs are visible in docker, by running:
 
 ```shell
-docker run --rm --gpus all nvidia/cuda:13.0.0-runtime-ubuntu24.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.9.1-runtime-ubuntu24.04 nvidia-smi
 ```
 
 If it fails, you have to install nvidia container toolkit:
