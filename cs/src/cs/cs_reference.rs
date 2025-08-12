@@ -217,38 +217,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         _is_writable: &[bool],
     ) -> Vec<BatchedMemoryAccessType> {
         unimplemented!("deprecated");
-
-        // assert!(self.batched_memory_accesses.is_empty());
-        // // we do not need range checks below in reads, otherwise it'll not be satisfiable as permutation
-        // for (idx, el) in is_writable.iter().enumerate() {
-        //     let request = if *el {
-        //         let read_low = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 0);
-        //         let read_high = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 1);
-
-        //         let write_low = self.add_variable();
-        //         let write_high = self.add_variable();
-
-        //         BatchedMemoryAccessType::Write {
-        //             read_value: [read_low, read_high],
-        //             write_value: [write_low, write_high],
-        //         }
-        //     } else {
-        //         let read_low = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 0);
-        //         let read_high = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 1);
-
-        //         BatchedMemoryAccessType::Read {
-        //             read_value: [read_low, read_high],
-        //         }
-        //     };
-
-        //     self.batched_memory_accesses.push(request);
-        // }
-
-        // self.batched_memory_accesses.clone()
     }
 
     fn create_register_and_indirect_memory_accesses(
