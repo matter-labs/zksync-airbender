@@ -2,6 +2,12 @@
 
 namespace ntt {
 
+// Note: "#pragma unroll 1 here makes no sense"
+// This note marks some weird spots I found when playing whack a mole with loop unrolling to prevent register spilling.
+// Specifically, it marks spots where "#pragma unroll 1" should make the loop index dynamic, which should make internal
+// register array accesses dynamic and cause spilling. But, bizarrely, it doesn't: it has the opposite effect and
+// prevents spilling.
+
 template <unsigned LOG_VALS_PER_THREAD>
 DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                                             vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
@@ -278,28 +284,24 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_block(vec
     unsigned exchg_region_offset = effective_block_idx_x * (WARPS_PER_BLOCK >> 1) + (lane_id >> 4);
 #pragma unroll 1
     for (unsigned s = 0; s < 2; s++) {
+#pragma unroll
+      for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
+        shfl_xor_e2f(vals, i, lane_id, lane_mask);
       if (s + stages_so_far < stages_this_launch) {
 #pragma unroll
         for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
           // TODO: Handle these cooperatively?
           const auto twiddle = get_twiddle<false>(exchg_region_offset + ((2 * i) >> s));
-          shfl_xor_e2f(vals, i, lane_id, lane_mask);
           exchg_dif(vals[2 * i], vals[2 * i + 1], twiddle);
         }
-      } else {
-#pragma unroll
-        for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
-          shfl_xor_e2f(vals, i, lane_id, lane_mask);
       }
       lane_mask <<= 1;
       exchg_region_offset >>= 1;
     }
 
     exchg_region_offset = effective_block_idx_x * (PAIRS_PER_THREAD >> 1);
-// #pragma unroll 1 here makes no sense. It should make i dynamic, which should make
-// inner loop bounds dynamic, which should make vals accesses dynamic and cause spilling.
-// Yet for some reason unroll 1 prevents register spilling on H100.
 #if __CUDA_ARCH__ == 900
+// See Note: "#pragma unroll 1 here makes no sense"
 #pragma unroll 1
 #else
 #pragma unroll
@@ -477,7 +479,11 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
 
     lane_mask = 8;
     unsigned exchg_region_offset = (block_exchg_region_offset >> (LOG_VALS_PER_THREAD + 1)) + (lane_id >> 4);
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+#pragma unroll
+#else
 #pragma unroll 1
+#endif
     for (unsigned s = 0; s < 2; s++) {
 #pragma unroll
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -490,7 +496,12 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_noninitial_stages_block(
       exchg_region_offset >>= 1;
     }
 
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+// See Note: "#pragma unroll 1 here makes no sense"
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned i = 1; i < LOG_VALS_PER_THREAD; i++) {
 #pragma unroll
       for (unsigned j = 0; j < PAIRS_PER_THREAD >> i; j++) {
