@@ -127,18 +127,6 @@ pub fn calculate_pc_next_no_overflows<F: PrimeField, CS: Circuit<F>>(
     pc_next
 }
 
-// pub fn read_from_mem<F: PrimeField, C: Circuit<F>>(
-//     cs: &mut C,
-//     _addr: Register<F>,
-//     opt_ctx: &mut OptimizationContext<F, C>,
-//     exec_flag: Boolean,
-// ) -> RegisterDecomposition<F> {
-//     let mem_slot = Register::new_from_placeholder::<C>(cs, Placeholder::MemSlot);
-//     let res = RegisterDecomposition::split_reg_with_opt_ctx(cs, mem_slot, opt_ctx, exec_flag);
-//     res
-// }
-
-#[allow(deprecated)]
 pub fn read_from_shuffle_ram_or_bytecode_with_ctx<F: PrimeField, C: Circuit<F>>(
     cs: &mut C,
     local_timestamp_in_cycle: usize,
@@ -303,61 +291,6 @@ pub(crate) fn get_register_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
 
     // registers live in their separate address space
     let query = form_mem_op_for_register_only(local_timestamp_in_cycle, reg_encoding, value, value);
-
-    (value, query)
-}
-
-#[allow(dead_code)]
-pub(crate) fn get_rs1_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
-    cs: &mut C,
-    reg_encoding: Num<F>,
-    bytecode_is_in_rom_only: bool,
-) -> (Register<F>, ShuffleRamMemQuery) {
-    // NOTE: since we use a value from read set, it means we do not need range check
-    let (mut local_timestamp_in_cycle, placeholder) = (0, Placeholder::FirstRegMem);
-    if bytecode_is_in_rom_only == false {
-        local_timestamp_in_cycle += 1;
-    }
-
-    // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
-    // so any reads will have to be range-checked
-    let value = Register::new_unchecked_from_placeholder::<C>(cs, placeholder);
-
-    // registers live in their separate address space
-    let query = form_mem_op_for_register_only(local_timestamp_in_cycle, reg_encoding, value, value);
-
-    (value, query)
-}
-
-#[allow(dead_code)]
-pub(crate) struct RS2ShuffleRamQueryCandidate<F: PrimeField> {
-    pub(crate) rs2: Constraint<F>,
-    pub(crate) local_timestamp_in_cycle: usize,
-    pub(crate) read_value: [Variable; REGISTER_SIZE],
-}
-
-#[allow(dead_code)]
-pub(crate) fn prepare_rs2_op_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
-    cs: &mut C,
-    rs2_constraint: Constraint<F>,
-    bytecode_is_in_rom_only: bool,
-) -> (Register<F>, RS2ShuffleRamQueryCandidate<F>) {
-    // NOTE: since we use a value from read set, it means we do not need range check
-    let (mut local_timestamp_in_cycle, placeholder) = (1, Placeholder::SecondRegMem);
-    if bytecode_is_in_rom_only == false {
-        local_timestamp_in_cycle += 1;
-    }
-
-    // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
-    // so any reads will have to be range-checked
-    let value = Register::new_unchecked_from_placeholder::<C>(cs, placeholder);
-
-    // here we should manually form temporary holder
-    let query = RS2ShuffleRamQueryCandidate {
-        rs2: rs2_constraint,
-        local_timestamp_in_cycle,
-        read_value: value.0.map(|el| el.get_variable()),
-    };
 
     (value, query)
 }

@@ -159,7 +159,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
 
                 cs.add_constraint(Term::from(bit_0) * exec_half_word.get_terms());
             } else {
-                todo!();
+                unimplemented!();
             }
 
             // NOTE: we do NOT cast presumable bits to booleans, as it's under conditional assignment of lookup
@@ -185,7 +185,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
                 );
             } else {
                 // we should trap maybe
-                todo!()
+                unimplemented!();
             }
 
             let base_value = rd_or_mem_store_query.read_value;
@@ -295,7 +295,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
             } else {
                 // we trap if misaligned access that can happen in untrusted code
 
-                todo!();
+                unimplemented!();
             }
         } else {
             // support only SW/LW, and so we assume code is trusted
@@ -322,7 +322,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
                     (Term::from(bit_0) + Term::from(bit_1)) * execute_family.get_terms(),
                 );
             } else {
-                todo!();
+                unimplemented!();
             }
 
             // NOTE: we do NOT cast presumable bits to booleans, as it's under conditional assignment of lookup
@@ -348,7 +348,7 @@ impl<const SUPPORT_LESS_THAN_WORD: bool> StoreOp<SUPPORT_LESS_THAN_WORD> {
                 );
             } else {
                 // we should trap maybe
-                todo!()
+                unimplemented!();
             }
 
             // constraint that write address that we use is a valid one

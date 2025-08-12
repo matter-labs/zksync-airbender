@@ -20,7 +20,7 @@ pub fn apply_non_determinism_csr_only_assuming_no_unimp<
     opt_ctx: &mut OptimizationContext<F, CS>,
 ) -> CommonDiffs<F> {
     if SUPPORT_CSR_IMMEDIATES {
-        todo!()
+        unimplemented!();
     }
 
     opt_ctx.reset_indexers();
@@ -55,9 +55,9 @@ pub fn apply_non_determinism_csr_only_assuming_no_unimp<
                 new_pc_value: NextPcValue::Default,
             }
         } else {
-            todo!()
+            unimplemented!();
         }
     } else {
-        todo!()
+        unimplemented!();
     }
 }
