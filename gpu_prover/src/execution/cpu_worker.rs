@@ -14,7 +14,6 @@ use prover::risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSo
 use prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
-use prover::tracers::delegation::DelegationWitness;
 use prover::ShuffleRamSetupAndTeardown;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -57,19 +56,19 @@ pub enum CpuWorkerMode<A: GoodAllocator> {
     TraceTouchedRam {
         circuit_type: MainCircuitType,
         skip_set: HashSet<(CircuitType, usize)>,
-        free_setup_and_teardowns: Receiver<ShuffleRamSetupAndTeardown<A>>,
+        free_allocator: Receiver<A>,
     },
     TraceCycles {
         circuit_type: MainCircuitType,
         skip_set: HashSet<(CircuitType, usize)>,
         split_count: usize,
         split_index: usize,
-        free_cycle_tracing_data: Receiver<CycleTracingData<A>>,
+        free_allocator: Receiver<A>,
     },
     TraceDelegations {
         skip_set: HashSet<(CircuitType, usize)>,
         delegation_num_requests: HashMap<DelegationCircuitType, usize>,
-        free_delegation_witnesses: HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
+        free_allocator: Receiver<A>,
     },
 }
 
@@ -88,7 +87,7 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
             CpuWorkerMode::TraceTouchedRam {
                 circuit_type,
                 skip_set,
-                free_setup_and_teardowns,
+                free_allocator,
             } => trace_touched_ram::<C, A>(
                 batch_id,
                 worker_id,
@@ -97,7 +96,7 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 binary,
                 non_determinism,
                 skip_set,
-                free_setup_and_teardowns,
+                free_allocator,
                 results,
             ),
             CpuWorkerMode::TraceCycles {
@@ -105,7 +104,7 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 skip_set,
                 split_count,
                 split_index,
-                free_cycle_tracing_data,
+                free_allocator,
             } => trace_cycles::<C, A>(
                 batch_id,
                 worker_id,
@@ -116,13 +115,13 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 skip_set,
                 split_count,
                 split_index,
-                free_cycle_tracing_data,
+                free_allocator,
                 results,
             ),
             CpuWorkerMode::TraceDelegations {
                 skip_set,
                 delegation_num_requests,
-                free_delegation_witnesses,
+                free_allocator,
             } => trace_delegations::<C, A>(
                 batch_id,
                 worker_id,
@@ -131,7 +130,7 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 non_determinism,
                 skip_set,
                 delegation_num_requests,
-                free_delegation_witnesses,
+                free_allocator,
                 results,
             ),
         };
@@ -147,7 +146,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     binary: impl Deref<Target = impl Deref<Target = [u32]>>,
     non_determinism: impl Deref<Target = impl NonDeterminism>,
     skip_set: HashSet<(CircuitType, usize)>,
-    free_setup_and_teardowns: Receiver<ShuffleRamSetupAndTeardown<A>>,
+    free_allocator: Receiver<A>,
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing touched RAM started");
@@ -266,7 +265,9 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
                 index
             );
         } else {
-            let mut setup_and_teardown = free_setup_and_teardowns.recv().unwrap();
+            let allocator = free_allocator.recv().unwrap();
+            let lazy_init_data = Vec::with_capacity_in(cycles_per_chunk, allocator);
+            let mut setup_and_teardown = ShuffleRamSetupAndTeardown { lazy_init_data };
             unsafe { setup_and_teardown.lazy_init_data.set_len(cycles_per_chunk) };
             chunker.populate_next_chunk(&mut setup_and_teardown.lazy_init_data);
             let chunk = Some(setup_and_teardown);
@@ -308,7 +309,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
     skip_set: HashSet<(CircuitType, usize)>,
     split_count: usize,
     split_index: usize,
-    free_cycle_tracing_data: Receiver<CycleTracingData<A>>,
+    free_allocator: Receiver<A>,
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing cycles started");
@@ -337,7 +338,9 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
         if chunk_index % split_count == split_index
             && !skip_set.contains(&(CircuitType::Main(circuit_type), chunk_index))
         {
-            let cycle_tracing_data = free_cycle_tracing_data.recv().unwrap();
+            let allocator = free_allocator.recv().unwrap();
+            let per_cycle_data = Vec::with_capacity_in(cycles_per_chunk, allocator);
+            let cycle_tracing_data = CycleTracingData { per_cycle_data };
             trace!(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] tracing cycles for chunk {chunk_index}"
             );
@@ -425,7 +428,7 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     non_determinism: impl Deref<Target = impl NonDeterminism>,
     skip_set: HashSet<(CircuitType, usize)>,
     delegation_num_requests: HashMap<DelegationCircuitType, usize>,
-    free_delegation_witnesses: HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
+    free_allocator: Receiver<A>,
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing delegations started");
@@ -479,11 +482,9 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
             };
             DelegationTracingType::Counter(counter)
         } else {
-            let witness = free_delegation_witnesses
-                .get(&circuit_type)
-                .unwrap()
-                .recv()
-                .unwrap();
+            let allocator = free_allocator.recv().unwrap();
+            let factory = circuit_type.get_witness_factory_fn();
+            let witness = factory(allocator);
             DelegationTracingType::Witness(witness)
         }
     };

@@ -113,6 +113,7 @@ pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
                         blake2_with_control_factory_fn(
                             blake2_with_compression::DELEGATION_TYPE_ID as u16,
                             blake2_with_compression::NUM_DELEGATION_CYCLES,
+                            A::default(),
                         )
                     })
                         as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,
@@ -123,6 +124,7 @@ pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
                         bigint_with_control_factory_fn(
                             bigint_with_control::DELEGATION_TYPE_ID as u16,
                             bigint_with_control::NUM_DELEGATION_CYCLES,
+                            A::default(),
                         )
                     })
                         as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,
@@ -139,6 +141,7 @@ pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>(
                     blake2_with_control_factory_fn(
                         blake2_with_compression::DELEGATION_TYPE_ID as u16,
                         blake2_with_compression::NUM_DELEGATION_CYCLES,
+                        A::default(),
                     )
                 })
                     as Box<dyn Fn() -> prover::tracers::delegation::DelegationWitness<A>>,

@@ -102,6 +102,7 @@ impl<A: GoodAllocator> DelegationWitness<A> {
 pub fn blake2_with_control_factory_fn<A: GoodAllocator>(
     delegation_type: u16,
     num_requests: usize,
+    allocator: A,
 ) -> DelegationWitness<A> {
     let capacity = num_requests + 1;
     assert!(
@@ -136,17 +137,18 @@ pub fn blake2_with_control_factory_fn<A: GoodAllocator>(
             x11_indirect_access_properties,
         ], // rest is unreachable
 
-        write_timestamp: Vec::with_capacity_in(capacity, A::default()),
+        write_timestamp: Vec::with_capacity_in(capacity, allocator.clone()),
 
-        register_accesses: Vec::with_capacity_in(capacity * 4, A::default()),
-        indirect_reads: Vec::with_capacity_in(capacity * 16, A::default()),
-        indirect_writes: Vec::with_capacity_in(capacity * 24, A::default()),
+        register_accesses: Vec::with_capacity_in(capacity * 4, allocator.clone()),
+        indirect_reads: Vec::with_capacity_in(capacity * 16, allocator.clone()),
+        indirect_writes: Vec::with_capacity_in(capacity * 24, allocator),
     }
 }
 
 pub fn bigint_with_control_factory_fn<A: GoodAllocator>(
     delegation_type: u16,
     num_requests: usize,
+    allocator: A,
 ) -> DelegationWitness<A> {
     let capacity = num_requests + 1;
     assert!(
@@ -181,10 +183,10 @@ pub fn bigint_with_control_factory_fn<A: GoodAllocator>(
             x11_indirect_access_properties,
         ], // rest is unreachable
 
-        write_timestamp: Vec::with_capacity_in(capacity, A::default()),
+        write_timestamp: Vec::with_capacity_in(capacity, allocator.clone()),
 
-        register_accesses: Vec::with_capacity_in(capacity * 3, A::default()),
-        indirect_reads: Vec::with_capacity_in(capacity * 8, A::default()),
-        indirect_writes: Vec::with_capacity_in(capacity * 8, A::default()),
+        register_accesses: Vec::with_capacity_in(capacity * 3, allocator.clone()),
+        indirect_reads: Vec::with_capacity_in(capacity * 8, allocator.clone()),
+        indirect_writes: Vec::with_capacity_in(capacity * 8, allocator.clone()),
     }
 }

@@ -29,6 +29,7 @@ era_cudart_sys = "0.154"
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
 nvtx = "1"
+rayon = "1.11"
 transpose = "0.2"
 
 [features]

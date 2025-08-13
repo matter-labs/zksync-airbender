@@ -73,7 +73,7 @@ fn init_logger() {
 fn test_prove_hashed_fibonacci() -> CudaResult<()> {
     init_logger();
     let instant = std::time::Instant::now();
-    ProverContext::initialize_concurrent_host_allocator(4, 1 << 8, 22)?;
+    ProverContext::initialize_global_host_allocator(4, 1 << 8, 22)?;
     let mut prover_context_config = ProverContextConfig::default();
     prover_context_config.allocation_block_log_size = 22;
     let prover_context = ProverContext::new(&prover_context_config)?;
@@ -128,7 +128,7 @@ fn test_prove_hashed_fibonacci() -> CudaResult<()> {
 fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
     init_logger();
     let instant = std::time::Instant::now();
-    ProverContext::initialize_concurrent_host_allocator(4, 1 << 8, 22)?;
+    ProverContext::initialize_global_host_allocator(4, 1 << 8, 22)?;
     println!("host allocator initialized in {:?}", instant.elapsed());
     let instant = std::time::Instant::now();
     let device_count = get_device_count()?;

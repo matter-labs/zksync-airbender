@@ -1,5 +1,8 @@
-use prover::risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
-use prover::risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
+use fft::GoodAllocator;
+use prover::tracers::delegation::{
+    bigint_with_control_factory_fn, blake2_with_control_factory_fn, DelegationWitness,
+};
+use trace_and_split::setups::{bigint_with_control, blake2_with_compression};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum CircuitType {
@@ -41,16 +44,37 @@ pub enum MainCircuitType {
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum DelegationCircuitType {
-    BigIntWithControl = U256_OPS_WITH_CONTROL_ACCESS_ID,
-    Blake2WithCompression = BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+    BigIntWithControl = bigint_with_control::DELEGATION_TYPE_ID,
+    Blake2WithCompression = blake2_with_compression::DELEGATION_TYPE_ID,
+}
+
+impl DelegationCircuitType {
+    pub fn get_witness_factory_fn<A: GoodAllocator>(&self) -> fn(A) -> DelegationWitness<A> {
+        match self {
+            DelegationCircuitType::BigIntWithControl => |allocator| {
+                bigint_with_control_factory_fn(
+                    bigint_with_control::DELEGATION_TYPE_ID as u16,
+                    bigint_with_control::NUM_DELEGATION_CYCLES,
+                    allocator,
+                )
+            },
+            DelegationCircuitType::Blake2WithCompression => |allocator| {
+                blake2_with_control_factory_fn(
+                    blake2_with_compression::DELEGATION_TYPE_ID as u16,
+                    blake2_with_compression::NUM_DELEGATION_CYCLES,
+                    allocator,
+                )
+            },
+        }
+    }
 }
 
 impl From<u16> for DelegationCircuitType {
     #[inline(always)]
     fn from(delegation_type: u16) -> Self {
         match delegation_type as u32 {
-            U256_OPS_WITH_CONTROL_ACCESS_ID => DelegationCircuitType::BigIntWithControl,
-            BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
+            bigint_with_control::DELEGATION_TYPE_ID => DelegationCircuitType::BigIntWithControl,
+            blake2_with_compression::DELEGATION_TYPE_ID => {
                 DelegationCircuitType::Blake2WithCompression
             }
             _ => panic!("unknown delegation type {}", delegation_type),

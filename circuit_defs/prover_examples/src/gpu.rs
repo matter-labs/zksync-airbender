@@ -46,9 +46,9 @@ use trace_and_split::{
 use crate::{NUM_QUERIES, POW_BITS};
 
 pub fn initialize_host_allocator_if_needed() {
-    if !ProverContext::is_concurrent_host_allocator_initialized() {
+    if !ProverContext::is_global_host_allocator_initialized() {
         // allocate 8 x 1 GB ((1 << 8) << 22) of pinned host memory with 4 MB (1 << 22) chunking
-        ProverContext::initialize_concurrent_host_allocator(8, 1 << 8, 22).unwrap();
+        ProverContext::initialize_global_host_allocator(8, 1 << 8, 22).unwrap();
     }
 }
 

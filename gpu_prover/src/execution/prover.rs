@@ -12,6 +12,7 @@ use super::tracer::CycleTracingData;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use crate::cudart::device::get_device_count;
+use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use crate::prover::context::ProverContext;
 use crate::prover::tracing_data::TracingDataHost;
 use crate::witness::trace_main::MainTraceHost;
@@ -34,6 +35,8 @@ use prover::risc_v_simulator::cycle::{
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
 use prover::ShuffleRamSetupAndTeardown;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 use std::alloc::Global;
 use std::cmp::min;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -82,13 +85,8 @@ pub struct ExecutionProver<K: Debug + Eq + Hash> {
     delegation_num_requests: HashMap<DelegationCircuitType, usize>,
     delegation_circuits_precomputations:
         HashMap<DelegationCircuitType, CircuitPrecomputationsHost<A>>,
-    free_setup_and_teardowns_sender: Sender<ShuffleRamSetupAndTeardown<A>>,
-    free_setup_and_teardowns_receiver: Receiver<ShuffleRamSetupAndTeardown<A>>,
-    free_cycle_tracing_data_sender: Sender<CycleTracingData<A>>,
-    free_cycle_tracing_data_receiver: Receiver<CycleTracingData<A>>,
-    free_delegation_witness_senders: HashMap<DelegationCircuitType, Sender<DelegationWitness<A>>>,
-    free_delegation_witness_receivers:
-        HashMap<DelegationCircuitType, Receiver<DelegationWitness<A>>>,
+    free_allocator_sender: Sender<A>,
+    free_allocator_receiver: Receiver<A>,
 }
 
 struct ChunksCacheEntry<A: GoodAllocator> {
@@ -152,68 +150,50 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 + witness.indirect_reads.capacity() * size_of::<RegisterOrIndirectReadData>()
                 + witness.indirect_writes.capacity() * size_of::<RegisterOrIndirectReadWriteData>()
         }
-        let combined_bytes_for_delegation_traces = binaries
+        let max_setups_and_teardowns_bytes = max_num_cycles * size_of::<LazyInitAndTeardown>();
+        let max_cycles_tracing_data_bytes = max_num_cycles * size_of::<SingleCycleTracingData>();
+        let max_delegation_bytes = binaries
             .iter()
             .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
             .flatten()
             .unique_by(|(t, _)| *t)
             .map(|(_, factory)| delegation_witness_size(factory()))
-            .sum::<usize>();
-        let delegation_num_requests = binaries
+            .max()
+            .unwrap_or_default();
+        let max_bytes = max_setups_and_teardowns_bytes
+            .max(max_cycles_tracing_data_bytes)
+            .max(max_delegation_bytes);
+        let delegation_num_requests: HashMap<_, _> = binaries
             .iter()
             .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
             .flatten()
             .unique_by(|(t, _)| *t)
             .map(|(circuit_type, factory)| (circuit_type, factory().num_requests))
             .collect();
-        let setup_and_teardowns_count = max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT
-            + max_concurrent_batches * device_count
-            + device_count * 2;
-        let setups_and_teardowns_bytes_needed =
-            setup_and_teardowns_count * max_num_cycles * size_of::<LazyInitAndTeardown>();
-        let cycles_tracing_data_count = max_concurrent_batches * CYCLES_TRACING_WORKERS_COUNT
-            + max_concurrent_batches * device_count
-            + device_count * 2;
-        let cycles_tracing_data_bytes_needed =
-            cycles_tracing_data_count * max_num_cycles * size_of::<SingleCycleTracingData>();
-        let delegation_tracing_data_count = max_concurrent_batches + device_count * 2;
-        let delegation_tracing_data_bytes_needed =
-            delegation_tracing_data_count * combined_bytes_for_delegation_traces;
-        let total_bytes_needed = setups_and_teardowns_bytes_needed
-            + cycles_tracing_data_bytes_needed
-            + delegation_tracing_data_bytes_needed;
-        let total_gb_needed = total_bytes_needed.next_multiple_of(1 << 30) >> 30;
-        let host_allocations_count = total_gb_needed + device_count * 2;
-        info!("PROVER initializing host allocator with {host_allocations_count} x 1 GB");
-        ProverContext::initialize_concurrent_host_allocator(host_allocations_count, 1 << 8, 22)
-            .unwrap();
-        info!("PROVER host allocator initialized");
-        let (free_setup_and_teardowns_sender, free_setup_and_teardowns_receiver) = unbounded();
-        for _ in 0..setup_and_teardowns_count {
-            let lazy_init_data = Vec::with_capacity_in(max_num_cycles, A::default());
-            let message = ShuffleRamSetupAndTeardown { lazy_init_data };
-            free_setup_and_teardowns_sender.send(message).unwrap();
+        let delegation_types_count = delegation_num_requests.len();
+        let total_allocators_count = max_concurrent_batches
+            * (1 + CYCLES_TRACING_WORKERS_COUNT + delegation_types_count + 3)
+            + device_count * 4;
+        let (free_allocator_sender, free_allocator_receiver) = unbounded();
+        const LOG_CHUNK_SIZE: u32 = 22; // 2^22 = 4 MB
+        const CHUNK_SIZE: usize = 1 << LOG_CHUNK_SIZE;
+        let length = max_bytes.next_multiple_of(CHUNK_SIZE);
+        info!(
+            "PROVER initializing {total_allocators_count} host buffers with {} MB per buffer",
+            length >> 20
+        );
+        let allocations: Vec<HostAllocation<u8>> = (0..total_allocators_count)
+            .into_par_iter()
+            .map(|_| HostAllocation::alloc(length, CudaHostAllocFlags::DEFAULT).unwrap())
+            .collect();
+        info!("PROVER host buffers allocated");
+        for allocation in allocations {
+            let allocator = ConcurrentStaticHostAllocator::new([allocation], LOG_CHUNK_SIZE);
+            free_allocator_sender.send(allocator).unwrap();
         }
-        let (free_cycle_tracing_data_sender, free_cycle_tracing_data_receiver) = unbounded();
-        for _ in 0..cycles_tracing_data_count {
-            let message = CycleTracingData::with_cycles_capacity(max_num_cycles);
-            free_cycle_tracing_data_sender.send(message).unwrap();
-        }
-        let mut free_delegation_witness_senders = HashMap::new();
-        let mut free_delegation_witness_receivers = HashMap::new();
-        for (circuit_type, factory) in binaries
-            .iter()
-            .map(|b| Self::get_delegation_factories(b.circuit_type).into_iter())
-            .flatten()
-            .unique_by(|(t, _)| *t)
-        {
-            let (sender, receiver) = unbounded();
-            for _ in 0..delegation_tracing_data_count {
-                sender.send(factory()).unwrap();
-            }
-            free_delegation_witness_senders.insert(circuit_type, sender);
-            free_delegation_witness_receivers.insert(circuit_type, receiver);
-        }
+        info!("PROVER initializing global host allocator with 4 x 512 MB");
+        ProverContext::initialize_global_host_allocator(4, 1 << 7, 22).unwrap();
+        info!("PROVER global host allocator initialized");
         let worker = Worker::new();
         info!(
             "PROVER thread pool with {} threads created",
@@ -283,12 +263,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             binaries,
             delegation_num_requests,
             delegation_circuits_precomputations,
-            free_setup_and_teardowns_sender,
-            free_setup_and_teardowns_receiver,
-            free_cycle_tracing_data_sender,
-            free_cycle_tracing_data_receiver,
-            free_delegation_witness_senders,
-            free_delegation_witness_receivers,
+            free_allocator_sender,
+            free_allocator_receiver,
         }
     }
 
@@ -384,7 +360,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let ram_tracing_mode = CpuWorkerMode::TraceTouchedRam {
             circuit_type: binary.circuit_type,
             skip_set: skip_set.clone(),
-            free_setup_and_teardowns: self.free_setup_and_teardowns_receiver.clone(),
+            free_allocator: self.free_allocator_receiver.clone(),
         };
         self.spawn_cpu_worker(
             binary.circuit_type,
@@ -403,7 +379,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 skip_set: skip_set.clone(),
                 split_count: CYCLES_TRACING_WORKERS_COUNT,
                 split_index,
-                free_cycle_tracing_data: self.free_cycle_tracing_data_receiver.clone(),
+                free_allocator: self.free_allocator_receiver.clone(),
             };
             self.spawn_cpu_worker(
                 binary.circuit_type,
@@ -420,7 +396,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let delegation_mode = CpuWorkerMode::TraceDelegations {
             skip_set,
             delegation_num_requests: self.delegation_num_requests.clone(),
-            free_delegation_witnesses: self.free_delegation_witness_receivers.clone(),
+            free_allocator: self.free_allocator_receiver.clone(),
         };
         self.spawn_cpu_worker(
             binary.circuit_type,
@@ -541,11 +517,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     let delegation_circuit_type = DelegationCircuitType::from(id);
                     if witness.write_timestamp.is_empty() {
                         trace!("BATCH[{batch_id}] PROVER skipping empty delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence}");
-                        self.free_delegation_witness_senders
-                            .get(&delegation_circuit_type)
-                            .unwrap()
-                            .send(witness)
-                            .unwrap();
+                        let allocator = witness.write_timestamp.allocator().clone();
+                        drop(witness);
+                        assert_eq!(allocator.get_used_mem_current(), 0);
+                        self.free_allocator_sender.send(allocator).unwrap();
                     } else {
                         let circuit_type = CircuitType::Delegation(delegation_circuit_type);
                         trace!("BATCH[{batch_id}] PROVER received delegation circuit {:?} chunk {circuit_sequence} witnesses", delegation_circuit_type);
@@ -631,20 +606,16 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                                 chunks_cache.as_mut().unwrap().queue.push_back(entry);
                             } else {
                                 if let Some(setup_and_teardown) = setup_and_teardown {
-                                    let lazy_init_data =
-                                        Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
-                                    let setup_and_teardown =
-                                        ShuffleRamSetupAndTeardown { lazy_init_data };
-                                    self.free_setup_and_teardowns_sender
-                                        .send(setup_and_teardown)
-                                        .unwrap();
+                                    let allocator =
+                                        setup_and_teardown.lazy_init_data.allocator().clone();
+                                    drop(setup_and_teardown);
+                                    assert_eq!(allocator.get_used_mem_current(), 0);
+                                    self.free_allocator_sender.send(allocator).unwrap();
                                 }
-                                let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
-                                per_cycle_data.clear();
-                                let cycle_tracing_data = CycleTracingData { per_cycle_data };
-                                self.free_cycle_tracing_data_sender
-                                    .send(cycle_tracing_data)
-                                    .unwrap();
+                                let allocator = trace.cycle_data.allocator().clone();
+                                drop(trace);
+                                assert_eq!(allocator.get_used_mem_current(), 0);
+                                self.free_allocator_sender.send(allocator).unwrap();
                             }
                             assert!(main_memory_commitments
                                 .insert(circuit_sequence, merkle_tree_caps)
@@ -667,18 +638,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                                 };
                                 chunks_cache.as_mut().unwrap().queue.push_back(entry);
                             } else {
-                                let circuit_type =
-                                    DelegationCircuitType::from(witness.delegation_type);
-                                let mut witness: DelegationWitness<A> = witness.into();
-                                witness.write_timestamp.clear();
-                                witness.register_accesses.clear();
-                                witness.indirect_reads.clear();
-                                witness.indirect_writes.clear();
-                                self.free_delegation_witness_senders
-                                    .get(&circuit_type)
-                                    .unwrap()
-                                    .send(witness)
-                                    .unwrap();
+                                let allocator = witness.write_timestamp.allocator().clone();
+                                drop(witness);
+                                assert_eq!(allocator.get_used_mem_current(), 0);
+                                self.free_allocator_sender.send(allocator).unwrap();
                             }
                             assert!(delegation_memory_commitments
                                 .entry(circuit_type)
@@ -706,37 +669,26 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                             let circuit_type = circuit_type.as_main().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received proof for main circuit {circuit_type:?} chunk {circuit_sequence}");
                             if let Some(setup_and_teardown) = setup_and_teardown {
-                                let mut lazy_init_data =
-                                    Arc::into_inner(setup_and_teardown.lazy_init_data).unwrap();
-                                lazy_init_data.clear();
-                                let setup_and_teardown =
-                                    ShuffleRamSetupAndTeardown { lazy_init_data };
-                                self.free_setup_and_teardowns_sender
-                                    .send(setup_and_teardown)
-                                    .unwrap();
+                                let allocator =
+                                    setup_and_teardown.lazy_init_data.allocator().clone();
+                                drop(setup_and_teardown);
+                                assert_eq!(allocator.get_used_mem_current(), 0);
+                                self.free_allocator_sender.send(allocator).unwrap();
                             }
-                            let mut per_cycle_data = Arc::into_inner(trace.cycle_data).unwrap();
-                            per_cycle_data.clear();
-                            let cycle_tracing_data = CycleTracingData { per_cycle_data };
-                            self.free_cycle_tracing_data_sender
-                                .send(cycle_tracing_data)
-                                .unwrap();
+                            let allocator = trace.cycle_data.allocator().clone();
+                            drop(trace);
+                            assert_eq!(allocator.get_used_mem_current(), 0);
+                            self.free_allocator_sender.send(allocator).unwrap();
                             assert!(main_proofs.insert(circuit_sequence, proof).is_none());
                         }
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received proof for delegation circuit: {circuit_type:?} chunk {circuit_sequence}");
                             let circuit_type = DelegationCircuitType::from(witness.delegation_type);
-                            let mut witness: DelegationWitness<A> = witness.into();
-                            witness.write_timestamp.clear();
-                            witness.register_accesses.clear();
-                            witness.indirect_reads.clear();
-                            witness.indirect_writes.clear();
-                            self.free_delegation_witness_senders
-                                .get(&circuit_type)
-                                .unwrap()
-                                .send(witness)
-                                .unwrap();
+                            let allocator = witness.write_timestamp.allocator().clone();
+                            drop(witness);
+                            assert_eq!(allocator.get_used_mem_current(), 0);
+                            self.free_allocator_sender.send(allocator).unwrap();
                             assert!(delegation_proofs
                                 .entry(circuit_type)
                                 .or_insert_with(HashMap::new)

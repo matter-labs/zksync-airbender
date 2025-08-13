@@ -11,6 +11,8 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaDeviceAttr, CudaError};
 use log::error;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 
 pub struct DeviceProperties {
     pub l2_cache_size_bytes: usize,
@@ -68,28 +70,38 @@ pub struct ProverContext {
 }
 
 impl ProverContext {
-    pub fn is_concurrent_host_allocator_initialized() -> bool {
+    pub fn is_global_host_allocator_initialized() -> bool {
         ConcurrentStaticHostAllocator::is_initialized_global()
     }
 
-    pub fn initialize_concurrent_host_allocator(
+    pub fn initialize_global_host_allocator(
         host_allocations_count: usize,
         blocks_per_allocation_count: usize,
         block_log_size: u32,
     ) -> CudaResult<()> {
         assert!(
-            !ConcurrentStaticHostAllocator::is_initialized_global(),
-            "ConcurrentStaticHostAllocator can only be initialized once"
+            !Self::is_global_host_allocator_initialized(),
+            "Global host allocator can only be initialized once"
         );
         let host_allocation_size = blocks_per_allocation_count << block_log_size;
-        let mut allocations = vec![];
-        for _ in 0..host_allocations_count {
-            allocations.push(era_cudart::memory::HostAllocation::alloc(
-                host_allocation_size,
-                CudaHostAllocFlags::DEFAULT,
-            )?);
+        let allocations: Vec<CudaResult<era_cudart::memory::HostAllocation<u8>>> = (0
+            ..host_allocations_count)
+            .into_par_iter()
+            .map(|_| {
+                era_cudart::memory::HostAllocation::alloc(
+                    host_allocation_size,
+                    CudaHostAllocFlags::DEFAULT,
+                )
+            })
+            .collect();
+        let mut backends = vec![];
+        for allocation in allocations {
+            match allocation {
+                Ok(alloc) => backends.push(alloc),
+                Err(e) => return Err(e),
+            }
         }
-        ConcurrentStaticHostAllocator::initialize_global(allocations, block_log_size);
+        ConcurrentStaticHostAllocator::initialize_global(backends, block_log_size);
         Ok(())
     }
 
