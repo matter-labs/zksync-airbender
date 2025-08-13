@@ -48,6 +48,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
     e2f *twiddles_this_stage = twiddle_cache + VALS_PER_WARP - 2;
     unsigned num_twiddles_this_stage = 1;
 #if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+// See Note: "#pragma unroll 1 here makes no sense"
 #pragma unroll 1
 #else
 #pragma unroll
@@ -78,7 +79,10 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
         const auto twiddle = twiddles_this_stage[(32 * i + lane_id) >> s];
         exchg_dit(vals[2 * i], vals[2 * i + 1], twiddle);
-        if (stage < 5)
+      }
+      if (stage < 5) {
+#pragma unroll
+        for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
           shfl_xor_e2f(vals, i, lane_id, lane_mask);
       }
       lane_mask >>= 1;
@@ -210,13 +214,11 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
           // TODO: Handle these cooperatively?
           const auto twiddle = get_twiddle<true>(exchg_region_offset + ((2 * i + halfwarp_id) >> (1 - s)));
           exchg_dit(vals[2 * i], vals[2 * i + 1], twiddle);
-          shfl_xor_e2f(vals, i, lane_id, lane_mask);
         }
-      } else {
-#pragma unroll
-        for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
-          shfl_xor_e2f(vals, i, lane_id, lane_mask);
       }
+#pragma unroll
+      for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
+        shfl_xor_e2f(vals, i, lane_id, lane_mask);
       lane_mask >>= 1;
       exchg_region_offset <<= 1;
     }
@@ -301,7 +303,10 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
         const auto twiddle = twiddles_this_stage[(32 * i + lane_id) >> s];
         exchg_dit(vals[2 * i], vals[2 * i + 1], twiddle);
-        if (stage < 5)
+      }
+      if (stage < 5) {
+#pragma unroll
+        for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
           shfl_xor_e2f(vals, i, lane_id, lane_mask);
       }
       lane_mask >>= 1;
@@ -399,7 +404,11 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
     }
 
     unsigned block_exchg_region_offset = block_bfly_region;
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -423,8 +432,14 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
         // TODO: Handle these cooperatively?
         const auto twiddle = get_twiddle<true>(block_exchg_region_offset + ((2 * i + halfwarp_id) >> (1 - s)));
         exchg_dit(vals[2 * i], vals[2 * i + 1], twiddle);
-        shfl_xor_e2f(vals, i, lane_id, lane_mask);
       }
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
+      for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
+        shfl_xor_e2f(vals, i, lane_id, lane_mask);
       lane_mask >>= 1;
       block_exchg_region_offset <<= 1;
     }
@@ -467,7 +482,11 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
 
     e2f *twiddles_this_stage = twiddle_cache + 2 * VALS_PER_THREAD - 2;
     unsigned num_twiddles_this_stage = 1;
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+#pragma unroll 1
+#else
 #pragma unroll
+#endif
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
 #pragma unroll
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -493,8 +512,14 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
           // TODO: Handle these cooperatively?
           const auto twiddle = twiddles_this_stage[(2 * i + halfwarp_id) >> (1 - s)];
           exchg_dit(vals[2 * i], vals[2 * i + 1], twiddle);
-          shfl_xor_e2f(vals, i, lane_id, lane_mask);
         }
+#if (__CUDACC_VER_MAJOR__ == 13) && (__CUDA_ARCH__ == 890)
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
+        for (unsigned i = 0; i < PAIRS_PER_THREAD; i++)
+          shfl_xor_e2f(vals, i, lane_id, lane_mask);
         lane_mask >>= 1;
         num_twiddles_this_stage <<= 1;
         twiddles_this_stage -= num_twiddles_this_stage;
