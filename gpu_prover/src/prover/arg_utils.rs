@@ -777,13 +777,16 @@ pub struct RegisterAccess {
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct IndirectAccess {
-    pub offset: u32,
     pub read_timestamp_col: u32,
     pub read_value_col: u32,
     pub maybe_write_value_col: u32,
-    pub address_derivation_carry_bit_col: u32,
-    pub address_derivation_carry_bit_num_elements: u32,
-    pub is_write: bool,
+    pub maybe_address_derivation_carry_bit_col: u32,
+    pub maybe_variable_dependent_coeff: u32,
+    pub maybe_variable_dependent_col: u32,
+    pub offset_constant: u32,
+    pub has_address_derivation_carry_bit: bool,
+    pub has_variable_dependent: bool,
+    pub has_write: bool,
 }
 
 pub const MAX_REGISTER_ACCESSES: usize = 4;
@@ -812,7 +815,6 @@ impl RegisterAndIndirectAccesses {
         let mut indirect_accesses_per_register_access = [0; MAX_REGISTER_ACCESSES];
         let num_register_accesses = register_and_indirect_accesses.len();
         assert!(num_register_accesses <= MAX_REGISTER_ACCESSES);
-        // imitates zksync_airbender's stage2.rs
         let mut flat_indirect_idx = 0;
         for (i, register_access_columns) in register_and_indirect_accesses.iter().enumerate() {
             match register_access_columns.register_access {
@@ -865,46 +867,92 @@ impl RegisterAndIndirectAccesses {
             {
                 match indirect_access_columns {
                     IndirectAccessColumns::ReadAccess {
-                        offset,
                         read_timestamp,
                         read_value,
                         address_derivation_carry_bit,
-                        ..
+                        variable_dependent,
+                        offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset == 0);
+                        assert_eq!(j == 0, *offset_constant == 0);
+                        let has_address_derivation_carry_bit =
+                            (address_derivation_carry_bit.num_elements() > 0);
+                        if has_address_derivation_carry_bit {
+                            assert!(variable_dependent.is_none());
+                        }
+                        let (
+                            maybe_address_derivation_carry_bit_col,
+                            has_address_derivation_carry_bit,
+                        ) = if has_address_derivation_carry_bit {
+                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
+                                (address_derivation_carry_bit.start() as u32, true)
+                            } else {
+                                (0, false)
+                            };
+                        let (
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            has_variable_dependent,
+                        ) = if let (coeff, col) = variable_dependent {
+                            (coeff, col, true)
+                        } else {
+                            (0, 0, false)
+                        };
                         indirect_accesses[flat_indirect_idx] = IndirectAccess {
-                            offset: *offset,
                             read_timestamp_col: read_timestamp.start() as u32,
                             read_value_col: read_value.start() as u32,
                             maybe_write_value_col: 0,
-                            address_derivation_carry_bit_col: address_derivation_carry_bit.start()
-                                as u32,
-                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
-                                .num_elements()
-                                as u32,
-                            is_write: false,
+                            maybe_address_derivation_carry_bit_col,
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            offset_constant: *offset_constant,
+                            has_address_derivation_carry_bit,
+                            has_variable_dependent,
+                            has_write: false,
                         };
                     }
                     IndirectAccessColumns::WriteAccess {
-                        offset,
                         read_timestamp,
                         read_value,
                         write_value,
                         address_derivation_carry_bit,
-                        ..
+                        variable_dependent,
+                        offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset == 0);
+                        assert_eq!(j == 0, *offset_constant == 0);
+                        let has_address_derivation_carry_bit =
+                            (address_derivation_carry_bit.num_elements() > 0);
+                        if has_address_derivation_carry_bit {
+                            assert!(variable_dependent.is_none());
+                        }
+                        let (
+                            maybe_address_derivation_carry_bit_col,
+                            has_address_derivation_carry_bit,
+                        ) = if has_address_derivation_carry_bit {
+                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
+                                (address_derivation_carry_bit.start() as u32, true)
+                            } else {
+                                (0, false)
+                            };
+                        let (
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            has_variable_dependent,
+                        ) = if let (coeff, col) = variable_dependent {
+                            (coeff, col, true)
+                        } else {
+                            (0, 0, false)
+                        };
                         indirect_accesses[flat_indirect_idx] = IndirectAccess {
-                            offset: *offset,
                             read_timestamp_col: read_timestamp.start() as u32,
                             read_value_col: read_value.start() as u32,
                             maybe_write_value_col: write_value.start() as u32,
-                            address_derivation_carry_bit_col: address_derivation_carry_bit.start()
-                                as u32,
-                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
-                                .num_elements()
-                                as u32,
-                            is_write: true,
+                            maybe_address_derivation_carry_bit_col,
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            offset_constant: *offset_constant,
+                            has_address_derivation_carry_bit,
+                            has_variable_dependent,
+                            has_write: false,
                         };
                     }
                     #[allow(unreachable_patterns)]

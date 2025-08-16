@@ -538,10 +538,22 @@ EXTERN __launch_bounds__(128, 8) __global__
     for (; flat_indirect_idx < lim; flat_indirect_idx++) {
       const auto &indirect_access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
 
-      const unsigned address = base_low + indirect_access.offset;
-      const unsigned of = address >> 16;
-      const bf address_low = bf{address & 0x0000ffff};
-      const bf address_high = bf{base_high + of};
+      // imitates prover/src/prover_stages/stage2_utils.rs
+      unsigned address_low = base_low + indirect_access.offset_constant;
+      const unsigned of_low_0 = address_low >> 16;
+      address_low = address_low & 0x0000ffff;
+      // account for variable_dependent offset, if used
+      unsigned of_low_1 = 0;
+      if (indirect_access.has_variable_dependent) {
+          const bf v = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
+          const bf v_canonical = bf::into_canonical(v);
+          const unsigned extra_low = indirect_access.maybe_variable_dependent_coeff * v_canonical.limb;
+          address_low = address_low + extra_low;
+          of_low_1 = address_low >> 16;
+          address_low = address_low & 0x0000ffff;
+      }
+      // this should never overflow, because our address space should be representable with 32 bits.
+      const bf address_high = bf{base_high + (of_low_0 | of_low_1)};
 
       e4 numerator{challenges.gamma};
       numerator = e4::add(numerator, e4::mul(challenges.address_low_challenge, address_low));

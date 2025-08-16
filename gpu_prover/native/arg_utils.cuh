@@ -225,13 +225,16 @@ extern "C" struct RegisterAccess {
 };
 
 extern "C" struct IndirectAccess {
-  const unsigned offset;
   const unsigned read_timestamp_col;
   const unsigned read_value_col;
   const unsigned maybe_write_value_col;
-  const unsigned address_derivation_carry_bit_col;
-  const unsigned address_derivation_carry_bit_num_elements;
-  const bool is_write;
+  const unsigned maybe_address_derivation_carry_bit_col;
+  const unsigned maybe_variable_dependent_coeff;
+  const unsigned maybe_variable_dependent_col;
+  const unsigned offset_constant;
+  const bool has_address_derivation_carry_bit;
+  const bool has_variable_dependent;
+  const bool has_write;
 };
 
 constexpr unsigned MAX_REGISTER_ACCESSES = 4;
