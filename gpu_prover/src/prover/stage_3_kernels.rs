@@ -1617,7 +1617,7 @@ impl Metadata {
                 alpha_offset += 1;
                 // we expect offset == 0 for the first indirect access and offset > 0 for others
                 assert_eq!(j == 0, indirect_access.offset == 0);
-                let offset = BF::from_u64_unchecked(indirect_access.offset as u64);
+                let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
                 let mut constant = *mc
                     .address_low_challenge
                     .clone()
