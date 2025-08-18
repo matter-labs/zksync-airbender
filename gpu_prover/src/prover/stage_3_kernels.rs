@@ -1215,12 +1215,12 @@ impl Metadata {
                 {
                     let indirect_access =
                         &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-                    if indirect_access.is_write {
+                    if indirect_access.has_write {
                         alpha_offset += 6;
                     } else {
                         alpha_offset += 4;
                     }
-                    if j > 0 && indirect_access.address_derivation_carry_bit_num_elements > 0 {
+                    if indirect_access.has_address_derivation_carry_bit {
                         alpha_offset += 1; // address_derivation_carry_bit constraint
                     }
                     flat_indirect_idx += 1;
@@ -1616,7 +1616,7 @@ impl Metadata {
                 let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
                 alpha_offset += 1;
                 // we expect offset == 0 for the first indirect access and offset > 0 for others
-                assert_eq!(j == 0, indirect_access.offset == 0);
+                assert_eq!(j == 0, indirect_access.offset_constant == 0);
                 let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
                 let mut constant = *mc
                     .address_low_challenge

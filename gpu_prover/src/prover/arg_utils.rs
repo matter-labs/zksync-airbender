@@ -875,7 +875,7 @@ impl RegisterAndIndirectAccesses {
                     } => {
                         assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
-                            (address_derivation_carry_bit.num_elements() > 0);
+                            address_derivation_carry_bit.num_elements() > 0;
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
@@ -883,17 +883,17 @@ impl RegisterAndIndirectAccesses {
                             maybe_address_derivation_carry_bit_col,
                             has_address_derivation_carry_bit,
                         ) = if has_address_derivation_carry_bit {
-                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
-                                (address_derivation_carry_bit.start() as u32, true)
-                            } else {
-                                (0, false)
-                            };
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                            (address_derivation_carry_bit.start() as u32, true)
+                        } else {
+                            (0, false)
+                        };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let (coeff, col) = variable_dependent {
-                            (coeff, col, true)
+                        ) = if let Some((coeff, col)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)
                         };
@@ -920,7 +920,7 @@ impl RegisterAndIndirectAccesses {
                     } => {
                         assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
-                            (address_derivation_carry_bit.num_elements() > 0);
+                            address_derivation_carry_bit.num_elements() > 0;
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
@@ -928,17 +928,17 @@ impl RegisterAndIndirectAccesses {
                             maybe_address_derivation_carry_bit_col,
                             has_address_derivation_carry_bit,
                         ) = if has_address_derivation_carry_bit {
-                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
-                                (address_derivation_carry_bit.start() as u32, true)
-                            } else {
-                                (0, false)
-                            };
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                            (address_derivation_carry_bit.start() as u32, true)
+                        } else {
+                            (0, false)
+                        };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let (coeff, col) = variable_dependent {
-                            (coeff, col, true)
+                        ) = if let Some((coeff, col)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)
                         };

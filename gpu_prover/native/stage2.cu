@@ -539,19 +539,20 @@ EXTERN __launch_bounds__(128, 8) __global__
       const auto &indirect_access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
 
       // imitates prover/src/prover_stages/stage2_utils.rs
-      unsigned address_low = base_low + indirect_access.offset_constant;
-      const unsigned of_low_0 = address_low >> 16;
-      address_low = address_low & 0x0000ffff;
+      unsigned address_low_u32 = base_low + indirect_access.offset_constant;
+      const unsigned of_low_0 = address_low_u32 >> 16;
+      address_low_u32 = address_low_u32 & 0x0000ffff;
       // account for variable_dependent offset, if used
       unsigned of_low_1 = 0;
       if (indirect_access.has_variable_dependent) {
-          const bf v = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
-          const bf v_canonical = bf::into_canonical(v);
-          const unsigned extra_low = indirect_access.maybe_variable_dependent_coeff * v_canonical.limb;
-          address_low = address_low + extra_low;
-          of_low_1 = address_low >> 16;
-          address_low = address_low & 0x0000ffff;
+        const bf v = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
+        const bf v_canonical = bf::into_canonical(v);
+        const unsigned extra_low = indirect_access.maybe_variable_dependent_coeff * v_canonical.limb;
+        address_low_u32 = address_low_u32 + extra_low;
+        of_low_1 = address_low_u32 >> 16;
+        address_low_u32 = address_low_u32 & 0x0000ffff;
       }
+      const bf address_low = bf{address_low_u32};
       // this should never overflow, because our address space should be representable with 32 bits.
       const bf address_high = bf{base_high + (of_low_0 | of_low_1)};
 
@@ -561,7 +562,7 @@ EXTERN __launch_bounds__(128, 8) __global__
 
       e4 denom{};
 
-      if (indirect_access.is_write) {
+      if (indirect_access.has_write) {
         denom = numerator;
 
         const bf read_value_low = memory_cols.get_at_col(indirect_access.read_value_col);
