@@ -1,5 +1,5 @@
 use super::callbacks::Callbacks;
-use super::context::{HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor};
+use super::context::{HostAllocation, ProverContext, UnsafeMutAccessor};
 use super::pow::PowOutput;
 use super::queries::QueriesOutput;
 use super::setup::SetupPrecomputations;
@@ -8,19 +8,17 @@ use super::stage_2::StageTwoOutput;
 use super::stage_3::StageThreeOutput;
 use super::stage_4::StageFourOutput;
 use super::stage_5::StageFiveOutput;
-use super::trace_holder::{flatten_tree_caps, transform_tree_caps};
+use super::trace_holder::{flatten_tree_caps, get_tree_caps};
 use super::tracing_data::TracingDataTransfer;
 use super::{device_tracing, BF};
-use crate::blake2s::Digest;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStreamWaitEventFlags;
-use fft::{GoodAllocator, LdePrecomputations, Twiddles};
-use field::{Mersenne31Complex, Mersenne31Field};
+use fft::{GoodAllocator, LdePrecomputations};
+use field::Mersenne31Field;
 use itertools::Itertools;
 use prover::definitions::{ExternalValues, Transcript, OPTIMAL_FOLDING_PROPERTIES};
-use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::Proof;
 use prover::transcript::Seed;
@@ -70,7 +68,6 @@ pub fn prove<'a>(
     external_values: ExternalValues,
     setup: &mut SetupPrecomputations,
     tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
-    twiddles: &Twiddles<Mersenne31Complex, impl GoodAllocator>,
     lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     circuit_sequence: usize,
     delegation_processing_type: Option<u16>,
@@ -190,7 +187,6 @@ pub fn prove<'a>(
         &circuit,
         &cached_data_values,
         &lde_precomputations,
-        &twiddles,
         external_values.clone(),
         setup,
         &stage_1_output,
@@ -211,7 +207,6 @@ pub fn prove<'a>(
         &mut seed,
         &circuit,
         &cached_data_values,
-        &twiddles,
         &setup,
         &stage_1_output,
         &stage_2_output,
@@ -237,7 +232,6 @@ pub fn prove<'a>(
         &optimal_folding,
         num_queries,
         &lde_precomputations,
-        &twiddles,
         &mut callbacks,
         context,
     )?;
@@ -457,13 +451,6 @@ fn create_proof(
     let mut proof = Box::new(Option::<Proof>::None);
     let proof_accessor = UnsafeMutAccessor::new(proof.as_mut());
     let create_proof_fn = move || unsafe {
-        fn get_tree_caps(accessors: &Vec<UnsafeAccessor<[Digest]>>) -> Vec<MerkleTreeCapVarLength> {
-            let tree_caps = accessors
-                .iter()
-                .map(|accessor| unsafe { accessor.get() })
-                .collect_vec();
-            transform_tree_caps(&tree_caps)
-        }
         let public_inputs = public_inputs.get().to_vec();
         let witness_tree_caps = get_tree_caps(&witness_tree_caps);
         let memory_tree_caps = get_tree_caps(&memory_tree_caps);

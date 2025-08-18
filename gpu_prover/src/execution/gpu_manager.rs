@@ -10,27 +10,24 @@ use crossbeam_utils::thread::{scope, Scope};
 use fft::GoodAllocator;
 use itertools::Itertools;
 use log::{error, info, trace};
-use std::alloc::Global;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::exit;
 use std::thread;
 
-pub struct GpuWorkBatch<A: GoodAllocator, B: GoodAllocator = Global> {
+pub struct GpuWorkBatch<A: GoodAllocator> {
     pub batch_id: u64,
-    pub receiver: Receiver<GpuWorkRequest<A, B>>,
+    pub receiver: Receiver<GpuWorkRequest<A>>,
     pub sender: Sender<WorkerResult<A>>,
 }
 
-pub struct GpuManager<A: GoodAllocator + 'static = Global> {
+pub struct GpuManager {
     wait_group: Option<WaitGroup>,
-    batches_sender: Option<Sender<GpuWorkBatch<ConcurrentStaticHostAllocator, A>>>,
+    batches_sender: Option<Sender<GpuWorkBatch<ConcurrentStaticHostAllocator>>>,
 }
 
-impl<A: GoodAllocator + 'static> GpuManager<A> {
+impl GpuManager {
     pub fn new(
-        setups_to_cache: Vec<
-            SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>,
-        >, // vector of setups to cache on the device by each GPU worker
+        setups_to_cache: Vec<SetupToCache>, // vector of setups to cache on the device by each GPU worker
         initialized_wait_group: WaitGroup, // wait group is a synchronization mechanism to signal that all GPU workers are initialized and ready to process requests
     ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
@@ -54,12 +51,12 @@ impl<A: GoodAllocator + 'static> GpuManager<A> {
         }
     }
 
-    pub fn send_batch(&self, batch: GpuWorkBatch<ConcurrentStaticHostAllocator, A>) {
+    pub fn send_batch(&self, batch: GpuWorkBatch<ConcurrentStaticHostAllocator>) {
         self.batches_sender.as_ref().unwrap().send(batch).unwrap()
     }
 }
 
-impl<A: GoodAllocator + 'static> Drop for GpuManager<A> {
+impl Drop for GpuManager {
     fn drop(&mut self) {
         drop(self.batches_sender.take().unwrap());
         trace!("GPU_MANAGER waiting for all workers to finish");
@@ -69,10 +66,8 @@ impl<A: GoodAllocator + 'static> Drop for GpuManager<A> {
 }
 fn gpu_manager(
     initialized_wait_group: WaitGroup,
-    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
-    batches_receiver: Receiver<
-        GpuWorkBatch<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>,
-    >,
+    setups_to_cache: Vec<SetupToCache>,
+    batches_receiver: Receiver<GpuWorkBatch<ConcurrentStaticHostAllocator>>,
     scope: &Scope,
 ) -> CudaResult<()> {
     let device_count = get_device_count()? as usize;

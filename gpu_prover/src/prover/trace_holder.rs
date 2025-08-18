@@ -488,6 +488,16 @@ pub(crate) fn transform_tree_caps<C: Deref<Target = [Digest]>>(
         .collect_vec()
 }
 
+pub(crate) fn get_tree_caps(
+    accessors: &Vec<UnsafeAccessor<[Digest]>>,
+) -> Vec<MerkleTreeCapVarLength> {
+    let tree_caps = accessors
+        .iter()
+        .map(|accessor| unsafe { accessor.get() })
+        .collect_vec();
+    transform_tree_caps(&tree_caps)
+}
+
 #[allow(dead_code)]
 #[cfg(test)]
 mod test {

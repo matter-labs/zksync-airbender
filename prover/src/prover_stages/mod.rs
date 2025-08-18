@@ -208,6 +208,40 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
         assert!(subtree_cap_size > 0);
 
         let mut main_domain_trace =
+            Self::get_main_domain_trace(table_driver, trace_len, setup_layout, worker);
+
+        // NOTE: we do not use last row of the setup (and in general last of of circuit),
+        // and we must adjust it to be c0 == 0
+        adjust_to_zero_c0_var_length(&mut main_domain_trace, 0..setup_layout.total_width, worker);
+
+        // LDE them
+        let ldes = compute_wide_ldes(
+            main_domain_trace,
+            twiddles,
+            lde_precomputations,
+            0,
+            lde_factor,
+            worker,
+        );
+
+        assert_eq!(ldes.len(), lde_factor);
+
+        let mut trees = Vec::with_capacity(lde_factor);
+        for domain in ldes.iter() {
+            let tree = T::construct_for_coset(&domain.trace, subtree_cap_size, true, worker);
+            trees.push(tree);
+        }
+
+        Self { ldes, trees }
+    }
+
+    pub fn get_main_domain_trace(
+        table_driver: &TableDriver<Mersenne31Field>,
+        trace_len: usize,
+        setup_layout: &SetupLayout,
+        worker: &Worker,
+    ) -> RowMajorTrace<Mersenne31Field, { N }, A> {
+        let main_domain_trace =
             RowMajorTrace::new_zeroed_for_size(trace_len, setup_layout.total_width, A::default());
 
         let table_encoding_capacity_per_tuple = trace_len - 1;
@@ -306,30 +340,7 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
                 });
             }
         });
-
-        // NOTE: we do not use last row of the setup (and in general last of of circuit),
-        // and we must adjust it to be c0 == 0
-        adjust_to_zero_c0_var_length(&mut main_domain_trace, 0..setup_layout.total_width, worker);
-
-        // LDE them
-        let ldes = compute_wide_ldes(
-            main_domain_trace,
-            twiddles,
-            lde_precomputations,
-            0,
-            lde_factor,
-            worker,
-        );
-
-        assert_eq!(ldes.len(), lde_factor);
-
-        let mut trees = Vec::with_capacity(lde_factor);
-        for domain in ldes.iter() {
-            let tree = T::construct_for_coset(&domain.trace, subtree_cap_size, true, worker);
-            trees.push(tree);
-        }
-
-        Self { ldes, trees }
+        main_domain_trace
     }
 }
 

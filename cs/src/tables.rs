@@ -1,13 +1,16 @@
+pub use super::definitions::TableType;
 use core::panic;
 use derivative::Derivative;
 use field::PrimeField;
+use rayon::prelude::*;
 use smallvec::SmallVec;
+use std::sync::{LazyLock, Mutex};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    vec,
 };
-
-pub use super::definitions::TableType;
+use type_map::concurrent::TypeMap;
 
 const TOTAL_NUM_OF_TABLES: usize = TableType::DynamicPlaceholder as u32 as usize;
 
@@ -53,13 +56,13 @@ pub struct LookupTable<F: PrimeField, const N: usize> {
 
     // to lookup value from key
     #[derivative(Debug = "ignore")]
-    pub lookup_data: HashMap<LookupKey<F, N>, LookupValue<F, N>>,
+    pub lookup_data: Arc<HashMap<LookupKey<F, N>, LookupValue<F, N>>>,
     // to lookup table index from full row
     #[derivative(Debug = "ignore")]
-    pub content_data: HashMap<DataKey<F, N>, usize>,
+    pub content_data: Arc<HashMap<DataKey<F, N>, usize>>,
     // for setup - plain content of the table
     #[derivative(Debug = "ignore")]
-    pub data: Vec<[F; N]>,
+    pub data: Arc<Vec<[F; N]>>,
     #[derivative(Debug = "ignore")]
     pub quick_value_lookup_fn: ValueLookupFn<F, N>,
     #[derivative(Debug = "ignore")]
@@ -157,6 +160,7 @@ impl<F: PrimeField, const N: usize> Ord for DataKey<F, N> {
 }
 
 impl<F: PrimeField, const N: usize> LookupTable<F, N> {
+    #[allow(unused)]
     fn check_well_formed(data: &[[F; N]]) -> bool {
         // just use hash table to check that entries are unique
         let mut tmp = HashSet::new();
@@ -191,12 +195,24 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         let num_value_columns = N - num_key_columns;
 
         let mut content = Vec::with_capacity(keys.len());
-        for key in keys.iter() {
-            let (_index, values) = table_gen_func(&key);
-            let mut row = [F::ZERO; N];
-            row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-            row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
-            content.push(row);
+        if keys.len() < 1 << 14 {
+            for key in keys.iter() {
+                let (_index, values) = table_gen_func(&key);
+                let mut row = [F::ZERO; N];
+                row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
+                row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                content.push(row);
+            }
+        } else {
+            keys.par_iter()
+                .map(|key| {
+                    let (_index, values) = table_gen_func(&key);
+                    let mut row = [F::ZERO; N];
+                    row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
+                    row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                    row
+                })
+                .collect_into_vec(&mut content);
         }
 
         let (lookup_data, content_data) =
@@ -210,9 +226,9 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
 
         Self {
             name,
-            lookup_data,
-            content_data,
-            data: content,
+            lookup_data: Arc::new(lookup_data),
+            content_data: Arc::new(content_data),
+            data: Arc::new(content),
             quick_value_lookup_fn: ValueLookupFn::ReuseGenerationFn(table_gen_func),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -241,12 +257,24 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         let num_value_columns = N - num_key_columns;
 
         let mut content = Vec::with_capacity(keys.len());
-        for key in keys.iter() {
-            let (_index, values) = table_gen_closure(&key);
-            let mut row = [F::ZERO; N];
-            row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-            row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
-            content.push(row);
+        if keys.len() < 1 << 14 {
+            for key in keys.iter() {
+                let (_index, values) = table_gen_closure(&key);
+                let mut row = [F::ZERO; N];
+                row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
+                row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                content.push(row);
+            }
+        } else {
+            keys.par_iter()
+                .map(|key| {
+                    let (_index, values) = table_gen_closure(&key);
+                    let mut row = [F::ZERO; N];
+                    row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
+                    row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                    row
+                })
+                .collect_into_vec(&mut content);
         }
 
         let (lookup_data, content_data) =
@@ -260,9 +288,9 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
 
         Self {
             name,
-            lookup_data,
-            content_data,
-            data: content,
+            lookup_data: Arc::new(lookup_data),
+            content_data: Arc::new(content_data),
+            data: Arc::new(content),
             quick_value_lookup_fn: ValueLookupFn::Closure(Arc::new(table_gen_closure)),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -275,17 +303,16 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         data: &Vec<[F; N]>,
         num_key_columns: usize,
     ) -> (
-        HashMap<LookupKey<F, N>, LookupKey<F, N>>,
+        HashMap<LookupKey<F, N>, LookupValue<F, N>>,
         HashMap<DataKey<F, N>, usize>,
     ) {
-        let is_well_formed = Self::check_well_formed(&data);
-        assert!(is_well_formed);
-        let lookup_data: HashMap<LookupKey<F, N>, LookupKey<F, N>> =
+        let lookup_data: HashMap<LookupKey<F, N>, LookupValue<F, N>> =
             Self::compute_lookup_data(data, num_key_columns);
-        let mut content_data: HashMap<DataKey<F, N>, usize> = HashMap::new();
-        for (idx, el) in data.iter().enumerate() {
-            content_data.insert(DataKey(*el), idx);
-        }
+        let content_data: HashMap<_, _> = data
+            .par_iter()
+            .enumerate()
+            .map(|(idx, el)| (DataKey(*el), idx))
+            .collect();
 
         (lookup_data, content_data)
     }
@@ -298,14 +325,21 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         num_key_columns: usize,
     ) -> HashMap<LookupKey<F, N>, LookupValue<F, N>> {
         assert!(num_key_columns <= N);
-        let mut result = HashMap::new();
-        for row in data.iter() {
-            let key = LookupKey::from_keys(&row[..num_key_columns]);
-            let value = LookupValue::from_keys(&row[num_key_columns..]);
-            let existing = result.insert(key, value);
-            assert!(existing.is_none(), "Can't compute lookup cache if using only {} first columns out of {} as logical key", num_key_columns, N);
-        }
-
+        let result: HashMap<_, _> = data
+            .par_iter()
+            .map(|row| {
+                let key = LookupKey::from_keys(&row[..num_key_columns]);
+                let value = LookupValue::from_keys(&row[num_key_columns..]);
+                (key, value)
+            })
+            .collect();
+        assert_eq!(
+            result.len(),
+            data.len(),
+            "Can't compute lookup cache if using only {} first columns out of {} as logical key",
+            num_key_columns,
+            N
+        );
         result
     }
 
@@ -1399,15 +1433,32 @@ pub fn key_binary_generation<F: PrimeField, const N: usize>() -> Vec<[F; N]> {
 // we make it so that index in the table is just (key0 << WIDTH) || key1
 pub fn key_binary_generation_for_width<F: PrimeField, const N: usize, const WIDTH: usize>(
 ) -> Vec<[F; N]> {
-    let mut keys = Vec::with_capacity(1 << (WIDTH * 2));
-    for a in 0..(1u64 << WIDTH) {
-        for b in 0..(1u64 << WIDTH) {
-            let mut key = [F::ZERO; N];
-            key[0] = F::from_u64_unchecked(a as u64);
-            key[1] = F::from_u64_unchecked(b as u64);
-            keys.push(key);
+    let len = 1 << (WIDTH * 2);
+    let mut keys = Vec::with_capacity(len);
+    if WIDTH < 10 {
+        for a in 0..(1u64 << WIDTH) {
+            for b in 0..(1u64 << WIDTH) {
+                let mut key = [F::ZERO; N];
+                key[0] = F::from_u64_unchecked(a as u64);
+                key[1] = F::from_u64_unchecked(b as u64);
+                keys.push(key);
+            }
         }
+    } else {
+        (0..len)
+            .into_par_iter()
+            .map(|i| {
+                let i = i as u64;
+                let a = i >> WIDTH;
+                let b = i & ((1u64 << WIDTH) - 1);
+                let mut key = [F::ZERO; N];
+                key[0] = F::from_u64_unchecked(a);
+                key[1] = F::from_u64_unchecked(b);
+                key
+            })
+            .collect_into_vec(&mut keys);
     }
+    assert_eq!(keys.len(), len);
 
     keys
 }
@@ -1422,16 +1473,25 @@ pub fn key_for_continuous_log2_range<F: PrimeField, const N: usize>(log2: usize)
 pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
     max_value_inclusive: u64,
 ) -> Vec<[F; N]> {
-    let keys: Vec<_> = (0..=max_value_inclusive)
-        .map(|a| {
+    let len = max_value_inclusive as usize + 1;
+    let mut keys = Vec::with_capacity(len);
+    if max_value_inclusive < (1 << 20) {
+        for a in 0u64..=max_value_inclusive {
             let mut key = [F::ZERO; N];
             key[0] = F::from_u64_with_reduction(a);
-
-            key
-        })
-        .collect();
-
-    assert_eq!(keys.len(), max_value_inclusive as usize + 1);
+            keys.push(key);
+        }
+    } else {
+        (0..len)
+            .into_par_iter()
+            .map(|a| {
+                let mut key = [F::ZERO; N];
+                key[0] = F::from_u64_with_reduction(a as u64);
+                key
+            })
+            .collect_into_vec(&mut keys);
+    };
+    assert_eq!(keys.len(), len);
 
     keys
 }
@@ -1954,7 +2014,15 @@ impl<F: PrimeField> TableDriver<F> {
     }
 
     pub fn materialize_table(&mut self, table_type: TableType) {
-        let table = table_type.generate_table::<F>();
+        static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
+        let mut guard = CACHE.lock().unwrap();
+        let map = guard
+            .entry()
+            .or_insert_with(HashMap::<TableType, LookupWrapper<F>>::new);
+        let wrapper = map
+            .entry(table_type)
+            .or_insert_with(|| table_type.generate_table::<F>());
+        let table = wrapper.clone();
         self.add_table_with_content(table_type, table);
     }
 

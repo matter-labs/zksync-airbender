@@ -6,13 +6,14 @@ use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
 use crate::ops_complex::fold;
+use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 use fft::{
     bitreverse_enumeration_inplace, partial_ifft_natural_to_natural, GoodAllocator,
-    LdePrecomputations, Twiddles,
+    LdePrecomputations,
 };
 use field::{Field, FieldExtension, Mersenne31Field};
 use itertools::Itertools;
@@ -50,7 +51,6 @@ impl StageFiveOutput {
         folding_description: &FoldingDescription,
         num_queries: usize,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        twiddles: &Twiddles<E2, impl GoodAllocator>,
         callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -266,8 +266,6 @@ impl StageFiveOutput {
             let domain_size = 1 << log_current_domain_size;
             let mut monomials = unsafe { context.alloc_host_uninit_slice(domain_size) };
             let monomials_accessor = monomials.get_mut_accessor();
-            let mut inverse_twiddles = Vec::with_capacity(twiddles.inverse_twiddles.len());
-            inverse_twiddles.extend_from_slice(&twiddles.inverse_twiddles);
             let monomials_fn = move || unsafe {
                 let h_folded_domain = h_folded_domain_accessor.get();
                 let mut c0 = h_folded_domain.iter().map(|el| el.c0).collect_vec();
@@ -276,8 +274,8 @@ impl StageFiveOutput {
                 assert_eq!(c1.len(), domain_size);
                 bitreverse_enumeration_inplace(&mut c0);
                 bitreverse_enumeration_inplace(&mut c1);
-                Self::interpolate(&mut c0, &inverse_twiddles);
-                Self::interpolate(&mut c1, &inverse_twiddles);
+                Self::interpolate(&mut c0);
+                Self::interpolate(&mut c1);
                 let coeffs = c0
                     .into_iter()
                     .zip(c1.into_iter())
@@ -382,8 +380,8 @@ impl StageFiveOutput {
         Ok(())
     }
 
-    fn interpolate(c0: &mut [E2], twiddles: &[E2]) {
-        let twiddles = &twiddles[..c0.len() / 2];
+    fn interpolate(c0: &mut [E2]) {
+        let twiddles = &PRECOMPUTATIONS.inverse_twiddles[..c0.len() / 2];
         partial_ifft_natural_to_natural(c0, E2::ONE, twiddles);
         if c0.len() > 1 {
             let n_inv = Mersenne31Field(c0.len() as u32).inverse().unwrap();

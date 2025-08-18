@@ -3,7 +3,7 @@ use super::tracer::{
     create_setup_and_teardown_chunker, BoxedMemoryImplWithRom, CycleTracingData, DelegationCounter,
     DelegationTracingData, DelegationTracingType, ExecutionTracer, RamTracingData,
 };
-use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
+use crate::circuit_type::{CircuitType, MainCircuitType};
 use crossbeam_channel::{Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::timestamp_from_chunk_cycle_and_sequence;
@@ -15,6 +15,7 @@ use prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
 use prover::ShuffleRamSetupAndTeardown;
+use std::alloc::Global;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
@@ -65,8 +66,8 @@ pub enum CpuWorkerMode<A: GoodAllocator> {
         free_allocator: Receiver<A>,
     },
     TraceDelegations {
+        circuit_type: MainCircuitType,
         skip_set: HashSet<(CircuitType, usize)>,
-        delegation_num_requests: HashMap<DelegationCircuitType, usize>,
         free_allocator: Receiver<A>,
     },
 }
@@ -76,7 +77,6 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
     batch_id: u64,
     worker_id: usize,
     num_main_chunks_upper_bound: usize,
-    domain_size: usize,
     binary: impl Deref<Target = impl Deref<Target = [u32]>> + Send + 'static,
     non_determinism: impl Deref<Target = impl NonDeterminism> + Send + 'static,
     mode: CpuWorkerMode<A>,
@@ -119,18 +119,17 @@ pub fn get_cpu_worker_func<C: MachineConfig, A: GoodAllocator + 'static>(
                 results,
             ),
             CpuWorkerMode::TraceDelegations {
+                circuit_type,
                 skip_set,
-                delegation_num_requests,
                 free_allocator,
             } => trace_delegations::<C, A>(
                 batch_id,
                 worker_id,
                 num_main_chunks_upper_bound,
-                domain_size,
+                circuit_type,
                 binary,
                 non_determinism,
                 skip_set,
-                delegation_num_requests,
                 free_allocator,
                 results,
             ),
@@ -151,7 +150,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing touched RAM started");
-    let domain_size = crate::execution::prover::get_domain_size(circuit_type);
+    let domain_size = circuit_type.get_domain_size();
     assert!(domain_size.is_power_of_two());
     let log_domain_size = domain_size.trailing_zeros();
     let mut non_determinism = non_determinism.clone();
@@ -167,13 +166,14 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
     let delegation_tracing_data = DelegationTracingData::default();
     let delegation_swap_fn = |_, _| unreachable!();
     let initial_timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
-    let mut tracer = ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, true, false, false>::new(
-        &mut ram_tracing_data,
-        cycle_tracing_data,
-        delegation_tracing_data,
-        delegation_swap_fn,
-        initial_timestamp,
-    );
+    let mut tracer =
+        ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, Global, Global, true, false, false>::new(
+            &mut ram_tracing_data,
+            cycle_tracing_data,
+            delegation_tracing_data,
+            delegation_swap_fn,
+            initial_timestamp,
+        );
     let mut end_reached = false;
     let mut chunks_traced_count = 0;
     let mut next_chunk_index_with_no_setup_and_teardown = 0;
@@ -314,7 +314,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing cycles started");
-    let domain_size = crate::execution::prover::get_domain_size(circuit_type);
+    let domain_size = circuit_type.get_domain_size();
     assert!(domain_size.is_power_of_two());
     let log_domain_size = domain_size.trailing_zeros();
     let mut non_determinism = non_determinism.clone();
@@ -346,7 +346,7 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
                 "BATCH[{batch_id}] CPU_WORKER[{worker_id}] tracing cycles for chunk {chunk_index}"
             );
             let mut tracer =
-                ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, true, false>::new(
+                ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, Global, false, true, false>::new(
                     &mut ram_tracing_data,
                     cycle_tracing_data,
                     delegation_tracing_data,
@@ -374,14 +374,22 @@ fn trace_cycles<C: MachineConfig, A: GoodAllocator + 'static>(
             // fast-forward the simulation
             trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] fast-forwarding chunk {chunk_index}");
             let cycle_tracing_data = CycleTracingData::with_cycles_capacity(0);
-            let mut tracer =
-                ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, false>::new(
-                    &mut ram_tracing_data,
-                    cycle_tracing_data,
-                    delegation_tracing_data,
-                    delegation_swap_fn,
-                    initial_timestamp,
-                );
+            let mut tracer = ExecutionTracer::<
+                RAM_SIZE,
+                LOG_ROM_SIZE,
+                _,
+                Global,
+                Global,
+                false,
+                false,
+                false,
+            >::new(
+                &mut ram_tracing_data,
+                cycle_tracing_data,
+                delegation_tracing_data,
+                delegation_swap_fn,
+                initial_timestamp,
+            );
             let now = Instant::now();
             finished = state.run_cycles(
                 &mut memory,
@@ -425,15 +433,15 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
     batch_id: u64,
     worker_id: usize,
     num_main_chunks_upper_bound: usize,
-    domain_size: usize,
+    circuit_type: MainCircuitType,
     binary: impl Deref<Target = impl Deref<Target = [u32]>>,
     non_determinism: impl Deref<Target = impl NonDeterminism>,
     skip_set: HashSet<(CircuitType, usize)>,
-    delegation_num_requests: HashMap<DelegationCircuitType, usize>,
     free_allocator: Receiver<A>,
     results: Sender<WorkerResult<A>>,
 ) {
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] worker for tracing delegations started");
+    let domain_size = circuit_type.get_domain_size();
     assert!(domain_size.is_power_of_two());
     let log_domain_size = domain_size.trailing_zeros();
     let mut non_determinism = non_determinism.clone();
@@ -478,7 +486,7 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
                 circuit_type
             );
             let counter = DelegationCounter {
-                num_requests: delegation_num_requests[&circuit_type],
+                num_requests: circuit_type.get_num_delegation_cycles(),
                 count: 0,
             };
             DelegationTracingType::Counter(counter)
@@ -490,13 +498,14 @@ fn trace_delegations<C: MachineConfig, A: GoodAllocator + 'static>(
         }
     };
     let initial_timestamp = timestamp_from_chunk_cycle_and_sequence(0, cycles_per_chunk, 0);
-    let mut tracer = ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, A, false, false, true>::new(
-        &mut ram_tracing_data,
-        cycle_tracing_data,
-        delegation_tracing_data,
-        delegation_swap_fn,
-        initial_timestamp,
-    );
+    let mut tracer =
+        ExecutionTracer::<RAM_SIZE, LOG_ROM_SIZE, _, Global, A, false, false, true>::new(
+            &mut ram_tracing_data,
+            cycle_tracing_data,
+            delegation_tracing_data,
+            delegation_swap_fn,
+            initial_timestamp,
+        );
     let mut end_reached = false;
     let mut chunks_traced_count = 0;
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] starting simulation");

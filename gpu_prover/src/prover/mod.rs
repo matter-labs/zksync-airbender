@@ -4,6 +4,7 @@ pub mod context;
 mod device_tracing;
 pub mod memory;
 mod pow;
+pub(crate) mod precomputations;
 pub mod proof;
 mod queries;
 pub mod setup;

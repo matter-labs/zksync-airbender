@@ -6,16 +6,15 @@ use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
 use super::trace_holder::TraceHolder;
-use super::{BF, E2, E4};
+use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use fft::{
-    materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations, Twiddles,
-};
+use fft::{materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations};
 use field::{Field, FieldExtension};
 use prover::definitions::ExternalValues;
 use prover::prover_stages::cached_data::ProverCachedData;
@@ -36,7 +35,6 @@ impl StageThreeOutput {
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        twiddles: &Twiddles<E2, impl GoodAllocator>,
         external_values: ExternalValues,
         setup: &SetupPrecomputations,
         stage_1_output: &StageOneOutput,
@@ -94,8 +92,9 @@ impl StageThreeOutput {
             .get_accessor();
         let external_values_clone = external_values.clone();
         let circuit_clone = circuit.clone();
-        let twiddles_omega = twiddles.omega;
-        let twiddles_omega_inv = twiddles.omega_inv;
+        let omega_index = log_domain_size as usize;
+        let omega = PRECOMPUTATIONS.omegas[omega_index];
+        let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -131,8 +130,8 @@ impl StageThreeOutput {
                 &alpha_powers,
                 &beta_powers,
                 tau,
-                twiddles_omega,
-                twiddles_omega_inv,
+                omega,
+                omega_inv,
                 stage_2_lookup_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
@@ -172,8 +171,8 @@ impl StageThreeOutput {
             &vec![E4::ZERO; alpha_powers_count],
             &[E4::ZERO; BETA_POWERS_COUNT],
             tau,
-            twiddles.omega,
-            twiddles.omega_inv,
+            omega,
+            omega_inv,
             &LookupChallenges::default(),
             cached_data,
             &circuit,

@@ -28,6 +28,7 @@ use prover::prover_stages::{prove, Proof};
 use prover::risc_v_simulator::abstractions::non_determinism::{
     NonDeterminismCSRSource, QuasiUARTSource,
 };
+use prover::risc_v_simulator::cycle::IMStandardIsaConfig;
 use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::CycleData;
@@ -185,13 +186,12 @@ fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
 
 fn prove_image_execution_for_machine_with_gpu_tracers<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-    C: MachineConfig,
 >(
     num_instances_upper_bound: usize,
     bytecode: &[u32],
     non_determinism: ND,
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<
-        C,
+        IMStandardIsaConfig,
         Global,
         ConcurrentStaticHostAllocator,
     >,
@@ -202,8 +202,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     prover_context: &ProverContext,
     worker: &Worker,
 ) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
-    let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
-    let trace_len = setups::trace_len_for_machine::<C>();
+    let cycles_per_circuit = MainCircuitType::RiscVCycles.get_num_cycles();
+    let trace_len = MainCircuitType::RiscVCycles.get_domain_size();
     assert_eq!(cycles_per_circuit + 1, trace_len);
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
@@ -212,7 +212,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         inits_and_teardowns,
         delegation_circuits_witness,
         final_register_values,
-    ) = trace_execution_for_gpu::<ND, C, ConcurrentStaticHostAllocator>(
+    ) = trace_execution_for_gpu::<ND, ConcurrentStaticHostAllocator>(
         max_cycles_to_run,
         bytecode,
         non_determinism,
@@ -242,7 +242,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         };
 
         let (gpu_caps, _) = {
-            let lde_factor = setups::lde_factor_for_machine::<C>();
+            let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
             let log_lde_factor = lde_factor.trailing_zeros();
             let log_domain_size = trace_len.trailing_zeros();
             let log_tree_cap_size =
@@ -433,7 +433,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             },
         };
 
-        let lde_factor = setups::lde_factor_for_machine::<C>();
+        let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
 
         let (_, cpu_proof) = prove(
             &risc_v_circuit_precomputations.compiled_circuit,
@@ -506,7 +506,6 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 external_values,
                 &mut setup,
                 transfer,
-                &risc_v_circuit_precomputations.twiddles,
                 &risc_v_circuit_precomputations.lde_precomputations,
                 circuit_sequence,
                 None,
@@ -641,7 +640,6 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     external_values,
                     &mut setup,
                     transfer,
-                    &prec.twiddles,
                     &prec.lde_precomputations,
                     0,
                     Some(*delegation_type),
@@ -698,15 +696,19 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     Ok((main_proofs, delegation_proofs, final_register_values))
 }
 
-fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: MachineConfig>(
+fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     bytecode: &[u32],
     non_determinism: ND,
-    precomputations: &MainCircuitPrecomputations<C, Global, ConcurrentStaticHostAllocator>,
+    precomputations: &MainCircuitPrecomputations<
+        IMStandardIsaConfig,
+        Global,
+        ConcurrentStaticHostAllocator,
+    >,
     contexts: &[ProverContext],
     worker: &Worker,
 ) -> CudaResult<()> {
-    let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
-    let trace_len = setups::trace_len_for_machine::<C>();
+    let cycles_per_circuit = MainCircuitType::RiscVCycles.get_num_cycles();
+    let trace_len = MainCircuitType::RiscVCycles.get_domain_size();
     assert_eq!(cycles_per_circuit + 1, trace_len);
     let max_cycles_to_run = cycles_per_circuit;
 
@@ -715,7 +717,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: Mac
         _inits_and_teardowns,
         _delegation_circuits_witness,
         _final_register_values,
-    ) = trace_execution_for_gpu::<ND, C, ConcurrentStaticHostAllocator>(
+    ) = trace_execution_for_gpu::<ND, ConcurrentStaticHostAllocator>(
         max_cycles_to_run,
         bytecode,
         non_determinism,
@@ -727,7 +729,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: Mac
         setup_and_teardown: None,
         trace,
     };
-    let lde_factor = setups::lde_factor_for_machine::<C>();
+    let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
     let circuit = &precomputations.compiled_circuit;
     let gpu_circuit = Arc::new(circuit.clone());
     let log_lde_factor = lde_factor.trailing_zeros();
@@ -772,7 +774,6 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: Mac
                 external_values,
                 setup,
                 transfer,
-                &precomputations.twiddles,
                 &precomputations.lde_precomputations,
                 0,
                 None,
@@ -832,7 +833,6 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: Mac
                 external_values,
                 setup,
                 transfer,
-                &precomputations.twiddles,
                 &precomputations.lde_precomputations,
                 0,
                 None,
@@ -894,7 +894,6 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>, C: Mac
 
 fn trace_execution_for_gpu<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-    C: MachineConfig,
     A: GoodAllocator,
 >(
     num_instances_upper_bound: usize,
@@ -902,7 +901,7 @@ fn trace_execution_for_gpu<
     mut non_determinism: ND,
     worker: &Worker,
 ) -> (
-    Vec<CycleData<C, A>>,
+    Vec<CycleData<IMStandardIsaConfig, A>>,
     (
         usize, // number of empty ones to assume
         Vec<ShuffleRamSetupAndTeardown<A>>,
@@ -910,10 +909,13 @@ fn trace_execution_for_gpu<
     HashMap<u16, Vec<DelegationWitness<A>>>,
     Vec<FinalRegisterValue>,
 ) {
-    let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
+    let cycles_per_circuit = MainCircuitType::RiscVCycles.get_num_cycles();
+    let domain_size = MainCircuitType::RiscVCycles.get_domain_size();
+    assert_eq!(cycles_per_circuit + 1, domain_size);
+    assert!(domain_size.is_power_of_two());
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
-    let delegation_factories = setups::delegation_factories_for_machine::<C, A>();
+    let delegation_factories = setups::delegation_factories_for_machine::<IMStandardIsaConfig, A>();
 
     let (
         final_pc,
@@ -921,8 +923,9 @@ fn trace_execution_for_gpu<
         delegation_circuits_witness,
         final_register_values,
         init_and_teardown_chunks,
-    ) = run_and_split_for_gpu::<ND, C, A>(
+    ) = run_and_split_for_gpu::<ND, IMStandardIsaConfig, A>(
         max_cycles_to_run,
+        domain_size,
         bytecode,
         &mut non_determinism,
         delegation_factories,
@@ -966,7 +969,7 @@ fn commit_memory_tree_for_riscv_circuit_using_gpu_tracer<C: MachineConfig>(
     lde_precomputations: &LdePrecomputations<Global>,
     worker: &Worker,
 ) -> (Vec<MerkleTreeCapVarLength>, WitnessEvaluationAuxData) {
-    let lde_factor = setups::lde_factor_for_machine::<C>();
+    let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
 
     use setups::prover::prover_stages::stage1::compute_wide_ldes;
     let trace_len = witness_chunk.num_cycles_chunk_size + 1;

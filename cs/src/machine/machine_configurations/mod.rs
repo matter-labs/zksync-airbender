@@ -3,6 +3,7 @@ use crate::cs::{
 };
 
 use super::*;
+use rayon::prelude::*;
 
 pub mod full_isa_no_exceptions;
 pub mod full_isa_with_delegation_no_exceptions;
@@ -150,18 +151,19 @@ pub fn create_table_for_rom_image<
         image.len()
     );
 
-    let mut keys = Vec::with_capacity(1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2));
-    for i in 0..1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2) {
-        let mut key = [F::ZERO; 3];
-        let address = i * 4;
-        key[0] = F::from_u64_unchecked(address as u64);
-        keys.push(key);
-    }
+    let keys_len = 1usize << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2);
+    let mut keys = Vec::with_capacity(keys_len);
+    (0..keys_len)
+        .into_par_iter()
+        .map(|i| {
+            let mut key = [F::ZERO; 3];
+            let address = i * 4;
+            key[0] = F::from_u64_unchecked(address as u64);
+            key
+        })
+        .collect_into_vec(&mut keys);
 
-    assert_eq!(
-        keys.len(),
-        1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2)
-    );
+    assert_eq!(keys.len(), keys_len);
     const TABLE_NAME: &'static str = "ROM table";
     let image = image.to_vec();
     LookupTable::<F, 3>::create_table_from_key_and_key_generation_closure(

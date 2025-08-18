@@ -18,11 +18,11 @@ use crate::barycentric::{
 use crate::blake2s::build_merkle_tree;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::ops_complex::{bit_reverse_in_place, transpose};
+use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use fft::{GoodAllocator, Twiddles};
 use field::{Field, FieldExtension};
 use itertools::Itertools;
 use prover::definitions::FoldingDescription;
@@ -43,7 +43,6 @@ impl StageFourOutput {
         seed: &mut HostAllocation<Seed>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
-        twiddles: &Twiddles<E2, impl GoodAllocator>,
         setup: &SetupPrecomputations,
         stage_1_output: &StageOneOutput,
         stage_2_output: &StageTwoOutput,
@@ -220,13 +219,13 @@ impl StageFourOutput {
         let h_non_witness_challenges_at_z_omega_accessor =
             h_non_witness_challenges_at_z_omega.get_mut_accessor();
         let cached_data_clone = cached_data.clone();
-        let twiddles_omega_inv = twiddles.omega_inv;
+        let omega_inv = PRECOMPUTATIONS.omegas_inv[log_domain_size as usize];
         let circuit_clone = circuit.clone();
         let get_challenges = move || unsafe {
             let _ = get_metadata(
                 values_at_z_accessor.get(),
                 *alpha_accessor.get(),
-                twiddles_omega_inv,
+                omega_inv,
                 &cached_data_clone,
                 &circuit_clone,
                 h_e4_scratch_accessor.get_mut(),
@@ -258,7 +257,7 @@ impl StageFourOutput {
         let metadata = get_metadata(
             &vec![E4::ZERO; num_evals],
             E4::ZERO,
-            twiddles.omega_inv,
+            omega_inv,
             &cached_data,
             &circuit,
             &mut vec![E4::ZERO; e4_scratch_elems],

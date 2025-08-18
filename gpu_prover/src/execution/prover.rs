@@ -7,13 +7,15 @@ use super::gpu_worker::{
     SetupToCache,
 };
 use super::messages::WorkerResult;
-use super::precomputations::CircuitPrecomputationsHost;
+use super::precomputations::{
+    get_delegation_circuit_precomputations, get_main_circuit_precomputations,
+    CircuitPrecomputations,
+};
 use super::tracer::CycleTracingData;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
-use crate::prover::context::ProverContext;
 use crate::prover::tracing_data::TracingDataHost;
 use crate::witness::trace_main::MainTraceHost;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -32,7 +34,6 @@ use prover::risc_v_simulator::cycle::{
     IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
     IWithoutByteAccessIsaConfigWithDelegation,
 };
-use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
 use prover::ShuffleRamSetupAndTeardown;
 use rayon::iter::IntoParallelIterator;
@@ -45,9 +46,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Instant;
-use trace_and_split::{
-    fs_transform_for_memory_and_delegation_arguments, setups, FinalRegisterValue,
-};
+use trace_and_split::{fs_transform_for_memory_and_delegation_arguments, FinalRegisterValue};
 use worker::Worker;
 
 type A = ConcurrentStaticHostAllocator;
@@ -73,7 +72,7 @@ pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash, B: Into<Box<[u32]>>> {
 struct BinaryHolder {
     circuit_type: MainCircuitType,
     bytecode: Arc<Box<[u32]>>,
-    precomputations: CircuitPrecomputationsHost<A>,
+    precomputations: CircuitPrecomputations,
 }
 
 pub struct ExecutionProver<K: Debug + Eq + Hash> {
@@ -82,9 +81,7 @@ pub struct ExecutionProver<K: Debug + Eq + Hash> {
     worker: Worker,
     wait_group: Option<WaitGroup>,
     binaries: HashMap<K, BinaryHolder>,
-    delegation_num_requests: HashMap<DelegationCircuitType, usize>,
-    delegation_circuits_precomputations:
-        HashMap<DelegationCircuitType, CircuitPrecomputationsHost<A>>,
+    delegation_circuits_precomputations: HashMap<DelegationCircuitType, CircuitPrecomputations>,
     free_allocator_sender: Sender<A>,
     free_allocator_receiver: Receiver<A>,
 }
@@ -138,12 +135,25 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         assert_ne!(max_concurrent_batches, 0);
         assert!(!binaries.is_empty());
         let device_count = get_device_count().unwrap() as usize;
-        let max_num_cycles = binaries
+        assert_ne!(device_count, 0);
+        let main_circuit_types = binaries
             .iter()
-            .map(|b| get_num_cycles(b.circuit_type))
+            .map(|b| b.circuit_type)
+            .unique()
+            .collect_vec();
+        let delegation_circuit_types = main_circuit_types
+            .iter()
+            .flat_map(|t| t.get_allowed_delegation_circuit_types())
+            .unique()
+            .collect_vec();
+        let max_num_cycles = main_circuit_types
+            .iter()
+            .map(|t| t.get_num_cycles())
             .max()
             .unwrap();
-        fn delegation_witness_size(witness: DelegationWitness) -> usize {
+        fn delegation_witness_size(circuit_type: &DelegationCircuitType) -> usize {
+            let factory = circuit_type.get_witness_factory_fn();
+            let witness = factory(Global);
             witness.write_timestamp.capacity() * size_of::<TimestampData>()
                 + witness.register_accesses.capacity()
                     * size_of::<RegisterOrIndirectReadWriteData>()
@@ -152,27 +162,17 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         }
         let max_setups_and_teardowns_bytes = max_num_cycles * size_of::<LazyInitAndTeardown>();
         let max_cycles_tracing_data_bytes = max_num_cycles * size_of::<SingleCycleTracingData>();
-        let max_delegation_bytes = binaries
+        let max_delegation_bytes = delegation_circuit_types
             .iter()
-            .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
-            .flatten()
-            .unique_by(|(t, _)| *t)
-            .map(|(_, factory)| delegation_witness_size(factory()))
+            .map(delegation_witness_size)
             .max()
             .unwrap_or_default();
         let max_bytes = max_setups_and_teardowns_bytes
             .max(max_cycles_tracing_data_bytes)
             .max(max_delegation_bytes);
-        let delegation_num_requests: HashMap<_, _> = binaries
-            .iter()
-            .map(|b| Self::get_delegation_factories::<Global>(b.circuit_type).into_iter())
-            .flatten()
-            .unique_by(|(t, _)| *t)
-            .map(|(circuit_type, factory)| (circuit_type, factory().num_requests))
-            .collect();
-        let delegation_types_count = delegation_num_requests.len();
+        let delegation_types_count = delegation_circuit_types.len();
         let total_allocators_count = max_concurrent_batches
-            * (1 + CYCLES_TRACING_WORKERS_COUNT + delegation_types_count + 3)
+            * (1 + CYCLES_TRACING_WORKERS_COUNT + delegation_types_count + 1)
             + device_count * 4;
         let (free_allocator_sender, free_allocator_receiver) = unbounded();
         const LOG_CHUNK_SIZE: u32 = 22; // 2^22 = 4 MB
@@ -191,9 +191,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             let allocator = ConcurrentStaticHostAllocator::new([allocation], LOG_CHUNK_SIZE);
             free_allocator_sender.send(allocator).unwrap();
         }
-        info!("PROVER initializing global host allocator with 4 x 1 GB");
-        ProverContext::initialize_global_host_allocator(4, 1 << 7, 23).unwrap();
-        info!("PROVER global host allocator initialized");
         let worker = Worker::new();
         info!(
             "PROVER thread pool with {} threads created",
@@ -213,7 +210,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     "PROVER producing precomputations for main circuit {:?} with binary {:?}",
                     circuit_type, key
                 );
-                let precomputations = Self::get_precomputations(circuit_type, &bytecode, &worker);
+                let precomputations =
+                    get_main_circuit_precomputations(circuit_type, &bytecode, &worker);
                 info!(
                     "PROVER produced precomputations for main circuit {:?} with binary {:?}",
                     circuit_type, key
@@ -228,15 +226,18 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 )
             })
             .collect();
-        info!("PROVER producing precomputations for all delegation circuits");
         let delegation_circuits_precomputations: HashMap<
             DelegationCircuitType,
-            CircuitPrecomputationsHost<A>,
-        > = setups::all_delegation_circuits_precomputations(&worker)
+            CircuitPrecomputations,
+        > = delegation_circuit_types
             .into_iter()
-            .map(|(id, p)| (DelegationCircuitType::from(id as u16), p.into()))
+            .map(|t| {
+                info!("PROVER producing precomputations for delegation circuit {t:?}");
+                let result = (t, get_delegation_circuit_precomputations(t, &worker));
+                info!("PROVER produced precomputations for delegation circuit {t:?}");
+                result
+            })
             .collect();
-        info!("PROVER produced precomputations for all delegation circuits");
         let mut setups_to_cache = vec![];
         for value in binaries.values() {
             let setup = SetupToCache {
@@ -255,13 +256,15 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let gpu_wait_group = WaitGroup::new();
         let gpu_manager = GpuManager::new(setups_to_cache, gpu_wait_group.clone());
         gpu_wait_group.wait();
+        for value in binaries.values() {
+            assert!(value.precomputations.tree_caps.get().is_some());
+        }
         Self {
             device_count,
             gpu_manager,
             worker,
             wait_group,
             binaries,
-            delegation_num_requests,
             delegation_circuits_precomputations,
             free_allocator_sender,
             free_allocator_receiver,
@@ -394,8 +397,8 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             cpu_worker_id += 1;
         }
         let delegation_mode = CpuWorkerMode::TraceDelegations {
+            circuit_type: binary.circuit_type,
             skip_set,
-            delegation_num_requests: self.delegation_num_requests.clone(),
             free_allocator: self.free_allocator_receiver.clone(),
         };
         self.spawn_cpu_worker(
@@ -973,18 +976,18 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             min(cache_capacity, maximum_cached_count)
         );
         let memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
-            &self.binaries[&binary_key].precomputations.tree_caps,
+            self.binaries[&binary_key]
+                .precomputations
+                .tree_caps
+                .get()
+                .unwrap(),
             &final_register_values,
             &main_memory_commitments,
             &delegation_memory_commitments,
         );
-        let produce_delegation_challenge = match &self.binaries[&binary_key].circuit_type {
-            MainCircuitType::FinalReducedRiscVMachine => false,
-            MainCircuitType::MachineWithoutSignedMulDiv => true,
-            MainCircuitType::ReducedRiscVMachine => true,
-            MainCircuitType::ReducedRiscVLog23Machine => true,
-            MainCircuitType::RiscVCycles => true,
-        };
+        let produce_delegation_challenge = self.binaries[&binary_key]
+            .circuit_type
+            .needs_delegation_challenge();
         let external_challenges = ExternalChallenges::draw_from_transcript_seed(
             memory_challenges_seed,
             produce_delegation_challenge,
@@ -1028,60 +1031,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         result
     }
 
-    fn get_precomputations<A: GoodAllocator>(
-        circuit_type: MainCircuitType,
-        bytecode: &[u32],
-        worker: &Worker,
-    ) -> CircuitPrecomputationsHost<A> {
-        match circuit_type {
-            MainCircuitType::FinalReducedRiscVMachine => {
-                setups::get_final_reduced_riscv_circuit_setup(&bytecode, worker).into()
-            }
-            MainCircuitType::MachineWithoutSignedMulDiv => {
-                setups::get_riscv_without_signed_mul_div_circuit_setup(&bytecode, worker).into()
-            }
-            MainCircuitType::ReducedRiscVMachine => {
-                setups::get_reduced_riscv_circuit_setup(&bytecode, worker).into()
-            }
-            MainCircuitType::ReducedRiscVLog23Machine => {
-                setups::get_reduced_riscv_log_23_circuit_setup(&bytecode, worker).into()
-            }
-            MainCircuitType::RiscVCycles => {
-                setups::get_main_riscv_circuit_setup(&bytecode, worker).into()
-            }
-        }
-    }
-
-    fn get_delegation_factories<A: GoodAllocator>(
-        circuit_type: MainCircuitType,
-    ) -> HashMap<DelegationCircuitType, Box<dyn Fn() -> DelegationWitness<A>>> {
-        let factories = match circuit_type {
-            MainCircuitType::FinalReducedRiscVMachine => {
-                setups::delegation_factories_for_machine::<IWithoutByteAccessIsaConfig, A>()
-            }
-            MainCircuitType::MachineWithoutSignedMulDiv => {
-                setups::delegation_factories_for_machine::<IMWithoutSignedMulDivIsaConfig, A>()
-            }
-            MainCircuitType::ReducedRiscVMachine => setups::delegation_factories_for_machine::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-                A,
-            >(),
-            MainCircuitType::ReducedRiscVLog23Machine => {
-                setups::delegation_factories_for_machine::<
-                    IWithoutByteAccessIsaConfigWithDelegation,
-                    A,
-                >()
-            }
-            MainCircuitType::RiscVCycles => {
-                setups::delegation_factories_for_machine::<IMStandardIsaConfig, A>()
-            }
-        };
-        factories
-            .into_iter()
-            .map(|(id, factory)| (DelegationCircuitType::from(id), factory))
-            .collect()
-    }
-
     fn spawn_cpu_worker(
         &self,
         circuit_type: MainCircuitType,
@@ -1094,7 +1043,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         results: Sender<WorkerResult<A>>,
     ) {
         let wait_group = self.wait_group.as_ref().unwrap().clone();
-        let domain_size = crate::execution::prover::get_domain_size(circuit_type);
         match circuit_type {
             MainCircuitType::FinalReducedRiscVMachine => {
                 let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
@@ -1102,7 +1050,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
-                    domain_size,
                     binary,
                     non_determinism,
                     mode,
@@ -1111,12 +1058,11 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 self.worker.pool.spawn(func);
             }
             MainCircuitType::MachineWithoutSignedMulDiv => {
-                let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
+                let func = get_cpu_worker_func::<IMWithoutSignedMulDivIsaConfig, _>(
                     wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
-                    domain_size,
                     binary,
                     non_determinism,
                     mode,
@@ -1124,27 +1070,12 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 );
                 self.worker.pool.spawn(func);
             }
-            MainCircuitType::ReducedRiscVMachine => {
+            MainCircuitType::ReducedRiscVLog23Machine | MainCircuitType::ReducedRiscVMachine => {
                 let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfigWithDelegation, _>(
                     wait_group,
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
-                    domain_size,
-                    binary,
-                    non_determinism,
-                    mode,
-                    results,
-                );
-                self.worker.pool.spawn(func);
-            }
-            MainCircuitType::ReducedRiscVLog23Machine => {
-                let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfigWithDelegation, _>(
-                    wait_group,
-                    batch_id,
-                    worker_id,
-                    num_main_chunks_upper_bound,
-                    domain_size,
                     binary,
                     non_determinism,
                     mode,
@@ -1158,7 +1089,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     batch_id,
                     worker_id,
                     num_main_chunks_upper_bound,
-                    domain_size,
                     binary,
                     non_determinism,
                     mode,
@@ -1167,38 +1097,6 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 self.worker.pool.spawn(func);
             }
         }
-    }
-}
-
-pub fn get_num_cycles(circuit_type: MainCircuitType) -> usize {
-    match circuit_type {
-        MainCircuitType::FinalReducedRiscVMachine => {
-            setups::final_reduced_risc_v_machine::NUM_CYCLES
-        }
-        MainCircuitType::MachineWithoutSignedMulDiv => {
-            setups::machine_without_signed_mul_div::NUM_CYCLES
-        }
-        MainCircuitType::ReducedRiscVMachine => setups::reduced_risc_v_machine::NUM_CYCLES,
-        MainCircuitType::ReducedRiscVLog23Machine => {
-            setups::reduced_risc_v_log_23_machine::NUM_CYCLES
-        }
-        MainCircuitType::RiscVCycles => setups::risc_v_cycles::NUM_CYCLES,
-    }
-}
-
-pub fn get_domain_size(circuit_type: MainCircuitType) -> usize {
-    match circuit_type {
-        MainCircuitType::FinalReducedRiscVMachine => {
-            setups::final_reduced_risc_v_machine::DOMAIN_SIZE
-        }
-        MainCircuitType::MachineWithoutSignedMulDiv => {
-            setups::machine_without_signed_mul_div::DOMAIN_SIZE
-        }
-        MainCircuitType::ReducedRiscVMachine => setups::reduced_risc_v_machine::DOMAIN_SIZE,
-        MainCircuitType::ReducedRiscVLog23Machine => {
-            setups::reduced_risc_v_log_23_machine::DOMAIN_SIZE
-        }
-        MainCircuitType::RiscVCycles => setups::risc_v_cycles::DOMAIN_SIZE,
     }
 }
 

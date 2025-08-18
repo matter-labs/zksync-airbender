@@ -99,7 +99,7 @@ unsafe impl<W: InnerStaticHostAllocatorWrapper> Allocator for StaticHostAllocato
             assert_eq!(data.len.next_multiple_of(1 << self.log_chunk_size), len);
             Ok(NonNull::slice_from_raw_parts(ptr, len))
         } else {
-            error!("allocation of {len} bytes in ConcurrentStaticHostAllocator failed");
+            error!("allocation of {len} bytes in StaticHostAllocator failed");
             Err(AllocError)
         }
     }

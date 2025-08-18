@@ -1,13 +1,15 @@
 use super::messages::WorkerResult;
-use super::precomputations::CircuitPrecomputationsHost;
+use super::precomputations::CircuitPrecomputations;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
+use crate::prover::precomputations::Precomputations;
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
+use crate::prover::trace_holder::get_tree_caps;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
@@ -20,7 +22,6 @@ use prover::definitions::{
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Proof;
-use std::alloc::Global;
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::mem;
@@ -35,16 +36,16 @@ const POW_BITS: u32 = 28;
 
 // represents a request to generate and cache a device-side setup from a host-side setup for later use in the GPU worker
 #[derive(Clone)]
-pub struct SetupToCache<A: GoodAllocator, B: GoodAllocator = Global> {
+pub struct SetupToCache {
     pub circuit_type: CircuitType,
-    pub precomputations: CircuitPrecomputationsHost<A, B>,
+    pub precomputations: CircuitPrecomputations,
 }
 
-pub struct MemoryCommitmentRequest<A: GoodAllocator, B: GoodAllocator = Global> {
+pub struct MemoryCommitmentRequest<A: GoodAllocator> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
     pub circuit_sequence: usize,
-    pub precomputations: CircuitPrecomputationsHost<A, B>,
+    pub precomputations: CircuitPrecomputations,
     pub tracing_data: TracingDataHost<A>,
 }
 
@@ -56,11 +57,11 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
-pub struct ProofRequest<A: GoodAllocator, B: GoodAllocator = Global> {
+pub struct ProofRequest<A: GoodAllocator> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
     pub circuit_sequence: usize,
-    pub precomputations: CircuitPrecomputationsHost<A, B>,
+    pub precomputations: CircuitPrecomputations,
     pub tracing_data: TracingDataHost<A>,
     pub external_challenges: ExternalChallenges,
 }
@@ -73,12 +74,12 @@ pub struct ProofResult<A: GoodAllocator> {
     pub proof: Proof,
 }
 
-pub enum GpuWorkRequest<A: GoodAllocator, B: GoodAllocator = Global> {
-    MemoryCommitment(MemoryCommitmentRequest<A, B>),
-    Proof(ProofRequest<A, B>),
+pub enum GpuWorkRequest<A: GoodAllocator> {
+    MemoryCommitment(MemoryCommitmentRequest<A>),
+    Proof(ProofRequest<A>),
 }
 
-impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
+impl<A: GoodAllocator> GpuWorkRequest<A> {
     pub fn batch_id(&self) -> u64 {
         match self {
             GpuWorkRequest::MemoryCommitment(request) => request.batch_id,
@@ -90,11 +91,9 @@ impl<A: GoodAllocator, B: GoodAllocator> GpuWorkRequest<A, B> {
 pub fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
+    setups_to_cache: Vec<SetupToCache>,
     is_initialized: Sender<()>,
-    requests: Receiver<
-        Option<GpuWorkRequest<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
-    >,
+    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator>>>,
     results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
@@ -131,12 +130,13 @@ struct SetupHolder<'a> {
 fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache<ConcurrentStaticHostAllocator, impl GoodAllocator + 'static>>,
+    setups_to_cache: Vec<SetupToCache>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator, impl GoodAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator>>>,
     results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
+    Precomputations::ensure_initialized();
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
     let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
@@ -185,6 +185,13 @@ fn gpu_worker(
             ),
         }
         setup.ensure_commitment_produced(&context)?;
+        setup.trace_holder.produce_tree_caps(&context)?;
+        context.get_exec_stream().synchronize()?;
+        if matches!(circuit_type, CircuitType::Main(_)) {
+            let accessors = setup.trace_holder.get_tree_caps_accessors();
+            let tree_caps = get_tree_caps(&accessors);
+            let _ = precomputations.tree_caps.set(tree_caps);
+        }
         let setup = Rc::new(RefCell::new(setup));
         let holder = SetupHolder { setup, trace };
         setups.push(holder);
@@ -315,7 +322,6 @@ fn gpu_worker(
                         external_values,
                         &mut setup.borrow_mut(),
                         transfer,
-                        &precomputations.twiddles,
                         &precomputations.lde_precomputations,
                         circuit_sequence,
                         delegation_processing_type,
