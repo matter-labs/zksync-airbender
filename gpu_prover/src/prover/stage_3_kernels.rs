@@ -1211,7 +1211,7 @@ impl Metadata {
                 } else {
                     alpha_offset += 4;
                 }
-                for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i]
+                for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i]
                 {
                     let indirect_access =
                         &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
