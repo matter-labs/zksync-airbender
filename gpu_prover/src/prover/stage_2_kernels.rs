@@ -1272,4 +1272,15 @@ mod tests {
         );
         ctx.destroy().unwrap();
     }
+
+    // #[test]
+    // #[serial]
+    // fn test_stage_2_for_delegation_circuit() {
+    //     let ctx = Context::create(12).unwrap();
+    //     run_basic_delegation_test_impl(
+    //         Some(Box::new(comparison_hook)),
+    //         Some(Box::new(comparison_hook)),
+    //     );
+    //     ctx.destroy().unwrap();
+    // }
 }
