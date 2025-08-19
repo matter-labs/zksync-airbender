@@ -2004,7 +2004,7 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use fft::materialize_powers_serial_starting_with_one;
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, GpuComparisonArgs};
+    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
     use serial_test::serial;
 
     type BF = BaseField;
@@ -2246,6 +2246,18 @@ mod tests {
     fn test_stage_3_for_delegation_circuit() {
         let ctx = Context::create(12).unwrap();
         run_basic_delegation_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_stage_3_for_main_and_keccak_delegation() {
+        let ctx = Context::create(12).unwrap();
+        run_keccak_test_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
