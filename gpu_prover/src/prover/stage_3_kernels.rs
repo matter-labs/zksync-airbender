@@ -1615,8 +1615,14 @@ impl Metadata {
                 flat_indirect_idx += 1;
                 let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
                 alpha_offset += 1;
-                // we expect offset == 0 for the first indirect access and offset > 0 for others
-                assert_eq!(j == 0, indirect_access.offset_constant == 0);
+                // sanity checks based on our known circuit geometries
+                if indirect_access.has_write {
+                    if j == 0 {
+                        assert_eq!(j == 0, indirect_access.offset_constant == 0);
+                    }
+                } else {
+                    assert_eq!(j == 0, indirect_access.offset_constant == 0);
+                }
                 let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
                 let mut constant = *mc
                     .address_low_challenge
