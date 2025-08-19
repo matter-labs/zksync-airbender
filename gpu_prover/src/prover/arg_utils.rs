@@ -873,9 +873,15 @@ impl RegisterAndIndirectAccesses {
                         variable_dependent,
                         offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
                             address_derivation_carry_bit.num_elements() > 0;
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from WriteAccess arm below).
+                        assert_eq!(j == 0, *offset_constant == 0);
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                        }
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
@@ -918,9 +924,16 @@ impl RegisterAndIndirectAccesses {
                         variable_dependent,
                         offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
                             address_derivation_carry_bit.num_elements() > 0;
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from ReadAccess arm above).
+                        println!("j {} offset_constant {}", j, offset_constant);
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                            assert_eq!(*offset_constant, 0);
+                        }
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
@@ -952,7 +965,7 @@ impl RegisterAndIndirectAccesses {
                             offset_constant: *offset_constant,
                             has_address_derivation_carry_bit,
                             has_variable_dependent,
-                            has_write: false,
+                            has_write: true,
                         };
                     }
                     #[allow(unreachable_patterns)]

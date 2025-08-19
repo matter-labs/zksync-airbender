@@ -853,7 +853,9 @@ mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        GpuComparisonArgs, run_basic_delegation_test_impl, run_keccak_test_impl,
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -1119,6 +1121,7 @@ mod tests {
             let mut stage_2_trace_view = prover_data.stage_2_result.ldes[domain_index]
                 .trace
                 .row_view(range.clone());
+            println!("memory_args_start {} num_memory_args {}", memory_args_start, num_memory_args);
             for i in 0..domain_size {
                 let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
                 // range check 16 comparisons
@@ -1264,7 +1267,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_2_for_delegation_circuit() {
+    fn test_stage_2_for_main_and_blake_delegation() {
         let ctx = Context::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -1273,14 +1276,15 @@ mod tests {
         ctx.destroy().unwrap();
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_stage_2_for_delegation_circuit() {
-    //     let ctx = Context::create(12).unwrap();
-    //     run_basic_delegation_test_impl(
-    //         Some(Box::new(comparison_hook)),
-    //         Some(Box::new(comparison_hook)),
-    //     );
-    //     ctx.destroy().unwrap();
-    // }
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_stage_2_for_main_and_keccak_delegation() {
+        let ctx = Context::create(12).unwrap();
+        run_keccak_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
 }
