@@ -848,9 +848,10 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
             const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
             const bf t_canonical = bf::into_canonical(t);
             const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
-            base_low = bf::add(base_low, extra_low);
+            numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
+          } else {
+            numerator = e4::mul(address_low_helper, base_low);
           }
-          numerator = e4::mul(address_low_helper, base_low);
           numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
         } else {
           const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);

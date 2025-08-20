@@ -2249,7 +2249,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_3_for_delegation_circuit() {
+    fn test_stage_3_for_main_and_blake() {
         let ctx = Context::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -2261,7 +2261,7 @@ mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_3_for_main_and_keccak_delegation() {
+    fn test_stage_3_for_main_and_keccak() {
         let ctx = Context::create(12).unwrap();
         run_keccak_test_impl(
             Some(Box::new(comparison_hook)),

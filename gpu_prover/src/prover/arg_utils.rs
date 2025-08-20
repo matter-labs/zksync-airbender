@@ -875,6 +875,9 @@ impl RegisterAndIndirectAccesses {
                     } => {
                         let has_address_derivation_carry_bit =
                             address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
                         // The following asserts are sanity checks
                         // based on our known circuit geometries
                         // (slightly different from WriteAccess arm below).
@@ -885,15 +888,12 @@ impl RegisterAndIndirectAccesses {
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
-                        let (
-                            maybe_address_derivation_carry_bit_col,
-                            has_address_derivation_carry_bit,
-                        ) = if has_address_derivation_carry_bit {
-                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
-                            (address_derivation_carry_bit.start() as u32, true)
-                        } else {
-                            (0, false)
-                        };
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
+                            } else {
+                                0
+                            };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
@@ -926,6 +926,9 @@ impl RegisterAndIndirectAccesses {
                     } => {
                         let has_address_derivation_carry_bit =
                             address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
                         // The following asserts are sanity checks
                         // based on our known circuit geometries
                         // (slightly different from ReadAccess arm above).
@@ -937,15 +940,12 @@ impl RegisterAndIndirectAccesses {
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
-                        let (
-                            maybe_address_derivation_carry_bit_col,
-                            has_address_derivation_carry_bit,
-                        ) = if has_address_derivation_carry_bit {
-                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
-                            (address_derivation_carry_bit.start() as u32, true)
-                        } else {
-                            (0, false)
-                        };
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
+                            } else {
+                                0
+                            };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
