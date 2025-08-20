@@ -100,6 +100,9 @@ enum Commands {
         output_dir: String,
         #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
         mode: RecursionMode,
+        /// If true, use GPU for proving.
+        #[arg(long)]
+        gpu: bool,
     },
     /// Verifies a single proof.
     Verify {
@@ -288,13 +291,14 @@ fn main() {
             input,
             output_dir,
             mode,
+            gpu,
         } => {
             let input = fetch_final_input_json(input).expect("Failed to fetch");
 
             let input_program_proof: ProgramProof = serde_json::from_str(&input.unwrap())
                 .expect("Failed to parse input_hex into ProgramProof");
 
-            let program_proof = create_final_proofs_from_program_proof(input_program_proof, *mode);
+            let program_proof = create_final_proofs_from_program_proof(input_program_proof, *mode, *gpu);
 
             serialize_to_file(
                 &program_proof,

@@ -4,6 +4,7 @@
 (cd ../cli && CARGO_TARGET_DIR=../verifier/target/vk_cli cargo build --release --no-default-features)
 
 target/vk_cli/release/cli generate-vk --bin ../verifier/universal.bin --machine reduced --output ../verifier/universal.reduced.vk.json &
+target/vk_cli/release/cli generate-vk --bin ../verifier/universal.bin --machine reduced-log23 --output ../verifier/universal.reduced_log23.vk.json &
 target/vk_cli/release/cli generate-vk --bin ../verifier/universal_no_delegation.bin --machine reduced-final --output ../verifier/universal_no_delegation.final.vk.json &
 
 target/vk_cli/release/cli generate-vk --bin ../verifier/base_layer.bin --machine reduced --output ../verifier/base_layer.reduced.vk.json &

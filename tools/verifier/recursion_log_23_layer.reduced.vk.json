@@ -1,15 +1,15 @@
 {
   "machine_type": "ReducedLog23",
-  "bytecode_hash_hex": "81cd4cd173d79165b2d06e1d638e08ccec43bdadeedd483d22b3ad6af50dee1c",
+  "bytecode_hash_hex": "56b6cad32ab3263dab164ab8c83c2fab7d9755b02d1f66bfb042ebae544af885",
   "params": [
-    2040116876,
-    172214945,
-    1333598904,
-    2444778758,
-    515848897,
-    2610722319,
-    2470606805,
-    271389863
+    2913507080,
+    2768608913,
+    748406412,
+    1801649015,
+    423380165,
+    458389931,
+    1255816880,
+    3612633450
   ],
-  "params_hex": "7999b68c0a43caa14f7d1ab891b85d061ebf3ac19b9c760f934277d5102d14a7"
+  "params_hex": "ada89708a5059e912c9bc68c6b62fb77193c44c51b5279ab4ada3eb0d754696a"
 }

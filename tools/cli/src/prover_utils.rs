@@ -2,7 +2,7 @@ use crate::Machine;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use clap::ValueEnum;
 use execution_utils::{
-    get_padded_binary, ProgramProof, RECURSION_LAYER_VERIFIER,
+    get_padded_binary, ProgramProof,
     UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use trace_and_split::FinalRegisterValue;
@@ -42,24 +42,113 @@ pub enum ProvingLimit {
     Snark,
 }
 
+/// We have two layers of recursion:
+/// 1. Reduced machine (2^22 cycles) + blake delegation
+/// 2. Here we have two options:
+///   - Final reduced machine (2^25 cycles)
+///   - Reduced log23 machine (2^23 cycles) + blake delegation
+/// Then we can define four recursion strategies:
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum RecursionMode {
-    /// Does recursion until 2 reduced + 1 delegation then wrap to final machine
+    /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine
     UseFinalMachine,
-    /// Does recursion until 3 reduced + 1 delegation then wrap to 1 reduced 2^23 + 1 delegation
+    /// Does 1st layer until 3 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
     UseReducedLog23Machine,
+    /// Does 1st layer until N reduced + M delegation then reduced 2^23 + delegation (at least two repetitions)
+    UseReducedLog23MachineMultiple,
+    /// Skips 1st layer and does reduced 2^23 + delegation (at least two repetitions)
+    UseReducedLog23MachineOnly,
+}
+
+impl RecursionMode {
+    pub fn skip_first_layer(&self) -> bool {
+        match self {
+            RecursionMode::UseReducedLog23MachineOnly => true,
+            _ => false,
+        }
+    }
+
+    pub fn switch_to_second_recursion_layer(
+        &self,
+        proof_metadata: &ProofMetadata,
+    ) -> bool {
+        const N: usize = 5;
+        const M: usize = 2;
+
+        let continue_first_layer = match self {
+                RecursionMode::UseFinalMachine => {
+                    proof_metadata.reduced_proof_count > 2
+                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
+                }
+                RecursionMode::UseReducedLog23Machine => {
+                    proof_metadata.reduced_proof_count > 3
+                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
+                }
+                RecursionMode::UseReducedLog23MachineMultiple => {
+                    proof_metadata.reduced_proof_count > N
+                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > M)
+                }
+                RecursionMode::UseReducedLog23MachineOnly => false,
+            };
+
+        !continue_first_layer
+    }
+
+    pub fn finish_second_recursion_layer(
+        &self,
+        proof_metadata: &ProofMetadata,
+        proof_level: usize,
+    ) -> bool {
+        let continue_second_layer = match self {
+                RecursionMode::UseFinalMachine => {
+                    proof_metadata.final_proof_count > 1
+                }
+                RecursionMode::UseReducedLog23Machine => {
+                    assert!(proof_level == 0);
+                    assert!(proof_metadata.reduced_log_23_proof_count == 1);
+
+                    false
+                }
+                RecursionMode::UseReducedLog23MachineMultiple 
+                | RecursionMode::UseReducedLog23MachineOnly => {
+                    proof_metadata.reduced_log_23_proof_count > 1
+                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
+                        || proof_level == 0
+                }
+            };
+
+        !continue_second_layer
+    }
+
+    pub fn get_second_layer_machine(&self) -> Machine {
+        match self {
+            RecursionMode::UseFinalMachine => Machine::ReducedFinal,
+            RecursionMode::UseReducedLog23Machine
+            | RecursionMode::UseReducedLog23MachineMultiple
+            | RecursionMode::UseReducedLog23MachineOnly => Machine::ReducedLog23,
+        }
+    }
+
+    pub fn get_second_layer_binary(&self) -> Vec<u32> {
+        match self {
+            RecursionMode::UseFinalMachine => get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER),
+            RecursionMode::UseReducedLog23Machine
+            | RecursionMode::UseReducedLog23MachineMultiple
+            | RecursionMode::UseReducedLog23MachineOnly => get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
+        }
+    }
 }
 
 pub enum VerifierCircuitsIdentifiers {
     // This enum is used inside tools/verifier/main.rs
     BaseLayer = 0,
     RecursionLayer = 1,
-    RecursionLog23Layer = 2,
-    FinalLayer = 3,
-    RiscV = 4,
+    FinalLayer = 2,
+    RiscV = 3,
     /// Combine 2 proofs (from recursion layers) into one.
     // This is used in OhBender to combine previous block proof with current one.
-    CombinedRecursionLayers = 5,
+    CombinedRecursionLayers = 4,
+    RecursionLog23Layer = 5,
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
@@ -413,36 +502,6 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
     get_padded_binary(&buffer)
 }
 
-fn should_stop_recursion(proof_metadata: &ProofMetadata, mode: RecursionMode) -> bool {
-    let max_delegation_proofs = proof_metadata
-        .delegation_proof_count
-        .iter()
-        .map(|(_, x)| x)
-        .max()
-        .unwrap_or(&0);
-    match mode {
-        RecursionMode::UseFinalMachine => {
-            if proof_metadata.basic_proof_count > 2
-                || proof_metadata.reduced_proof_count > 2
-                || proof_metadata.final_proof_count > 1
-                || max_delegation_proofs > &1
-            {
-                return false;
-            }
-        }
-        RecursionMode::UseReducedLog23Machine => {
-            if proof_metadata.basic_proof_count > 3
-                || proof_metadata.reduced_proof_count > 3
-                || proof_metadata.final_proof_count > 1
-                || max_delegation_proofs > &1
-            {
-                return false;
-            }
-        }
-    }
-    true
-}
-
 // For now, we share the setup cache, only for GPU (as we really care for performance there).
 #[cfg(feature = "gpu")]
 pub struct GpuSharedState {
@@ -473,7 +532,7 @@ impl GpuSharedState {
         let recursion_log_23_binary = ExecutableBinary {
             key: Self::RECURSION_LOG_23_BINARY_KEY,
             circuit_type: MainCircuitType::ReducedRiscVLog23Machine,
-            bytecode: get_padded_binary(RECURSION_LAYER_VERIFIER),
+            bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
         };
         let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary, recursion_log_23_binary]);
         Self { prover }
@@ -782,6 +841,11 @@ pub fn create_recursion_proofs(
     let mut current_proof_metadata = proof_metadata.clone();
 
     loop {
+        if recursion_mode.skip_first_layer() {
+            println!("Skipping recursion.");
+            break;
+        }
+
         println!("*** Starting recursion level {} ***", recursion_level);
         let non_determinism_data = generate_oracle_data_for_universal_verifier(
             &current_proof_metadata,
@@ -809,8 +873,8 @@ pub fn create_recursion_proofs(
 
         recursion_level += 1;
 
-        if should_stop_recursion(&current_proof_metadata, recursion_mode) {
-            println!("Stopping recursion.");
+        if recursion_mode.switch_to_second_recursion_layer(&current_proof_metadata) {
+            println!("Stopping 1st recursion layer.");
             break;
         }
     }
@@ -820,12 +884,18 @@ pub fn create_recursion_proofs(
 pub fn create_final_proofs_from_program_proof(
     input: ProgramProof,
     recursion_mode: RecursionMode,
+    use_gpu: bool
 ) -> ProgramProof {
     let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
 
-    // TODO: add gpu support here
-    let mut gpu_state = None;
-    create_final_proofs(proof_list, proof_metadata, recursion_mode, &None, &mut gpu_state, &mut None)
+    let (mut gpu_state, mut total_proof_time) = if use_gpu {
+        (Some(GpuSharedState::new(&vec![])), Some(0f64))
+    } else {
+        (None, None)
+    };
+    let mut gpu_state = gpu_state.as_mut();
+
+    create_final_proofs(proof_list, proof_metadata, recursion_mode, &None, &mut gpu_state, &mut total_proof_time)
 }
 
 pub fn create_final_proofs(
@@ -836,16 +906,8 @@ pub fn create_final_proofs(
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,
 ) -> ProgramProof {
-    let binary = match recursion_mode {
-        RecursionMode::UseFinalMachine => {
-            get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER)
-        }
-        RecursionMode::UseReducedLog23Machine => get_padded_binary(RECURSION_LAYER_VERIFIER),
-    };
-    let machine = match recursion_mode {
-        RecursionMode::UseFinalMachine => Machine::ReducedFinal,
-        RecursionMode::UseReducedLog23Machine => Machine::ReducedLog23,
-    };
+    let binary = recursion_mode.get_second_layer_binary();
+    let machine = recursion_mode.get_second_layer_machine();
 
     let mut final_proof_level = 0;
     let mut current_proof_list = proof_list;
@@ -853,18 +915,10 @@ pub fn create_final_proofs(
 
     loop {
         println!("*** Starting final_proofs level {} ***", final_proof_level);
-        let non_determinism_data = match recursion_mode {
-            RecursionMode::UseFinalMachine => generate_oracle_data_for_universal_verifier(
-                &current_proof_metadata,
-                &current_proof_list,
-            ),
-            RecursionMode::UseReducedLog23Machine => {
-                generate_oracle_data_from_metadata_and_proof_list(
-                    &current_proof_metadata,
-                    &current_proof_list,
-                )
-            }
-        };
+        let non_determinism_data = generate_oracle_data_for_universal_verifier(
+            &current_proof_metadata,
+            &current_proof_list,
+        );
         (current_proof_list, current_proof_metadata) = create_proofs_internal(
             &binary,
             non_determinism_data,
@@ -882,19 +936,13 @@ pub fn create_final_proofs(
             current_proof_list.write_to_directory(&base_tmp_dir);
             serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
-        final_proof_level += 1;
-        match recursion_mode {
-            RecursionMode::UseFinalMachine => {
-                if current_proof_metadata.final_proof_count == 1 {
-                    break;
-                }
-            }
-            RecursionMode::UseReducedLog23Machine => {
-                if current_proof_metadata.reduced_log_23_proof_count == 1 {
-                    break;
-                }
-            }
+
+        if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level) {
+            println!("Stopping 2nd recursion layer.");
+            break;
         }
+
+        final_proof_level += 1;
     }
 
     program_proof_from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)

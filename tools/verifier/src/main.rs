@@ -148,14 +148,10 @@ unsafe fn workload() -> ! {
             riscv_common::zksync_os_finish_success_extended(&output);
         }
         2 => {
-            let output = full_statement_verifier::verify_recursion_log_23_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
-        3 => {
             let output = full_statement_verifier::verify_final_recursion_layer();
             riscv_common::zksync_os_finish_success_extended(&output);
         }
-        4 => {
+        3 => {
             full_statement_verifier::RISC_V_VERIFIER_PTR(
                 &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
                 &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
@@ -163,7 +159,7 @@ unsafe fn workload() -> ! {
             riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
         }
         // Combine 2 proofs into one.
-        5 => {
+        4 => {
             // First - verify both proofs (keep reading from the CSR).
             let output1 = full_statement_verifier::verify_recursion_layer();
             let output2 = full_statement_verifier::verify_recursion_layer();
@@ -195,6 +191,10 @@ unsafe fn workload() -> ! {
             result[8..16].copy_from_slice(&output1[8..16]);
 
             riscv_common::zksync_os_finish_success_extended(&result);
+        }
+        5 => {
+            let output = full_statement_verifier::verify_recursion_log_23_layer();
+            riscv_common::zksync_os_finish_success_extended(&output);
         }
         other => {
             let Some(pos) =
