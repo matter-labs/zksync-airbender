@@ -52,7 +52,7 @@ pub enum ProvingLimit {
 pub enum RecursionMode {
     /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine
     UseFinalMachine,
-    /// Does 1st layer until 3 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
+    /// Does 1st layer until 2 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
     UseReducedLog23Machine,
     /// Does 1st layer until N reduced + M delegation then reduced 2^23 + delegation (at least two repetitions)
     UseReducedLog23MachineMultiple,
@@ -81,7 +81,7 @@ impl RecursionMode {
                         || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
                 }
                 RecursionMode::UseReducedLog23Machine => {
-                    proof_metadata.reduced_proof_count > 3
+                    proof_metadata.reduced_proof_count > 2
                         || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
                 }
                 RecursionMode::UseReducedLog23MachineMultiple => {
