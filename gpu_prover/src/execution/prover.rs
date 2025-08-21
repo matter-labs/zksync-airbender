@@ -192,7 +192,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             free_allocator_sender.send(allocator).unwrap();
         }
         info!("PROVER initializing global host allocator with 4 x 512 MB");
-        ProverContext::initialize_global_host_allocator(16, 1 << 7, 23).unwrap();
+        ProverContext::initialize_global_host_allocator(4, 1 << 7, 23).unwrap();
         info!("PROVER global host allocator initialized");
         let worker = Worker::new();
         info!(

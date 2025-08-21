@@ -404,7 +404,8 @@ pub fn create_proofs(
     // the production critical path
     // (tracing, witness generation, proving, recursion).
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        (Some(GpuSharedState::new(&binary)), Some(0f64))
+        let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
+        (Some(GpuSharedState::new(&binary, recursion_circuit_type)), Some(0f64))
     } else {
         (None, None)
     };
@@ -467,8 +468,8 @@ pub fn create_proofs(
                     recursion_proof_metadata,
                     recursion_mode,
                     tmp_dir,
-                    &mut gpu_state,
-                    &mut total_proof_time,
+                    &mut None,
+                    &mut None,
                 );
 
                 serialize_to_file(
@@ -508,17 +509,24 @@ pub struct GpuSharedState {
     pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
 }
 
+use gpu_prover::circuit_type::MainCircuitType;
+
 #[cfg(feature = "gpu")]
 impl GpuSharedState {
     const MAIN_BINARY_KEY: usize = 0;
     const RECURSION_BINARY_KEY: usize = 1;
-    const RECURSION_LOG_23_BINARY_KEY: usize = 2;
 
     #[cfg(feature = "gpu")]
-    pub fn new(binary: &Vec<u32>) -> Self {
-        use gpu_prover::circuit_type::MainCircuitType;
+    pub fn new(
+        binary: &Vec<u32>,
+        recursion_circuit_type: MainCircuitType,
+    ) -> Self {
         use gpu_prover::execution::prover::ExecutableBinary;
         use gpu_prover::execution::prover::ExecutionProver;
+
+        assert!(recursion_circuit_type == MainCircuitType::ReducedRiscVMachine || 
+            recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine);
+
         let main_binary = ExecutableBinary {
             key: Self::MAIN_BINARY_KEY,
             circuit_type: MainCircuitType::RiscVCycles,
@@ -526,15 +534,10 @@ impl GpuSharedState {
         };
         let recursion_binary = ExecutableBinary {
             key: Self::RECURSION_BINARY_KEY,
-            circuit_type: MainCircuitType::ReducedRiscVMachine,
+            circuit_type: recursion_circuit_type,
             bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
         };
-        let recursion_log_23_binary = ExecutableBinary {
-            key: Self::RECURSION_LOG_23_BINARY_KEY,
-            circuit_type: MainCircuitType::ReducedRiscVLog23Machine,
-            bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
-        };
-        let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary, recursion_log_23_binary]);
+        let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
         Self { prover }
     }
 }
@@ -696,7 +699,7 @@ pub fn create_proofs_internal(
                         let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
-                                &GpuSharedState::RECURSION_LOG_23_BINARY_KEY,
+                                &GpuSharedState::RECURSION_BINARY_KEY,
                                 num_instances,
                                 non_determinism_source,
                             );
@@ -889,7 +892,10 @@ pub fn create_final_proofs_from_program_proof(
     let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
 
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        (Some(GpuSharedState::new(&vec![])), Some(0f64))
+        // Here we use GPU for final recursion layer only.
+        use gpu_prover::circuit_type::MainCircuitType;
+        let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
+        (Some(GpuSharedState::new(&vec![], recursion_circuit_type)), Some(0f64))
     } else {
         (None, None)
     };
