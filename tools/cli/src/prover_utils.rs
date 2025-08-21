@@ -895,7 +895,8 @@ pub fn create_final_proofs_from_program_proof(
         // Here we use GPU for final recursion layer only.
         use gpu_prover::circuit_type::MainCircuitType;
         let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-        (Some(GpuSharedState::new(&vec![], recursion_circuit_type)), Some(0f64))
+        let binary =  get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+        (Some(GpuSharedState::new(&binary, recursion_circuit_type)), Some(0f64))
     } else {
         (None, None)
     };
