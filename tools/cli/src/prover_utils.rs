@@ -2,8 +2,8 @@ use crate::Machine;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use clap::ValueEnum;
 use execution_utils::{
-    get_padded_binary, ProgramProof,
-    UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
+    get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
+    UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use trace_and_split::FinalRegisterValue;
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
@@ -68,28 +68,34 @@ impl RecursionMode {
         }
     }
 
-    pub fn switch_to_second_recursion_layer(
-        &self,
-        proof_metadata: &ProofMetadata,
-    ) -> bool {
+    pub fn switch_to_second_recursion_layer(&self, proof_metadata: &ProofMetadata) -> bool {
         const N: usize = 5;
         const M: usize = 2;
 
         let continue_first_layer = match self {
-                RecursionMode::UseFinalMachine => {
-                    proof_metadata.reduced_proof_count > 2
-                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
-                }
-                RecursionMode::UseReducedLog23Machine => {
-                    proof_metadata.reduced_proof_count > 2
-                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
-                }
-                RecursionMode::UseReducedLog23MachineMultiple => {
-                    proof_metadata.reduced_proof_count > N
-                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > M)
-                }
-                RecursionMode::UseReducedLog23MachineOnly => false,
-            };
+            RecursionMode::UseFinalMachine => {
+                proof_metadata.reduced_proof_count > 2
+                    || proof_metadata
+                        .delegation_proof_count
+                        .iter()
+                        .any(|(_, x)| *x > 1)
+            }
+            RecursionMode::UseReducedLog23Machine => {
+                proof_metadata.reduced_proof_count > 2
+                    || proof_metadata
+                        .delegation_proof_count
+                        .iter()
+                        .any(|(_, x)| *x > 1)
+            }
+            RecursionMode::UseReducedLog23MachineMultiple => {
+                proof_metadata.reduced_proof_count > N
+                    || proof_metadata
+                        .delegation_proof_count
+                        .iter()
+                        .any(|(_, x)| *x > M)
+            }
+            RecursionMode::UseReducedLog23MachineOnly => false,
+        };
 
         !continue_first_layer
     }
@@ -100,22 +106,23 @@ impl RecursionMode {
         proof_level: usize,
     ) -> bool {
         let continue_second_layer = match self {
-                RecursionMode::UseFinalMachine => {
-                    proof_metadata.final_proof_count > 1
-                }
-                RecursionMode::UseReducedLog23Machine => {
-                    assert!(proof_level == 0);
-                    assert!(proof_metadata.reduced_log_23_proof_count == 1);
+            RecursionMode::UseFinalMachine => proof_metadata.final_proof_count > 1,
+            RecursionMode::UseReducedLog23Machine => {
+                assert!(proof_level == 0);
+                assert!(proof_metadata.reduced_log_23_proof_count == 1);
 
-                    false
-                }
-                RecursionMode::UseReducedLog23MachineMultiple 
-                | RecursionMode::UseReducedLog23MachineOnly => {
-                    proof_metadata.reduced_log_23_proof_count > 1
-                        || proof_metadata.delegation_proof_count.iter().any(|(_, x)| *x > 1)
-                        || proof_level == 0
-                }
-            };
+                false
+            }
+            RecursionMode::UseReducedLog23MachineMultiple
+            | RecursionMode::UseReducedLog23MachineOnly => {
+                proof_metadata.reduced_log_23_proof_count > 1
+                    || proof_metadata
+                        .delegation_proof_count
+                        .iter()
+                        .any(|(_, x)| *x > 1)
+                    || proof_level == 0
+            }
+        };
 
         !continue_second_layer
     }
@@ -131,10 +138,14 @@ impl RecursionMode {
 
     pub fn get_second_layer_binary(&self) -> Vec<u32> {
         match self {
-            RecursionMode::UseFinalMachine => get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER),
+            RecursionMode::UseFinalMachine => {
+                get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER)
+            }
             RecursionMode::UseReducedLog23Machine
             | RecursionMode::UseReducedLog23MachineMultiple
-            | RecursionMode::UseReducedLog23MachineOnly => get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
+            | RecursionMode::UseReducedLog23MachineOnly => {
+                get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER)
+            }
         }
     }
 }
@@ -405,7 +416,10 @@ pub fn create_proofs(
     // (tracing, witness generation, proving, recursion).
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
         let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
-        (Some(GpuSharedState::new(&binary, recursion_circuit_type)), Some(0f64))
+        (
+            Some(GpuSharedState::new(&binary, recursion_circuit_type)),
+            Some(0f64),
+        )
     } else {
         (None, None)
     };
@@ -517,15 +531,14 @@ impl GpuSharedState {
     const RECURSION_BINARY_KEY: usize = 1;
 
     #[cfg(feature = "gpu")]
-    pub fn new(
-        binary: &Vec<u32>,
-        recursion_circuit_type: MainCircuitType,
-    ) -> Self {
+    pub fn new(binary: &Vec<u32>, recursion_circuit_type: MainCircuitType) -> Self {
         use gpu_prover::execution::prover::ExecutableBinary;
         use gpu_prover::execution::prover::ExecutionProver;
 
-        assert!(recursion_circuit_type == MainCircuitType::ReducedRiscVMachine || 
-            recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine);
+        assert!(
+            recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
+                || recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine
+        );
 
         let main_binary = ExecutableBinary {
             key: Self::MAIN_BINARY_KEY,
@@ -887,7 +900,7 @@ pub fn create_recursion_proofs(
 pub fn create_final_proofs_from_program_proof(
     input: ProgramProof,
     recursion_mode: RecursionMode,
-    use_gpu: bool
+    use_gpu: bool,
 ) -> ProgramProof {
     let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
 
@@ -895,14 +908,24 @@ pub fn create_final_proofs_from_program_proof(
         // Here we use GPU for final recursion layer only.
         use gpu_prover::circuit_type::MainCircuitType;
         let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-        let binary =  get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-        (Some(GpuSharedState::new(&binary, recursion_circuit_type)), Some(0f64))
+        let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+        (
+            Some(GpuSharedState::new(&binary, recursion_circuit_type)),
+            Some(0f64),
+        )
     } else {
         (None, None)
     };
     let mut gpu_state = gpu_state.as_mut();
 
-    create_final_proofs(proof_list, proof_metadata, recursion_mode, &None, &mut gpu_state, &mut total_proof_time)
+    create_final_proofs(
+        proof_list,
+        proof_metadata,
+        recursion_mode,
+        &None,
+        &mut gpu_state,
+        &mut total_proof_time,
+    )
 }
 
 pub fn create_final_proofs(
@@ -944,7 +967,8 @@ pub fn create_final_proofs(
             serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
 
-        if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level) {
+        if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level)
+        {
             println!("Stopping 2nd recursion layer.");
             break;
         }

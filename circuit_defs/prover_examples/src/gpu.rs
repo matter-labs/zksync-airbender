@@ -82,7 +82,9 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
 ) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
     let trace_len = risc_v_circuit_precomputations.compiled_circuit.trace_len;
     let cycles_per_circuit = trace_len - 1;
-    let lde_factor = risc_v_circuit_precomputations.lde_precomputations.lde_factor;
+    let lde_factor = risc_v_circuit_precomputations
+        .lde_precomputations
+        .lde_factor;
     assert_eq!(cycles_per_circuit + 1, trace_len);
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 

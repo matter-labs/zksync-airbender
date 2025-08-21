@@ -1062,11 +1062,15 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             MainCircuitType::MachineWithoutSignedMulDiv => {
                 setups::delegation_factories_for_machine::<IMWithoutSignedMulDivIsaConfig, A>()
             }
-            MainCircuitType::ReducedRiscVMachine => {
-                setups::delegation_factories_for_machine::<IWithoutByteAccessIsaConfigWithDelegation, A>()
-            }
+            MainCircuitType::ReducedRiscVMachine => setups::delegation_factories_for_machine::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+                A,
+            >(),
             MainCircuitType::ReducedRiscVLog23Machine => {
-                setups::delegation_factories_for_machine::<IWithoutByteAccessIsaConfigWithDelegation, A>()
+                setups::delegation_factories_for_machine::<
+                    IWithoutByteAccessIsaConfigWithDelegation,
+                    A,
+                >()
             }
             MainCircuitType::RiscVCycles => {
                 setups::delegation_factories_for_machine::<IMStandardIsaConfig, A>()
@@ -1174,9 +1178,7 @@ pub fn get_num_cycles(circuit_type: MainCircuitType) -> usize {
         MainCircuitType::MachineWithoutSignedMulDiv => {
             setups::machine_without_signed_mul_div::NUM_CYCLES
         }
-        MainCircuitType::ReducedRiscVMachine => {
-            setups::reduced_risc_v_machine::NUM_CYCLES
-        }
+        MainCircuitType::ReducedRiscVMachine => setups::reduced_risc_v_machine::NUM_CYCLES,
         MainCircuitType::ReducedRiscVLog23Machine => {
             setups::reduced_risc_v_log_23_machine::NUM_CYCLES
         }
@@ -1192,9 +1194,7 @@ pub fn get_domain_size(circuit_type: MainCircuitType) -> usize {
         MainCircuitType::MachineWithoutSignedMulDiv => {
             setups::machine_without_signed_mul_div::DOMAIN_SIZE
         }
-        MainCircuitType::ReducedRiscVMachine => {
-            setups::reduced_risc_v_machine::DOMAIN_SIZE
-        }
+        MainCircuitType::ReducedRiscVMachine => setups::reduced_risc_v_machine::DOMAIN_SIZE,
         MainCircuitType::ReducedRiscVLog23Machine => {
             setups::reduced_risc_v_log_23_machine::DOMAIN_SIZE
         }

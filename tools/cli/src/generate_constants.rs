@@ -3,8 +3,8 @@ use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use execution_utils::{
     base_layer_verifier_vk, compute_chain_encoding, final_recursion_layer_verifier_vk,
     recursion_layer_no_delegation_verifier_vk, recursion_layer_verifier_vk,
-    recursion_log_23_layer_verifier_vk, universal_circuit_no_delegation_verifier_vk,
-    universal_circuit_verifier_vk, universal_circuit_log_23_verifier_vk,
+    recursion_log_23_layer_verifier_vk, universal_circuit_log_23_verifier_vk,
+    universal_circuit_no_delegation_verifier_vk, universal_circuit_verifier_vk,
 };
 
 pub fn generate_constants_for_binary(
@@ -48,23 +48,25 @@ pub fn generate_constants_for_binary(
                         Machine::ReducedLog23,
                     ),
                 ),
-                RecursionMode::UseReducedLog23MachineMultiple => generate_params_and_register_values(
-                    &[
-                        (&base_layer_bin, Machine::Standard),
-                        (
-                            &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
-                            Machine::Reduced,
-                        ),
+                RecursionMode::UseReducedLog23MachineMultiple => {
+                    generate_params_and_register_values(
+                        &[
+                            (&base_layer_bin, Machine::Standard),
+                            (
+                                &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
+                                Machine::Reduced,
+                            ),
+                            (
+                                &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
+                                Machine::ReducedLog23,
+                            ),
+                        ],
                         (
                             &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
                             Machine::ReducedLog23,
                         ),
-                    ],
-                    (
-                        &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
-                        Machine::ReducedLog23,
-                    ),
-                ),
+                    )
+                }
                 RecursionMode::UseReducedLog23MachineOnly => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
@@ -110,7 +112,7 @@ pub fn generate_constants_for_binary(
                         [0u32; 8],
                         base_params,
                         universal_circuit_verifier_vk().params,
-                        universal_circuit_log_23_verifier_vk().params
+                        universal_circuit_log_23_verifier_vk().params,
                     ]);
 
                     (universal_circuit_log_23_verifier_vk().params, aux_values)
@@ -182,7 +184,7 @@ pub fn generate_constants_for_binary(
 
                     (recursion_log_23_layer_verifier_vk().params, aux_values)
                 }
-                _ => panic!("This recursion mode is not supported for non-universal verifier.")
+                _ => panic!("This recursion mode is not supported for non-universal verifier."),
             }
         }
     };

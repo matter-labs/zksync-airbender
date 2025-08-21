@@ -298,7 +298,8 @@ fn main() {
             let input_program_proof: ProgramProof = serde_json::from_str(&input.unwrap())
                 .expect("Failed to parse input_hex into ProgramProof");
 
-            let program_proof = create_final_proofs_from_program_proof(input_program_proof, *mode, *gpu);
+            let program_proof =
+                create_final_proofs_from_program_proof(input_program_proof, *mode, *gpu);
 
             serialize_to_file(
                 &program_proof,

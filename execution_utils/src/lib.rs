@@ -21,13 +21,11 @@ use self::constants::*;
 // pub const RUN_VERIFIERS_WITH_OUTPUT: bool = false;
 pub const RUN_VERIFIERS_WITH_OUTPUT: bool = true;
 
-pub const BASE_PROGRAM: &[u8] = 
-    include_bytes!("../../examples/hashed_fibonacci/app.bin");
+pub const BASE_PROGRAM: &[u8] = include_bytes!("../../examples/hashed_fibonacci/app.bin");
 pub const BASE_PROGRAM_TEXT_SECTION: &[u8] =
     include_bytes!("../../examples/hashed_fibonacci/app.text");
 
-pub const BASE_LAYER_VERIFIER: &[u8] =
-    include_bytes!("../../tools/verifier/base_layer.bin");
+pub const BASE_LAYER_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/base_layer.bin");
 pub const RECURSION_LAYER_VERIFIER: &[u8] =
     include_bytes!("../../tools/verifier/recursion_layer.bin");
 pub const RECURSION_LOG_23_LAYER_VERIFIER: &[u8] =
@@ -48,8 +46,7 @@ pub const RECURSION_LAYER_NO_DELEGATION_VERIFIER_WITH_OUTPUT: &[u8] =
 pub const FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
     include_bytes!("../../tools/verifier/final_recursion_layer_with_output.bin");
 
-pub const UNIVERSAL_CIRCUIT_VERIFIER: &[u8] =
-    include_bytes!("../../tools/verifier/universal.bin");
+pub const UNIVERSAL_CIRCUIT_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/universal.bin");
 
 pub const UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER: &[u8] =
     include_bytes!("../../tools/verifier/universal_no_delegation.bin");
