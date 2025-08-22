@@ -34,9 +34,9 @@ pub const DEFAULT_CYCLES: usize = 32_000_000;
 // Determines when to stop proving.
 #[derive(Clone, Debug, ValueEnum)]
 pub enum ProvingLimit {
-    /// Does base + recursion (reduced machine).
-    RecursionProof,
-    /// Also does final proof (requires 128GB of RAM).
+    /// Does base + 1st recursion layer.
+    FinalRecursion,
+    /// Does base + both recursion layers.
     FinalProof,
     /// Also creates a final snark (requires zkos_wrapper)
     Snark,
@@ -47,10 +47,12 @@ pub enum ProvingLimit {
 /// 2. Here we have two options:
 ///   - Final reduced machine (2^25 cycles)
 ///   - Reduced log23 machine (2^23 cycles) + blake delegation
+/// Note: end_params constant differs if we do 1 or multiple repetitions of the 2nd layer.
+/// So we need to run the 2nd layer exactly one time or at least twice.
 /// Then we can define four recursion strategies:
 #[derive(Clone, Copy, Debug, ValueEnum)]
-pub enum RecursionMode {
-    /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine
+pub enum RecursionStrategy {
+    /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine (always two repetitions)
     UseFinalMachine,
     /// Does 1st layer until 2 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
     UseReducedLog23Machine,
@@ -60,10 +62,10 @@ pub enum RecursionMode {
     UseReducedLog23MachineOnly,
 }
 
-impl RecursionMode {
+impl RecursionStrategy {
     pub fn skip_first_layer(&self) -> bool {
         match self {
-            RecursionMode::UseReducedLog23MachineOnly => true,
+            RecursionStrategy::UseReducedLog23MachineOnly => true,
             _ => false,
         }
     }
@@ -73,28 +75,28 @@ impl RecursionMode {
         const M: usize = 2;
 
         let continue_first_layer = match self {
-            RecursionMode::UseFinalMachine => {
+            RecursionStrategy::UseFinalMachine => {
                 proof_metadata.reduced_proof_count > 2
                     || proof_metadata
                         .delegation_proof_count
                         .iter()
                         .any(|(_, x)| *x > 1)
             }
-            RecursionMode::UseReducedLog23Machine => {
+            RecursionStrategy::UseReducedLog23Machine => {
                 proof_metadata.reduced_proof_count > 2
                     || proof_metadata
                         .delegation_proof_count
                         .iter()
                         .any(|(_, x)| *x > 1)
             }
-            RecursionMode::UseReducedLog23MachineMultiple => {
+            RecursionStrategy::UseReducedLog23MachineMultiple => {
                 proof_metadata.reduced_proof_count > N
                     || proof_metadata
                         .delegation_proof_count
                         .iter()
                         .any(|(_, x)| *x > M)
             }
-            RecursionMode::UseReducedLog23MachineOnly => false,
+            RecursionStrategy::UseReducedLog23MachineOnly => false,
         };
 
         !continue_first_layer
@@ -106,15 +108,16 @@ impl RecursionMode {
         proof_level: usize,
     ) -> bool {
         let continue_second_layer = match self {
-            RecursionMode::UseFinalMachine => proof_metadata.final_proof_count > 1,
-            RecursionMode::UseReducedLog23Machine => {
+            RecursionStrategy::UseFinalMachine => proof_metadata.final_proof_count > 1,
+            RecursionStrategy::UseReducedLog23Machine => {
+                // In this strategy we should run only one repetition of 2nd layer
                 assert!(proof_level == 0);
                 assert!(proof_metadata.reduced_log_23_proof_count == 1);
 
                 false
             }
-            RecursionMode::UseReducedLog23MachineMultiple
-            | RecursionMode::UseReducedLog23MachineOnly => {
+            RecursionStrategy::UseReducedLog23MachineMultiple
+            | RecursionStrategy::UseReducedLog23MachineOnly => {
                 proof_metadata.reduced_log_23_proof_count > 1
                     || proof_metadata
                         .delegation_proof_count
@@ -129,21 +132,21 @@ impl RecursionMode {
 
     pub fn get_second_layer_machine(&self) -> Machine {
         match self {
-            RecursionMode::UseFinalMachine => Machine::ReducedFinal,
-            RecursionMode::UseReducedLog23Machine
-            | RecursionMode::UseReducedLog23MachineMultiple
-            | RecursionMode::UseReducedLog23MachineOnly => Machine::ReducedLog23,
+            RecursionStrategy::UseFinalMachine => Machine::ReducedFinal,
+            RecursionStrategy::UseReducedLog23Machine
+            | RecursionStrategy::UseReducedLog23MachineMultiple
+            | RecursionStrategy::UseReducedLog23MachineOnly => Machine::ReducedLog23,
         }
     }
 
     pub fn get_second_layer_binary(&self) -> Vec<u32> {
         match self {
-            RecursionMode::UseFinalMachine => {
+            RecursionStrategy::UseFinalMachine => {
                 get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER)
             }
-            RecursionMode::UseReducedLog23Machine
-            | RecursionMode::UseReducedLog23MachineMultiple
-            | RecursionMode::UseReducedLog23MachineOnly => {
+            RecursionStrategy::UseReducedLog23Machine
+            | RecursionStrategy::UseReducedLog23MachineMultiple
+            | RecursionStrategy::UseReducedLog23MachineOnly => {
                 get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER)
             }
         }
@@ -385,7 +388,7 @@ pub fn create_proofs(
     machine: &Machine,
     cycles: &Option<usize>,
     until: &Option<ProvingLimit>,
-    recursion_mode: RecursionMode,
+    recursion_mode: RecursionStrategy,
     tmp_dir: &Option<String>,
     use_gpu: bool,
 ) {
@@ -415,6 +418,8 @@ pub fn create_proofs(
     // the production critical path
     // (tracing, witness generation, proving, recursion).
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
+        // In this function we only use the GPU for the base and 1st recursion layer (reduced 2^22 machine).
+        // In order to use it for the 2nd recursion layer, you should call `create_final_proofs_from_program_proof`
         let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
         (
             Some(GpuSharedState::new(&binary, recursion_circuit_type)),
@@ -460,7 +465,7 @@ pub fn create_proofs(
             &mut total_proof_time,
         );
         match until {
-            ProvingLimit::RecursionProof => {
+            ProvingLimit::FinalRecursion => {
                 recursion_proof_list.write_to_directory(Path::new(output_dir));
 
                 serialize_to_file(
@@ -535,6 +540,8 @@ impl GpuSharedState {
         use gpu_prover::execution::prover::ExecutableBinary;
         use gpu_prover::execution::prover::ExecutionProver;
 
+        // We don't support MainCircuitType::FinalReducedRiscVMachine on GPU for now
+        // it's too big (2^25 rows).
         assert!(
             recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
                 || recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine
@@ -841,7 +848,7 @@ pub fn create_proofs_internal(
 pub fn create_recursion_proofs(
     proof_list: ProofList,
     proof_metadata: ProofMetadata,
-    recursion_mode: RecursionMode,
+    recursion_mode: RecursionStrategy,
     tmp_dir: &Option<String>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,
@@ -899,7 +906,7 @@ pub fn create_recursion_proofs(
 
 pub fn create_final_proofs_from_program_proof(
     input: ProgramProof,
-    recursion_mode: RecursionMode,
+    recursion_mode: RecursionStrategy,
     use_gpu: bool,
 ) -> ProgramProof {
     let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
@@ -931,7 +938,7 @@ pub fn create_final_proofs_from_program_proof(
 pub fn create_final_proofs(
     proof_list: ProofList,
     proof_metadata: ProofMetadata,
-    recursion_mode: RecursionMode,
+    recursion_mode: RecursionStrategy,
     tmp_dir: &Option<String>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,

@@ -19,7 +19,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::time::Instant;
-// use trace_and_split::setups::trace_len_for_machine;
 use trace_and_split::{setups, FinalRegisterValue, ENTRY_POINT};
 
 pub trait NonDeterminism:

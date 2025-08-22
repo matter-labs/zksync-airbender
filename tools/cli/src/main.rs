@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use cli_lib::generate_constants::generate_constants_for_binary;
 use cli_lib::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
-    serialize_to_file, u32_from_hex_string, ProvingLimit, RecursionMode,
+    serialize_to_file, u32_from_hex_string, ProvingLimit, RecursionStrategy,
     VerifierCircuitsIdentifiers, DEFAULT_CYCLES,
 };
 use cli_lib::Machine;
@@ -82,7 +82,7 @@ enum Commands {
         #[arg(long)]
         until: Option<ProvingLimit>,
         #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionMode,
+        mode: RecursionStrategy,
 
         /// If set, the temporary data (e.g. intermediate proofs) will be stored in the given directory.
         #[arg(long)]
@@ -99,7 +99,7 @@ enum Commands {
         #[arg(long, default_value = "output")]
         output_dir: String,
         #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionMode,
+        mode: RecursionStrategy,
         /// If true, use GPU for proving.
         #[arg(long)]
         gpu: bool,
@@ -185,7 +185,7 @@ enum Commands {
         #[arg(long)]
         recompute: bool,
         #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionMode,
+        mode: RecursionStrategy,
     },
 }
 

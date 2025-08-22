@@ -423,8 +423,6 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
     let mut hasher = Blake2sBufferingTranscript::new();
     let mut previous = data[0];
 
-    dbg!(&data);
-
     for index in 1..data.len() {
         // continue the chain, only if the data is different
         if data[index] != data[index - 1] {

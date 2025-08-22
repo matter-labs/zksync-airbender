@@ -1,4 +1,4 @@
-use crate::{prover_utils::RecursionMode, vk::generate_params_for_binary, Machine};
+use crate::{prover_utils::RecursionStrategy, vk::generate_params_for_binary, Machine};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use execution_utils::{
     base_layer_verifier_vk, compute_chain_encoding, final_recursion_layer_verifier_vk,
@@ -9,7 +9,7 @@ use execution_utils::{
 
 pub fn generate_constants_for_binary(
     bin: &String,
-    recursion_mode: &RecursionMode,
+    recursion_mode: &RecursionStrategy,
     universal_verifier: &bool,
     recompute: &bool,
 ) {
@@ -18,7 +18,7 @@ pub fn generate_constants_for_binary(
     let (end_params, aux_values) = if *universal_verifier {
         if *recompute {
             match recursion_mode {
-                RecursionMode::UseFinalMachine => generate_params_and_register_values(
+                RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
                         (
@@ -35,7 +35,7 @@ pub fn generate_constants_for_binary(
                         Machine::ReducedFinal,
                     ),
                 ),
-                RecursionMode::UseReducedLog23Machine => generate_params_and_register_values(
+                RecursionStrategy::UseReducedLog23Machine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
                         (
@@ -48,7 +48,7 @@ pub fn generate_constants_for_binary(
                         Machine::ReducedLog23,
                     ),
                 ),
-                RecursionMode::UseReducedLog23MachineMultiple => {
+                RecursionStrategy::UseReducedLog23MachineMultiple => {
                     generate_params_and_register_values(
                         &[
                             (&base_layer_bin, Machine::Standard),
@@ -67,25 +67,27 @@ pub fn generate_constants_for_binary(
                         ),
                     )
                 }
-                RecursionMode::UseReducedLog23MachineOnly => generate_params_and_register_values(
-                    &[
-                        (&base_layer_bin, Machine::Standard),
+                RecursionStrategy::UseReducedLog23MachineOnly => {
+                    generate_params_and_register_values(
+                        &[
+                            (&base_layer_bin, Machine::Standard),
+                            (
+                                &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
+                                Machine::ReducedLog23,
+                            ),
+                        ],
                         (
                             &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
                             Machine::ReducedLog23,
                         ),
-                    ],
-                    (
-                        &execution_utils::UNIVERSAL_CIRCUIT_VERIFIER,
-                        Machine::ReducedLog23,
-                    ),
-                ),
+                    )
+                }
             }
         } else {
             let base_params = generate_params_for_binary(&base_layer_bin, Machine::Standard);
 
             match recursion_mode {
-                RecursionMode::UseFinalMachine => {
+                RecursionStrategy::UseFinalMachine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -98,7 +100,7 @@ pub fn generate_constants_for_binary(
                         aux_values,
                     )
                 }
-                RecursionMode::UseReducedLog23Machine => {
+                RecursionStrategy::UseReducedLog23Machine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -107,7 +109,7 @@ pub fn generate_constants_for_binary(
 
                     (universal_circuit_log_23_verifier_vk().params, aux_values)
                 }
-                RecursionMode::UseReducedLog23MachineMultiple => {
+                RecursionStrategy::UseReducedLog23MachineMultiple => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -117,7 +119,7 @@ pub fn generate_constants_for_binary(
 
                     (universal_circuit_log_23_verifier_vk().params, aux_values)
                 }
-                RecursionMode::UseReducedLog23MachineOnly => {
+                RecursionStrategy::UseReducedLog23MachineOnly => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -131,7 +133,7 @@ pub fn generate_constants_for_binary(
     } else {
         if *recompute {
             match recursion_mode {
-                RecursionMode::UseFinalMachine => generate_params_and_register_values(
+                RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
                         (&execution_utils::BASE_LAYER_VERIFIER, Machine::Reduced),
@@ -146,7 +148,7 @@ pub fn generate_constants_for_binary(
                         Machine::ReducedFinal,
                     ),
                 ),
-                RecursionMode::UseReducedLog23Machine => generate_params_and_register_values(
+                RecursionStrategy::UseReducedLog23Machine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
                         (&execution_utils::BASE_LAYER_VERIFIER, Machine::Reduced),
@@ -157,13 +159,13 @@ pub fn generate_constants_for_binary(
                         Machine::ReducedLog23,
                     ),
                 ),
-                _ => panic!("This recursion mode is not supported for universal verifier."),
+                _ => panic!("This recursion strategy is not supported for non-universal verifier."),
             }
         } else {
             let base_params = generate_params_for_binary(&base_layer_bin, Machine::Standard);
 
             match recursion_mode {
-                RecursionMode::UseFinalMachine => {
+                RecursionStrategy::UseFinalMachine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -174,7 +176,7 @@ pub fn generate_constants_for_binary(
 
                     (final_recursion_layer_verifier_vk().params, aux_values)
                 }
-                RecursionMode::UseReducedLog23Machine => {
+                RecursionStrategy::UseReducedLog23Machine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,
@@ -184,7 +186,7 @@ pub fn generate_constants_for_binary(
 
                     (recursion_log_23_layer_verifier_vk().params, aux_values)
                 }
-                _ => panic!("This recursion mode is not supported for non-universal verifier."),
+                _ => panic!("This recursion strategy is not supported for non-universal verifier."),
             }
         }
     };
