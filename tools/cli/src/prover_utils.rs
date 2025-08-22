@@ -420,11 +420,18 @@ pub fn create_proofs(
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
         // In this function we only use the GPU for the base and 1st recursion layer (reduced 2^22 machine).
         // In order to use it for the 2nd recursion layer, you should call `create_final_proofs_from_program_proof`
-        let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
-        (
-            Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-            Some(0f64),
-        )
+        #[cfg(feature = "gpu")]
+        {
+            let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
+            (
+                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
+                Some(0f64),
+            )
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            panic!("Compiled without GPU support, but --use-gpu is set.");
+        }
     } else {
         (None, None)
     };
@@ -530,6 +537,7 @@ pub struct GpuSharedState {
     pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
 }
 
+#[cfg(feature = "gpu")]
 use gpu_prover::circuit_type::MainCircuitType;
 
 #[cfg(feature = "gpu")]
@@ -919,14 +927,22 @@ pub fn create_final_proofs_from_program_proof(
             "GPU is not supported for final machine recursion."
         );
 
-        // Here we use GPU for final recursion layer only.
-        use gpu_prover::circuit_type::MainCircuitType;
-        let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-        let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-        (
-            Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-            Some(0f64),
-        )
+        #[cfg(feature = "gpu")]
+        {
+            // Here we use GPU for final recursion layer only.
+            use gpu_prover::circuit_type::MainCircuitType;
+            let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
+            let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+            (
+                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
+                Some(0f64),
+            )
+        }
+
+        #[cfg(not(feature = "gpu"))]
+        {
+            panic!("GPU not enabled - please compile with --features gpu flag.")
+        }
     } else {
         (None, None)
     };
