@@ -23,7 +23,7 @@ use std::{alloc::Global, fmt::Binary, fs, io::Read, path::Path};
 pub use gpu_prover::circuit_type::MainCircuitType;
 
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
+    let src = std::fs::File::open(filename).expect(&format!("{filename}"));
     serde_json::from_reader(src).unwrap()
 }
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
