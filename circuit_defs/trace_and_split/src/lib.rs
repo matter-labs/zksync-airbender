@@ -19,7 +19,6 @@ use setups::prover::risc_v_simulator::abstractions::non_determinism::*;
 use setups::prover::risc_v_simulator::cycle::MachineConfig;
 use setups::prover::transcript::Seed;
 use setups::prover::*;
-// use setups::trace_len_for_machine;
 use std::collections::HashMap;
 use worker::Worker;
 
@@ -319,7 +318,6 @@ pub fn commit_memory_tree_for_riscv_circuit_using_gpu_tracer<C: MachineConfig, A
     lde_precomputations: &LdePrecomputations<A>,
     worker: &Worker,
 ) -> (Vec<MerkleTreeCapVarLength>, WitnessEvaluationAuxData) {
-    // let lde_factor = setups::lde_factor_for_machine::<C>();
     let lde_factor = lde_precomputations.lde_factor;
 
     use setups::prover::prover_stages::stage1::compute_wide_ldes;
@@ -588,7 +586,6 @@ pub fn run_and_split_for_gpu<
         setups::risc_v_cycles::ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
         setups::final_reduced_risc_v_machine::ROM_ADDRESS_SPACE_SECOND_WORD_BITS
     );
-    // let domain_size = trace_len_for_machine::<C>();
 
     let (
         final_pc,

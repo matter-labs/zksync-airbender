@@ -172,7 +172,6 @@ pub fn trace_execution_for_gpu<
     HashMap<u16, Vec<DelegationWitness>>,
     Vec<FinalRegisterValue>,
 ) {
-    // let cycles_per_circuit = setups::num_cycles_for_machine::<C>();
     let cycles_per_circuit = trace_len - 1;
     let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
@@ -480,8 +479,6 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
                     .teardown_timestamp_one_before_last_row,
             },
         };
-
-        // let lde_factor = setups::lde_factor_for_machine::<C>();
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();

@@ -482,6 +482,8 @@ pub fn create_proofs(
                 );
             }
             ProvingLimit::FinalProof => {
+                // Here we support only CPU proving, mostly for testing purposes.
+                // In order to use GPU for 2nd recursion layer, please call `create_final_proofs_from_program_proof`
                 let program_proof = create_final_proofs(
                     recursion_proof_list,
                     recursion_proof_metadata,
@@ -912,6 +914,11 @@ pub fn create_final_proofs_from_program_proof(
     let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
 
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
+        assert!(
+            recursion_mode != RecursionStrategy::UseFinalMachine,
+            "GPU is not supported for final machine recursion."
+        );
+
         // Here we use GPU for final recursion layer only.
         use gpu_prover::circuit_type::MainCircuitType;
         let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;

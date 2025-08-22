@@ -47,7 +47,7 @@ impl Default for ProverContextConfig {
             powers_of_w_coarse_log_count: 12,
             allocation_block_log_size: 22,    // 4 MB blocks
             device_slack_blocks_count: 64,    // 256 MB slack
-            host_allocator_blocks_count: 512, // 512 MB host allocator pool
+            host_allocator_blocks_count: 128, // 512 MB host allocator pool
         }
     }
 }

@@ -195,27 +195,6 @@ pub fn generate_constants_for_binary(
     println!("Aux values: {:?}", aux_values);
 }
 
-// pub fn generate_params_and_register_values(
-//     base_layer_bin: &[u8],
-//     first_recursion_layer_bin: &[u8],
-//     next_recursion_layer_bin: &[u8],
-//     first_final_recursion_bin: &[u8],
-//     next_final_recursion_bin: &[u8],
-// ) -> (
-//     [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
-//     [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
-// ) {
-//     let end_params = generate_params_for_binary(next_final_recursion_bin, Machine::ReducedFinal);
-
-//     let aux_registers_values = compute_commitment_for_chain_of_programs(
-//         base_layer_bin,
-//         first_recursion_layer_bin,
-//         next_recursion_layer_bin,
-//         first_final_recursion_bin,
-//     );
-//     (end_params, aux_registers_values)
-// }
-
 pub fn generate_params_and_register_values(
     machines_chain: &[(&[u8], Machine)],
     last_machine: (&[u8], Machine),
@@ -228,32 +207,6 @@ pub fn generate_params_and_register_values(
     let aux_registers_values = compute_commitment_for_chain_of_programs(machines_chain);
     (end_params, aux_registers_values)
 }
-
-// fn compute_commitment_for_chain_of_programs(
-//     base_layer_bin: &[u8],
-//     first_recursion_layer_bin: &[u8],
-//     next_recursion_layer_bin: &[u8],
-//     first_final_recursion_bin: &[u8],
-// ) -> [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
-//     let base_layer_end_params = generate_params_for_binary(base_layer_bin, Machine::Standard);
-
-//     let first_recursion_layer_end_params =
-//         generate_params_for_binary(first_recursion_layer_bin, Machine::Reduced);
-
-//     let next_recursion_layer_end_params =
-//         generate_params_for_binary(next_recursion_layer_bin, Machine::Reduced);
-
-//     let first_final_recursion_end_params =
-//         generate_params_for_binary(first_final_recursion_bin, Machine::ReducedFinal);
-
-//     compute_chain_encoding(vec![
-//         [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
-//         base_layer_end_params,
-//         first_recursion_layer_end_params,
-//         next_recursion_layer_end_params,
-//         first_final_recursion_end_params,
-//     ])
-// }
 
 fn compute_commitment_for_chain_of_programs(
     binaries_and_machines: &[(&[u8], Machine)],
