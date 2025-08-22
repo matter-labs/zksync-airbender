@@ -290,7 +290,7 @@ impl ProofList {
         }
 
         let mut reduced_log_23_proofs = vec![];
-        for i in 0..metadata.reduced_proof_count {
+        for i in 0..metadata.reduced_log_23_proof_count {
             let proof_path = Path::new(input_dir).join(format!("reduced_log_23_proof_{}.json", i));
             let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
             reduced_log_23_proofs.push(proof);
