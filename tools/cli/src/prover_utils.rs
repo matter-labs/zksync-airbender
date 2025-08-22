@@ -19,6 +19,9 @@ use prover::{
 };
 use std::{alloc::Global, fmt::Binary, fs, io::Read, path::Path};
 
+#[cfg(feature = "gpu")]
+pub use gpu_prover::circuit_type::MainCircuitType;
+
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
@@ -536,9 +539,6 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
 pub struct GpuSharedState {
     pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
 }
-
-#[cfg(feature = "gpu")]
-use gpu_prover::circuit_type::MainCircuitType;
 
 #[cfg(feature = "gpu")]
 impl GpuSharedState {

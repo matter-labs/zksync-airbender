@@ -19,6 +19,9 @@ use serde_json::json;
 use serde_json::Value;
 use warp::Filter;
 
+use cli_lib::prover_utils::RecursionStrategy;
+const DEFAULT_RECURSION_STRATEGY: RecursionStrategy = RecursionStrategy::UseFinalMachine;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -82,7 +85,15 @@ impl LocalProver {
     }
 
     fn new_internal(padded_binary: Vec<u32>) -> LocalProver {
+        #[cfg(feature = "gpu")]
+        let gpu_state = GpuSharedState::new(
+            &padded_binary,
+            cli_lib::prover_utils::MainCircuitType::ReducedRiscVMachine,
+        );
+
+        #[cfg(not(feature = "gpu"))]
         let gpu_state = GpuSharedState::new(&padded_binary);
+
         LocalProver {
             binary: padded_binary,
             gpu_state,
@@ -119,6 +130,7 @@ impl LocalProver {
         let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
             proof_list,
             proof_metadata,
+            DEFAULT_RECURSION_STRATEGY,
             &None,
             &mut Some(&mut self.gpu_state),
             &mut total_proof_time,
