@@ -50,7 +50,7 @@ pub enum ProvingLimit {
 /// Note: end_params constant differs if we do 1 or multiple repetitions of the 2nd layer.
 /// So we need to run the 2nd layer exactly one time or at least twice.
 /// Then we can define four recursion strategies:
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
 pub enum RecursionStrategy {
     /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine (always two repetitions)
     UseFinalMachine,
