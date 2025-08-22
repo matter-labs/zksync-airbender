@@ -251,7 +251,7 @@ jobs:
           rustup component add rust-src
       - name: ObjCopy
         working-directory: tools/verifier
-        run: cargo objcopy --profile cli  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
+        run: cargo objcopy --release  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
 
       - uses: actions/upload-artifact@v4
         with:
