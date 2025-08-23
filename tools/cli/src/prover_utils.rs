@@ -9,7 +9,7 @@ use trace_and_split::FinalRegisterValue;
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
 use prover::{
-    cs::{machine, utils::split_timestamp},
+    cs::utils::split_timestamp,
     prover_stages::Proof,
     risc_v_simulator::{
         abstractions::non_determinism::QuasiUARTSource,
@@ -17,7 +17,7 @@ use prover::{
     },
     transcript::{Blake2sBufferingTranscript, Seed},
 };
-use std::{alloc::Global, fmt::Binary, fs, io::Read, path::Path};
+use std::{alloc::Global, fs, io::Read, path::Path};
 
 #[cfg(feature = "gpu")]
 pub use gpu_prover::circuit_type::MainCircuitType;
