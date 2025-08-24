@@ -1,14 +1,13 @@
 #![allow(unexpected_cfgs)]
 
+use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message};
+
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
-    #[cfg(no_cuda)]
-    {
-        println!("cargo::warning={}", era_cudart_sys::no_cuda_message!());
-    }
-    #[cfg(not(no_cuda))]
-    {
-        use era_cudart_sys::{get_cuda_lib_path, get_cuda_version};
+    if is_no_cuda() {
+        println!("cargo::warning={}", no_cuda_message!());
+        println!("cargo::rustc-cfg=no_cuda");
+    } else {
         use std::env::var;
         let cuda_version =
             get_cuda_version().expect("Failed to determine the CUDA Toolkit version.");
