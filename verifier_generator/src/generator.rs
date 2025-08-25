@@ -73,7 +73,15 @@ pub fn generate_from_parts(
         quote! {,},
     );
 
-    let lazy_init_address_aux_vars = transform_option(lazy_init_address_aux_vars.clone());
+    let mut lazy_init_address_aux_vars_stream = TokenStream::new();
+    lazy_init_address_aux_vars_stream.append_separated(
+        lazy_init_address_aux_vars.into_iter().map(|el| {
+            quote! {
+                #el
+            }
+        }),
+        quote! {,},
+    );
     let trace_len_log2 = trace_len.trailing_zeros() as usize;
 
     let result = quote! {
@@ -94,7 +102,7 @@ pub fn generate_from_parts(
             degree_1_constraints: &[#degree_1_constraints_stream],
             state_linkage_constraints: &[#state_linkage_constraints_stream],
             public_inputs: &[#public_inputs_stream],
-            lazy_init_address_aux_vars: #lazy_init_address_aux_vars,
+            lazy_init_address_aux_vars: &[#lazy_init_address_aux_vars_stream],
             trace_len_log2: #trace_len_log2,
         };
 
@@ -107,6 +115,7 @@ fn transform_witness_layout(witness_layout: WitnessSubtree<Mersenne31Field>) -> 
     let WitnessSubtree {
         multiplicities_columns_for_range_check_16,
         multiplicities_columns_for_timestamp_range_check,
+        multiplicities_columns_for_decoder_in_executor_families,
         multiplicities_columns_for_generic_lookup,
         range_check_8_columns: _,
         range_check_16_columns,
@@ -147,6 +156,7 @@ fn transform_witness_layout(witness_layout: WitnessSubtree<Mersenne31Field>) -> 
         const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = CompiledWitnessSubtree {
             multiplicities_columns_for_range_check_16: #multiplicities_columns_for_range_check_16,
             multiplicities_columns_for_timestamp_range_check: #multiplicities_columns_for_timestamp_range_check,
+            multiplicities_columns_for_decoder_in_executor_families: #multiplicities_columns_for_decoder_in_executor_families,
             multiplicities_columns_for_generic_lookup: #multiplicities_columns_for_generic_lookup,
             range_check_16_columns: #range_check_16_columns,
             width_3_lookups: &[#width_3_lookups_stream],
@@ -166,6 +176,8 @@ fn transform_memory_layout(memory_layout: MemorySubtree) -> TokenStream {
         delegation_request_layout,
         delegation_processor_layout,
         shuffle_ram_access_sets,
+        machine_state_layout,
+        intermediate_state_layout,
         batched_ram_accesses,
         register_and_indirect_accesses,
         total_width,
@@ -174,10 +186,12 @@ fn transform_memory_layout(memory_layout: MemorySubtree) -> TokenStream {
     let shuffle_ram_access_sets_stream = slice_to_tokens(&shuffle_ram_access_sets);
     let batched_ram_accesses_stream = slice_to_tokens(&batched_ram_accesses);
     let register_and_indirect_accesses_stream = slice_to_tokens(&register_and_indirect_accesses);
+    let shuffle_ram_inits_and_teardowns = slice_to_tokens(&shuffle_ram_inits_and_teardowns);
 
-    let shuffle_ram_inits_and_teardowns = transform_option(shuffle_ram_inits_and_teardowns);
     let delegation_request_layout = transform_option(delegation_request_layout);
     let delegation_processor_layout = transform_option(delegation_processor_layout);
+    let machine_state_layout = transform_option(machine_state_layout);
+    let intermediate_state_layout = transform_option(intermediate_state_layout);
 
     quote! {
         const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySubtree {
@@ -185,6 +199,8 @@ fn transform_memory_layout(memory_layout: MemorySubtree) -> TokenStream {
             delegation_request_layout: #delegation_request_layout,
             delegation_processor_layout: #delegation_processor_layout,
             shuffle_ram_access_sets: #shuffle_ram_access_sets_stream,
+            machine_state_layout: #machine_state_layout,
+            intermediate_state_layout: #intermediate_state_layout,
             batched_ram_accesses: #batched_ram_accesses_stream,
             register_and_indirect_accesses: #register_and_indirect_accesses_stream,
             total_width: #total_width,
@@ -198,6 +214,7 @@ fn transform_setup_layout(setup_layout: SetupLayout) -> TokenStream {
         timestamp_range_check_setup_column,
         range_check_16_setup_column,
         generic_lookup_setup_columns,
+        preprocessed_decoder_setup_columns,
         total_width,
     } = setup_layout;
 
@@ -207,6 +224,7 @@ fn transform_setup_layout(setup_layout: SetupLayout) -> TokenStream {
             timestamp_range_check_setup_column: #timestamp_range_check_setup_column,
             range_check_16_setup_column: #range_check_16_setup_column,
             generic_lookup_setup_columns: #generic_lookup_setup_columns,
+            preprocessed_decoder_setup_columns: #preprocessed_decoder_setup_columns,
             total_width: #total_width,
         };
     }
@@ -215,15 +233,21 @@ fn transform_setup_layout(setup_layout: SetupLayout) -> TokenStream {
 fn transform_stage_2_layout(layoyt: LookupAndMemoryArgumentLayout) -> TokenStream {
     let LookupAndMemoryArgumentLayout {
         intermediate_polys_for_range_check_16,
-        intermediate_polys_for_timestamp_range_checks,
         remainder_for_range_check_16,
         lazy_init_address_range_check_16,
+        intermediate_polys_for_timestamp_range_checks,
         intermediate_polys_for_generic_lookup,
+        intermediate_poly_for_decoder_accesses,
         intermediate_poly_for_range_check_16_multiplicity,
-        intermediate_polys_for_generic_multiplicities,
         intermediate_poly_for_timestamp_range_check_multiplicity,
-        intermediate_polys_for_memory_argument,
+        intermediate_polys_for_generic_multiplicities,
+        intermediate_polys_for_decoder_multiplicities,
         delegation_processing_aux_poly,
+        intermediate_polys_for_memory_init_teardown,
+        intermediate_polys_for_memory_argument,
+        intermediate_polys_for_state_permutation,
+        intermediate_polys_for_permutation_masking,
+        intermediate_poly_for_grand_product,
         ext4_polys_offset,
         total_width,
     } = layoyt;
@@ -235,15 +259,21 @@ fn transform_stage_2_layout(layoyt: LookupAndMemoryArgumentLayout) -> TokenStrea
     quote! {
         const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryArgumentLayout {
             intermediate_polys_for_range_check_16: #intermediate_polys_for_range_check_16,
-            intermediate_polys_for_timestamp_range_checks: #intermediate_polys_for_timestamp_range_checks,
             remainder_for_range_check_16: #remainder_for_range_check_16,
             lazy_init_address_range_check_16: #lazy_init_address_range_check_16,
+            intermediate_polys_for_timestamp_range_checks: #intermediate_polys_for_timestamp_range_checks,
             intermediate_polys_for_generic_lookup: #intermediate_polys_for_generic_lookup,
+            intermediate_poly_for_decoder_accesses: #intermediate_poly_for_decoder_accesses,
             intermediate_poly_for_range_check_16_multiplicity: #intermediate_poly_for_range_check_16_multiplicity,
-            intermediate_polys_for_generic_multiplicities: #intermediate_polys_for_generic_multiplicities,
             intermediate_poly_for_timestamp_range_check_multiplicity: #intermediate_poly_for_timestamp_range_check_multiplicity,
-            intermediate_polys_for_memory_argument: #intermediate_polys_for_memory_argument,
+            intermediate_polys_for_generic_multiplicities: #intermediate_polys_for_generic_multiplicities,
+            intermediate_polys_for_decoder_multiplicities: #intermediate_polys_for_decoder_multiplicities,
             delegation_processing_aux_poly: #delegation_processing_aux_poly,
+            intermediate_polys_for_memory_init_teardown: #intermediate_polys_for_memory_init_teardown,
+            intermediate_polys_for_memory_argument: #intermediate_polys_for_memory_argument,
+            intermediate_polys_for_state_permutation: #intermediate_polys_for_state_permutation,
+            intermediate_polys_for_permutation_masking: #intermediate_polys_for_permutation_masking,
+            intermediate_poly_for_grand_product: #intermediate_poly_for_grand_product,
             ext4_polys_offset: #ext4_polys_offset,
             total_width: #total_width,
         };

@@ -59,48 +59,46 @@ pub(crate) fn read_stage_2_value_expr(
 }
 
 pub(crate) fn accumulate_contributions(
-    is_first: &mut bool,
+    into: &mut TokenStream,
     common_stream_for_terms: Option<TokenStream>,
     individual_term_streams: Vec<TokenStream>,
     idents: &Idents,
-) -> TokenStream {
+) {
     if individual_term_streams.is_empty() {
         assert!(common_stream_for_terms.is_none());
-
-        return TokenStream::new();
+        return;
     }
 
     if let Some(common_stream_for_terms) = common_stream_for_terms {
         // assume not first
-        assert!(*is_first == false, "alternative mode is unsupported");
+        let is_first = into.is_empty();
+        assert!(is_first == false, "alternative mode is unsupported");
         let mut inner_stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
-            let t = accumulate_contribution(is_first, el, idents);
-            inner_stream.extend(t);
+            accumulate_contribution(&mut inner_stream, false, el, idents);
         }
-        quote! {
+        let t = quote! {
             {
                 #common_stream_for_terms
 
                 #inner_stream
             }
-        }
+        };
+        into.extend(t);
     } else {
-        let mut stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
-            let t = accumulate_contribution(is_first, el, idents);
-            stream.extend(t);
+            let is_first = into.is_empty();
+            accumulate_contribution(into, is_first, el, idents);
         }
-
-        stream
     }
 }
 
 fn accumulate_contribution(
-    is_first: &mut bool,
+    into: &mut TokenStream,
+    is_first: bool,
     individual_term_stream: TokenStream,
     idents: &Idents,
-) -> TokenStream {
+) {
     let Idents {
         individual_term_ident,
         terms_accumulator_ident,
@@ -108,9 +106,7 @@ fn accumulate_contribution(
         ..
     } = idents;
 
-    if *is_first {
-        *is_first = false;
-
+    let t = if is_first {
         quote! {
             let mut #terms_accumulator_ident = {
                 #individual_term_stream
@@ -130,5 +126,6 @@ fn accumulate_contribution(
                 #terms_accumulator_ident.add_assign(&contribution);
             }
         }
-    }
+    };
+    into.extend(t);
 }

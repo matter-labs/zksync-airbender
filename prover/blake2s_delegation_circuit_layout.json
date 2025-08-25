@@ -8,6 +8,10 @@
       "start": 1,
       "num_elements": 1
     },
+    "multiplicities_columns_for_decoder_in_executor_families": {
+      "start": 0,
+      "num_elements": 0
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 2,
       "num_elements": 1
@@ -16410,7 +16414,7 @@
     "total_width": 647
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": null,
+    "shuffle_ram_inits_and_teardowns": [],
     "shuffle_ram_access_sets": [],
     "delegation_request_layout": null,
     "delegation_processor_layout": {
@@ -16427,6 +16431,8 @@
         "num_elements": 1
       }
     },
+    "machine_state_layout": null,
+    "intermediate_state_layout": null,
     "batched_ram_accesses": [],
     "register_and_indirect_accesses": [
       {
@@ -16446,7 +16452,6 @@
         "indirect_accesses": [
           {
             "WriteAccess": {
-              "offset": 0,
               "read_timestamp": {
                 "start": 8,
                 "num_elements": 1
@@ -16462,12 +16467,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 0
             }
           },
           {
             "WriteAccess": {
-              "offset": 4,
               "read_timestamp": {
                 "start": 14,
                 "num_elements": 1
@@ -16483,12 +16489,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 4
             }
           },
           {
             "WriteAccess": {
-              "offset": 8,
               "read_timestamp": {
                 "start": 20,
                 "num_elements": 1
@@ -16504,12 +16511,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 8
             }
           },
           {
             "WriteAccess": {
-              "offset": 12,
               "read_timestamp": {
                 "start": 26,
                 "num_elements": 1
@@ -16525,12 +16533,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 12
             }
           },
           {
             "WriteAccess": {
-              "offset": 16,
               "read_timestamp": {
                 "start": 32,
                 "num_elements": 1
@@ -16546,12 +16555,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 16
             }
           },
           {
             "WriteAccess": {
-              "offset": 20,
               "read_timestamp": {
                 "start": 38,
                 "num_elements": 1
@@ -16567,12 +16577,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 20
             }
           },
           {
             "WriteAccess": {
-              "offset": 24,
               "read_timestamp": {
                 "start": 44,
                 "num_elements": 1
@@ -16588,12 +16599,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 24
             }
           },
           {
             "WriteAccess": {
-              "offset": 28,
               "read_timestamp": {
                 "start": 50,
                 "num_elements": 1
@@ -16609,12 +16621,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 28
             }
           },
           {
             "WriteAccess": {
-              "offset": 32,
               "read_timestamp": {
                 "start": 56,
                 "num_elements": 1
@@ -16630,12 +16643,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 32
             }
           },
           {
             "WriteAccess": {
-              "offset": 36,
               "read_timestamp": {
                 "start": 62,
                 "num_elements": 1
@@ -16651,12 +16665,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 36
             }
           },
           {
             "WriteAccess": {
-              "offset": 40,
               "read_timestamp": {
                 "start": 68,
                 "num_elements": 1
@@ -16672,12 +16687,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 40
             }
           },
           {
             "WriteAccess": {
-              "offset": 44,
               "read_timestamp": {
                 "start": 74,
                 "num_elements": 1
@@ -16693,12 +16709,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 44
             }
           },
           {
             "WriteAccess": {
-              "offset": 48,
               "read_timestamp": {
                 "start": 80,
                 "num_elements": 1
@@ -16714,12 +16731,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 48
             }
           },
           {
             "WriteAccess": {
-              "offset": 52,
               "read_timestamp": {
                 "start": 86,
                 "num_elements": 1
@@ -16735,12 +16753,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 52
             }
           },
           {
             "WriteAccess": {
-              "offset": 56,
               "read_timestamp": {
                 "start": 92,
                 "num_elements": 1
@@ -16756,12 +16775,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 56
             }
           },
           {
             "WriteAccess": {
-              "offset": 60,
               "read_timestamp": {
                 "start": 98,
                 "num_elements": 1
@@ -16777,12 +16797,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 60
             }
           },
           {
             "WriteAccess": {
-              "offset": 64,
               "read_timestamp": {
                 "start": 104,
                 "num_elements": 1
@@ -16798,12 +16819,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 64
             }
           },
           {
             "WriteAccess": {
-              "offset": 68,
               "read_timestamp": {
                 "start": 110,
                 "num_elements": 1
@@ -16819,12 +16841,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 68
             }
           },
           {
             "WriteAccess": {
-              "offset": 72,
               "read_timestamp": {
                 "start": 116,
                 "num_elements": 1
@@ -16840,12 +16863,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 72
             }
           },
           {
             "WriteAccess": {
-              "offset": 76,
               "read_timestamp": {
                 "start": 122,
                 "num_elements": 1
@@ -16861,12 +16885,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 76
             }
           },
           {
             "WriteAccess": {
-              "offset": 80,
               "read_timestamp": {
                 "start": 128,
                 "num_elements": 1
@@ -16882,12 +16907,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 80
             }
           },
           {
             "WriteAccess": {
-              "offset": 84,
               "read_timestamp": {
                 "start": 134,
                 "num_elements": 1
@@ -16903,12 +16929,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 84
             }
           },
           {
             "WriteAccess": {
-              "offset": 88,
               "read_timestamp": {
                 "start": 140,
                 "num_elements": 1
@@ -16924,12 +16951,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 88
             }
           },
           {
             "WriteAccess": {
-              "offset": 92,
               "read_timestamp": {
                 "start": 146,
                 "num_elements": 1
@@ -16945,7 +16973,9 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 92
             }
           }
         ]
@@ -16967,7 +16997,6 @@
         "indirect_accesses": [
           {
             "ReadAccess": {
-              "offset": 0,
               "read_timestamp": {
                 "start": 156,
                 "num_elements": 1
@@ -16979,12 +17008,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 0
             }
           },
           {
             "ReadAccess": {
-              "offset": 4,
               "read_timestamp": {
                 "start": 160,
                 "num_elements": 1
@@ -16996,12 +17026,13 @@
               "address_derivation_carry_bit": {
                 "start": 162,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 4
             }
           },
           {
             "ReadAccess": {
-              "offset": 8,
               "read_timestamp": {
                 "start": 165,
                 "num_elements": 1
@@ -17013,12 +17044,13 @@
               "address_derivation_carry_bit": {
                 "start": 167,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 8
             }
           },
           {
             "ReadAccess": {
-              "offset": 12,
               "read_timestamp": {
                 "start": 170,
                 "num_elements": 1
@@ -17030,12 +17062,13 @@
               "address_derivation_carry_bit": {
                 "start": 172,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 12
             }
           },
           {
             "ReadAccess": {
-              "offset": 16,
               "read_timestamp": {
                 "start": 175,
                 "num_elements": 1
@@ -17047,12 +17080,13 @@
               "address_derivation_carry_bit": {
                 "start": 177,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 16
             }
           },
           {
             "ReadAccess": {
-              "offset": 20,
               "read_timestamp": {
                 "start": 180,
                 "num_elements": 1
@@ -17064,12 +17098,13 @@
               "address_derivation_carry_bit": {
                 "start": 182,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 20
             }
           },
           {
             "ReadAccess": {
-              "offset": 24,
               "read_timestamp": {
                 "start": 185,
                 "num_elements": 1
@@ -17081,12 +17116,13 @@
               "address_derivation_carry_bit": {
                 "start": 187,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 24
             }
           },
           {
             "ReadAccess": {
-              "offset": 28,
               "read_timestamp": {
                 "start": 190,
                 "num_elements": 1
@@ -17098,12 +17134,13 @@
               "address_derivation_carry_bit": {
                 "start": 192,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 28
             }
           },
           {
             "ReadAccess": {
-              "offset": 32,
               "read_timestamp": {
                 "start": 195,
                 "num_elements": 1
@@ -17115,12 +17152,13 @@
               "address_derivation_carry_bit": {
                 "start": 197,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 32
             }
           },
           {
             "ReadAccess": {
-              "offset": 36,
               "read_timestamp": {
                 "start": 200,
                 "num_elements": 1
@@ -17132,12 +17170,13 @@
               "address_derivation_carry_bit": {
                 "start": 202,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 36
             }
           },
           {
             "ReadAccess": {
-              "offset": 40,
               "read_timestamp": {
                 "start": 205,
                 "num_elements": 1
@@ -17149,12 +17188,13 @@
               "address_derivation_carry_bit": {
                 "start": 207,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 40
             }
           },
           {
             "ReadAccess": {
-              "offset": 44,
               "read_timestamp": {
                 "start": 210,
                 "num_elements": 1
@@ -17166,12 +17206,13 @@
               "address_derivation_carry_bit": {
                 "start": 212,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 44
             }
           },
           {
             "ReadAccess": {
-              "offset": 48,
               "read_timestamp": {
                 "start": 215,
                 "num_elements": 1
@@ -17183,12 +17224,13 @@
               "address_derivation_carry_bit": {
                 "start": 217,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 48
             }
           },
           {
             "ReadAccess": {
-              "offset": 52,
               "read_timestamp": {
                 "start": 220,
                 "num_elements": 1
@@ -17200,12 +17242,13 @@
               "address_derivation_carry_bit": {
                 "start": 222,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 52
             }
           },
           {
             "ReadAccess": {
-              "offset": 56,
               "read_timestamp": {
                 "start": 225,
                 "num_elements": 1
@@ -17217,12 +17260,13 @@
               "address_derivation_carry_bit": {
                 "start": 227,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 56
             }
           },
           {
             "ReadAccess": {
-              "offset": 60,
               "read_timestamp": {
                 "start": 230,
                 "num_elements": 1
@@ -17234,7 +17278,9 @@
               "address_derivation_carry_bit": {
                 "start": 232,
                 "num_elements": 1
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 60
             }
           }
         ]
@@ -17291,6 +17337,10 @@
       "start": 2,
       "num_elements": 1
     },
+    "preprocessed_decoder_setup_columns": {
+      "start": 0,
+      "num_elements": 0
+    },
     "total_width": 6
   },
   "stage_2_layout": {
@@ -17322,6 +17372,10 @@
       "start": 300,
       "num_elements": 208
     },
+    "intermediate_poly_for_decoder_accesses": {
+      "start": 0,
+      "num_elements": 0
+    },
     "intermediate_poly_for_range_check_16_multiplicity": {
       "start": 1132,
       "num_elements": 1
@@ -17334,13 +17388,33 @@
       "start": 1140,
       "num_elements": 1
     },
+    "intermediate_polys_for_decoder_multiplicities": {
+      "start": 0,
+      "num_elements": 0
+    },
     "delegation_processing_aux_poly": {
       "start": 1144,
       "num_elements": 1
     },
+    "intermediate_polys_for_memory_init_teardown": {
+      "start": 1148,
+      "num_elements": 0
+    },
     "intermediate_polys_for_memory_argument": {
       "start": 1148,
-      "num_elements": 45
+      "num_elements": 44
+    },
+    "intermediate_polys_for_state_permutation": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_polys_for_permutation_masking": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_poly_for_grand_product": {
+      "start": 1324,
+      "num_elements": 1
     },
     "ext4_polys_offset": 60,
     "total_width": 1328
@@ -34023,7 +34097,7 @@
     }
   },
   "scratch_space_size_for_witness_gen": 0,
-  "lazy_init_address_aux_vars": null,
+  "lazy_init_address_aux_vars": [],
   "memory_queries_timestamp_comparison_aux_vars": [],
   "batched_memory_access_timestamp_comparison_aux_vars": {
     "predicate": {
@@ -34208,6 +34282,8 @@
       ]
     ]
   },
+  "executor_family_circuit_next_timestamp_aux_var": null,
+  "executor_family_decoder_table_size": 0,
   "trace_len": 1048576,
   "table_offsets": [
     0,
@@ -34240,6 +34316,19 @@
     65600,
     65856,
     82240,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
     344384,
     344384,
     344384,

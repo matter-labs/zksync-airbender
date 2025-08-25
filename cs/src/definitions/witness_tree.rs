@@ -50,6 +50,8 @@ impl<F: PrimeField> WitnessSubtree<F> {
                 .multiplicities_columns_for_range_check_16,
             multiplicities_columns_for_timestamp_range_check: self
                 .multiplicities_columns_for_timestamp_range_check,
+            multiplicities_columns_for_decoder_in_executor_families: self
+                .multiplicities_columns_for_decoder_in_executor_families,
             multiplicities_columns_for_generic_lookup: self
                 .multiplicities_columns_for_generic_lookup,
             range_check_16_columns: self.range_check_16_columns,
@@ -69,6 +71,7 @@ impl<F: PrimeField> WitnessSubtree<F> {
 pub struct CompiledWitnessSubtree<'a, F: PrimeField> {
     pub multiplicities_columns_for_range_check_16: ColumnSet<1>,
     pub multiplicities_columns_for_timestamp_range_check: ColumnSet<1>,
+    pub multiplicities_columns_for_decoder_in_executor_families: ColumnSet<1>,
     pub multiplicities_columns_for_generic_lookup: ColumnSet<1>,
     pub range_check_16_columns: ColumnSet<1>,
     pub width_3_lookups: &'a [VerifierCompiledLookupSetDescription<'a, F, COMMON_TABLE_WIDTH>],

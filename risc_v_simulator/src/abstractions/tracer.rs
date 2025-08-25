@@ -41,6 +41,28 @@ impl RegisterOrIndirectReadWriteData {
     };
 }
 
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[repr(C)]
+pub struct RegisterOrIndirectVariableOffsetData {
+    pub variable_offset_value: u16,
+}
+
+impl RegisterOrIndirectVariableOffsetData {
+    pub const EMPTY: Self = Self {
+        variable_offset_value: 0,
+    };
+}
+
+impl From<u16> for RegisterOrIndirectVariableOffsetData {
+    fn from(value: u16) -> Self {
+        Self {
+            variable_offset_value: value,
+        }
+    }
+}
+
 pub trait Tracer<C: MachineConfig>: Sized {
     #[inline(always)]
     fn at_cycle_start(&mut self, _current_state: &RiscV32State<C>) {}
@@ -97,6 +119,7 @@ pub trait Tracer<C: MachineConfig>: Sized {
         _indirect_reads: &mut [RegisterOrIndirectReadData],
         _indirect_write_addresses: &[u32],
         _indirect_writes: &mut [RegisterOrIndirectReadWriteData],
+        _indirect_offset_variables: &[RegisterOrIndirectVariableOffsetData],
     ) {
     }
 }

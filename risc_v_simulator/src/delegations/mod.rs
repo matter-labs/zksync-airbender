@@ -19,6 +19,7 @@ use std::ops::Range;
 pub mod unrolled;
 
 pub mod blake2_round_function_with_compression_mode;
+pub mod keccak_special5;
 pub mod u256_ops_with_control;
 
 #[derive(Clone, Copy, Debug)]
@@ -225,6 +226,46 @@ pub(crate) fn read_single_value<'a, M: MemorySource>(
     *bookkeeping_record = record;
 
     read_value
+}
+
+pub(crate) fn register_indirect_read_write_sparse<M: MemorySource, const N: usize>(
+    base_mem_offset: usize,
+    offset_indexes: [usize; N],
+    memory_source: &mut M,
+) -> [RegisterOrIndirectReadWriteData; N] {
+    let mut result = [RegisterOrIndirectReadWriteData::EMPTY; N];
+    let mut trap = TrapReason::NoTrap;
+    for i in 0..N {
+        let address = base_mem_offset + offset_indexes[i] * core::mem::size_of::<u32>();
+        let read_value = memory_source.get(address as u64, AccessType::RegWrite, &mut trap);
+        if trap.is_a_trap() {
+            panic!("error in memory access");
+        }
+        result[i].read_value = read_value;
+    }
+
+    result
+}
+
+pub(crate) fn write_indirect_accesses_sparse<M: MemorySource, const N: usize>(
+    base_mem_offset: usize,
+    offset_indexes: [usize; N],
+    accesses: &[RegisterOrIndirectReadWriteData; N],
+    memory_source: &mut M,
+) {
+    let mut trap = TrapReason::NoTrap;
+    for (index, src) in offset_indexes.into_iter().zip(accesses) {
+        let address = base_mem_offset + index * core::mem::size_of::<u32>();
+        memory_source.set(
+            address as u64,
+            src.write_value,
+            AccessType::RegWrite,
+            &mut trap,
+        );
+        if trap.is_a_trap() {
+            panic!("error in memory access");
+        }
+    }
 }
 
 impl CustomCSRProcessor for DelegationsCSRProcessor {

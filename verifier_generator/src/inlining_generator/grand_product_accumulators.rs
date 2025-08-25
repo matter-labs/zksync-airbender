@@ -1,11 +1,12 @@
 use super::*;
 
-pub(crate) fn transform_shuffle_ram_memory_accumulators(
+pub(crate) fn transform_grand_product_accumulators(
     memory_layout: &MemorySubtree,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     setup_layout: &SetupLayout,
     idents: &Idents,
-) -> Vec<TokenStream> {
+    into: &mut TokenStream,
+) {
     let Idents {
         individual_term_ident,
         memory_argument_linearization_challenges_ident,
@@ -14,76 +15,77 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
         ..
     } = idents;
 
+    assert!(memory_layout.batched_ram_accesses.is_empty(), "deprecated");
+
     // and now we work with memory multiplicative accumulators
     // Numerator is write set, denom is read set
 
+    // Sequence is always as
+    // - init/teardown
+    // - memory accesses (whether shuffle RAM or special register/indirect)
+    // - machine state
+    // - masking
+    // - grand product accumulation
+
     let mut streams = vec![];
-
-    // first lazy init from read set / lazy teardown
-
-    let shuffle_ram_inits_and_teardowns = memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .expect("must exist if we process shuffle RAM");
-    assert!(memory_layout.shuffle_ram_access_sets.len() > 0);
-
-    let lazy_init_address_start = shuffle_ram_inits_and_teardowns
-        .lazy_init_addresses_columns
-        .start();
-    let lazy_teardown_value_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_values_columns
-        .start();
-    let lazy_teardown_timestamp_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_timestamps_columns
-        .start();
-
-    // and memory grand product accumulation identities
+    let mut previous_acc_value_offset = None;
 
     // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
 
     // Assemble P(x) = write init set / read teardown set
 
-    let mut i = 0;
+    // init-teardown if present
+    if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
+        for (init_idx, init_and_teardown) in memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .iter()
+            .enumerate()
+        {
+            let ShuffleRamInitAndTeardownLayout {
+                lazy_init_addresses_columns,
+                lazy_teardown_values_columns,
+                lazy_teardown_timestamps_columns,
+            } = init_and_teardown;
+            let address_low_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_init_addresses_columns.start()),
+                idents,
+                false,
+            );
+            let address_high_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_init_addresses_columns.start() + 1),
+                idents,
+                false,
+            );
 
-    {
-        let address_low_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_init_address_start),
-            idents,
-            false,
-        );
-        let address_high_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
-            idents,
-            false,
-        );
+            let value_low_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns.start()),
+                idents,
+                false,
+            );
+            let value_high_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns.start() + 1),
+                idents,
+                false,
+            );
 
-        let value_low_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_teardown_value_start),
-            idents,
-            false,
-        );
-        let value_high_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_teardown_value_start + 1),
-            idents,
-            false,
-        );
+            let timestamp_low_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns.start()),
+                idents,
+                false,
+            );
+            let timestamp_high_expr = read_value_expr(
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns.start() + 1),
+                idents,
+                false,
+            );
 
-        let timestamp_low_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamp_start),
-            idents,
-            false,
-        );
-        let timestamp_high_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamp_start + 1),
-            idents,
-            false,
-        );
+            let offset = stage_2_layout
+                .get_intermediate_polys_for_memory_init_teardown_absolute_poly_idx_for_verifier(
+                    init_idx,
+                );
+            let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
 
-        let offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
-
-        let t = quote! {
-            let #individual_term_ident = {
+            let baseline_quote = quote! {
                 let address_low = #address_low_expr;
                 let mut t = #memory_argument_linearization_challenges_ident
                     [#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
@@ -126,19 +128,56 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
                 denom.add_assign(&t);
 
                 let accumulator = #accumulator_expr;
-
-                let mut #individual_term_ident = accumulator;
-                #individual_term_ident.mul_assign(&denom);
-                #individual_term_ident.sub_assign(&numerator);
-
-                #individual_term_ident
             };
-        };
 
-        streams.push(t);
+            if let Some(previous_acc_value_offset) = previous_acc_value_offset.take() {
+                let previous_acc_expr =
+                    read_stage_2_value_expr(previous_acc_value_offset, idents, false);
+
+                let t = quote! {
+                    let #individual_term_ident = {
+                        #baseline_quote;
+
+                        let previous = #previous_acc_expr;
+
+                        // this * demon - previous * numerator
+                        // or just this * denom - numerator
+                        let mut #individual_term_ident = accumulator;
+                        #individual_term_ident.mul_assign(&denom);
+                        let mut t = previous;
+                        t.mul_assign(&numerator);
+                        #individual_term_ident.sub_assign(&t);
+
+                        #individual_term_ident
+                    };
+                };
+
+                streams.push(t);
+            } else {
+                assert_eq!(init_idx, 0);
+
+                let t = quote! {
+                    let #individual_term_ident = {
+                        #baseline_quote;
+
+                        let mut #individual_term_ident = accumulator;
+                        #individual_term_ident.mul_assign(&denom);
+                        #individual_term_ident.sub_assign(&numerator);
+
+                        #individual_term_ident
+                    };
+                };
+
+                streams.push(t);
+            }
+
+            assert!(previous_acc_value_offset.is_none());
+            previous_acc_value_offset = Some(offset);
+        }
     }
 
-    {
+    if memory_layout.shuffle_ram_access_sets.len() > 0 {
+        assert!(memory_layout.register_and_indirect_accesses.is_empty());
         // now we can continue to accumulate
         for (access_idx, memory_access_columns) in
             memory_layout.shuffle_ram_access_sets.iter().enumerate()
@@ -237,29 +276,37 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
                 false,
             );
 
-            let previous_offset = stage_2_layout
-                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-            let previous_accumulator_expr = read_stage_2_value_expr(previous_offset, idents, false);
-            i += 1;
             let offset = stage_2_layout
-                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
+                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
+                    access_idx,
+                );
             let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
 
-            let write_timestamp_low_expr = read_value_expr(
-                ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start()),
-                idents,
-                false,
-            );
-            let write_timestamp_high_expr = read_value_expr(
-                ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start() + 1),
-                idents,
-                false,
-            );
+            let (write_timestamp_low_expr, write_timestamp_high_expr) =
+                if let Some(intermediate_state_layout) =
+                    memory_layout.intermediate_state_layout.as_ref()
+                {
+                    todo!();
+                } else {
+                    let write_timestamp_low_expr = read_value_expr(
+                        ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start()),
+                        idents,
+                        false,
+                    );
+                    let write_timestamp_high_expr = read_value_expr(
+                        ColumnAddress::SetupSubtree(
+                            setup_layout.timestamp_setup_columns.start() + 1,
+                        ),
+                        idents,
+                        false,
+                    );
 
-            match memory_access_columns {
+                    (write_timestamp_low_expr, write_timestamp_high_expr)
+                };
+
+            let baseline_quote = match memory_access_columns {
                 ShuffleRamQueryColumns::Readonly(_) => {
-                    let t = quote! {
-                        let #individual_term_ident = {
+                    quote! {
                             #address_contribution
 
                             let value_low = #read_value_low_expr;
@@ -313,22 +360,7 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
 
                             numerator.add_assign(&write_timestamp_contribution);
                             denom.add_assign(&read_timestamp_contribution);
-
-                            // this * demon - previous * numerator
-                            let accumulator = #accumulator_expr;
-                            let previous = #previous_accumulator_expr;
-
-                            let mut #individual_term_ident = accumulator;
-                            #individual_term_ident.mul_assign(&denom);
-                            let mut t = previous;
-                            t.mul_assign(&numerator);
-                            #individual_term_ident.sub_assign(&t);
-
-                            #individual_term_ident
-                        };
-                    };
-
-                    streams.push(t);
+                    }
                 }
                 ShuffleRamQueryColumns::Write(columns) => {
                     let write_value_low_expr = read_value_expr(
@@ -342,8 +374,7 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
                         false,
                     );
 
-                    let t = quote! {
-                        let #individual_term_ident = {
+                    quote! {
                             #address_contribution
 
                             let mut numerator = #memory_argument_gamma_ident;
@@ -410,37 +441,101 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
 
                             numerator.add_assign(&write_timestamp_contribution);
                             denom.add_assign(&read_timestamp_contribution);
-
-                            // this * demon - previous * numerator
-                            let accumulator = #accumulator_expr;
-                            let previous = #previous_accumulator_expr;
-
-                            let mut #individual_term_ident = accumulator;
-                            #individual_term_ident.mul_assign(&denom);
-                            let mut t = previous;
-                            t.mul_assign(&numerator);
-                            #individual_term_ident.sub_assign(&t);
-
-                            #individual_term_ident
-                        };
-                    };
-
-                    streams.push(t);
+                    }
                 }
+            };
+
+            if let Some(previous_acc_value_offset) = previous_acc_value_offset.take() {
+                let previous_acc_expr =
+                    read_stage_2_value_expr(previous_acc_value_offset, idents, false);
+
+                let t = quote! {
+                    let #individual_term_ident = {
+                        #baseline_quote;
+
+                        let accumulator = #accumulator_expr;
+                        let previous = #previous_acc_expr;
+
+                        // this * demon - previous * numerator
+                        // or just this * denom - numerator
+                        let mut #individual_term_ident = accumulator;
+                        #individual_term_ident.mul_assign(&denom);
+                        let mut t = previous;
+                        t.mul_assign(&numerator);
+                        #individual_term_ident.sub_assign(&t);
+
+                        #individual_term_ident
+                    };
+                };
+
+                streams.push(t);
+            } else {
+                assert_eq!(access_idx, 0);
+
+                let t = quote! {
+                    let #individual_term_ident = {
+                        #baseline_quote;
+
+                        let accumulator = #accumulator_expr;
+
+                        let mut #individual_term_ident = accumulator;
+                        #individual_term_ident.mul_assign(&denom);
+                        #individual_term_ident.sub_assign(&numerator);
+
+                        #individual_term_ident
+                    };
+                };
+
+                streams.push(t);
             }
+
+            assert!(previous_acc_value_offset.is_none());
+            previous_acc_value_offset = Some(offset);
         }
+    }
+
+    accumulate_contributions(into, None, streams, idents);
+
+    // register/indirects in delegation
+    if memory_layout.register_and_indirect_accesses.len() > 0 {
+        assert!(memory_layout.shuffle_ram_inits_and_teardowns.is_empty());
+        assert!(memory_layout.shuffle_ram_access_sets.is_empty());
+
+        transform_delegation_ram_memory_accumulators(
+            memory_layout,
+            stage_2_layout,
+            idents,
+            &mut previous_acc_value_offset,
+            into,
+        );
+    }
+
+    // machine state
+    if stage_2_layout
+        .intermediate_polys_for_state_permutation
+        .num_elements()
+        > 0
+    {
+        todo!();
+    }
+
+    // masking
+    if stage_2_layout
+        .intermediate_polys_for_permutation_masking
+        .num_elements()
+        > 0
+    {
+        todo!()
     }
 
     // and now we need to make Z(next) = Z(this) * previous(this)
     {
-        let previous_offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
+        let previous_offset = previous_acc_value_offset.expect("some value to accumulate");
         let previous_accumulator_expr = read_stage_2_value_expr(previous_offset, idents, false);
-        i += 1;
-        let offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
-        let accumulator_next_expr = read_stage_2_value_expr(offset, idents, true);
+        let idx = stage_2_layout
+            .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
+        let accumulator_expr = read_stage_2_value_expr(idx, idents, false);
+        let accumulator_next_expr = read_stage_2_value_expr(idx, idents, true);
 
         let t = quote! {
             let #individual_term_ident = {
@@ -453,19 +548,17 @@ pub(crate) fn transform_shuffle_ram_memory_accumulators(
             };
         };
 
-        streams.push(t);
+        accumulate_contributions(into, None, vec![t], idents);
     }
-
-    assert_eq!(i, memory_layout.shuffle_ram_access_sets.len() + 1);
-
-    streams
 }
 
 pub(crate) fn transform_delegation_ram_memory_accumulators(
     memory_layout: &MemorySubtree,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     idents: &Idents,
-) -> (TokenStream, Vec<TokenStream>) {
+    previous_acc_value_offset: &mut Option<usize>,
+    into: &mut TokenStream,
+) {
     let Idents {
         individual_term_ident,
         memory_argument_linearization_challenges_ident,
@@ -483,8 +576,6 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
     // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
 
     // Assemble P(x) = write init set / read teardown set, except the first one where previous accumulator is "1"
-
-    let mut i = 0;
 
     let delegation_processor_layout = memory_layout
         .delegation_processor_layout
@@ -532,182 +623,9 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
         write_timestamp_contribution.add_assign(&t);
     };
 
-    {
-        // now we can continue to accumulate
-        for (access_idx, memory_access_columns) in
-            memory_layout.batched_ram_accesses.iter().enumerate()
-        {
-            let read_value_columns = memory_access_columns.get_read_value_columns();
-            let read_timestamp_columns = memory_access_columns.get_read_timestamp_columns();
-            // memory address low is literal constant
-            let mem_offset_low = (access_idx * std::mem::size_of::<u32>()) as u32;
+    let mut accumulation_idx = 0;
 
-            let read_value_low_expr = read_value_expr(
-                ColumnAddress::MemorySubtree(read_value_columns.start()),
-                idents,
-                false,
-            );
-            let read_value_high_expr = read_value_expr(
-                ColumnAddress::MemorySubtree(read_value_columns.start() + 1),
-                idents,
-                false,
-            );
-
-            let read_timestamp_low_expr = read_value_expr(
-                ColumnAddress::MemorySubtree(read_timestamp_columns.start()),
-                idents,
-                false,
-            );
-            let read_timestamp_high_expr = read_value_expr(
-                ColumnAddress::MemorySubtree(read_timestamp_columns.start() + 1),
-                idents,
-                false,
-            );
-
-            let common_part_stream = quote! {
-                let mut address_low_contribution = #memory_argument_linearization_challenges_ident
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                address_low_contribution.mul_assign_by_base(&Mersenne31Field(#mem_offset_low));
-
-                let read_value_low = #read_value_low_expr;
-                let mut read_value_contribution = #memory_argument_linearization_challenges_ident
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                read_value_contribution.mul_assign(&read_value_low);
-
-                let read_value_high = #read_value_high_expr;
-                let mut t = #memory_argument_linearization_challenges_ident
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                t.mul_assign(&read_value_high);
-                read_value_contribution.add_assign(&t);
-
-                let read_timestamp_low = #read_timestamp_low_expr;
-                let mut read_timestamp_contribution =
-                    #memory_argument_linearization_challenges_ident
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                read_timestamp_contribution
-                    .mul_assign(&read_timestamp_low);
-
-                let read_timestamp_high = #read_timestamp_high_expr;
-                let mut t = #memory_argument_linearization_challenges_ident
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                t.mul_assign(&read_timestamp_high);
-                read_timestamp_contribution.add_assign(&t);
-
-                // this is "address high"
-                let mut numerator = delegation_address_high_common_contribution;
-                // and other common additive terms
-                numerator.add_assign(&#memory_argument_gamma_ident);
-                numerator.add_assign(&address_low_contribution);
-            };
-
-            let previous_contribution_stream = if access_idx == 0 {
-                assert_eq!(i, 0);
-
-                quote! {
-                    let previous = Mersenne31Quartic::ONE;
-                }
-            } else {
-                let previous_offset = stage_2_layout
-                    .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-                let previous_accumulator_expr =
-                    read_stage_2_value_expr(previous_offset, idents, false);
-                i += 1;
-
-                quote! {
-                    let previous = #previous_accumulator_expr;
-                }
-            };
-
-            let offset = stage_2_layout
-                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-            let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
-
-            match memory_access_columns {
-                BatchedRamAccessColumns::ReadAccess { .. } => {
-                    let t = quote! {
-                        let #individual_term_ident = {
-                            #common_part_stream
-
-                            #previous_contribution_stream
-
-                            // both read and write set share value
-                            numerator.add_assign(&read_value_contribution);
-
-                            let mut denom = numerator;
-
-                            numerator.add_assign(&write_timestamp_contribution);
-                            denom.add_assign(&read_timestamp_contribution);
-
-                            // this * demon - previous * numerator
-                            // or just this * denom - numerator
-                            let mut #individual_term_ident = #accumulator_expr;
-                            #individual_term_ident.mul_assign(&denom);
-                            let mut t = previous;
-                            t.mul_assign(&numerator);
-                            #individual_term_ident.sub_assign(&t);
-
-                            #individual_term_ident
-                        };
-                    };
-
-                    streams.push(t);
-                }
-                BatchedRamAccessColumns::WriteAccess { write_value, .. } => {
-                    let write_value_low_expr = read_value_expr(
-                        ColumnAddress::MemorySubtree(write_value.start()),
-                        idents,
-                        false,
-                    );
-                    let write_value_high_expr = read_value_expr(
-                        ColumnAddress::MemorySubtree(write_value.start() + 1),
-                        idents,
-                        false,
-                    );
-
-                    let t = quote! {
-                        let #individual_term_ident = {
-                            #common_part_stream
-
-                            #previous_contribution_stream
-
-                            let write_value_low = #write_value_low_expr;
-                            let mut write_value_contribution = #memory_argument_linearization_challenges_ident
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                            write_value_contribution.mul_assign(&write_value_low);
-
-                            let write_value_high = #write_value_high_expr;
-                            let mut t = #memory_argument_linearization_challenges_ident
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                            t.mul_assign(&write_value_high);
-                            write_value_contribution.add_assign(&t);
-
-                            let mut denom = numerator;
-
-                            // read and write sets differ in value and timestamp
-
-                            numerator.add_assign(&write_value_contribution);
-                            denom.add_assign(&read_value_contribution);
-
-                            numerator.add_assign(&write_timestamp_contribution);
-                            denom.add_assign(&read_timestamp_contribution);
-
-                            // this * demon - previous * numerator
-                            // or just this * denom - numerator
-                            let mut #individual_term_ident = #accumulator_expr;
-                            #individual_term_ident.mul_assign(&denom);
-                            let mut t = previous;
-                            t.mul_assign(&numerator);
-                            #individual_term_ident.sub_assign(&t);
-
-                            #individual_term_ident
-                        };
-                    };
-
-                    streams.push(t);
-                }
-            }
-        }
-    }
+    assert!(memory_layout.batched_ram_accesses.is_empty(), "deprecated");
 
     {
         // now we can continue to accumulate
@@ -787,29 +705,31 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                 numerator.add_assign(&address_contribution);
             };
 
-            let previous_contribution_stream = if access_idx == 0
-                && memory_layout.batched_ram_accesses.is_empty()
-            {
-                assert_eq!(i, 0);
+            let previous_contribution_stream =
+                if let Some(previous_offset) = previous_acc_value_offset.take() {
+                    let previous_accumulator_expr =
+                        read_stage_2_value_expr(previous_offset, idents, false);
 
-                quote! {
-                    let previous = Mersenne31Quartic::ONE;
-                }
-            } else {
-                let previous_offset = stage_2_layout
-                    .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-                let previous_accumulator_expr =
-                    read_stage_2_value_expr(previous_offset, idents, false);
-                i += 1;
+                    quote! {
+                        let previous = #previous_accumulator_expr;
+                    }
+                } else {
+                    assert_eq!(accumulation_idx, 0);
+                    assert_eq!(access_idx, 0);
 
-                quote! {
-                    let previous = #previous_accumulator_expr;
-                }
-            };
+                    quote! {
+                        let previous = Mersenne31Quartic::ONE;
+                    }
+                };
 
             let offset = stage_2_layout
-                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
+                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
+                    accumulation_idx,
+                );
             let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+            accumulation_idx += 1;
+            assert!(previous_acc_value_offset.is_none());
+            *previous_acc_value_offset = Some(offset);
 
             match register_access_columns.register_access {
                 RegisterAccessColumns::ReadAccess { .. } => {
@@ -909,10 +829,14 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                     let read_timestamp_columns = indirect_access.get_read_timestamp_columns();
                     let carry_bit_column =
                         indirect_access.get_address_derivation_carry_bit_column();
-                    let offset = indirect_access.get_offset();
-                    assert!(offset < 1 << 16);
-                    assert_eq!(offset % 4, 0);
-                    assert_eq!(offset as usize, indirect_access_idx * 4);
+                    let constant_offset = indirect_access.offset_constant();
+                    assert!(constant_offset < 1 << 16);
+                    assert_eq!(
+                        constant_offset % 4,
+                        0,
+                        "constant offset must be a multiple of u32 word size, but it is {}",
+                        constant_offset
+                    );
 
                     let register_read_value_low_expr = read_value_expr(
                         ColumnAddress::MemorySubtree(register_read_value_columns.start()),
@@ -947,12 +871,32 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                         false,
                     );
 
-                    let common_part_stream = if indirect_access_idx == 0
-                        || carry_bit_column.num_elements() == 0
-                    {
+                    let common_part_stream = if carry_bit_column.num_elements() == 0 {
+                        let add_variable_offset_quote =
+                            if let Some((coeff, var, _)) = indirect_access.variable_dependent() {
+                                assert!(var.num_elements() == 1);
+                                assert!(coeff < 1 << 16);
+                                let variable_offset_expr = read_value_expr(
+                                    ColumnAddress::MemorySubtree(var.start()),
+                                    idents,
+                                    false,
+                                );
+                                quote! {
+                                    // add variable-dependent contribution
+                                    let mut variable_offset = #variable_offset_expr;
+                                    variable_offset.mul_assign_by_base(&Mersenne31Field(#coeff));
+                                    address_low.add_assign(&variable_offset);
+                                }
+                            } else {
+                                quote! {
+                                    // no variable offset
+                                }
+                            };
                         quote! {
                             let mut address_low = #register_read_value_low_expr;
-                            address_low.add_assign_base(&Mersenne31Field(#offset));
+                            address_low.add_assign_base(&Mersenne31Field(#constant_offset));
+
+                            #add_variable_offset_quote
 
                             let mut address_contribution = #memory_argument_linearization_challenges_ident
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
@@ -993,7 +937,6 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                             numerator.add_assign(&address_contribution);
                         }
                     } else {
-                        assert!(carry_bit_column.num_elements() > 0);
                         let carry_bit_expr = read_value_expr(
                             ColumnAddress::MemorySubtree(carry_bit_column.start()),
                             idents,
@@ -1002,7 +945,7 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
 
                         quote! {
                             let mut address_low = #register_read_value_low_expr;
-                            address_low.add_assign_base(&Mersenne31Field(#offset));
+                            address_low.add_assign_base(&Mersenne31Field(#constant_offset));
                             let carry = #carry_bit_expr;
                             let mut carry_bit_shifted = carry;
                             carry_bit_shifted.mul_assign_by_base(&Mersenne31Field(1u32 << 16));
@@ -1049,23 +992,31 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
                         }
                     };
 
-                    let previous_contribution_stream = {
-                        let previous_offset = stage_2_layout
-                            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-                        let previous_accumulator_expr =
-                            read_stage_2_value_expr(previous_offset, idents, false);
-                        i += 1;
+                    let previous_contribution_stream =
+                        if let Some(previous_offset) = previous_acc_value_offset.take() {
+                            let previous_accumulator_expr =
+                                read_stage_2_value_expr(previous_offset, idents, false);
 
-                        quote! {
-                            let previous = #previous_accumulator_expr;
-                        }
-                    };
+                            quote! {
+                                let previous = #previous_accumulator_expr;
+                            }
+                        } else {
+                            assert_eq!(accumulation_idx, 0);
+                            assert_eq!(access_idx, 0);
+
+                            quote! {
+                                let previous = Mersenne31Quartic::ONE;
+                            }
+                        };
 
                     let offset = stage_2_layout
                         .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
-                            i,
+                            accumulation_idx,
                         );
                     let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+                    accumulation_idx += 1;
+                    assert!(previous_acc_value_offset.is_none());
+                    *previous_acc_value_offset = Some(offset);
 
                     match indirect_access {
                         IndirectAccessColumns::ReadAccess { .. } => {
@@ -1156,39 +1107,5 @@ pub(crate) fn transform_delegation_ram_memory_accumulators(
         }
     }
 
-    // and now we need to make Z(next) = Z(this) * previous(this)
-    {
-        let previous_offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-        let previous_accumulator_expr = read_stage_2_value_expr(previous_offset, idents, false);
-        i += 1;
-        let offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(i);
-        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
-        let accumulator_next_expr = read_stage_2_value_expr(offset, idents, true);
-
-        let t = quote! {
-            let #individual_term_ident = {
-                let mut #individual_term_ident = #accumulator_next_expr;
-                let mut t = #accumulator_expr;
-                t.mul_assign(&#previous_accumulator_expr);
-                #individual_term_ident.sub_assign(&t);
-
-                #individual_term_ident
-            };
-        };
-
-        streams.push(t);
-    }
-
-    let mut expected_num_accesses = memory_layout.batched_ram_accesses.len();
-    expected_num_accesses += memory_layout.register_and_indirect_accesses.len();
-    expected_num_accesses += memory_layout
-        .register_and_indirect_accesses
-        .iter()
-        .map(|el| el.indirect_accesses.len())
-        .sum::<usize>();
-    assert_eq!(i, expected_num_accesses);
-
-    (common_stream, streams)
+    accumulate_contributions(into, Some(common_stream), streams, idents);
 }

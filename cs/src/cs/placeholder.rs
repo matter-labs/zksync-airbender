@@ -88,8 +88,7 @@ pub enum Placeholder {
     LoadStoreRamValue,
     MemStoreAddress,
     DelegationIndirectAccessVariableOffset {
-        register_index: usize,
-        word_index: usize,
+        variable_index: usize,
     },
 }
 
@@ -257,6 +256,9 @@ impl quote::ToTokens for Placeholder {
             }
             Placeholder::DelegationNondeterminismAccessNoSplits(access_idx) => {
                 quote! { Placeholder::DelegationNondeterminismAccessNoSplits( #access_idx ) }
+            }
+            Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
+                quote! { Placeholder::DelegationIndirectAccessVariableOffset( variable_index: #variable_index ) }
             }
             a @ _ => {
                 panic!("unsupported {:?}", a);

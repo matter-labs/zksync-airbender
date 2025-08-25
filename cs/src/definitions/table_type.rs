@@ -67,6 +67,12 @@ pub enum TableType {
     RangeCheck16WithZeroPads,
     MemStoreClearOriginalRamValueLimb,
     MemStoreClearWrittenValueLimb,
+    KeccakPermutationIndices12,
+    KeccakPermutationIndices34,
+    KeccakPermutationIndices56,
+    XorSpecialIota,
+    AndN,
+    RotL,
     DynamicPlaceholder, // MUST be the last
 }
 

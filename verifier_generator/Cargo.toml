@@ -17,6 +17,3 @@ quote = { version = "1" }
 proc-macro2 = "1"
 proc-macro-error2 = "*"
 serde_json = "*"
-
-# [lib]
-# proc-macro = true

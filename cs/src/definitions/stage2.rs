@@ -7,8 +7,8 @@ pub struct LookupAndMemoryArgumentLayout {
     pub lazy_init_address_range_check_16: Option<OptimizedOraclesForLookupWidth1>,
     pub intermediate_polys_for_timestamp_range_checks: OptimizedOraclesForLookupWidth1,
     pub intermediate_polys_for_generic_lookup: AlignedColumnSet<4>,
-    pub intermediate_poly_for_range_check_16_multiplicity: AlignedColumnSet<4>,
     pub intermediate_poly_for_decoder_accesses: AlignedColumnSet<4>,
+    pub intermediate_poly_for_range_check_16_multiplicity: AlignedColumnSet<4>,
     pub intermediate_poly_for_timestamp_range_check_multiplicity: AlignedColumnSet<4>,
     pub intermediate_polys_for_generic_multiplicities: AlignedColumnSet<4>,
     pub intermediate_polys_for_decoder_multiplicities: AlignedColumnSet<4>,
@@ -111,6 +111,17 @@ impl LookupAndMemoryArgumentLayout {
         self.num_base_field_polys() + poly_idx
     }
 
+    pub const fn get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier(
+        &self,
+    ) -> usize {
+        let poly_idx =
+            self.intermediate_poly_for_grand_product.get_range(0).start - self.ext4_polys_offset;
+        assert!(poly_idx % 4 == 0);
+        let poly_idx = poly_idx / 4;
+
+        self.num_base_field_polys() + poly_idx
+    }
+
     pub fn get_aux_polys_for_gelegation_argument_absolute_poly_idx_for_verifier(
         &self,
     ) -> Option<usize> {
@@ -119,6 +130,24 @@ impl LookupAndMemoryArgumentLayout {
         };
 
         let poly_idx = delegation_processing_aux_poly.start - self.ext4_polys_offset;
+        assert_eq!(poly_idx % 4, 0);
+        let poly_idx = poly_idx / 4;
+
+        let poly_num = self.num_base_field_polys() + poly_idx;
+
+        Some(poly_num)
+    }
+
+    pub fn get_aux_poly_decoder_absolute_poly_idx_for_verifier(&self) -> Option<usize> {
+        if self.intermediate_poly_for_decoder_accesses.num_elements() == 0 {
+            return None;
+        };
+        assert_eq!(
+            self.intermediate_poly_for_decoder_accesses.num_elements(),
+            1
+        );
+
+        let poly_idx = self.intermediate_poly_for_decoder_accesses.start - self.ext4_polys_offset;
         assert_eq!(poly_idx % 4, 0);
         let poly_idx = poly_idx / 4;
 
@@ -436,6 +465,7 @@ impl LookupAndMemoryArgumentLayout {
             + lazy_init_els
             + self.intermediate_polys_for_timestamp_range_checks.num_pairs
             + delegation_set_sum_els
+            + self.intermediate_poly_for_decoder_accesses.num_elements()
             + self.intermediate_polys_for_generic_lookup.num_elements()
             + self
                 .intermediate_poly_for_range_check_16_multiplicity
@@ -444,8 +474,19 @@ impl LookupAndMemoryArgumentLayout {
                 .intermediate_poly_for_timestamp_range_check_multiplicity
                 .num_elements()
             + self
+                .intermediate_polys_for_decoder_multiplicities
+                .num_elements()
+            + self
                 .intermediate_polys_for_generic_multiplicities
                 .num_elements()
+            + self
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements()
             + self.intermediate_polys_for_memory_argument.num_elements()
+            + self.intermediate_polys_for_state_permutation.num_elements()
+            + self
+                .intermediate_polys_for_permutation_masking
+                .num_elements()
+            + self.intermediate_poly_for_grand_product.num_elements()
     }
 }

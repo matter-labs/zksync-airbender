@@ -190,5 +190,6 @@ pub fn blake2_round_function_with_extended_control_over_unrolled_state<
         &mut input_accesses,
         &state_read_addresses,
         &mut state_accesses,
+        &[],
     );
 }

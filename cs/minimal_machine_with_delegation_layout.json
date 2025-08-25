@@ -844,36 +844,36 @@
       "start": 48,
       "num_elements": 11
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 96,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
       "start": 92,
       "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
-      "start": 100,
+      "start": 96,
       "num_elements": 1
     },
     "intermediate_polys_for_generic_multiplicities": {
-      "start": 104,
+      "start": 100,
       "num_elements": 5
     },
     "intermediate_polys_for_decoder_multiplicities": {
-      "start": 124,
-      "num_elements": 1
+      "start": 0,
+      "num_elements": 0
     },
     "delegation_processing_aux_poly": {
-      "start": 128,
+      "start": 120,
       "num_elements": 1
     },
     "intermediate_polys_for_memory_init_teardown": {
-      "start": 132,
+      "start": 124,
       "num_elements": 1
     },
     "intermediate_polys_for_memory_argument": {
-      "start": 136,
+      "start": 128,
       "num_elements": 3
     },
     "intermediate_polys_for_state_permutation": {
@@ -885,11 +885,11 @@
       "num_elements": 0
     },
     "intermediate_poly_for_grand_product": {
-      "start": 148,
+      "start": 140,
       "num_elements": 1
     },
     "ext4_polys_offset": 12,
-    "total_width": 152
+    "total_width": 144
   },
   "degree_2_constraints": [
     {
@@ -7103,6 +7103,12 @@
     991489,
     991489,
     991489,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
+    5185793,
     5185793,
     5185793,
     5185793,

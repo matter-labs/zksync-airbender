@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use core::alloc::Allocator;
+use cs::definitions::ShuffleRamInitAndTeardownLayout;
 use prover::field::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::{Proof, QuerySet};
@@ -28,7 +29,10 @@ fn flatten_merkle_path_into<A: Allocator>(
     }
 }
 
-pub fn flatten_proof_for_skeleton(proof: &Proof, apply_shuffle_ram_lazy_init: bool) -> Vec<u32> {
+pub fn flatten_proof_for_skeleton(
+    proof: &Proof,
+    lazy_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
+) -> Vec<u32> {
     let mut result = Vec::new();
 
     // sequence idx
@@ -46,7 +50,8 @@ pub fn flatten_proof_for_skeleton(proof: &Proof, apply_shuffle_ram_lazy_init: bo
     if let Some(delegation_argument) = proof.external_values.challenges.delegation_argument {
         result.extend(delegation_argument.flatten());
     }
-    if apply_shuffle_ram_lazy_init {
+    if lazy_inits_and_teardowns.len() > 0 {
+        assert_eq!(lazy_inits_and_teardowns.len(), 1);
         result.extend(proof.external_values.aux_boundary_values.flatten());
     }
     // witness and memory trees
@@ -156,8 +161,11 @@ pub fn flatten_query(query: &QuerySet) -> Vec<u32> {
     result
 }
 
-pub fn flatten_full_proof(proof: &Proof, apply_shuffle_ram_lazy_init: bool) -> Vec<u32> {
-    let mut result = flatten_proof_for_skeleton(proof, apply_shuffle_ram_lazy_init);
+pub fn flatten_full_proof(
+    proof: &Proof,
+    lazy_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
+) -> Vec<u32> {
+    let mut result = flatten_proof_for_skeleton(proof, lazy_inits_and_teardowns);
     for query in proof.queries.iter() {
         result.extend(flatten_query(query));
     }

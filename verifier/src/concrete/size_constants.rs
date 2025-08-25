@@ -29,7 +29,7 @@ pub const TOTAL_TREE_CAP_SIZE: usize = 1 << FOLDING_PROPERTIES.total_caps_size_l
 pub const TREE_CAP_SIZE: usize = TOTAL_TREE_CAP_SIZE / NUM_COSETS;
 pub const TREE_CAP_SIZE_LOG2: usize = TREE_CAP_SIZE.trailing_zeros() as usize;
 pub const DEFAULT_MERKLE_PATH_LENGTH: usize = TRACE_LEN_LOG2 - TREE_CAP_SIZE_LOG2;
-pub const SECURITY_BITS: usize = 80;
+pub const SECURITY_BITS: usize = verifier_common::SECURITY_BITS;
 pub const SECURITY_BITS_PER_QUERY: usize = FRI_FACTOR_LOG2;
 pub const NUM_QUERIES: usize = (SECURITY_BITS - POW_BITS) / SECURITY_BITS_PER_QUERY + 1;
 pub const BITS_FOR_QUERY_INDEX: usize = TRACE_LEN_LOG2 + FRI_FACTOR_LOG2;
@@ -216,20 +216,27 @@ pub const NUM_MEMORY_OPENING_NEXT_ROW: usize = const {
         * REGISTER_SIZE
 };
 pub const MEMORY_NEXT_ROW_OPENING_INDEXES: [usize; NUM_MEMORY_OPENING_NEXT_ROW] = const {
-    let mut result = [0usize; NUM_WITNESS_OPENING_NEXT_ROW];
-    let mut i: usize = 0;
-    while i < NUM_WITNESS_OPENING_NEXT_ROW {
-        let index = VERIFIER_COMPILED_LAYOUT
+    let mut result = [0usize; NUM_MEMORY_OPENING_NEXT_ROW];
+    let mut i = 0;
+    let mut shuffle_ram_init_index: usize = 0;
+    while shuffle_ram_init_index
+        < VERIFIER_COMPILED_LAYOUT
             .memory_layout
             .shuffle_ram_inits_and_teardowns
-            .as_ref()
-            .unwrap()
+            .len()
+    {
+        let start = VERIFIER_COMPILED_LAYOUT
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns[shuffle_ram_init_index]
             .lazy_init_addresses_columns
-            .start()
-            + i;
+            .start();
 
-        result[i] = index;
+        result[i] = start;
         i += 1;
+        result[i] = start + 1;
+        i += 1;
+
+        shuffle_ram_init_index += 1
     }
 
     result
@@ -261,16 +268,9 @@ pub const CIRCUIT_SEQUENCE_BITS_SHIFT: usize = (TRACE_LEN_LOG2
     + NUM_BITS_IN_TIMESTAMP_FOR_INDEX_LOG_2)
     - (TIMESTAMP_COLUMNS_NUM_BITS as usize);
 
-pub const MEMORY_GRAND_PRODUCT_ACCUMULATOR_OFFSET: usize = VERIFIER_COMPILED_LAYOUT
-    .stage_2_layout
-    .intermediate_polys_for_memory_argument
-    .num_elements()
-    - 1;
 pub const MEMORY_GRAND_PRODUCT_ACCUMULATOR_POLY_INDEX: usize = VERIFIER_COMPILED_LAYOUT
     .stage_2_layout
-    .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
-        MEMORY_GRAND_PRODUCT_ACCUMULATOR_OFFSET,
-    );
+    .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
 
 // we should also count a padding so that variable-length parts of the skeleton structs (like public inputs, etc),
 // end up in such a way, that we start "setup caps" at offset 0 mod 16, and this way everything after that will be also

@@ -721,6 +721,36 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             }
         }
 
+        assert_eq!(resolution_sequence.len(), idxes_to_skip.len());
+
+        // there may be some resolvers purely responsible for lookup enforcement,
+        // when even the inputs are not generated
+        if idxes_to_skip.len() != self.resolvers_data.len() {
+            let old_sequence = std::mem::replace(&mut resolution_sequence, BTreeMap::new());
+            for (resolver_idx, resolver) in self.resolvers_data.iter().enumerate() {
+                if idxes_to_skip.contains(&resolver_idx) {
+                    continue;
+                }
+
+                // we only try to handle a special case if it's lookup-enforce without outputs
+                if resolver.outputs.len() == 0
+                    && resolver.quasi_outputs_for_lookup_enforcements.len() > 0
+                {
+                    assert!(resolver.lookup_inputs.len() == 1);
+                    assert!(resolver.maybe_lookup_inputs.is_empty());
+                    assert_eq!(resolver.quasi_outputs_for_lookup_enforcements.len(), 1);
+                    let idx = resolution_sequence.len();
+                    resolution_sequence.insert(idx, resolver.clone());
+                }
+            }
+
+            // append the old ones
+            for (_, el) in old_sequence.into_iter() {
+                let idx = resolution_sequence.len();
+                resolution_sequence.insert(idx, el);
+            }
+        }
+
         assert!(unresolved_variables.is_empty());
         assert_eq!(resolved_variables.len(), total_vars);
 

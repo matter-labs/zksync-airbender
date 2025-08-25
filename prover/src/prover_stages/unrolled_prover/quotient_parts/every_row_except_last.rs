@@ -2442,7 +2442,7 @@ pub(crate) unsafe fn evaluate_register_and_indirect_memory_accesses(
             let mut offset_adjusted = *tau_in_domain_by_half_inv;
             offset_adjusted.mul_assign_by_base(&Mersenne31Field(offset_constant));
 
-            if let Some((c, v)) = indirect_access_columns.variable_dependent() {
+            if let Some((c, v, _)) = indirect_access_columns.variable_dependent() {
                 let mut t: Mersenne31Field = *memory_trace_view_row.get_unchecked(v.start());
                 t.mul_assign(&Mersenne31Field(c));
                 offset_adjusted.add_assign_base(&t);

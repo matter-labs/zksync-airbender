@@ -107,6 +107,19 @@ pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
         lhs: Box<Self>,
         rhs: Box<Self>,
     },
+    BinaryNot(Box<Self>),
+    BinaryAnd {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+    },
+    BinaryOr {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+    },
+    BinaryXor {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+    },
 }
 
 impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
@@ -202,6 +215,13 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             Self::U8SubExpression(..) => 8u32,
             Self::U16SubExpression(..) => 16u32,
             Self::U32SubExpression(..) => 32u32,
+            Self::BinaryNot(lhs) => lhs.bit_width(),
+            Self::BinaryAnd { lhs, rhs }
+            | Self::BinaryOr { lhs, rhs }
+            | Self::BinaryXor { lhs, rhs } => {
+                assert_eq!(lhs.bit_width(), rhs.bit_width());
+                lhs.bit_width()
+            }
         }
     }
 
@@ -242,7 +262,8 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::I32FromU32(inner)
             | Self::U32FromI32(inner)
             | Self::WrappingShl { lhs: inner, .. }
-            | Self::WrappingShr { lhs: inner, .. } => {
+            | Self::WrappingShr { lhs: inner, .. }
+            | Self::BinaryNot(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_integer_subexprs(inner);
             }
@@ -258,7 +279,10 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             | Self::SignedMulLowBits { lhs, rhs }
             | Self::SignedMulHighBits { lhs, rhs }
             | Self::SignedByUnsignedMulLowBits { lhs, rhs }
-            | Self::SignedByUnsignedMulHighBits { lhs, rhs } => {
+            | Self::SignedByUnsignedMulHighBits { lhs, rhs }
+            | Self::BinaryAnd { lhs, rhs }
+            | Self::BinaryOr { lhs, rhs }
+            | Self::BinaryXor { lhs, rhs } => {
                 lhs.make_subexpressions(set, lookup_fn);
                 rhs.make_subexpressions(set, lookup_fn);
                 // set.add_integer_subexprs(lhs);
@@ -477,6 +501,27 @@ impl<F: PrimeField> WitnessComputationalInteger<u8> for FixedWidthIntegerNodeExp
             num_bits,
         }
     }
+    fn not(&self) -> Self {
+        Self::BinaryNot(Box::new(self.clone()))
+    }
+    fn and(&self, other: &Self) -> Self {
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn or(&self, other: &Self) -> Self {
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn xor(&self, other: &Self) -> Self {
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
 }
 
 impl<F: PrimeField> WitnessComputationalInteger<u16> for FixedWidthIntegerNodeExpression<F> {
@@ -574,6 +619,27 @@ impl<F: PrimeField> WitnessComputationalInteger<u16> for FixedWidthIntegerNodeEx
             num_bits,
         }
     }
+    fn not(&self) -> Self {
+        Self::BinaryNot(Box::new(self.clone()))
+    }
+    fn and(&self, other: &Self) -> Self {
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn or(&self, other: &Self) -> Self {
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn xor(&self, other: &Self) -> Self {
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
 }
 
 impl<F: PrimeField> WitnessComputationalInteger<u32> for FixedWidthIntegerNodeExpression<F> {
@@ -669,6 +735,27 @@ impl<F: PrimeField> WitnessComputationalInteger<u32> for FixedWidthIntegerNodeEx
         Self::LowestBits {
             value: Box::new(self.clone()),
             num_bits,
+        }
+    }
+    fn not(&self) -> Self {
+        Self::BinaryNot(Box::new(self.clone()))
+    }
+    fn and(&self, other: &Self) -> Self {
+        Self::BinaryAnd {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn or(&self, other: &Self) -> Self {
+        Self::BinaryOr {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
+        }
+    }
+    fn xor(&self, other: &Self) -> Self {
+        Self::BinaryXor {
+            lhs: Box::new(self.clone()),
+            rhs: Box::new(other.clone()),
         }
     }
 }

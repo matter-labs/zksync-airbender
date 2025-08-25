@@ -77,6 +77,7 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
         tracer: &mut TR,
     ) {
         use crate::delegations::unrolled::blake2_round_function_with_compression_mode::*;
+        use crate::delegations::unrolled::keccak_special5::*;
         use crate::delegations::unrolled::u256_ops_with_control::*;
 
         match csr_index as u32 {
@@ -89,6 +90,9 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
             }
             U256_OPS_WITH_CONTROL_ACCESS_ID => {
                 u256_ops_with_control_impl_over_unrolled_state(state, memory_source, tracer);
+            }
+            KECCAK_SPECIAL5_ACCESS_ID => {
+                keccak_special5_over_unrolled_state(state, memory_source, tracer);
             }
             csr => {
                 panic!("Unsupported CSR = 0x{:04x}", csr);

@@ -665,6 +665,7 @@ impl<
         indirect_reads: &mut [RegisterOrIndirectReadData],
         indirect_write_addresses: &[u32],
         indirect_writes: &mut [RegisterOrIndirectReadWriteData],
+        indirect_offset_variables: &[RegisterOrIndirectVariableOffsetData],
     ) {
         assert_eq!(self.current_timestamp % TIMESTAMP_STEP, 0);
         assert_eq!(indirect_read_addresses.len(), indirect_reads.len());
@@ -751,6 +752,9 @@ impl<
             current_tracer
                 .indirect_writes
                 .extend_from_slice(&*indirect_writes);
+            current_tracer
+                .indirect_offset_variables
+                .extend_from_slice(indirect_offset_variables);
             current_tracer
                 .write_timestamp
                 .push_within_capacity(TimestampData::from_scalar(write_timestamp))

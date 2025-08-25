@@ -585,10 +585,11 @@ pub(crate) fn transform_width_1_range_checks_pair(
 
 pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
     lazy_init_address_range_check_16: OptimizedOraclesForLookupWidth1,
-    shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
     idents: &Idents,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
-) -> Vec<TokenStream> {
+    into: &mut TokenStream,
+) {
     let Idents {
         individual_term_ident,
         lookup_argument_gamma_ident,
@@ -596,74 +597,84 @@ pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
         ..
     } = idents;
 
-    let c_offset = lazy_init_address_range_check_16
-        .base_field_oracles
-        .get_range(0)
-        .start;
-    let a = shuffle_ram_inits_and_teardowns
-        .lazy_init_addresses_columns
-        .start();
-    let b = a + 1;
-    let a_place = ColumnAddress::MemorySubtree(a);
-    let b_place = ColumnAddress::MemorySubtree(b);
+    assert_eq!(
+        lazy_init_address_range_check_16.num_pairs,
+        shuffle_ram_inits_and_teardowns.len()
+    );
 
-    let mut streams = Vec::with_capacity(2);
+    for (init_idx, init_and_teardown) in shuffle_ram_inits_and_teardowns.iter().enumerate() {
+        let c_offset = lazy_init_address_range_check_16
+            .base_field_oracles
+            .get_range(init_idx)
+            .start;
+        let a = init_and_teardown.lazy_init_addresses_columns.start();
+        let b = a + 1;
+        let a_place = ColumnAddress::MemorySubtree(a);
+        let b_place = ColumnAddress::MemorySubtree(b);
 
-    let a_expr = read_value_expr(a_place, idents, false);
-    let b_expr = read_value_expr(b_place, idents, false);
-    let c_expr = read_stage_2_value_expr(c_offset, idents, false);
-
-    let t0 = quote! {
-        let #individual_term_ident = {
+        let a_expr = read_value_expr(a_place, idents, false);
+        let b_expr = read_value_expr(b_place, idents, false);
+        let c_expr = read_stage_2_value_expr(c_offset, idents, false);
+        let common_stream = quote! {
             let a = #a_expr;
             let b = #b_expr;
             let c = #c_expr;
-
-            let mut #individual_term_ident = a;
-            #individual_term_ident.mul_assign(&b);
-            #individual_term_ident.sub_assign(&c);
-
-            #individual_term_ident
         };
-    };
-    streams.push(t0);
 
-    // now accumulator * denom - numerator == 0
-    let acc_offset =
-        lazy_init_address_range_check_16.get_ext4_poly_index_in_openings(0, stage_2_layout);
-    let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
+        let mut streams = Vec::with_capacity(2);
 
-    let t1 = quote! {
-        let #individual_term_ident = {
-            let a = #a_expr;
-            let b = #b_expr;
-            let c = #c_expr;
-            let acc_value = #acc_expr;
+        let t0 = quote! {
+            let #individual_term_ident = {
+                let a = #a_expr;
+                let b = #b_expr;
+                let c = #c_expr;
 
-            let mut denom = #lookup_argument_gamma_ident;
-            denom.add_assign(&a);
-            denom.add_assign(&b);
-            denom.mul_assign(& #lookup_argument_gamma_ident);
-            denom.add_assign(&c);
-            // C(x) + gamma * (a(x) + b(x)) + gamma^2
-            denom.mul_assign(&acc_value);
+                let mut #individual_term_ident = a;
+                #individual_term_ident.mul_assign(&b);
+                #individual_term_ident.sub_assign(&c);
 
-            let mut numerator = #lookup_argument_two_gamma_ident;
-            numerator.add_assign(&a);
-            numerator.add_assign(&b);
-            // a(x) + b(x) + 2 * gamma
-
-            // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
-
-            let mut #individual_term_ident = denom;
-            #individual_term_ident.sub_assign(&numerator);
-
-            #individual_term_ident
+                #individual_term_ident
+            };
         };
-    };
-    streams.push(t1);
+        streams.push(t0);
 
-    streams
+        // now accumulator * denom - numerator == 0
+        let acc_offset =
+            lazy_init_address_range_check_16.get_ext4_poly_index_in_openings(0, stage_2_layout);
+        let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
+
+        let t1 = quote! {
+            let #individual_term_ident = {
+                let a = #a_expr;
+                let b = #b_expr;
+                let c = #c_expr;
+                let acc_value = #acc_expr;
+
+                let mut denom = #lookup_argument_gamma_ident;
+                denom.add_assign(&a);
+                denom.add_assign(&b);
+                denom.mul_assign(& #lookup_argument_gamma_ident);
+                denom.add_assign(&c);
+                // C(x) + gamma * (a(x) + b(x)) + gamma^2
+                denom.mul_assign(&acc_value);
+
+                let mut numerator = #lookup_argument_two_gamma_ident;
+                numerator.add_assign(&a);
+                numerator.add_assign(&b);
+                // a(x) + b(x) + 2 * gamma
+
+                // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
+
+                let mut #individual_term_ident = denom;
+                #individual_term_ident.sub_assign(&numerator);
+
+                #individual_term_ident
+            };
+        };
+        streams.push(t1);
+
+        accumulate_contributions(into, Some(common_stream), streams, idents);
+    }
 }
 
 // pub(crate) fn transform_generic_lookup(
@@ -1755,67 +1766,161 @@ pub(crate) fn transform_delegation_requests_processing(
     streams
 }
 
-pub(crate) fn transform_shuffle_ram_lazy_init_padding(
-    shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
-    lazy_init_address_aux_vars: &ShuffleRamAuxComparisonSet,
+pub(crate) fn transform_bytecode_decoding_via_lookup(
+    memory_layout: &MemorySubtree,
+    stage_2_layout: &LookupAndMemoryArgumentLayout,
     idents: &Idents,
-) -> (TokenStream, Vec<TokenStream>) {
+) -> Vec<TokenStream> {
+    let mut streams = vec![];
+
+    let Idents {
+        individual_term_ident,
+        delegation_argument_linearization_challenges_ident,
+        delegation_argument_gamma_ident,
+        delegation_type_ident,
+        ..
+    } = idents;
+
+    let machine_state_layout = memory_layout.machine_state_layout.expect("must exists");
+
+    let intermediate_state_layout = memory_layout
+        .intermediate_state_layout
+        .expect("must exists");
+
+    {
+        let acc = stage_2_layout
+            .get_aux_poly_decoder_absolute_poly_idx_for_verifier()
+            .expect("must exist");
+        let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
+
+        todo!();
+
+        // let multiplicity_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.multiplicity.start()),
+        //     idents,
+        //     false,
+        // );
+
+        // // delegation type is a verifier-provided constant
+
+        // let src_1_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.abi_mem_offset_high.start()),
+        //     idents,
+        //     false,
+        // );
+        // let src_2_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start()),
+        //     idents,
+        //     false,
+        // );
+        // let src_3_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start() + 1),
+        //     idents,
+        //     false,
+        // );
+
+        // let t = quote! {
+        //     let #individual_term_ident = {
+        //         let m = #multiplicity_expr;
+
+        //         let mut denom = #delegation_argument_linearization_challenges_ident[2];
+        //         let timestamp_high = #src_3_expr;
+        //         denom.mul_assign(&timestamp_high);
+
+        //         let timestamp_low = #src_2_expr;
+        //         let mut t = #delegation_argument_linearization_challenges_ident[1];
+        //         t.mul_assign(&timestamp_low);
+        //         denom.add_assign(&t);
+
+        //         let mem_abi_offset = #src_1_expr;
+        //         let mut t = #delegation_argument_linearization_challenges_ident[0];
+        //         t.mul_assign(&mem_abi_offset);
+        //         denom.add_assign(&t);
+
+        //         let t = #delegation_type_ident;
+        //         denom.add_assign_base(&t);
+
+        //         denom.add_assign(&#delegation_argument_gamma_ident);
+
+        //         let mut #individual_term_ident = denom;
+        //         #individual_term_ident.mul_assign(& #accumulator_expr);
+        //         #individual_term_ident.sub_assign(&m);
+
+        //         #individual_term_ident
+        //     };
+        // };
+
+        // streams.push(t);
+    }
+
+    streams
+}
+
+pub(crate) fn transform_shuffle_ram_lazy_init_padding(
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
+    lazy_init_address_aux_vars: &[ShuffleRamAuxComparisonSet],
+    idents: &Idents,
+    into: &mut TokenStream,
+) {
+    assert_eq!(
+        shuffle_ram_inits_and_teardowns.len(),
+        lazy_init_address_aux_vars.len()
+    );
     let Idents {
         individual_term_ident,
         ..
     } = idents;
 
-    let lazy_init_address_start = shuffle_ram_inits_and_teardowns
-        .lazy_init_addresses_columns
-        .start();
+    for (init_and_teardown, aux_vars) in shuffle_ram_inits_and_teardowns
+        .iter()
+        .zip(lazy_init_address_aux_vars.iter())
+    {
+        let lazy_init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
 
-    let teardown_values_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_values_columns
-        .start();
+        let teardown_values_start = init_and_teardown.lazy_teardown_values_columns.start();
 
-    let teardown_timestamps_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_timestamps_columns
-        .start();
+        let teardown_timestamps_start = init_and_teardown.lazy_teardown_timestamps_columns.start();
 
-    let comparison_aux_vars = lazy_init_address_aux_vars;
-    let ShuffleRamAuxComparisonSet { final_borrow, .. } = *comparison_aux_vars;
+        let comparison_aux_vars = lazy_init_address_aux_vars;
+        let ShuffleRamAuxComparisonSet { final_borrow, .. } = *aux_vars;
 
-    let final_borrow_value_expr = read_value_expr(final_borrow, idents, false);
+        let final_borrow_value_expr = read_value_expr(final_borrow, idents, false);
 
-    let common_stream = quote! {
-        let final_borrow_value = #final_borrow_value_expr;
+        let common_stream = quote! {
+            let final_borrow_value = #final_borrow_value_expr;
 
-        let mut final_borrow_minus_one = final_borrow_value;
-        final_borrow_minus_one.sub_assign_base(&Mersenne31Field::ONE);
-    };
-
-    let mut streams = vec![];
-
-    // and now we enforce that if comparison is not strictly this address < next address, then this
-    // address is 0, along with teardown parts
-
-    for place in [
-        ColumnAddress::MemorySubtree(lazy_init_address_start),
-        ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
-        ColumnAddress::MemorySubtree(teardown_values_start),
-        ColumnAddress::MemorySubtree(teardown_values_start + 1),
-        ColumnAddress::MemorySubtree(teardown_timestamps_start),
-        ColumnAddress::MemorySubtree(teardown_timestamps_start + 1),
-    ] {
-        let place_expr = read_value_expr(place, idents, false);
-        let t = quote! {
-            let #individual_term_ident = {
-                let value_to_constraint = #place_expr;
-
-                let mut #individual_term_ident = final_borrow_minus_one;
-                #individual_term_ident.mul_assign(&value_to_constraint);
-
-                #individual_term_ident
-            };
+            let mut final_borrow_minus_one = final_borrow_value;
+            final_borrow_minus_one.sub_assign_base(&Mersenne31Field::ONE);
         };
 
-        streams.push(t);
-    }
+        let mut streams = vec![];
 
-    (common_stream, streams)
+        // and now we enforce that if comparison is not strictly this address < next address, then this
+        // address is 0, along with teardown parts
+
+        for place in [
+            ColumnAddress::MemorySubtree(lazy_init_address_start),
+            ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
+            ColumnAddress::MemorySubtree(teardown_values_start),
+            ColumnAddress::MemorySubtree(teardown_values_start + 1),
+            ColumnAddress::MemorySubtree(teardown_timestamps_start),
+            ColumnAddress::MemorySubtree(teardown_timestamps_start + 1),
+        ] {
+            let place_expr = read_value_expr(place, idents, false);
+            let t = quote! {
+                let #individual_term_ident = {
+                    let value_to_constraint = #place_expr;
+
+                    let mut #individual_term_ident = final_borrow_minus_one;
+                    #individual_term_ident.mul_assign(&value_to_constraint);
+
+                    #individual_term_ident
+                };
+            };
+
+            streams.push(t);
+        }
+
+        accumulate_contributions(into, Some(common_stream), streams, idents);
+    }
 }

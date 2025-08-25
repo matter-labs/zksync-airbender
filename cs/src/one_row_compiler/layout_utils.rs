@@ -764,13 +764,20 @@ pub(crate) fn allocate_width_3_lookups<F: PrimeField>(
         let table_index = match table {
             LookupQueryTableType::Constant(constant) => TableIndex::Constant(constant),
             LookupQueryTableType::Variable(variable) => {
-                let column = layout_witness_subtree_variable(
-                    witness_tree_offset,
-                    variable,
-                    all_variables_to_place,
-                    layout,
-                );
-                let place = ColumnAddress::WitnessSubtree(column.start);
+                let place = if let Some(place) = layout.get(&variable) {
+                    *place
+                } else {
+                    let column = layout_witness_subtree_variable(
+                        witness_tree_offset,
+                        variable,
+                        all_variables_to_place,
+                        layout,
+                    );
+                    let place = ColumnAddress::WitnessSubtree(column.start);
+
+                    place
+                };
+
                 TableIndex::Variable(place)
             }
         };

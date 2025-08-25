@@ -21,94 +21,96 @@ pub(crate) fn transform_first_or_last_rows(
     let mut first_row_boundary_constraints = vec![];
     let mut one_before_last_row_boundary_constraints = vec![];
 
-    if let Some(shuffle_ram_inits_and_teardowns) = memory_layout.shuffle_ram_inits_and_teardowns {
-        let lazy_init_address_start = shuffle_ram_inits_and_teardowns
-            .lazy_init_addresses_columns
-            .start();
-        let lazy_teardown_values_columns_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_values_columns
-            .start();
-        let lazy_teardown_timestamps_columns_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_timestamps_columns
-            .start();
+    if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
+        for (init_idx, init_and_teardown) in memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .iter()
+            .enumerate()
+        {
+            let lazy_init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
+            let lazy_teardown_values_columns_start =
+                init_and_teardown.lazy_teardown_values_columns.start();
+            let lazy_teardown_timestamps_columns_start =
+                init_and_teardown.lazy_teardown_timestamps_columns.start();
 
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_init_address_start),
-            quote! {
-                #aux_boundary_values_ident.lazy_init_first_row[0]
-            },
-        ));
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
-            quote! {
-                #aux_boundary_values_ident.lazy_init_first_row[1]
-            },
-        ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_init_address_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].lazy_init_first_row[0]
+                },
+            ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].lazy_init_first_row[1]
+                },
+            ));
 
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start),
-            quote! {
-                #aux_boundary_values_ident.teardown_value_first_row[0]
-            },
-        ));
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start + 1),
-            quote! {
-                #aux_boundary_values_ident.teardown_value_first_row[1]
-            },
-        ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_value_first_row[0]
+                },
+            ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_value_first_row[1]
+                },
+            ));
 
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start),
-            quote! {
-                #aux_boundary_values_ident.teardown_timestamp_first_row[0]
-            },
-        ));
-        first_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start + 1),
-            quote! {
-                #aux_boundary_values_ident.teardown_timestamp_first_row[1]
-            },
-        ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_timestamp_first_row[0]
+                },
+            ));
+            first_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_timestamp_first_row[1]
+                },
+            ));
 
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_init_address_start),
-            quote! {
-                #aux_boundary_values_ident.lazy_init_one_before_last_row[0]
-            },
-        ));
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
-            quote! {
-                #aux_boundary_values_ident.lazy_init_one_before_last_row[1]
-            },
-        ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_init_address_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].lazy_init_one_before_last_row[0]
+                },
+            ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].lazy_init_one_before_last_row[1]
+                },
+            ));
 
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start),
-            quote! {
-                #aux_boundary_values_ident.teardown_value_one_before_last_row[0]
-            },
-        ));
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start + 1),
-            quote! {
-                #aux_boundary_values_ident.teardown_value_one_before_last_row[1]
-            },
-        ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_value_one_before_last_row[0]
+                },
+            ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_values_columns_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_value_one_before_last_row[1]
+                },
+            ));
 
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start),
-            quote! {
-                #aux_boundary_values_ident.teardown_timestamp_one_before_last_row[0]
-            },
-        ));
-        one_before_last_row_boundary_constraints.push((
-            ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start + 1),
-            quote! {
-                #aux_boundary_values_ident.teardown_timestamp_one_before_last_row[1]
-            },
-        ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_timestamp_one_before_last_row[0]
+                },
+            ));
+            one_before_last_row_boundary_constraints.push((
+                ColumnAddress::MemorySubtree(lazy_teardown_timestamps_columns_start + 1),
+                quote! {
+                    #aux_boundary_values_ident[#init_idx].teardown_timestamp_one_before_last_row[1]
+                },
+            ));
+        }
     }
 
     for (i, (location, column_address)) in public_inputs.iter().enumerate() {
@@ -136,7 +138,7 @@ pub(crate) fn transform_first_or_last_rows(
     }
 
     let first_row = {
-        let mut streams = vec![];
+        let mut first_row_stream = TokenStream::new();
 
         for (_i, (place, expected_value)) in first_row_boundary_constraints.iter().enumerate() {
             let value_expr = read_value_expr(*place, idents, false);
@@ -151,18 +153,13 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            streams.push(t);
+            accumulate_contributions(&mut first_row_stream, None, vec![t], idents);
         }
 
         // 1 constraint for memory accumulator initial value == 1
         {
-            let num_memory_accumulators = stage_2_layout
-                .intermediate_polys_for_memory_argument
-                .num_elements();
             let offset = stage_2_layout
-                .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
-                    num_memory_accumulators - 1,
-                );
+                .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
             let value_expr = read_stage_2_value_expr(offset, idents, false);
 
             let t = quote! {
@@ -174,21 +171,14 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            streams.push(t);
+            accumulate_contributions(&mut first_row_stream, None, vec![t], idents);
         }
 
-        // merge right here
-        let mut stream = TokenStream::new();
-        let mut is_first = true;
-
-        let contribution = accumulate_contributions(&mut is_first, None, streams, &idents);
-        stream.extend(contribution);
-
-        stream
+        first_row_stream
     };
 
     let one_before_last_row = {
-        let mut streams = vec![];
+        let mut one_before_last_row_stream = TokenStream::new();
 
         for (_i, (place, expected_value)) in
             one_before_last_row_boundary_constraints.iter().enumerate()
@@ -205,28 +195,17 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            streams.push(t);
+            accumulate_contributions(&mut one_before_last_row_stream, None, vec![t], idents);
         }
 
-        let mut stream = TokenStream::new();
-        let mut is_first = true;
-
-        let contribution = accumulate_contributions(&mut is_first, None, streams, &idents);
-        stream.extend(contribution);
-
-        stream
+        one_before_last_row_stream
     };
 
     let last_row = {
-        let mut streams = vec![];
+        let mut last_row_streams = TokenStream::new();
 
-        let num_memory_accumulators = stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .num_elements();
         let offset = stage_2_layout
-            .get_intermediate_polys_for_memory_argument_absolute_poly_idx_for_verifier(
-                num_memory_accumulators - 1,
-            );
+            .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
         let value_expr = read_stage_2_value_expr(offset, idents, false);
 
         let t = quote! {
@@ -238,20 +217,13 @@ pub(crate) fn transform_first_or_last_rows(
                 #individual_term_ident
             };
         };
+        accumulate_contributions(&mut last_row_streams, None, vec![t], idents);
 
-        streams.push(t);
-
-        let mut stream = TokenStream::new();
-        let mut is_first = true;
-
-        let contribution = accumulate_contributions(&mut is_first, None, streams, &idents);
-        stream.extend(contribution);
-
-        stream
+        last_row_streams
     };
 
     let last_row_and_zero = {
-        let mut streams = vec![];
+        let mut last_row_and_zero_streams = TokenStream::new();
 
         // range checks
         {
@@ -308,7 +280,7 @@ pub(crate) fn transform_first_or_last_rows(
                     };
                 };
 
-                streams.push(t);
+                accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
             }
 
             // timestamp range checks
@@ -346,7 +318,7 @@ pub(crate) fn transform_first_or_last_rows(
                     };
                 };
 
-                streams.push(t);
+                accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
             }
         }
 
@@ -401,7 +373,7 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            streams.push(t);
+            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
         // and delegation creation/processing
@@ -430,16 +402,10 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            streams.push(t);
+            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
-        let mut stream = TokenStream::new();
-        let mut is_first = true;
-
-        let contribution = accumulate_contributions(&mut is_first, None, streams, &idents);
-        stream.extend(contribution);
-
-        stream
+        last_row_and_zero_streams
     };
 
     (first_row, one_before_last_row, last_row, last_row_and_zero)

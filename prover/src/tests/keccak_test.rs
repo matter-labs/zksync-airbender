@@ -7,9 +7,10 @@ use risc_v_simulator::{cycle::IMStandardIsaConfig, delegations::DelegationsCSRPr
 
 const SECOND_WORD_BITS: usize = 4;
 
-use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+use risc_v_simulator::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
 
-pub fn run_basic_delegation_test_impl(
+// use --features debug_satisfiable ?
+pub fn run_keccak_test_impl(
     maybe_delegator_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
     maybe_delegated_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
@@ -28,25 +29,30 @@ pub fn run_basic_delegation_test_impl(
     // let worker = Worker::new_with_num_threads(2);
     // let worker = Worker::new_with_num_threads(4);
     // let worker = Worker::new_with_num_threads(8);
-    // let worker = Worker::new_with_num_threads(12);
+    // let worker = Worker::new_with_num_threads(16);
 
     // load binary
-
-    // let binary = std::fs::read("./app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    assert!(binary.len() % 4 == 0);
-    let binary: Vec<_> = binary
-        .array_chunks::<4>()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    // let binary = KECCAK_F1600_BIN; // old bin just does one f1600 iteration w/out checks
+    let binary = {
+        let bytes = APP_KECCAK_SIMPLE_BIN; // single keccak_f1600 testcase
+                                           // let bytes = APP_KECCAK_BENCH_BIN; // 2k iterations of keccak_f1600 on same state (no checks)
+        let (chunks, []) = bytes.as_chunks::<4>() else {
+            unreachable!()
+        };
+        chunks
+            .into_iter()
+            .map(|&x| u32::from_le_bytes(x))
+            .collect::<Vec<u32>>()
+    };
 
     let rom_table = create_table_for_rom_image::<_, SECOND_WORD_BITS>(
         &binary,
         TableType::RomRead.to_table_id(),
     );
+
     let csr_table = create_csr_table_for_delegation(
         true,
-        &[BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID],
+        &[KECCAK_SPECIAL5_ACCESS_ID],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
@@ -74,7 +80,9 @@ pub fn run_basic_delegation_test_impl(
     let for_gpu_comparison = maybe_delegator_gpu_comparison_hook.is_some()
         || maybe_delegated_gpu_comparison_hook.is_some();
 
-    serialize_to_file(&compiled_machine, "full_machine_layout.json");
+    if !for_gpu_comparison {
+        serialize_to_file(&compiled_machine, "full_machine_layout.json");
+    }
 
     // compile all delegation circuit
 
@@ -84,9 +92,9 @@ pub fn run_basic_delegation_test_impl(
     > = HashMap::new();
     let mut delegation_circuits = vec![];
     {
-        use cs::delegation::blake2_round_with_extended_control::define_blake2_with_extended_control_delegation_circuit;
+        use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
         let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_blake2_with_extended_control_delegation_circuit(&mut cs);
+        define_keccak_special5_delegation_circuit(&mut cs);
         let (circuit_output, _) = cs.finalize();
         let table_driver = circuit_output.table_driver.clone();
         let compiler = OneRowCompiler::default();
@@ -95,11 +103,13 @@ pub fn run_basic_delegation_test_impl(
             delegation_domain_size.trailing_zeros() as usize,
         );
 
-        serialize_to_file(&circuit, "blake2s_delegation_circuit_layout.json");
+        if !for_gpu_comparison {
+            serialize_to_file(&circuit, "keccak_delegation_circuit_layout.json");
+        }
 
-        let delegation_type = BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+        let delegation_type = KECCAK_SPECIAL5_ACCESS_ID;
         let description = DelegationProcessorDescription {
-            delegation_type: BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+            delegation_type: KECCAK_SPECIAL5_ACCESS_ID,
             num_requests_per_circuit: NUM_DELEGATION_CYCLES,
             trace_len: NUM_DELEGATION_CYCLES + 1,
             table_driver,
@@ -109,9 +119,12 @@ pub fn run_basic_delegation_test_impl(
         delegation_circuits.push((delegation_type, description));
         delegation_circuits_eval_fns.insert(
             delegation_type,
-            super::blake2s_delegation_with_gpu_tracer::witness_eval_fn,
+            super::keccak_special5_delegation_with_gpu_tracer::witness_eval_fn,
         );
     }
+
+    // NO inputs: 0 fibs, 0 hash
+    let non_determinism_responses = vec![];
 
     let (witness_chunks, register_final_values, delegation_circuits) =
         dev_run_all_and_make_witness_ext_with_gpu_tracers::<
@@ -130,7 +143,7 @@ pub fn run_basic_delegation_test_impl(
             trace_len,
             csr_processor,
             Some(LookupWrapper::Dimensional3(csr_table)),
-            &vec![15, 1], // 1000 steps of fibonacci, and 1 round of hashing
+            &non_determinism_responses,
             &worker,
         );
 
@@ -326,7 +339,7 @@ pub fn run_basic_delegation_test_impl(
     println!("Full machine proving time is {:?}", now.elapsed());
 
     if !for_gpu_comparison {
-        serialize_to_file(&proof, "delegation_proof");
+        serialize_to_file(&proof, "k_delegation_proof");
     }
 
     if let Some(ref gpu_comparison_hook) = maybe_delegator_gpu_comparison_hook {
@@ -454,7 +467,7 @@ pub fn run_basic_delegation_test_impl(
             }
 
             if !for_gpu_comparison {
-                serialize_to_file(&proof, "blake2s_delegator_proof");
+                serialize_to_file(&proof, "keccak_delegator_proof");
             }
 
             dbg!(prover_data.stage_2_result.grand_product_accumulator);
@@ -470,199 +483,151 @@ pub fn run_basic_delegation_test_impl(
     assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
 }
 
-// #[ignore = "test has explicit panic inside"]
+// use --features debug_satisfiable ?
 #[test]
-fn run_basic_delegation_test() {
-    run_basic_delegation_test_impl(None, None);
+fn run_keccak_test() {
+    run_keccak_test_impl(None, None);
 }
 
-#[cfg(test)]
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    serde_json::from_reader(src).unwrap()
-}
+#[allow(unused)]
+const APP_KECCAK_SIMPLE_BIN: &[u8] = include_bytes!("../../app_keccak_simple.bin");
 
-#[cfg(test)]
-fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    bincode::deserialize_from(src).unwrap()
-}
+// #[allow(unused)]
+// const APP_KECCAK_BAD_BIN: &[u8] = include_bytes!("../../app_keccak_bad.bin"); // SHOULD FAIL
 
-// commented out until we get new inputs
+// #[allow(unused)]
+// const APP_KECCAK_BENCH_BIN: &[u8] = include_bytes!("../../app_keccak_bench.bin");
 
-// #[test]
-// fn test_blake2_single_round() {
-//     use crate::cs::delegation::blake2_single_round::define_blake2_single_round_delegation_circuit;
-//     let oracle_input = deserialize_from_file::<Vec<DelegationTraceRecord>>(
-//         "blake2_single_round_delegation_oracle",
-//     );
-//     for round in 0..oracle_input.len() {
-//         let mut expected_outputs = vec![];
-//         for (i, el) in oracle_input[round].accesses[..16].iter().enumerate() {
-//             println!(
-//                 "Output element {} from witness = 0x{:08x}",
-//                 i, el.write_value
-//             );
-//             expected_outputs.push(el.write_value);
-//         }
-
-//         let oracle = DelegationCycleOracle {
-//             cycles_data: &oracle_input[round..],
-//         };
-//         let oracle: DelegationCycleOracle<'static> = unsafe { core::mem::transmute(oracle) };
-//         let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle(oracle);
-//         let output_vars = define_blake2_single_round_delegation_circuit(&mut cs);
-
-//         let mut produced_outputs = vec![];
-
-//         use cs::types::Num;
-//         use cs::types::Register;
-
-//         for (_, input) in output_vars.iter().enumerate() {
-//             let register = Register(input.map(|el| Num::Var(el)));
-//             let value = register.get_value_unsigned(&cs).unwrap();
-//             produced_outputs.push(value);
-//         }
-
-//         assert_eq!(
-//             expected_outputs, produced_outputs,
-//             "diverged for round {}",
-//             round
-//         );
-//     }
-// }
-
-// #[test]
-// fn test_extended_blake2_single_round() {
-//     use crate::cs::delegation::blake2_round_with_extended_control::define_blake2_with_extended_control_delegation_circuit;
-//     // let oracle_input =
-//     //     deserialize_from_file::<Vec<DelegationTraceRecord>>("blake2_extended_delegation_oracle");
-//     let oracle_input = fast_deserialize_from_file::<Vec<DelegationTraceRecord>>(
-//         "delegation_circuit_1991_0_oracle_witness.bin",
-//     );
-
-//     println!("Will check {} different inputs", oracle_input.len());
-//     for round in 0..oracle_input.len() {
-//         println!("Will execute request number {}", round);
-//         let mut expected_state = vec![];
-//         for (i, el) in oracle_input[round].accesses[..8].iter().enumerate() {
-//             println!(
-//                 "Output state element {} from witness = 0x{:08x}",
-//                 i, el.write_value
-//             );
-//             expected_state.push(el.write_value);
-//         }
-
-//         let mut expected_extended_state = vec![];
-//         for (i, el) in oracle_input[round].accesses[8..24].iter().enumerate() {
-//             println!(
-//                 "Output extended state element {} from witness = 0x{:08x}",
-//                 i, el.write_value
-//             );
-//             expected_extended_state.push(el.write_value);
-//         }
-
-//         let oracle = DelegationCycleOracle {
-//             cycles_data: &oracle_input[round..],
-//         };
-//         let oracle: DelegationCycleOracle<'static> = unsafe { core::mem::transmute(oracle) };
-//         let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle(oracle);
-//         let (output_state_vars, output_extended_state_vars) =
-//             define_blake2_with_extended_control_delegation_circuit(&mut cs);
-
-//         let mut produced_state_outputs = vec![];
-//         let mut produced_extended_state_outputs = vec![];
-
-//         use cs::types::Num;
-//         use cs::types::Register;
-
-//         for (_, input) in output_state_vars.iter().enumerate() {
-//             let register = Register(input.map(|el| Num::Var(el)));
-//             let value = register.get_value_unsigned(&cs).unwrap();
-//             produced_state_outputs.push(value);
-//         }
-
-//         for (_, input) in output_extended_state_vars.iter().enumerate() {
-//             let register = Register(input.map(|el| Num::Var(el)));
-//             let value = register.get_value_unsigned(&cs).unwrap();
-//             produced_extended_state_outputs.push(value);
-//         }
-
-//         assert_eq!(
-//             expected_extended_state, produced_extended_state_outputs,
-//             "extended state diverged for round {}",
-//             round
-//         );
-
-//         assert_eq!(
-//             expected_state, produced_state_outputs,
-//             "state diverged for round {}",
-//             round
-//         );
-//     }
-// }
-
-// #[test]
-// fn test_bigint_with_control_call() {
-//     use crate::cs::delegation::bigint_with_control::*;
-//     let oracle_input = deserialize_from_file::<Vec<DelegationTraceRecord>>(
-//         "delegation_circuit_1994_0_oracle_witness",
-//     );
-
-//     // serialize_to_file(&oracle_input[..10].to_vec(), "delegation_circuit_1994_0_oracle_witness_short");
-
-//     // let oracle_input = deserialize_from_file::<Vec<DelegationTraceRecord>>(
-//     //     "delegation_circuit_1994_0_oracle_witness_short",
-//     // );
-
-//     println!("Will check {} different inputs", oracle_input.len());
-//     for round in 0..oracle_input.len() {
-//         println!("Round = {}", round);
-//         // for (_i, el) in oracle_input[round].accesses[..8].iter().enumerate() {
-//         //     println!("a[{}] = 0x{:08x}", _i, el.read_value);
-//         // }
-//         // for (_i, el) in oracle_input[round].accesses[8..16].iter().enumerate() {
-//         //     println!("b[{}] = 0x{:08x}", _i, el.read_value);
-//         // }
-//         let mut expected_state = vec![];
-//         for (_i, el) in oracle_input[round].accesses[..8].iter().enumerate() {
-//             // println!("result[{}] = 0x{:08x}", _i, el.write_value);
-//             expected_state.push(el.write_value);
-//         }
-//         // println!("Op bitmask = 0b{:032b}", oracle_input[round].register_and_indirect_accesses[2].read_value);
-
-//         let expected_x12 = oracle_input[round].register_and_indirect_accesses[2].written_value;
-
-//         let oracle = DelegationCycleOracle {
-//             cycles_data: &oracle_input[round..],
-//         };
-//         let oracle: DelegationCycleOracle<'static> = unsafe { core::mem::transmute(oracle) };
-//         let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle(oracle);
-//         let (output_state_vars, output_extended_state_vars) =
-//             define_u256_ops_extended_control_delegation_circuit(&mut cs);
-
-//         assert!(cs.is_satisfied());
-
-//         let mut produced_state_outputs = vec![];
-
-//         use cs::types::Num;
-//         use cs::types::Register;
-
-//         for (_, input) in output_state_vars.iter().enumerate() {
-//             let register = Register(input.map(|el| Num::Var(el)));
-//             let value = register.get_value_unsigned(&cs).unwrap();
-//             produced_state_outputs.push(value);
-//         }
-
-//         let register = Register(output_extended_state_vars.map(|el| Num::Var(el)));
-//         let result_x12 = register.get_value_unsigned(&cs).unwrap();
-
-//         assert_eq!(expected_x12, result_x12, "x12 diverged for round {}", round);
-
-//         assert_eq!(
-//             expected_state, produced_state_outputs,
-//             "state diverged for round {}",
-//             round
-//         );
-//     }
-// }
+// expects state ptr to be in x10
+#[allow(unused)]
+const KECCAK_F1600_BIN: &[u32] = &[
+    0x00200537, // init: loads 1<<21 in x10
+    329107, 2164023, 1049628787, 4261175, 1049628787, 8455479, 1049628787, 16844087, 1049628787,
+    33621303, 1049628787, 2229559, 1049628787, 2360631, 1049628787, 4457783, 1049628787, 8652087,
+    1049628787, 17040695, 1049628787, 33817911, 1049628787, 2622775, 1049628787, 3147063,
+    1049628787, 4719927, 1049628787, 5244215, 1049628787, 8914231, 1049628787, 9438519, 1049628787,
+    17302839, 1049628787, 17827127, 1049628787, 34080055, 1049628787, 34604343, 1049628787,
+    69272887, 1049628787, 71370039, 1049628787, 75564343, 1049628787, 83952951, 1049628787,
+    100730167, 1049628787, 69338423, 1049628787, 69469495, 1049628787, 71566647, 1049628787,
+    75760951, 1049628787, 84149559, 1049628787, 100926775, 1049628787, 69731639, 1049628787,
+    70255927, 1049628787, 71828791, 1049628787, 72353079, 1049628787, 76023095, 1049628787,
+    76547383, 1049628787, 84411703, 1049628787, 84935991, 1049628787, 101188919, 1049628787,
+    101713207, 1049628787, 136381751, 1049628787, 138478903, 1049628787, 142673207, 1049628787,
+    151061815, 1049628787, 167839031, 1049628787, 136447287, 1049628787, 136578359, 1049628787,
+    138675511, 1049628787, 142869815, 1049628787, 151258423, 1049628787, 168035639, 1049628787,
+    136840503, 1049628787, 137364791, 1049628787, 138937655, 1049628787, 139461943, 1049628787,
+    143131959, 1049628787, 143656247, 1049628787, 151520567, 1049628787, 152044855, 1049628787,
+    168297783, 1049628787, 168822071, 1049628787, 203490615, 1049628787, 205587767, 1049628787,
+    209782071, 1049628787, 218170679, 1049628787, 234947895, 1049628787, 203556151, 1049628787,
+    203687223, 1049628787, 205784375, 1049628787, 209978679, 1049628787, 218367287, 1049628787,
+    235144503, 1049628787, 203949367, 1049628787, 204473655, 1049628787, 206046519, 1049628787,
+    206570807, 1049628787, 210240823, 1049628787, 210765111, 1049628787, 218629431, 1049628787,
+    219153719, 1049628787, 235406647, 1049628787, 235930935, 1049628787, 270599479, 1049628787,
+    272696631, 1049628787, 276890935, 1049628787, 285279543, 1049628787, 302056759, 1049628787,
+    270665015, 1049628787, 270796087, 1049628787, 272893239, 1049628787, 277087543, 1049628787,
+    285476151, 1049628787, 302253367, 1049628787, 271058231, 1049628787, 271582519, 1049628787,
+    273155383, 1049628787, 273679671, 1049628787, 277349687, 1049628787, 277873975, 1049628787,
+    285738295, 1049628787, 286262583, 1049628787, 302515511, 1049628787, 303039799, 1049628787,
+    337708343, 1049628787, 339805495, 1049628787, 343999799, 1049628787, 352388407, 1049628787,
+    369165623, 1049628787, 337773879, 1049628787, 337904951, 1049628787, 340002103, 1049628787,
+    344196407, 1049628787, 352585015, 1049628787, 369362231, 1049628787, 338167095, 1049628787,
+    338691383, 1049628787, 340264247, 1049628787, 340788535, 1049628787, 344458551, 1049628787,
+    344982839, 1049628787, 352847159, 1049628787, 353371447, 1049628787, 369624375, 1049628787,
+    370148663, 1049628787, 404817207, 1049628787, 406914359, 1049628787, 411108663, 1049628787,
+    419497271, 1049628787, 436274487, 1049628787, 404882743, 1049628787, 405013815, 1049628787,
+    407110967, 1049628787, 411305271, 1049628787, 419693879, 1049628787, 436471095, 1049628787,
+    405275959, 1049628787, 405800247, 1049628787, 407373111, 1049628787, 407897399, 1049628787,
+    411567415, 1049628787, 412091703, 1049628787, 419956023, 1049628787, 420480311, 1049628787,
+    436733239, 1049628787, 437257527, 1049628787, 471926071, 1049628787, 474023223, 1049628787,
+    478217527, 1049628787, 486606135, 1049628787, 503383351, 1049628787, 471991607, 1049628787,
+    472122679, 1049628787, 474219831, 1049628787, 478414135, 1049628787, 486802743, 1049628787,
+    503579959, 1049628787, 472384823, 1049628787, 472909111, 1049628787, 474481975, 1049628787,
+    475006263, 1049628787, 478676279, 1049628787, 479200567, 1049628787, 487064887, 1049628787,
+    487589175, 1049628787, 503842103, 1049628787, 504366391, 1049628787, 539034935, 1049628787,
+    541132087, 1049628787, 545326391, 1049628787, 553714999, 1049628787, 570492215, 1049628787,
+    539100471, 1049628787, 539231543, 1049628787, 541328695, 1049628787, 545522999, 1049628787,
+    553911607, 1049628787, 570688823, 1049628787, 539493687, 1049628787, 540017975, 1049628787,
+    541590839, 1049628787, 542115127, 1049628787, 545785143, 1049628787, 546309431, 1049628787,
+    554173751, 1049628787, 554698039, 1049628787, 570950967, 1049628787, 571475255, 1049628787,
+    606143799, 1049628787, 608240951, 1049628787, 612435255, 1049628787, 620823863, 1049628787,
+    637601079, 1049628787, 606209335, 1049628787, 606340407, 1049628787, 608437559, 1049628787,
+    612631863, 1049628787, 621020471, 1049628787, 637797687, 1049628787, 606602551, 1049628787,
+    607126839, 1049628787, 608699703, 1049628787, 609223991, 1049628787, 612894007, 1049628787,
+    613418295, 1049628787, 621282615, 1049628787, 621806903, 1049628787, 638059831, 1049628787,
+    638584119, 1049628787, 673252663, 1049628787, 675349815, 1049628787, 679544119, 1049628787,
+    687932727, 1049628787, 704709943, 1049628787, 673318199, 1049628787, 673449271, 1049628787,
+    675546423, 1049628787, 679740727, 1049628787, 688129335, 1049628787, 704906551, 1049628787,
+    673711415, 1049628787, 674235703, 1049628787, 675808567, 1049628787, 676332855, 1049628787,
+    680002871, 1049628787, 680527159, 1049628787, 688391479, 1049628787, 688915767, 1049628787,
+    705168695, 1049628787, 705692983, 1049628787, 740361527, 1049628787, 742458679, 1049628787,
+    746652983, 1049628787, 755041591, 1049628787, 771818807, 1049628787, 740427063, 1049628787,
+    740558135, 1049628787, 742655287, 1049628787, 746849591, 1049628787, 755238199, 1049628787,
+    772015415, 1049628787, 740820279, 1049628787, 741344567, 1049628787, 742917431, 1049628787,
+    743441719, 1049628787, 747111735, 1049628787, 747636023, 1049628787, 755500343, 1049628787,
+    756024631, 1049628787, 772277559, 1049628787, 772801847, 1049628787, 807470391, 1049628787,
+    809567543, 1049628787, 813761847, 1049628787, 822150455, 1049628787, 838927671, 1049628787,
+    807535927, 1049628787, 807666999, 1049628787, 809764151, 1049628787, 813958455, 1049628787,
+    822347063, 1049628787, 839124279, 1049628787, 807929143, 1049628787, 808453431, 1049628787,
+    810026295, 1049628787, 810550583, 1049628787, 814220599, 1049628787, 814744887, 1049628787,
+    822609207, 1049628787, 823133495, 1049628787, 839386423, 1049628787, 839910711, 1049628787,
+    874579255, 1049628787, 876676407, 1049628787, 880870711, 1049628787, 889259319, 1049628787,
+    906036535, 1049628787, 874644791, 1049628787, 874775863, 1049628787, 876873015, 1049628787,
+    881067319, 1049628787, 889455927, 1049628787, 906233143, 1049628787, 875038007, 1049628787,
+    875562295, 1049628787, 877135159, 1049628787, 877659447, 1049628787, 881329463, 1049628787,
+    881853751, 1049628787, 889718071, 1049628787, 890242359, 1049628787, 906495287, 1049628787,
+    907019575, 1049628787, 941688119, 1049628787, 943785271, 1049628787, 947979575, 1049628787,
+    956368183, 1049628787, 973145399, 1049628787, 941753655, 1049628787, 941884727, 1049628787,
+    943981879, 1049628787, 948176183, 1049628787, 956564791, 1049628787, 973342007, 1049628787,
+    942146871, 1049628787, 942671159, 1049628787, 944244023, 1049628787, 944768311, 1049628787,
+    948438327, 1049628787, 948962615, 1049628787, 956826935, 1049628787, 957351223, 1049628787,
+    973604151, 1049628787, 974128439, 1049628787, 1008796983, 1049628787, 1010894135, 1049628787,
+    1015088439, 1049628787, 1023477047, 1049628787, 1040254263, 1049628787, 1008862519, 1049628787,
+    1008993591, 1049628787, 1011090743, 1049628787, 1015285047, 1049628787, 1023673655, 1049628787,
+    1040450871, 1049628787, 1009255735, 1049628787, 1009780023, 1049628787, 1011352887, 1049628787,
+    1011877175, 1049628787, 1015547191, 1049628787, 1016071479, 1049628787, 1023935799, 1049628787,
+    1024460087, 1049628787, 1040713015, 1049628787, 1041237303, 1049628787, 1075905847, 1049628787,
+    1078002999, 1049628787, 1082197303, 1049628787, 1090585911, 1049628787, 1107363127, 1049628787,
+    1075971383, 1049628787, 1076102455, 1049628787, 1078199607, 1049628787, 1082393911, 1049628787,
+    1090782519, 1049628787, 1107559735, 1049628787, 1076364599, 1049628787, 1076888887, 1049628787,
+    1078461751, 1049628787, 1078986039, 1049628787, 1082656055, 1049628787, 1083180343, 1049628787,
+    1091044663, 1049628787, 1091568951, 1049628787, 1107821879, 1049628787, 1108346167, 1049628787,
+    1143014711, 1049628787, 1145111863, 1049628787, 1149306167, 1049628787, 1157694775, 1049628787,
+    1174471991, 1049628787, 1143080247, 1049628787, 1143211319, 1049628787, 1145308471, 1049628787,
+    1149502775, 1049628787, 1157891383, 1049628787, 1174668599, 1049628787, 1143473463, 1049628787,
+    1143997751, 1049628787, 1145570615, 1049628787, 1146094903, 1049628787, 1149764919, 1049628787,
+    1150289207, 1049628787, 1158153527, 1049628787, 1158677815, 1049628787, 1174930743, 1049628787,
+    1175455031, 1049628787, 1210123575, 1049628787, 1212220727, 1049628787, 1216415031, 1049628787,
+    1224803639, 1049628787, 1241580855, 1049628787, 1210189111, 1049628787, 1210320183, 1049628787,
+    1212417335, 1049628787, 1216611639, 1049628787, 1225000247, 1049628787, 1241777463, 1049628787,
+    1210582327, 1049628787, 1211106615, 1049628787, 1212679479, 1049628787, 1213203767, 1049628787,
+    1216873783, 1049628787, 1217398071, 1049628787, 1225262391, 1049628787, 1225786679, 1049628787,
+    1242039607, 1049628787, 1242563895, 1049628787, 1277232439, 1049628787, 1279329591, 1049628787,
+    1283523895, 1049628787, 1291912503, 1049628787, 1308689719, 1049628787, 1277297975, 1049628787,
+    1277429047, 1049628787, 1279526199, 1049628787, 1283720503, 1049628787, 1292109111, 1049628787,
+    1308886327, 1049628787, 1277691191, 1049628787, 1278215479, 1049628787, 1279788343, 1049628787,
+    1280312631, 1049628787, 1283982647, 1049628787, 1284506935, 1049628787, 1292371255, 1049628787,
+    1292895543, 1049628787, 1309148471, 1049628787, 1309672759, 1049628787, 1344341303, 1049628787,
+    1346438455, 1049628787, 1350632759, 1049628787, 1359021367, 1049628787, 1375798583, 1049628787,
+    1344406839, 1049628787, 1344537911, 1049628787, 1346635063, 1049628787, 1350829367, 1049628787,
+    1359217975, 1049628787, 1375995191, 1049628787, 1344800055, 1049628787, 1345324343, 1049628787,
+    1346897207, 1049628787, 1347421495, 1049628787, 1351091511, 1049628787, 1351615799, 1049628787,
+    1359480119, 1049628787, 1360004407, 1049628787, 1376257335, 1049628787, 1376781623, 1049628787,
+    1411450167, 1049628787, 1413547319, 1049628787, 1417741623, 1049628787, 1426130231, 1049628787,
+    1442907447, 1049628787, 1411515703, 1049628787, 1411646775, 1049628787, 1413743927, 1049628787,
+    1417938231, 1049628787, 1426326839, 1049628787, 1443104055, 1049628787, 1411908919, 1049628787,
+    1412433207, 1049628787, 1414006071, 1049628787, 1414530359, 1049628787, 1418200375, 1049628787,
+    1418724663, 1049628787, 1426588983, 1049628787, 1427113271, 1049628787, 1443366199, 1049628787,
+    1443890487, 1049628787, 1478559031, 1049628787, 1480656183, 1049628787, 1484850487, 1049628787,
+    1493239095, 1049628787, 1510016311, 1049628787, 1478624567, 1049628787, 1478755639, 1049628787,
+    1480852791, 1049628787, 1485047095, 1049628787, 1493435703, 1049628787, 1510212919, 1049628787,
+    1479017783, 1049628787, 1479542071, 1049628787, 1481114935, 1049628787, 1481639223, 1049628787,
+    1485309239, 1049628787, 1485833527, 1049628787, 1493697847, 1049628787, 1494222135, 1049628787,
+    1510475063, 1049628787, 1510999351, 1049628787, 1545667895, 1049628787, 1547765047, 1049628787,
+    1551959351, 1049628787, 1560347959, 1049628787, 1577125175, 1049628787, 1545733431, 1049628787,
+    1545864503, 1049628787, 1547961655, 1049628787, 1552155959, 1049628787, 1560544567, 1049628787,
+    1577321783, 1049628787, 1546126647, 1049628787, 1546650935, 1049628787, 1548223799, 1049628787,
+    1548748087, 1049628787, 1552418103, 1049628787, 1552942391, 1049628787, 1560806711, 1049628787,
+    1561330999, 1049628787, 1577583927, 1049628787, 1578108215, 1049628787, 4564227, 370179,
+    2147485367, 13976883, 2147518135, 8816275, 14042675, 12951587, 10854947,
+    0x0000006f, // fin: infinite loop to avoid padding with tons of noop
+];

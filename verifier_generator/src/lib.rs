@@ -45,9 +45,9 @@ mod test {
 
     #[test]
     fn launch() {
-        let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
-        // let compiled_circuit = deserialize_from_file("../prover/layout");
-        // let compiled_circuit = deserialize_from_file("../prover/blake2s_delegator_layout");
+        // let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
+        // let compiled_circuit = deserialize_from_file("../prover/blake2s_delegation_circuit_layout.json");
+        let compiled_circuit = deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
 
         let result = generate_from_parts(&compiled_circuit);
 
@@ -57,13 +57,13 @@ mod test {
 
     #[test]
     fn launch_inlining() {
-        let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
-        // let compiled_circuit = deserialize_from_file("../prover/layout");
-        // let compiled_circuit = deserialize_from_file("../prover/blake2s_delegator_layout");
+        // let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
+        // let compiled_circuit =
+        //     deserialize_from_file("../prover/blake2s_delegation_circuit_layout.json");
+        let compiled_circuit = deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
 
         let result = generate_inlined(compiled_circuit);
 
-        // let mut dst = std::fs::File::create("./src/generated_inlined_verifier.rs").unwrap();
         let mut dst = std::fs::File::create("./src/generated_inlined_verifier.rs").unwrap();
         dst.write_all(&result.to_string().as_bytes()).unwrap();
     }

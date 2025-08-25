@@ -1,10 +1,25 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(array_chunks)]
+#![cfg_attr(any(test, feature = "proof_utils"), feature(allocator_api))]
 #![feature(ptr_as_ref_unchecked)]
-#![feature(allocator_api)]
 #![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+
+#[cfg(any(
+    all(feature = "security_80", feature = "security_100"),
+    all(feature = "security_80", feature = "security_128"),
+    all(feature = "security_100", feature = "security_128")
+))]
+compiler_error!("multiple security levels selected same time");
+
+#[cfg(feature = "security_80")]
+pub const SECURITY_BITS: usize = 80;
+
+#[cfg(feature = "security_100")]
+pub const SECURITY_BITS: usize = 100;
+
+#[cfg(feature = "security_128")]
+pub const SECURITY_BITS: usize = 128;
 
 use core::mem::MaybeUninit;
 

@@ -79,15 +79,14 @@ impl<F: PrimeField> OneRowCompiler<F> {
             assert!(register_and_indirect_memory_accesses.len() > 0);
 
             for el in lookups.iter() {
-                let LookupQueryTableType::Constant(table_type) = el.table else {
-                    panic!("all lookups must use fixed table IDx");
+                if let LookupQueryTableType::Constant(table_type) = el.table {
+                    let t = table_driver.get_table(table_type);
+                    assert!(
+                        t.is_initialized(),
+                        "trying to use table with ID {:?}, but it's not initialized in table driver",
+                        table_type
+                    );
                 };
-                let t = table_driver.get_table(table_type);
-                assert!(
-                    t.is_initialized(),
-                    "trying to use table with ID {:?}, but it's not initialized in table driver",
-                    table_type
-                );
             }
         } else {
             assert_eq!(shuffle_ram_queries.len(), 3);
@@ -435,16 +434,28 @@ impl<F: PrimeField> OneRowCompiler<F> {
                     );
 
                     // layout variable part column
-                    let variable_part = access.variable_dependent().map(|(offset, var)| {
-                        let variable_column = layout_memory_subtree_variable(
-                            &mut memory_tree_offset,
-                            var,
-                            &mut all_variables_to_place,
-                            &mut layout,
-                        );
+                    let variable_part = if let Some((offset, var, indirect_access_var_idx)) =
+                        access.variable_dependent()
+                    {
+                        if let Some(place) = layout.get(&var) {
+                            let ColumnAddress::MemorySubtree(column) = *place else {
+                                panic!("Variable offset was placed not in memory columns");
+                            };
 
-                        (offset, variable_column)
-                    });
+                            Some((offset, ColumnSet::new(column, 1), indirect_access_var_idx))
+                        } else {
+                            let variable_column = layout_memory_subtree_variable(
+                                &mut memory_tree_offset,
+                                var,
+                                &mut all_variables_to_place,
+                                &mut layout,
+                            );
+
+                            Some((offset, variable_column, indirect_access_var_idx))
+                        }
+                    } else {
+                        None
+                    };
 
                     // we enforce address derivation for our indirect accesses via lookup expressions
                     if address_carry_column.num_elements() > 0 {
@@ -1012,6 +1023,13 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 lazy_init_address_aux_vars
             })
             .collect();
+
+        assert!(range_check_16_columns.num_elements() % 2 == 0);
+        let mut range_check_16_lookup_expressions = range_check_16_lookup_expressions;
+        if range_check_16_lookup_expressions.len() % 2 != 0 {
+            let last = range_check_16_lookup_expressions.last().unwrap().clone();
+            range_check_16_lookup_expressions.push(last);
+        }
 
         let witness_layout = WitnessSubtree {
             multiplicities_columns_for_range_check_16,

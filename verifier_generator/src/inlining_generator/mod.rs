@@ -5,11 +5,11 @@ use quote::quote;
 use syn::Ident;
 
 mod everywhere_except_last;
-mod memory_accumulators;
+mod grand_product_accumulators;
 mod utils;
 
 use self::everywhere_except_last::*;
-use self::memory_accumulators::*;
+use self::grand_product_accumulators::*;
 use self::utils::*;
 
 mod everywhere_except_last_two;
@@ -147,7 +147,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     // we also use Horner rule, so we reduce multiplication complexity
 
     // first all the constraints for the case of every row except last
-    let mut every_low_except_last_subexprs: Vec<(Option<TokenStream>, Vec<TokenStream>)> = vec![];
+    let mut every_row_except_last_stream = TokenStream::new();
 
     let mut common_constraints = vec![];
     // specialized boolean constraints, that can be degraded to single multiplication effectively
@@ -169,7 +169,12 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         let expr = transform_degree_1_constraint(el, &idents);
         common_constraints.push(expr);
     }
-    every_low_except_last_subexprs.push((None, common_constraints));
+    accumulate_contributions(
+        &mut every_row_except_last_stream,
+        None,
+        common_constraints,
+        &idents,
+    );
 
     // special compiler-defined constraints. Note that all timestamp comparisons are effectively
     // merged with width-16 range checks
@@ -177,7 +182,12 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     // if we process delegations - we should process checks in case if processing doesn't happen
     if memory_layout.delegation_processor_layout.is_some() {
         let (common, exprs) = transform_delegation_ram_conventions(&memory_layout, &idents);
-        every_low_except_last_subexprs.push((Some(common), exprs));
+        accumulate_contributions(
+            &mut every_row_except_last_stream,
+            Some(common),
+            exprs,
+            &idents,
+        );
     }
 
     // now lookup width 1
@@ -199,7 +209,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 .array_chunks::<2>()
                 .enumerate()
             {
-                let (common, t) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_range_check_16,
@@ -207,25 +217,27 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     &stage_2_layout,
                     false,
                 );
-
-                every_low_except_last_subexprs.push((Some(common), t));
+                accumulate_contributions(
+                    &mut every_row_except_last_stream,
+                    Some(common),
+                    exprs,
+                    &idents,
+                );
             }
         }
 
         // special case for range check over lazy init address columns
-        if let Some(shuffle_ram_inits_and_teardowns) = memory_layout.shuffle_ram_inits_and_teardowns
-        {
+        if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
             let lazy_init_address_range_check_16 = stage_2_layout
                 .lazy_init_address_range_check_16
                 .expect("must exist if we do lazy init");
-            let t = transform_shuffle_ram_lazy_init_range_checks(
+            let exprs = transform_shuffle_ram_lazy_init_range_checks(
                 lazy_init_address_range_check_16,
-                shuffle_ram_inits_and_teardowns,
+                &memory_layout.shuffle_ram_inits_and_teardowns,
                 &idents,
                 &stage_2_layout,
+                &mut every_row_except_last_stream,
             );
-
-            every_low_except_last_subexprs.push((None, t));
         }
 
         // now remainders
@@ -258,11 +270,13 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         );
         for (i, pair) in witness_layout
             .timestamp_range_check_lookup_expressions
-            .array_chunks::<2>()
+            .as_chunks::<2>()
+            .0
+            .iter()
             .enumerate()
         {
             if i < shuffle_ram_special_case_bound {
-                let (common, t) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_timestamp_range_checks,
@@ -271,9 +285,14 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     false,
                 );
 
-                every_low_except_last_subexprs.push((Some(common), t));
+                accumulate_contributions(
+                    &mut every_row_except_last_stream,
+                    Some(common),
+                    exprs,
+                    &idents,
+                );
             } else {
-                let (common, t) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_timestamp_range_checks,
@@ -282,104 +301,84 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     true,
                 );
 
-                every_low_except_last_subexprs.push((Some(common), t));
+                accumulate_contributions(
+                    &mut every_row_except_last_stream,
+                    Some(common),
+                    exprs,
+                    &idents,
+                );
             }
         }
     }
 
     // now generic lookup
     {
-        let t = transform_generic_lookup(&witness_layout, &stage_2_layout, &setup_layout, &idents);
-        every_low_except_last_subexprs.push((None, t));
+        let exprs =
+            transform_generic_lookup(&witness_layout, &stage_2_layout, &setup_layout, &idents);
+        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // multiplicities
     {
-        let t = transform_multiplicities(&witness_layout, &stage_2_layout, &setup_layout, &idents);
-        every_low_except_last_subexprs.push((None, t));
+        let exprs =
+            transform_multiplicities(&witness_layout, &stage_2_layout, &setup_layout, &idents);
+        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // if we work with delegation argument - then transform them
 
     // creating of requests
     if memory_layout.delegation_request_layout.is_some() {
-        let t = transform_delegation_requests_creation(
+        let exprs = transform_delegation_requests_creation(
             &memory_layout,
             &stage_2_layout,
             &setup_layout,
             &idents,
         );
-        every_low_except_last_subexprs.push((None, t));
+        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // processing of requests
     if memory_layout.delegation_processor_layout.is_some() {
-        let t = transform_delegation_requests_processing(&memory_layout, &stage_2_layout, &idents);
-        every_low_except_last_subexprs.push((None, t));
+        let exprs =
+            transform_delegation_requests_processing(&memory_layout, &stage_2_layout, &idents);
+        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // check padding of lazy-init
-    if let Some(shuffle_ram_inits_and_teardowns) = memory_layout.shuffle_ram_inits_and_teardowns {
-        let lazy_init_address_aux_vars = lazy_init_address_aux_vars.as_ref().expect("exists");
-        let (common, exprs) = transform_shuffle_ram_lazy_init_padding(
-            shuffle_ram_inits_and_teardowns,
+    if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
+        transform_shuffle_ram_lazy_init_padding(
+            &memory_layout.shuffle_ram_inits_and_teardowns,
             &lazy_init_address_aux_vars,
             &idents,
+            &mut every_row_except_last_stream,
         );
-        every_low_except_last_subexprs.push((Some(common), exprs));
     }
 
-    // shuffle RAM memory accumulators
-
-    if memory_layout.shuffle_ram_access_sets.len() > 0 {
-        assert!(memory_layout.shuffle_ram_inits_and_teardowns.is_some());
-        assert!(memory_layout.batched_ram_accesses.len() == 0);
-        assert!(memory_layout.register_and_indirect_accesses.len() == 0);
-
-        let t = transform_shuffle_ram_memory_accumulators(
+    // Memory and machines state related accumulators
+    {
+        transform_grand_product_accumulators(
             &memory_layout,
             &stage_2_layout,
             &setup_layout,
             &idents,
+            &mut every_row_except_last_stream,
         );
-        every_low_except_last_subexprs.push((None, t));
-    }
-
-    // batch RAM memory accumulators,
-    // registers and indirects
-
-    if memory_layout.batched_ram_accesses.len() > 0
-        || memory_layout.register_and_indirect_accesses.len() > 0
-    {
-        assert!(memory_layout.shuffle_ram_inits_and_teardowns.is_none());
-        assert!(memory_layout.shuffle_ram_access_sets.len() == 0);
-
-        let (common, exprs) =
-            transform_delegation_ram_memory_accumulators(&memory_layout, &stage_2_layout, &idents);
-        every_low_except_last_subexprs.push((Some(common), exprs));
     }
 
     let divisor_idx = DIVISOR_EVERYWHERE_EXCEPT_LAST_ROW_INDEX;
 
-    let mut stream = TokenStream::new();
-    let mut is_first = true;
-
-    for (common, contribution) in every_low_except_last_subexprs.into_iter() {
-        let contribution = accumulate_contributions(&mut is_first, common, contribution, &idents);
-        stream.extend(contribution);
-    }
-
     let divisors_ident = &idents.divisors_ident;
     let terms_accumulator_ident = &idents.terms_accumulator_ident;
 
-    let every_row_except_last = if stream.is_empty() {
+    let every_row_except_last = if every_row_except_last_stream.is_empty() {
         quote! {
             let every_row_except_last_contribution = Mersenne31Quartic::ZERO;
         }
     } else {
         quote! {
             let every_row_except_last_contribution = {
-                #stream
+                #every_row_except_last_stream
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
@@ -392,41 +391,29 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
     // now evert row except the last two
 
-    let mut stream = TokenStream::new();
-
-    // shuffle RAM lazy init
-
-    let mut every_low_except_last_two_subexprs = vec![];
+    let mut every_row_except_last_two_stream = TokenStream::new();
     // linking constraints
     if state_linkage_constraints.len() > 0 {
-        let t = transform_linking_constraints(&state_linkage_constraints, &idents);
-        every_low_except_last_two_subexprs.push((None, t));
+        let exprs = transform_linking_constraints(&state_linkage_constraints, &idents);
+        accumulate_contributions(&mut every_row_except_last_two_stream, None, exprs, &idents);
     }
 
     // and shuffle RAM lazy init if it exists
-    if let Some(shuffle_ram_inits_and_teardowns) = memory_layout.shuffle_ram_inits_and_teardowns {
-        let lazy_init_address_aux_vars = lazy_init_address_aux_vars.as_ref().expect("exists");
-        let (common, exprs) = transform_shuffle_ram_lazy_init(
-            shuffle_ram_inits_and_teardowns,
+    if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
+        transform_shuffle_ram_lazy_init(
+            &memory_layout.shuffle_ram_inits_and_teardowns,
             &lazy_init_address_aux_vars,
             &idents,
+            &mut every_row_except_last_two_stream,
         );
-        every_low_except_last_two_subexprs.push((Some(common), exprs));
-    }
-
-    let mut is_first = true;
-
-    for (common, contribution) in every_low_except_last_two_subexprs.into_iter() {
-        let contribution = accumulate_contributions(&mut is_first, common, contribution, &idents);
-        stream.extend(contribution);
     }
 
     let divisor_idx = DIVISOR_EVERYWHERE_EXCEPT_LAST_TWO_ROWS_INDEX;
 
-    let every_row_except_two_last = if stream.is_empty() == false {
+    let every_row_except_two_last = if every_row_except_last_two_stream.is_empty() == false {
         quote! {
             let every_row_except_two_last_contribution = {
-                #stream
+                #every_row_except_last_two_stream
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
@@ -558,6 +545,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     } = idents;
 
     let num_different_divisors = NUM_DIFFERENT_DIVISORS;
+    let num_aux_boundary_values = memory_layout.shuffle_ram_inits_and_teardowns.len();
 
     quote! {
 
@@ -583,7 +571,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #delegation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: AuxArgumentsBoundaryValues,
+            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
             #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
             #delegation_type_ident: Mersenne31Field,
             #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
@@ -615,7 +603,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #delegation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: AuxArgumentsBoundaryValues,
+            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
             #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
             #delegation_type_ident: Mersenne31Field,
             #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
@@ -647,7 +635,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #delegation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: AuxArgumentsBoundaryValues,
+            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
             #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
             #delegation_type_ident: Mersenne31Field,
             #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
@@ -656,60 +644,6 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
             last_row_and_zero_contribution
         }
-
-        // #[allow(unused_braces, unused_mut, unused_variables)]
-        // pub unsafe fn evaluate_quotient(
-        //     #random_point_ident: Mersenne31Quartic,
-        //     #witness_values_ident: &[Mersenne31Quartic],
-        //     #memory_values_ident: &[Mersenne31Quartic],
-        //     #setup_values_ident: &[Mersenne31Quartic],
-        //     #stage_2_values_ident: &[Mersenne31Quartic],
-        //     #witness_values_next_row_ident: &[Mersenne31Quartic],
-        //     #memory_values_next_row_ident: &[Mersenne31Quartic],
-        //     #stage_2_values_next_row_ident: &[Mersenne31Quartic],
-        //     #quotient_alpha_ident: Mersenne31Quartic,
-        //     #quotient_beta_ident: Mersenne31Quartic,
-        //     #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-        //     #lookup_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
-        //     #lookup_argument_gamma_ident: Mersenne31Quartic,
-        //     #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-        //     #memory_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-        //     #memory_argument_gamma_ident: Mersenne31Quartic,
-        //     #delegation_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
-        //     #delegation_argument_gamma_ident: Mersenne31Quartic,
-        //     #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
-        //     #aux_proof_values_ident: &ProofAuxValues,
-        //     #aux_boundary_values_ident: AuxArgumentsBoundaryValues,
-        //     #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
-        //     #delegation_type_ident: Mersenne31Field,
-        //     #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
-        // ) -> Mersenne31Quartic {
-        //     #every_row_except_last
-
-        //     #every_row_except_two_last
-
-        //     #first_row
-
-        //     #one_before_last_row
-
-        //     #last_row
-
-        //     #last_row_and_zero
-
-        //     let mut quotient = every_row_except_last_contribution;
-        //     quotient.mul_assign(&#quotient_beta_ident);
-        //     quotient.add_assign(&every_row_except_two_last_contribution);
-        //     quotient.mul_assign(&#quotient_beta_ident);
-        //     quotient.add_assign(&first_row_contribution);
-        //     quotient.mul_assign(&#quotient_beta_ident);
-        //     quotient.add_assign(&one_before_last_row_contribution);
-        //     quotient.mul_assign(&#quotient_beta_ident);
-        //     quotient.add_assign(&last_row_contribution);
-        //     quotient.mul_assign(&#quotient_beta_ident);
-        //     quotient.add_assign(&last_row_and_zero_contribution);
-
-        //     quotient
-        // }
 
         #[allow(unused_braces, unused_mut, unused_variables)]
         pub unsafe fn evaluate_quotient(
@@ -733,7 +667,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #delegation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: AuxArgumentsBoundaryValues,
+            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
             #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
             #delegation_type_ident: Mersenne31Field,
             #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,

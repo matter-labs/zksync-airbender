@@ -109,6 +109,14 @@ impl<'a, A: GoodAllocator, F: PrimeField> Oracle<F> for DelegationCircuitOracle<
         match placeholder {
             Placeholder::DelegationABIOffset => 0,
             Placeholder::DelegationType => self.cycle_data.delegation_type,
+            Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
+                self.cycle_data.indirect_offset_variables[trace_row
+                    * self
+                        .cycle_data
+                        .num_indirect_access_variable_offsets_per_delegation
+                    + variable_index]
+                    .variable_offset_value
+            }
             a @ _ => {
                 panic!("Placeholder query {:?} is not supported as u16", a);
             }

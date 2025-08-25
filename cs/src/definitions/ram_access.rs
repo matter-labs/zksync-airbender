@@ -176,7 +176,7 @@ pub enum IndirectAccessColumns {
         // this value will be a part of the expression to accumulate grand product,
         // so it must be in the memory tree and not the witness tree
         address_derivation_carry_bit: ColumnSet<1>,
-        variable_dependent: Option<(u32, ColumnSet<1>)>,
+        variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
         offset_constant: u32,
     },
     WriteAccess {
@@ -187,7 +187,7 @@ pub enum IndirectAccessColumns {
         // this value will be a part of the expression to accumulate grand product,
         // so it must be in the memory tree and not the witness tree
         address_derivation_carry_bit: ColumnSet<1>,
-        variable_dependent: Option<(u32, ColumnSet<1>)>,
+        variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
         offset_constant: u32,
     },
 }
@@ -204,7 +204,7 @@ impl IndirectAccessColumns {
         }
     }
 
-    pub const fn variable_dependent(&self) -> Option<(u32, ColumnSet<1>)> {
+    pub const fn variable_dependent(&self) -> Option<(u32, ColumnSet<1>, usize)> {
         match self {
             Self::ReadAccess {
                 variable_dependent, ..

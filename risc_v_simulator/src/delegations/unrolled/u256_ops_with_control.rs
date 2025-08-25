@@ -184,5 +184,6 @@ pub fn u256_ops_with_control_impl_over_unrolled_state<
         &mut b_accesses,
         &a_read_addresses,
         &mut a_accesses,
+        &[],
     );
 }

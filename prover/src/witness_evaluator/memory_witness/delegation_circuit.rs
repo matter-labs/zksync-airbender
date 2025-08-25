@@ -296,12 +296,10 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                     memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
                 }
 
-                if let Some((_, v)) = indirect_access.variable_dependent() {
+                if let Some((_, v, i)) = indirect_access.variable_dependent() {
                     // need oracle support for that, as we can not have a generic logic to derive it
-                    let placeholder = Placeholder::DelegationIndirectAccessVariableOffset {
-                        register_index,
-                        word_index: indirect_access_idx,
-                    };
+                    let placeholder =
+                        Placeholder::DelegationIndirectAccessVariableOffset { variable_index: i };
                     let offset =
                         oracle.get_u16_witness_from_placeholder(placeholder, absolute_row_idx);
                     memory_row[v.start()] = Mersenne31Field(offset as u32);

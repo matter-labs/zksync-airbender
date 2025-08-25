@@ -104,16 +104,44 @@ pub mod blake2s_delegation_with_gpu_tracer {
     }
 }
 
+pub mod keccak_special5_delegation_with_gpu_tracer {
+    use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+    use crate::witness_evaluator::SimpleWitnessProxy;
+    use crate::witness_proxy::WitnessProxy;
+
+    use ::cs::cs::witness_placer::WitnessTypeSet;
+    use ::cs::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32,
+    };
+    use ::field::Mersenne31Field;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../keccak_delegation_generated.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<Mersenne31Field, true>,
+            SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
 use super::*;
 use std::collections::HashMap;
 
 mod delegation_test;
+mod keccak_test;
 mod unrolled;
 
 #[cfg(test)]
 mod lde_tests;
 
 pub use delegation_test::run_basic_delegation_test_impl;
+pub use keccak_test::run_keccak_test_impl;
 
 // NOTE: For some reason tryint to add generic tree constructor to GPU arguments just makes resolver crazy,
 // it starts to complaint about `ROM_ADDRESS_SPACE_SECOND_WORD_BITS` being not a constant but unconstraint const generic,

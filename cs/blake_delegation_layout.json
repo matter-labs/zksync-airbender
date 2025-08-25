@@ -17372,13 +17372,13 @@
       "start": 300,
       "num_elements": 208
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 1132,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
       "start": 0,
       "num_elements": 0
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 1132,
+      "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
       "start": 1136,
@@ -34316,6 +34316,12 @@
     65600,
     65856,
     82240,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
+    344384,
     344384,
     344384,
     344384,

@@ -16,6 +16,43 @@ pub enum Term<F: PrimeField> {
     },
 }
 
+impl<F: PrimeField> std::fmt::Display for Term<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Constant(c) => {
+                write!(f, "{c}")
+            }
+            Self::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
+                let coeff = coeff.as_u64_reduced();
+                let coeff_opp = F::CHARACTERISTICS - coeff;
+                if coeff < coeff_opp {
+                    if coeff != 1 {
+                        write!(f, " + {coeff}")?;
+                    } else {
+                        write!(f, " + ")?;
+                    }
+                } else {
+                    if coeff_opp != 1 {
+                        write!(f, " - {coeff_opp}")?;
+                    } else {
+                        write!(f, " - ")?;
+                    }
+                }
+                if coeff != 0 {
+                    for &Variable(var) in inner.into_iter().take(*degree) {
+                        write!(f, "(v{var})")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<F: PrimeField> PartialOrd for Term<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))

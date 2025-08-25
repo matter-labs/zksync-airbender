@@ -599,14 +599,14 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_read_contribution(
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
     constant_offset: u16,
-    variable_dependent: Option<(u32, ColumnSet<1>)>,
+    variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
     let variable_dependent = variable_dependent
-        .map(|(c, v)| {
+        .map(|(c, v, _)| {
             let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
 
             (c, v)
@@ -660,14 +660,14 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_write_contribution(
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
     constant_offset: u16,
-    variable_dependent: Option<(u32, ColumnSet<1>)>,
+    variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
     let variable_dependent = variable_dependent
-        .map(|(c, v)| {
+        .map(|(c, v, _)| {
             let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
 
             (c, v)

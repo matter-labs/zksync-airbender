@@ -219,14 +219,14 @@ pub enum RegisterAccessType {
 pub enum IndirectAccessType {
     Read {
         read_value: [Variable; REGISTER_SIZE],
-        variable_dependent: Option<(u32, Variable)>,
+        variable_dependent: Option<(u32, Variable, usize)>,
         offset_constant: u32,
         assume_no_alignment_overflow: bool,
     },
     Write {
         read_value: [Variable; REGISTER_SIZE],
         write_value: [Variable; REGISTER_SIZE],
-        variable_dependent: Option<(u32, Variable)>,
+        variable_dependent: Option<(u32, Variable, usize)>,
         offset_constant: u32,
         assume_no_alignment_overflow: bool,
     },
@@ -257,7 +257,7 @@ impl IndirectAccessType {
         }
     }
 
-    pub const fn variable_dependent(&self) -> Option<(u32, Variable)> {
+    pub const fn variable_dependent(&self) -> Option<(u32, Variable, usize)> {
         match self {
             Self::Read {
                 variable_dependent, ..
@@ -865,6 +865,14 @@ pub trait Circuit<F: PrimeField>: Sized {
         inputs: &[LookupInput<F>; M],
         table_type: TableType,
     ) -> [Variable; N];
+
+    #[track_caller]
+    fn set_variables_from_lookup_constrained<const M: usize, const N: usize>(
+        &mut self,
+        inputs: [LookupInput<F>; M],
+        output_variables: [Variable; N],
+        table_type: Num<F>,
+    );
 
     fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
     fn view_log(&self, name: &'static str);
