@@ -274,7 +274,9 @@ EXTERN __launch_bounds__(128, 8) __global__
                                         matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
                                         __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout,
-                                        const bf memory_timestamp_high_from_circuit_idx, const unsigned memory_args_start, const unsigned log_n) {
+                                        const bf memory_timestamp_high_from_circuit_idx,
+                                        const unsigned init_teardown_args_start,
+                                        const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -311,7 +313,7 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 num_over_denom_acc = numerator;
   e4 denom_inv{e4::inv(denom)};
   num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
-  stage_2_e4_cols.set_at_col(memory_args_start, num_over_denom_acc);
+  stage_2_e4_cols.set_at_col(init_teardown_args_start, num_over_denom_acc);
 
   // Shuffle ram accesses
   // first, read a couple values common across accesses:
@@ -376,77 +378,6 @@ EXTERN __launch_bounds__(128, 8) __global__
 
     // flush result
     num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
-    e4 denom_inv{e4::inv(denom)};
-    num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
-    stage_2_e4_cols.set_at_col(memory_args_start + 1 + i, num_over_denom_acc);
-  }
-}
-
-EXTERN __launch_bounds__(128, 8) __global__
-    void batched_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const BatchedRamAccesses batched_ram_accesses,
-                                        matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                        const unsigned memory_args_start, const unsigned log_n) {
-  const unsigned n = 1u << log_n;
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
-  if (gid >= n - 1)
-    return;
-
-  stage_2_e4_cols.add_row(gid);
-  memory_cols.add_row(gid);
-
-  // Batched ram accesses
-  // Compute address_high_contribution, which is common across accesses
-  const bf address_high = memory_cols.get_at_col(batched_ram_accesses.abi_mem_offset_high_col);
-  const e4 address_high_contribution = e4::mul(address_high, challenges.address_high_challenge);
-  // Compute write_timestamp_contribution, also common across accesses
-  const bf write_timestamp_low = memory_cols.get_at_col(batched_ram_accesses.write_timestamp_col);
-  const e4 write_timestamp_low_contribution = e4::mul(write_timestamp_low, challenges.timestamp_low_challenge);
-  const bf write_timestamp_high = memory_cols.get_at_col(batched_ram_accesses.write_timestamp_col + 1);
-  const e4 write_timestamp_high_contribution = e4::mul(write_timestamp_high, challenges.timestamp_high_challenge);
-  const e4 write_timestamp_contribution = e4::add(write_timestamp_low_contribution, write_timestamp_high_contribution);
-
-  e4 num_over_denom_acc{};
-#pragma unroll 1
-  for (unsigned i = 0; i < batched_ram_accesses.num_accesses; i++) {
-    const auto &access = batched_ram_accesses.accesses[i];
-    e4 numerator = e4::add(access.gamma_plus_address_low_contribution, address_high_contribution);
-
-    e4 denom{};
-
-    if (access.is_write) {
-      denom = numerator;
-
-      const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-      denom = e4::add(denom, e4::mul(challenges.value_low_challenge, read_value_low));
-      const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-      denom = e4::add(denom, e4::mul(challenges.value_high_challenge, read_value_high));
-
-      const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-      numerator = e4::add(numerator, e4::mul(challenges.value_low_challenge, write_value_low));
-      const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-      numerator = e4::add(numerator, e4::mul(challenges.value_high_challenge, write_value_high));
-    } else {
-      const bf value_low = memory_cols.get_at_col(access.read_value_col);
-      numerator = e4::add(numerator, e4::mul(challenges.value_low_challenge, value_low));
-      const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-      numerator = e4::add(numerator, e4::mul(challenges.value_high_challenge, value_high));
-
-      denom = numerator;
-    }
-
-    numerator = e4::add(numerator, write_timestamp_contribution);
-
-    const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-    denom = e4::add(denom, e4::mul(challenges.timestamp_low_challenge, read_timestamp_low));
-    const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-    denom = e4::add(denom, e4::mul(challenges.timestamp_high_challenge, read_timestamp_high));
-
-    // flush result
-    if (i == 0)
-      num_over_denom_acc = numerator;
-    else
-      num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
     e4 denom_inv{e4::inv(denom)};
     num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
     stage_2_e4_cols.set_at_col(memory_args_start + i, num_over_denom_acc);
@@ -539,19 +470,20 @@ EXTERN __launch_bounds__(128, 8) __global__
       const auto &indirect_access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
 
       // imitates prover/src/prover_stages/stage2_utils.rs
-      unsigned address_low = base_low + indirect_access.offset_constant;
-      const unsigned of_low_0 = address_low >> 16;
-      address_low = address_low & 0x0000ffff;
+      unsigned address_low_u32 = base_low + indirect_access.offset_constant;
+      const unsigned of_low_0 = address_low_u32 >> 16;
+      address_low_u32 = address_low_u32 & 0x0000ffff;
       // account for variable_dependent offset, if used
       unsigned of_low_1 = 0;
       if (indirect_access.has_variable_dependent) {
-          const bf v = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
-          const bf v_canonical = bf::into_canonical(v);
-          const unsigned extra_low = indirect_access.maybe_variable_dependent_coeff * v_canonical.limb;
-          address_low = address_low + extra_low;
-          of_low_1 = address_low >> 16;
-          address_low = address_low & 0x0000ffff;
+        const bf v = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
+        const bf v_canonical = bf::into_canonical(v);
+        const unsigned extra_low = indirect_access.maybe_variable_dependent_coeff * v_canonical.limb;
+        address_low_u32 = address_low_u32 + extra_low;
+        of_low_1 = address_low_u32 >> 16;
+        address_low_u32 = address_low_u32 & 0x0000ffff;
       }
+      const bf address_low = bf{address_low_u32};
       // this should never overflow, because our address space should be representable with 32 bits.
       const bf address_high = bf{base_high + (of_low_0 | of_low_1)};
 
@@ -561,7 +493,7 @@ EXTERN __launch_bounds__(128, 8) __global__
 
       e4 denom{};
 
-      if (indirect_access.is_write) {
+      if (indirect_access.has_write) {
         denom = numerator;
 
         const bf read_value_low = memory_cols.get_at_col(indirect_access.read_value_col);

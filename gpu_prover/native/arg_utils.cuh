@@ -199,23 +199,6 @@ extern "C" struct ShuffleRamAccesses {
   const unsigned write_timestamp_in_setup_start;
 };
 
-constexpr unsigned MAX_BATCHED_RAM_ACCESSES = 36;
-
-extern "C" struct BatchedRamAccess {
-  const field::ext4_field gamma_plus_address_low_contribution;
-  const unsigned read_timestamp_col;
-  const unsigned read_value_col;
-  const unsigned maybe_write_value_col;
-  const bool is_write;
-};
-
-extern "C" struct BatchedRamAccesses {
-  const BatchedRamAccess accesses[MAX_BATCHED_RAM_ACCESSES];
-  const unsigned num_accesses;
-  const unsigned write_timestamp_col;
-  const unsigned abi_mem_offset_high_col;
-};
-
 extern "C" struct RegisterAccess {
   const field::ext4_field gamma_plus_one_plus_address_low_contribution;
   const unsigned read_timestamp_col;

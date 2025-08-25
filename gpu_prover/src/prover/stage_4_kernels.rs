@@ -348,7 +348,7 @@ pub fn compute_deep_quotient_on_main_domain(
     };
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
     let num_witness_terms = num_witness_cols + num_witness_terms_at_z_omega;
-    let stage_2_memory_grand_product_offset = get_grand_product_col(circuit, cached_data);
+    let stage_2_memory_grand_product_offset = get_grand_product_col(circuit);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();

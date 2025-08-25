@@ -371,9 +371,11 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
     matrix_getter<bf, ld_modifier::cg> stage_2_bf_cols, vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols, const bool process_delegations,
     const bool handle_delegation_requests, const unsigned delegation_aux_poly_col, __grid_constant__ const DelegationChallenges delegation_challenges,
     __grid_constant__ const DelegationProcessingMetadata delegation_processing_metadata,
-    __grid_constant__ const DelegationRequestMetadata delegation_request_metadata, const unsigned memory_args_start, const unsigned memory_grand_product_col,
+    __grid_constant__ const DelegationRequestMetadata delegation_request_metadata,
+    const unsigned init_teardown_args_start,
+    const unsigned memory_args_start, const unsigned memory_grand_product_col,
     __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-    const bool process_batch_ram_access, __grid_constant__ const BatchedRamAccesses batched_ram_accesses, const bool process_registers_and_indirect_access,
+    const bool process_registers_and_indirect_access,
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
     __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
@@ -414,21 +416,6 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
     for (unsigned i = 0; i < 4; i++)
       enforce_val_zero_if_pred_zero(predicate, vals[i], alphas, acc_quadratic, acc_linear);
 
-    if (process_batch_ram_access) {
-#pragma unroll
-      for (unsigned i = 0; i < batched_ram_accesses.num_accesses; i++) {
-        const auto &access = batched_ram_accesses.accesses[i];
-        enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_timestamp_col), alphas, acc_quadratic, acc_linear);
-        enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_timestamp_col + 1), alphas, acc_quadratic, acc_linear);
-        enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_value_col), alphas, acc_quadratic, acc_linear);
-        enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_value_col + 1), alphas, acc_quadratic, acc_linear);
-        if (access.is_write) {
-          enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col), alphas, acc_quadratic, acc_linear);
-          enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col + 1), alphas, acc_quadratic, acc_linear);
-        }
-      }
-    }
-
     if (process_registers_and_indirect_access) {
       unsigned flat_indirect_idx = 0;
 #pragma unroll
@@ -452,7 +439,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
           enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_timestamp_col + 1), alphas, acc_quadratic, acc_linear);
           enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_value_col), alphas, acc_quadratic, acc_linear);
           enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.read_value_col + 1), alphas, acc_quadratic, acc_linear);
-          if (access.is_write) {
+          if (access.has_write) {
             enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col), alphas, acc_quadratic, acc_linear);
             enforce_val_zero_if_pred_zero(predicate, memory_cols.get_at_col(access.maybe_write_value_col + 1), alphas, acc_quadratic, acc_linear);
           }
@@ -620,7 +607,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       const e4 alpha_times_gamma_adjusted = (helpers++).get();
       denom = e4::add(denom, alpha_times_gamma_adjusted);
 
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(init_teardown_args_start);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
       e4_arg_prev = e4_arg;
 
@@ -685,81 +672,12 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       denom = e4::add(denom, (helpers++).get());
       numerator = e4::add(numerator, (helpers++).get());
 
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + 1 + i);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
 
       acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
       e4_arg_prev = e4_arg;
     }
-  }
-
-  if (process_batch_ram_access) {
-    // address_high and write_timestamp limbs are which is common across accesses
-    const bf address_high = memory_cols.get_at_col(batched_ram_accesses.abi_mem_offset_high_col);
-    const bf write_timestamp_low = memory_cols.get_at_col(batched_ram_accesses.write_timestamp_col);
-    const bf write_timestamp_high = memory_cols.get_at_col(batched_ram_accesses.write_timestamp_col + 1);
-#pragma unroll 1
-    for (unsigned i = 0; i < batched_ram_accesses.num_accesses; i++) {
-      const auto &access = batched_ram_accesses.accesses[i];
-
-      e4 numerator = e4::mul((helpers++).get(), address_high);
-
-      e4 denom{};
-
-      const e4 value_low_helper = (helpers++).get();
-      const e4 value_high_helper = (helpers++).get();
-      if (access.is_write) {
-        denom = numerator;
-
-        const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-        denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
-        const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-        denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-
-        const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-        numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
-        const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-        numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-      } else {
-        const bf value_low = memory_cols.get_at_col(access.read_value_col);
-        numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
-        const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-        numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-
-        denom = numerator;
-      }
-
-      const e4 timestamp_low_helper = (helpers++).get();
-      const e4 timestamp_high_helper = (helpers++).get();
-
-      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
-      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
-
-      const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-      denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-      const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-      denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-
-      // adjusted constant contributions
-      const e4 constant = (helpers++).get();
-      denom = e4::add(denom, constant);
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
-      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-      // flush result
-      if (i == 0) {
-        acc_linear = e4::sub(acc_linear, numerator);
-      } else {
-        numerator = e4::add(numerator, constant);
-
-        // TODO: When you have a batch ram test case again, move e4_arg_prev to registers,
-        // as it is for the other two access types.
-        const e4 e4_arg_prev = stage_2_e4_cols.get_at_col(memory_args_start + i - 1);
-        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-      }
-    }
-
-    alphas += batched_ram_accesses.num_accesses;
   }
 
   if (process_registers_and_indirect_access) {
@@ -844,13 +762,14 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
         const e4 address_low_helper = (helpers++).get();
         const e4 address_high_helper = (helpers++).get();
         if (!access.has_address_derivation_carry_bit) {
-          if (indirect_access.has_variable_dependent) {
-            const bf t = memory_cols.get_at_col(indirect_access.maybe_variable_dependent_col);
-            const bf t_canonical = bf::into_canonical(v);
-            const bf extra_low = bf::mul(bf{indirect_access.maybe_variable_dependent_coeff}, t_canonical);
-            base_low = bf::add(base_low, extra_low);
+          if (access.has_variable_dependent) {
+            const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
+            const bf t_canonical = bf::into_canonical(t);
+            const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
+            numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
+          } else {
+            numerator = e4::mul(address_low_helper, base_low);
           }
-          numerator = e4::mul(address_low_helper, base_low);
           numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
         } else {
           const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);
@@ -860,7 +779,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
 
         const e4 value_low_helper = (helpers++).get();
         const e4 value_high_helper = (helpers++).get();
-        if (access.is_write) {
+        if (access.has_write) {
           denom = numerator;
 
           const bf read_value_low = memory_cols.get_at_col(access.read_value_col);

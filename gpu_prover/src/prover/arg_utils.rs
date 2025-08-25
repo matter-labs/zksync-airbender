@@ -10,7 +10,7 @@ use cs::definitions::{
     REGISTER_SIZE,
 };
 use cs::one_row_compiler::{
-    BatchedRamAccessColumns, ColumnAddress, CompiledCircuitArtifact,
+    ColumnAddress, CompiledCircuitArtifact,
     LookupWidth1SourceDestInformation, LookupWidth1SourceDestInformationForExpressions,
     RegisterOnlyAccessAddress, RegisterOrRamAccessAddress, ShuffleRamAddress,
     ShuffleRamQueryColumns,
@@ -678,94 +678,6 @@ impl Default for ShuffleRamAccesses {
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
-pub struct BatchedRamAccess {
-    pub gamma_plus_address_low_contribution: E4,
-    pub read_timestamp_col: u32,
-    pub read_value_col: u32,
-    pub maybe_write_value_col: u32,
-    pub is_write: bool,
-}
-
-pub const MAX_BATCHED_RAM_ACCESSES: usize = 36;
-
-#[derive(Clone)]
-#[repr(C)]
-pub struct BatchedRamAccesses {
-    pub accesses: [BatchedRamAccess; MAX_BATCHED_RAM_ACCESSES],
-    pub num_accesses: u32,
-    pub write_timestamp_col: u32,
-    pub abi_mem_offset_high_col: u32,
-}
-
-impl BatchedRamAccesses {
-    pub fn new(
-        challenges: &MemoryChallenges,
-        batched_ram_accesses: &Vec<BatchedRamAccessColumns>,
-        write_timestamp_col: usize,
-        abi_mem_offset_high_col: usize,
-    ) -> Self {
-        let mut accesses = [BatchedRamAccess::default(); MAX_BATCHED_RAM_ACCESSES];
-        let num_accesses = batched_ram_accesses.len();
-        assert!(num_accesses <= MAX_BATCHED_RAM_ACCESSES);
-        // imitates zksync_airbender's stage2.rs
-        for (i, memory_access_columns) in batched_ram_accesses.iter().enumerate() {
-            let offset = i * std::mem::size_of::<u32>();
-            let address_low = BF::from_u64_unchecked(offset as u64);
-            let mut gamma_plus_address_low_contribution = challenges.address_low_challenge.clone();
-            gamma_plus_address_low_contribution.mul_assign_by_base(&address_low);
-            gamma_plus_address_low_contribution.add_assign(&challenges.gamma);
-            match memory_access_columns {
-                BatchedRamAccessColumns::ReadAccess {
-                    read_timestamp,
-                    read_value,
-                } => {
-                    accesses[i] = BatchedRamAccess {
-                        gamma_plus_address_low_contribution,
-                        read_timestamp_col: read_timestamp.start() as u32,
-                        read_value_col: read_value.start() as u32,
-                        maybe_write_value_col: 0,
-                        is_write: false,
-                    };
-                }
-                BatchedRamAccessColumns::WriteAccess {
-                    read_timestamp,
-                    read_value,
-                    write_value,
-                } => {
-                    accesses[i] = BatchedRamAccess {
-                        gamma_plus_address_low_contribution,
-                        read_timestamp_col: read_timestamp.start() as u32,
-                        read_value_col: read_value.start() as u32,
-                        maybe_write_value_col: write_value.start() as u32,
-                        is_write: true,
-                    };
-                }
-                #[allow(unreachable_patterns)]
-                _ => unreachable!("Unexpected BatchedRamAccessColumns variant"),
-            }
-        }
-        Self {
-            accesses,
-            num_accesses: num_accesses as u32,
-            write_timestamp_col: write_timestamp_col as u32,
-            abi_mem_offset_high_col: abi_mem_offset_high_col as u32,
-        }
-    }
-}
-
-impl Default for BatchedRamAccesses {
-    fn default() -> Self {
-        Self {
-            accesses: [BatchedRamAccess::default(); MAX_BATCHED_RAM_ACCESSES],
-            num_accesses: 0,
-            write_timestamp_col: 0,
-            abi_mem_offset_high_col: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-#[repr(C)]
 pub struct RegisterAccess {
     pub gamma_plus_one_plus_address_low_contribution: E4,
     pub read_timestamp_col: u32,
@@ -873,27 +785,33 @@ impl RegisterAndIndirectAccesses {
                         variable_dependent,
                         offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
-                            (address_derivation_carry_bit.num_elements() > 0);
+                            address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from WriteAccess arm below).
+                        assert_eq!(j == 0, *offset_constant == 0);
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                        }
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
-                        let (
-                            maybe_address_derivation_carry_bit_col,
-                            has_address_derivation_carry_bit,
-                        ) = if has_address_derivation_carry_bit {
-                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
-                                (address_derivation_carry_bit.start() as u32, true)
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
                             } else {
-                                (0, false)
+                                0
                             };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let (coeff, col) = variable_dependent {
-                            (coeff, col, true)
+                        ) = if let Some((coeff, col)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)
                         };
@@ -918,27 +836,34 @@ impl RegisterAndIndirectAccesses {
                         variable_dependent,
                         offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset_constant == 0);
                         let has_address_derivation_carry_bit =
-                            (address_derivation_carry_bit.num_elements() > 0);
+                            address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from ReadAccess arm above).
+                        println!("j {} offset_constant {}", j, offset_constant);
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                            assert_eq!(*offset_constant, 0);
+                        }
                         if has_address_derivation_carry_bit {
                             assert!(variable_dependent.is_none());
                         }
-                        let (
-                            maybe_address_derivation_carry_bit_col,
-                            has_address_derivation_carry_bit,
-                        ) = if has_address_derivation_carry_bit {
-                                assert_eq!(address_derivation_carry_bit,num_elements(), 1);
-                                (address_derivation_carry_bit.start() as u32, true)
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
                             } else {
-                                (0, false)
+                                0
                             };
                         let (
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let (coeff, col) = variable_dependent {
-                            (coeff, col, true)
+                        ) = if let Some((coeff, col)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)
                         };
@@ -952,7 +877,7 @@ impl RegisterAndIndirectAccesses {
                             offset_constant: *offset_constant,
                             has_address_derivation_carry_bit,
                             has_variable_dependent,
-                            has_write: false,
+                            has_write: true,
                         };
                     }
                     #[allow(unreachable_patterns)]
@@ -989,10 +914,7 @@ pub fn print_size<T>(name: &str) -> usize {
     size
 }
 
-pub fn get_grand_product_col(
-    circuit: &CompiledCircuitArtifact<BF>,
-    cached_data: &ProverCachedData,
-) -> usize {
+pub fn get_grand_product_col(circuit: &CompiledCircuitArtifact<BF>) -> usize {
     // Get storage offset for grand product in stage_2_e4_cols
     // It's a little tricky because afaict zksync_airbender regards
     // bf and e4 stage 2 cols as chunks of a unified allocation,
@@ -1001,13 +923,11 @@ pub fn get_grand_product_col(
     // We need to translate zksync_airbender's offset in its unified allocation
     // to the offset we need in the separate stage_2_e4_cols allocation.
     // The following code is copied from zksync_airbender's stage4.rs:
-    // TODO: this offset may need to change for batched-ram circuits.
     // Now translate zksync_airbender's offset into the offset we need:
     let raw_offset_for_grand_product_poly = circuit
         .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .get_range(cached_data.offset_for_grand_product_accumulation_poly)
-        .start;
+        .intermediate_poly_for_grand_product
+        .start();
     assert!(raw_offset_for_grand_product_poly >= circuit.stage_2_layout.ext4_polys_offset);
     assert_eq!(raw_offset_for_grand_product_poly % 4, 0);
     assert_eq!(circuit.stage_2_layout.ext4_polys_offset % 4, 0);
@@ -1032,7 +952,5 @@ pub fn print_sizes() {
     print_size::<LazyInitTeardownLayout>("LazyInitTeardownLayout");
     print_size::<ShuffleRamAccess>("ShuffleRamAccess");
     print_size::<ShuffleRamAccesses>("ShuffleRamAccesses");
-    print_size::<BatchedRamAccess>("BatchedRamAccess");
-    print_size::<BatchedRamAccesses>("BatchedRamAccesses");
     print_size::<RegisterAndIndirectAccesses>("RegisterAndIndirectAccesses");
 }

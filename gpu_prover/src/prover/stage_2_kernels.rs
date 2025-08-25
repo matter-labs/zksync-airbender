@@ -130,24 +130,12 @@ cuda_kernel!(
     stage_2_e4_cols: MutPtrAndStride<BF>,
     lazy_init_teardown_layout: LazyInitTeardownLayout,
     memory_timestamp_high_from_circuit_idx: BF,
+    init_teardown_args_start: u32,
     memory_args_start: u32,
     log_n: u32,
 );
 
 shuffle_ram_memory_args!(shuffle_ram_memory_args_kernel);
-
-cuda_kernel!(
-    BatchedRamMemoryArgs,
-    batched_ram_memory_args,
-    memory_challenges: MemoryChallenges,
-    batched_ram_accesses: BatchedRamAccesses,
-    memory_cols: PtrAndStride<BF>,
-    stage_2_e4_cols: MutPtrAndStride<BF>,
-    memory_args_start: u32,
-    log_n: u32,
-);
-
-batched_ram_memory_args!(batched_ram_memory_args_kernel);
 
 cuda_kernel!(
     RegisterAndIndirectMemoryArgs,
@@ -342,9 +330,11 @@ pub fn compute_stage_2_args_on_main_domain(
         range_check_16_width_1_lookups_access_via_expressions,
         timestamp_range_check_width_1_lookups_access_via_expressions,
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
-        memory_accumulator_dst_start,
         ..
     } = cached_data.clone();
+    if process_batch_ram_access {
+        panic!("deprecated");
+    }
     assert_eq!(trace_len, n);
     assert_eq!(
         circuit
@@ -394,10 +384,14 @@ pub fn compute_stage_2_args_on_main_domain(
     num_expected_e4_args += num_generic_multiplicities_cols;
     num_expected_e4_args += num_expected_bf_args; // each bf arg should have a corresponding e4 arg
     num_expected_e4_args += num_generic_args;
-    num_expected_e4_args += num_memory_args;
     if handle_delegation_requests || process_delegations {
         num_expected_e4_args += 1; // delegation_processing_aux_poly
     }
+    if process_shuffle_ram_init {
+        num_expected_e4_args += 1;
+    }
+    num_expected_e4_args += num_memory_args;
+    num_expected_e4_args += 1; // memory grand product
     assert_eq!(num_stage_2_e4_cols, num_expected_e4_args);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
@@ -638,20 +632,18 @@ pub fn compute_stage_2_args_on_main_domain(
         .stage_2_layout
         .intermediate_polys_for_memory_argument
         .start();
-    assert_eq!(raw_memory_args_start, memory_accumulator_dst_start);
     let memory_args_start = translate_e4_offset(raw_memory_args_start);
+    let raw_init_teardown_args_start = circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown
+        .start();
+    let init_teardown_args_start = translate_e4_offset(raw_init_teardown_args_start);
     if process_shuffle_ram_init {
-        assert!(!process_batch_ram_access);
         assert!(!process_registers_and_indirect_access);
         assert_eq!(lazy_init_teardown_layout.process_shuffle_ram_init, true);
-        assert!(!process_batch_ram_access);
-        assert_eq!(circuit.memory_layout.batched_ram_accesses.len(), 0);
         let write_timestamp_in_setup_start = circuit.setup_layout.timestamp_setup_columns.start();
         let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-        assert_eq!(
-            num_memory_args,
-            1/* lazy init/teardown */ + shuffle_ram_access_sets.len() + 1, /* grand product */
-        );
+        assert_eq!(num_memory_args, shuffle_ram_access_sets.len();
         assert_eq!(num_memory_args, num_set_polys_for_memory_shuffle);
         let shuffle_ram_accesses =
             ShuffleRamAccesses::new(shuffle_ram_access_sets, write_timestamp_in_setup_start);
@@ -666,21 +658,14 @@ pub fn compute_stage_2_args_on_main_domain(
             d_stage_2_e4_cols,
             lazy_init_teardown_layout,
             memory_timestamp_high_from_circuit_idx,
+            init_teardown_args_start as u32,
             memory_args_start as u32,
             log_n as u32,
         );
         ShuffleRamMemoryArgsFunction(shuffle_ram_memory_args_kernel).launch(&config, &args)?;
     } else {
-        assert!(process_batch_ram_access || process_registers_and_indirect_access);
-        // In principle we can rig batch ram access and registers_and_indirect_access
-        // to coexist in the same circuit. However, our current circuits use either one
-        // or the other, so we expect only one to be true.
-        // TODO: If we ever do want to run them in the same circuit,
-        // consider combining their two kernels to use the same write timestamp contribution
-        // (but make sure batched ram accesses and indirect accesses do not overlap)
-        assert!(process_batch_ram_access != process_registers_and_indirect_access);
+        assert!(process_registers_and_indirect_access);
         assert_eq!(circuit.memory_layout.shuffle_ram_access_sets.len(), 0);
-        let num_batched_ram_accesses = circuit.memory_layout.batched_ram_accesses.len();
         let mut num_intermediate_polys_for_register_accesses = 0;
         for el in circuit.memory_layout.register_and_indirect_accesses.iter() {
             num_intermediate_polys_for_register_accesses += 1;
@@ -688,33 +673,9 @@ pub fn compute_stage_2_args_on_main_domain(
         }
         assert_eq!(
             num_memory_args,
-            num_batched_ram_accesses + num_intermediate_polys_for_register_accesses + 1, /* grand product */
+            num_intermediate_polys_for_register_accesses,
         );
         assert_eq!(num_memory_args, num_set_polys_for_memory_shuffle);
-    }
-    if process_batch_ram_access {
-        let batched_ram_accesses = &circuit.memory_layout.batched_ram_accesses;
-        assert!(batched_ram_accesses.len() > 0);
-        let write_timestamp_col = delegation_processor_layout.write_timestamp.start();
-        let abi_mem_offset_high_col = delegation_processor_layout.abi_mem_offset_high.start();
-        let batched_ram_accesses = BatchedRamAccesses::new(
-            &memory_challenges,
-            batched_ram_accesses,
-            write_timestamp_col,
-            abi_mem_offset_high_col,
-        );
-        let block_dim = 128;
-        let grid_dim = (n as u32 + 127) / 128;
-        let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-        let args = BatchedRamMemoryArgsArguments::new(
-            memory_challenges.clone(),
-            batched_ram_accesses,
-            memory_cols,
-            d_stage_2_e4_cols,
-            memory_args_start as u32,
-            log_n as u32,
-        );
-        BatchedRamMemoryArgsFunction(batched_ram_memory_args_kernel).launch(&config, &args)?;
     }
     if process_registers_and_indirect_access {
         let register_and_indirect_accesses = &circuit.memory_layout.register_and_indirect_accesses;
@@ -802,10 +763,10 @@ pub fn compute_stage_2_args_on_main_domain(
     // last memory arg is the grand product of the second-to-last memory arg
     // Args are vectorized E4, so I need to transpose the second-to-last col
     // to a col of E4 tuples, do the grand product, then transpose back.
-    assert!(num_memory_args >= 2); // weird if this is not the case
+    let grand_product_offset_in_e4_cols = get_grand_product_col(circuit); 
     let stride = stage_2_e4_cols.stride();
     let offset = stage_2_e4_cols.offset();
-    let second_to_last_slice_start = 4 * (memory_args_start + num_memory_args - 2) * stride;
+    let second_to_last_slice_start = 4 * (grand_product_offset_in_e4_cols - 1) * stride;
     let (_, slice) = stage_2_e4_cols
         .slice_mut()
         .split_at_mut(second_to_last_slice_start);
@@ -853,7 +814,7 @@ mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, GpuComparisonArgs};
+    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
     use serial_test::serial;
 
     type BF = BaseField;
@@ -1103,9 +1064,15 @@ mod tests {
         // collect locations of memory args
         let raw_col = circuit
             .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown
+            .start();
+        let init_teardown_args_start = translate_e4_offset(raw_col);
+        let raw_col = circuit
+            .stage_2_layout
             .intermediate_polys_for_memory_argument
             .start();
         let memory_args_start = translate_e4_offset(raw_col);
+        let grand_product_col = get_grand_product_col(circuit);
         let h_stage_2_bf_cols = &h_stage_2_cols[0..num_stage_2_bf_cols * domain_size];
         let start = e4_cols_offset * domain_size;
         let end = start + 4 * num_stage_2_e4_cols * domain_size;
@@ -1119,6 +1086,10 @@ mod tests {
             let mut stage_2_trace_view = prover_data.stage_2_result.ldes[domain_index]
                 .trace
                 .row_view(range.clone());
+            println!(
+                "memory_args_start {} num_memory_args {}",
+                memory_args_start, num_memory_args
+            );
             for i in 0..domain_size {
                 let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
                 // range check 16 comparisons
@@ -1237,6 +1208,15 @@ mod tests {
                         i,
                     );
                 }
+                // shuffle ram init/teardown comparison
+                let j = init_teardown_args_start;
+                assert_eq!(
+                    get_vectorized_e4_val(i, j),
+                    src.add(j).read(),
+                    "init/teardown e4 failed at row {} col {}",
+                    i,
+                    j,
+                );
                 // memory arg comparisons
                 let start = memory_args_start;
                 let end = start + num_memory_args;
@@ -1249,6 +1229,15 @@ mod tests {
                         j,
                     );
                 }
+                // memory grand product comparison
+                let j = grand_product_col;
+                assert_eq!(
+                    get_vectorized_e4_val(i, j),
+                    src.add(j).read(),
+                    "grand product e4 failed at row {} col {}",
+                    i,
+                    j,
+                );
                 stage_2_trace_view.advance_row();
             }
         }
@@ -1264,9 +1253,21 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_2_for_delegation_circuit() {
+    fn test_stage_2_for_main_and_blake() {
         let ctx = Context::create(12).unwrap();
         run_basic_delegation_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_stage_2_for_main_and_keccak() {
+        let ctx = Context::create(12).unwrap();
+        run_keccak_test_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
