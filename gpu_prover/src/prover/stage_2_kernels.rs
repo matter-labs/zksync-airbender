@@ -130,7 +130,7 @@ cuda_kernel!(
     stage_2_e4_cols: MutPtrAndStride<BF>,
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     memory_timestamp_high_from_circuit_idx: BF,
-    init_teardown_args_start: u32,
+    lazy_init_teardown_args_start: u32,
     memory_args_start: u32,
     log_n: u32,
 );
@@ -633,11 +633,11 @@ pub fn compute_stage_2_args_on_main_domain(
         .intermediate_polys_for_memory_argument
         .start();
     let memory_args_start = translate_e4_offset(raw_memory_args_start);
-    let raw_init_teardown_args_start = circuit
+    let raw_lazy_init_teardown_args_start = circuit
         .stage_2_layout
         .intermediate_polys_for_memory_init_teardown
         .start();
-    let init_teardown_args_start = translate_e4_offset(raw_init_teardown_args_start);
+    let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
     if process_shuffle_ram_init {
         assert!(!process_registers_and_indirect_access);
         assert_eq!(lazy_init_teardown_layouts.process_shuffle_ram_init, true);
@@ -658,7 +658,7 @@ pub fn compute_stage_2_args_on_main_domain(
             d_stage_2_e4_cols,
             lazy_init_teardown_layouts,
             memory_timestamp_high_from_circuit_idx,
-            init_teardown_args_start as u32,
+            lazy_init_teardown_args_start as u32,
             memory_args_start as u32,
             log_n as u32,
         );
@@ -1066,7 +1066,7 @@ mod tests {
             .stage_2_layout
             .intermediate_polys_for_memory_init_teardown
             .start();
-        let init_teardown_args_start = translate_e4_offset(raw_col);
+        let lazy_init_teardown_args_start = translate_e4_offset(raw_col);
         let raw_col = circuit
             .stage_2_layout
             .intermediate_polys_for_memory_argument
@@ -1209,7 +1209,7 @@ mod tests {
                     );
                 }
                 // shuffle ram init/teardown comparison
-                let j = init_teardown_args_start;
+                let j = lazy_init_teardown_args_start;
                 assert_eq!(
                     get_vectorized_e4_val(i, j),
                     src.add(j).read(),

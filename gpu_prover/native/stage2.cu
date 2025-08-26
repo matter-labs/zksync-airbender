@@ -275,7 +275,7 @@ EXTERN __launch_bounds__(128, 8) __global__
                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
                                         __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout,
                                         const bf memory_timestamp_high_from_circuit_idx,
-                                        const unsigned init_teardown_args_start,
+                                        const unsigned lazy_init_teardown_args_start,
                                         const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -313,7 +313,7 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 num_over_denom_acc = numerator;
   e4 denom_inv{e4::inv(denom)};
   num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
-  stage_2_e4_cols.set_at_col(init_teardown_args_start, num_over_denom_acc);
+  stage_2_e4_cols.set_at_col(lazy_init_teardown_args_start, num_over_denom_acc);
 
   // Shuffle ram accesses
   // first, read a couple values common across accesses:
