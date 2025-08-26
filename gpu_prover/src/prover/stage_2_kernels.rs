@@ -88,7 +88,7 @@ cuda_kernel!(
     range_check_16_layout: RangeCheck16ArgsLayout,
     expressions: FlattenedLookupExpressionsLayout,
     expressions_for_shuffle_ram: FlattenedLookupExpressionsForShuffleRamLayout,
-    lazy_init_teardown_layout: LazyInitTeardownLayout,
+    lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     setup_cols: PtrAndStride<BF>,
     witness_cols: PtrAndStride<BF>,
     memory_cols: PtrAndStride<BF>,
@@ -128,7 +128,7 @@ cuda_kernel!(
     setup_cols: PtrAndStride<BF>,
     memory_cols: PtrAndStride<BF>,
     stage_2_e4_cols: MutPtrAndStride<BF>,
-    lazy_init_teardown_layout: LazyInitTeardownLayout,
+    lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     memory_timestamp_high_from_circuit_idx: BF,
     init_teardown_args_start: u32,
     memory_args_start: u32,
@@ -576,15 +576,15 @@ pub fn compute_stage_2_args_on_main_domain(
             FlattenedLookupExpressionsForShuffleRamLayout::default()
         };
     // 32-bit lazy init addresses are treated as a pair of range check 16 cols
-    let lazy_init_teardown_layout = if process_shuffle_ram_init {
-        LazyInitTeardownLayout::new(
+    let lazy_init_teardown_layouts = if process_shuffle_ram_init {
+        LazyInitTeardownLayouts::new(
             circuit,
             &lazy_init_address_range_check_16,
             &shuffle_ram_inits_and_teardowns,
             &translate_e4_offset,
         )
     } else {
-        LazyInitTeardownLayout::default()
+        LazyInitTeardownLayouts::default()
     };
     // Width-3 lookups
     let generic_args_start = if num_generic_args > 0 {
@@ -600,7 +600,7 @@ pub fn compute_stage_2_args_on_main_domain(
     let generic_lookups_args_to_table_entries_map =
         generic_lookups_args_to_table_entries_map.as_ptr_and_stride();
     let d_stage_2_bf_cols = stage_2_bf_cols.as_mut_ptr_and_stride();
-    let lazy_init_teardown_layout_copy = lazy_init_teardown_layout.clone();
+    let lazy_init_teardown_layouts_copy = lazy_init_teardown_layouts.clone();
     let block_dim = 128;
     let grid_dim = (n as u32 + 127) / 128;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -608,7 +608,7 @@ pub fn compute_stage_2_args_on_main_domain(
         range_check_16_layout,
         expressions_layout,
         expressions_for_shuffle_ram_layout,
-        lazy_init_teardown_layout_copy,
+        lazy_init_teardown_layouts_copy,
         setup_cols,
         witness_cols,
         memory_cols,
@@ -640,10 +640,10 @@ pub fn compute_stage_2_args_on_main_domain(
     let init_teardown_args_start = translate_e4_offset(raw_init_teardown_args_start);
     if process_shuffle_ram_init {
         assert!(!process_registers_and_indirect_access);
-        assert_eq!(lazy_init_teardown_layout.process_shuffle_ram_init, true);
+        assert_eq!(lazy_init_teardown_layouts.process_shuffle_ram_init, true);
         let write_timestamp_in_setup_start = circuit.setup_layout.timestamp_setup_columns.start();
         let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-        assert_eq!(num_memory_args, shuffle_ram_access_sets.len();
+        assert_eq!(num_memory_args, shuffle_ram_access_sets.len());
         assert_eq!(num_memory_args, num_set_polys_for_memory_shuffle);
         let shuffle_ram_accesses =
             ShuffleRamAccesses::new(shuffle_ram_access_sets, write_timestamp_in_setup_start);
@@ -656,7 +656,7 @@ pub fn compute_stage_2_args_on_main_domain(
             setup_cols,
             memory_cols,
             d_stage_2_e4_cols,
-            lazy_init_teardown_layout,
+            lazy_init_teardown_layouts,
             memory_timestamp_high_from_circuit_idx,
             init_teardown_args_start as u32,
             memory_args_start as u32,

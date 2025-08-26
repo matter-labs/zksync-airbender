@@ -84,9 +84,6 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     >,
     proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
 ) {
-    // #[cfg(test)]
-    // panic!();
-
     Mersenne31Quartic::init_ext4_fma_ops();
 
     let mut leaf_inclusion_verifier = V::new();
@@ -313,9 +310,25 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     {
         // setup, then witness, then memory, then stage 2 base, then stage 2 ext, then quotient
         let (setup, rest) = skeleton.openings_at_z.split_at(NUM_SETUP_OPENINGS);
+        let setup = setup
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_SETUP_OPENINGS]>()
+            .as_ref_unchecked();
         let (witness, rest) = rest.split_at(NUM_WITNESS_OPENINGS);
+        let witness = witness
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_WITNESS_OPENINGS]>()
+            .as_ref_unchecked();
         let (memory, rest) = rest.split_at(NUM_MEMORY_OPENINGS);
+        let memory = memory
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_MEMORY_OPENINGS]>()
+            .as_ref_unchecked();
         let (stage_2, rest) = rest.split_at(NUM_STAGE2_OPENINGS);
+        let stage_2 = stage_2
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_STAGE2_OPENINGS]>()
+            .as_ref_unchecked();
         assert_eq!(rest.len(), 1);
         let quotient_opening = rest[0];
 
@@ -331,7 +344,15 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         let (witness_next_row_set, rest) = skeleton
             .openings_at_z_omega
             .split_at(NUM_WITNESS_OPENING_NEXT_ROW);
+        let witness_next_row_set = witness_next_row_set
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_WITNESS_OPENING_NEXT_ROW]>()
+            .as_ref_unchecked();
         let (memory_next_row_set, rest) = rest.split_at(NUM_MEMORY_OPENING_NEXT_ROW);
+        let memory_next_row_set = memory_next_row_set
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_MEMORY_OPENING_NEXT_ROW]>()
+            .as_ref_unchecked();
         assert_eq!(rest.len(), 1);
         let stage_2_next_row_set = rest;
 
@@ -442,12 +463,6 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
                 ExternalDelegationArgumentChallenges::default()
             };
 
-        let aux_boundary_values = if skeleton.aux_boundary_values.len() > 0 {
-            *skeleton.aux_boundary_values.get_unchecked(0)
-        } else {
-            AuxArgumentsBoundaryValues::default()
-        };
-
         assert!((u32::MAX >> CIRCUIT_SEQUENCE_BITS_SHIFT) >= skeleton.circuit_sequence_idx);
 
         let memory_timestamp_high_from_circuit_sequence =
@@ -490,7 +505,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             delegation_argument_linearization_challenges.delegation_argument_gamma,
             &skeleton.public_inputs,
             &aux_proof_values,
-            aux_boundary_values,
+            &skeleton.aux_boundary_values,
             memory_timestamp_high_from_circuit_sequence,
             delegation_type,
             delegation_argument_interpolant_linear_coeff,

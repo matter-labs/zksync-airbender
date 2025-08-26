@@ -834,10 +834,10 @@ cuda_kernel!(
     delegation_challenges: DelegationChallenges,
     delegation_processing_metadata: DelegationProcessingMetadata,
     delegation_request_metadata: DelegationRequestMetadata,
-    init_teardown_args_start: u32,
+    lazy_init_teardown_args_start: u32,
     memory_args_start: u32,
     memory_grand_product_col: u32,
-    lazy_init_teardown_layout: LazyInitTeardownLayout,
+    lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     process_registers_and_indirect_access: bool,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
@@ -878,10 +878,10 @@ pub struct Metadata {
     generic_lookup_multiplicities_layout: MultiplicitiesLayout,
     state_linkage_constraints: StateLinkageConstraints,
     boundary_constraints: BoundaryConstraints,
-    init_teardown_args_start: usize,
+    lazy_init_teardown_args_start: usize,
     memory_args_start: usize,
     memory_grand_product_col: usize,
-    lazy_init_teardown_layout: LazyInitTeardownLayout,
+    lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
     timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
@@ -1136,17 +1136,17 @@ impl Metadata {
                 FlattenedLookupExpressionsForShuffleRamLayout::default()
             };
         // 32-bit lazy init addresses are treated as a pair of range check 16 cols
-        let lazy_init_teardown_layout = if process_shuffle_ram_init {
-            assert!(circuit.lazy_init_address_aux_vars.is_some());
-            LazyInitTeardownLayout::new(
+        let lazy_init_teardown_layouts = if process_shuffle_ram_init {
+            assert!(circuit.lazy_init_address_aux_vars.len() > 0);
+            LazyInitTeardownLayouts::new(
                 circuit,
                 &lazy_init_address_range_check_16,
                 &shuffle_ram_inits_and_teardowns,
                 &translate_e4_offset,
             )
         } else {
-            assert!(circuit.lazy_init_address_aux_vars.is_none());
-            LazyInitTeardownLayout::default()
+            assert_eq!(circuit.lazy_init_address_aux_vars.len(), 0);
+            LazyInitTeardownLayouts::default()
         };
         // Host work to precompute constants_times_challenges_sum and some helpers that
         // streamline device computation
@@ -1264,7 +1264,7 @@ impl Metadata {
             );
         }
         // lazy init addresses range checks
-        if process_shuffle_ram_init {
+        for _ in 0..lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
             alpha_offset += 1;
             let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
             helpers.push(*alpha.clone().mul_assign(&lookup_gamma));
@@ -1469,21 +1469,32 @@ impl Metadata {
             .intermediate_polys_for_memory_argument
             .start();
         let memory_args_start = translate_e4_offset(raw_memory_args_start);
-        let raw_init_teardown_args_start = circuit
+        assert_eq!(
+            circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements(),
+            lazy_init_teardown_layouts.num_lazy_init_teardown_sets<
+        );
+        let raw_lazy_init_teardown_args_start = circuit
             .stage_2_layout
             .intermediate_polys_for_memory_init_teardown
             .start();
-        let init_teardown_args_start = translate_e4_offset(raw_init_teardown_args_start);
-        if process_shuffle_ram_init {
-            // the initial increment by 6 corresponds to the constraints that
-            // ensure lazy init limbs are zero if "final borrow" is zero
+        let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
+        // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
+        for _ in lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
             alpha_offset += 6;
+        }
+        // for lazy init memory accumulator contributions
+        for i in 0..lazy_init_teardown_layouts.num_lazy_init_teardown_sets as usize {
             let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
             alpha_offset += 1;
             let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
-            constants_times_challenges
-                .sum
-                .sub_assign(&alpha_times_gamma);
+            if i == 0 {
+                constants_times_challenges
+                    .sum
+                    .sub_assign(&alpha_times_gamma);
+            }
             let mc = &memory_challenges;
             helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
             helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
@@ -1602,7 +1613,7 @@ impl Metadata {
         alpha_offset = 0;
         let state_linkage_constraints = StateLinkageConstraints::new(circuit);
         alpha_offset += state_linkage_constraints.num_constraints as usize;
-        if process_shuffle_ram_init {
+        for _ in 0..lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
             // alphas for "next lazy init timestamp > current lazy init timestamp"
             alpha_offset += 2;
         }
@@ -1613,9 +1624,9 @@ impl Metadata {
             external_values,
             public_inputs,
             process_shuffle_ram_init,
-            lazy_init_teardown_layout.init_address_start as usize,
-            lazy_init_teardown_layout.teardown_value_start as usize,
-            lazy_init_teardown_layout.teardown_timestamp_start as usize,
+            lazy_init_teardown_layouts[0].init_address_start as usize,
+            lazy_init_teardown_layouts[0].teardown_value_start as usize,
+            lazy_init_teardown_layouts[0].teardown_timestamp_start as usize,
             h_alphas_for_first_row,
             h_alphas_for_one_before_last_row,
             helpers,
@@ -1738,10 +1749,10 @@ impl Metadata {
             generic_lookup_multiplicities_layout,
             state_linkage_constraints,
             boundary_constraints,
-            init_teardown_args_start,
+            lazy_init_teardown_args_start,
             memory_args_start,
             memory_grand_product_col,
-            lazy_init_teardown_layout,
+            lazy_init_teardown_layouts,
             shuffle_ram_accesses,
             range_check_16_multiplicities_layout,
             timestamp_range_check_multiplicities_layout,
@@ -1809,9 +1820,10 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
         boundary_constraints,
+        lazy_init_teardown_args_start,
         memory_args_start,
         memory_grand_product_col,
-        lazy_init_teardown_layout,
+        lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
@@ -1913,10 +1925,10 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_challenges,
         delegation_processing_metadata,
         delegation_request_metadata,
-        init_teardown_args_start as u32,
+        lazy_init_teardown_args_start as u32,
         memory_args_start as u32,
         memory_grand_product_col as u32,
-        lazy_init_teardown_layout,
+        lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         process_registers_and_indirect_access,
         register_and_indirect_accesses,

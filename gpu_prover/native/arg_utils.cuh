@@ -168,6 +168,8 @@ DEVICE_FORCEINLINE void eval_a_and_b(field::base_field a_and_b[2], const Flatten
   }
 }
 
+constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 1;
+
 extern "C" struct LazyInitTeardownLayout {
   const unsigned init_address_start;
   const unsigned teardown_value_start;
@@ -178,8 +180,13 @@ extern "C" struct LazyInitTeardownLayout {
   const unsigned init_address_final_borrow;
   const unsigned bf_arg_col;
   const unsigned e4_arg_col;
-  const bool process_shuffle_ram_init;
 };
+
+extern "C" struct LazyInitTeardownLayouts {
+  const LazyInitTeardownLayout layouts[MAX_LAZY_INIT_TEARDOWN_SETS];
+  const unsigned num_lazy_init_teardown_sets;
+  const bool process_shuffle_ram_init;
+}
 
 constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
 

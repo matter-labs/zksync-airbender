@@ -498,7 +498,7 @@ impl Default for FlattenedLookupExpressionsForShuffleRamLayout {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct LazyInitTeardownLayout {
     pub init_address_start: u32,
@@ -510,6 +510,16 @@ pub struct LazyInitTeardownLayout {
     pub init_address_final_borrow: u32,
     pub bf_arg_col: u32,
     pub e4_arg_col: u32,
+    pub process_shuffle_ram_init: bool,
+}
+
+const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct LazyInitTeardownLayouts {
+    pub layouts: [LazyInitTeardownLayout; MAX_LAZY_INIT_TEARDOWN_SETS];
+    pub num_lazy_init_teardown_sets: u32,
     pub process_shuffle_ram_init: bool,
 }
 
@@ -528,52 +538,60 @@ impl LazyInitTeardownLayout {
         shuffle_ram_inits_and_teardowns: &ShuffleRamInitAndTeardownLayout,
         translate_e4_offset: &F,
     ) -> Self {
-        let init_address_start = shuffle_ram_inits_and_teardowns
-            .lazy_init_addresses_columns
-            .start();
-        let teardown_value_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_values_columns
-            .start();
-        let teardown_timestamp_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_timestamps_columns
-            .start();
-        let lazy_init_address_aux_vars = circuit.lazy_init_address_aux_vars.expect("should exist");
-        let ShuffleRamAuxComparisonSet {
-            aux_low_high: [address_aux_low, address_aux_high],
-            intermediate_borrow,
-            final_borrow,
-        } = lazy_init_address_aux_vars;
-        let init_address_aux_low = Self::unpack_witness_column_address(address_aux_low);
-        let init_address_aux_high = Self::unpack_witness_column_address(address_aux_high);
-        let intermediate_borrow = Self::unpack_witness_column_address(intermediate_borrow);
-        let final_borrow = Self::unpack_witness_column_address(final_borrow);
+        let lazy_init_address_aux_vars = &circuit.lazy_init_address_aux_vars;
+        let num_lazy_init_teardown_sets = shuffle_ram_inits_and_teardowns.len();
+        assert!(num_lazy_init_teardown_sets <= MAX_LAZY_INIT_TEARDOWN_SETS);
+        assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_aux_vars.len());
+        assert_eq!(num_lazy_init_teardown_sets, lookup_set.base_field_oracles.num_elements());
+        assert_eq!(num_lazy_init_teardown_sets, lookup_set.ext4_field_oracles.num_elements());
+        let mut layouts = [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS];
+        for (i, (init_and_teardown, aux_vars)) in shuffle_ram_inits_and_teardowns
+            .iter()
+            .zip(lazy_init_address_aux_vars.iter())
+            .enumerate() {
+            let init_address_start = init_and_teardown
+                .lazy_init_addresses_columns
+                .start();
+            let teardown_value_start = init_and_teardown
+                .lazy_teardown_values_columns
+                .start();
+            let teardown_timestamp_start = init_and_teardown
+                .lazy_teardown_timestamps_columns
+                .start();
+            let ShuffleRamAuxComparisonSet {
+                aux_low_high: [address_aux_low, address_aux_high],
+                intermediate_borrow,
+                final_borrow,
+            } = aux_vars;
+            let init_address_aux_low = Self::unpack_witness_column_address(address_aux_low);
+            let init_address_aux_high = Self::unpack_witness_column_address(address_aux_high);
+            let intermediate_borrow = Self::unpack_witness_column_address(intermediate_borrow);
+            let final_borrow = Self::unpack_witness_column_address(final_borrow);
+            layouts[i] = LazyInitTeardownLayout {
+                init_address_start: init_address_start as u32,
+                teardown_value_start: teardown_value_start as u32,
+                teardown_timestamp_start: teardown_timestamp_start as u32,
+                init_address_aux_low: init_address_aux_low as u32,
+                init_address_aux_high: init_address_aux_high as u32,
+                init_address_intermediate_borrow: intermediate_borrow as u32,
+                init_address_final_borrow: final_borrow as u32,
+                bf_arg_col: (lookup_set.base_field_oracles.start() + i) as u32,
+                e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start() + 4 * i) as u32,
+            }
+        }
         Self {
-            init_address_start: init_address_start as u32,
-            teardown_value_start: teardown_value_start as u32,
-            teardown_timestamp_start: teardown_timestamp_start as u32,
-            init_address_aux_low: init_address_aux_low as u32,
-            init_address_aux_high: init_address_aux_high as u32,
-            init_address_intermediate_borrow: intermediate_borrow as u32,
-            init_address_final_borrow: final_borrow as u32,
-            bf_arg_col: lookup_set.base_field_oracles.start() as u32,
-            e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start()) as u32,
+            layouts,
+            num_lazy_init_teardown_sets,
             process_shuffle_ram_init: true,
         }
     }
 }
 
-impl Default for LazyInitTeardownLayout {
+impl Default for LazyInitTeardownLayouts {
     fn default() -> Self {
         Self {
-            init_address_start: 0,
-            teardown_value_start: 0,
-            teardown_timestamp_start: 0,
-            init_address_aux_low: 0,
-            init_address_aux_high: 0,
-            init_address_intermediate_borrow: 0,
-            init_address_final_borrow: 0,
-            bf_arg_col: 0,
-            e4_arg_col: 0,
+            layouts: [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS]; 
+            num_lazy_init_teardown_sets: 0,
             process_shuffle_ram_init: false,
         }
     }

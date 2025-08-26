@@ -11,7 +11,7 @@
 #![feature(iter_advance_by)]
 
 pub mod allocator;
-pub mod barycentric;
+// pub mod barycentric;
 pub mod blake2s;
 pub mod circuit_type;
 pub mod context;

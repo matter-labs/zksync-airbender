@@ -3574,13 +3574,13 @@
       "start": 180,
       "num_elements": 61
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 424,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
       "start": 0,
       "num_elements": 0
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 424,
+      "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
       "start": 428,
@@ -22726,6 +22726,12 @@
     1376256,
     1378304,
     1382400,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
     1390592,
     1390592,
     1390592,

@@ -372,9 +372,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
     const bool handle_delegation_requests, const unsigned delegation_aux_poly_col, __grid_constant__ const DelegationChallenges delegation_challenges,
     __grid_constant__ const DelegationProcessingMetadata delegation_processing_metadata,
     __grid_constant__ const DelegationRequestMetadata delegation_request_metadata,
-    const unsigned init_teardown_args_start,
+    const unsigned lazy_init_teardown_args_start,
     const unsigned memory_args_start, const unsigned memory_grand_product_col,
-    __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
     const bool process_registers_and_indirect_access,
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
@@ -483,7 +483,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
                                                           acc_quadratic);
     }
 
-    if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+      const auto &lazy_init_teardown_layout = lazy_init_teardown_layout.layouts[i];
       const bf a = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
       const bf b = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
       const bf bf_arg = stage_2_bf_cols.get_at_col(lazy_init_teardown_layout.bf_arg_col);
@@ -574,9 +575,10 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   }
 
   if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+    // First enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
-    e4 e4_arg_prev{};
-    {
       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
       const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
       const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
@@ -585,18 +587,29 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
       const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
 
-      // First, enforce lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
       enforce_val_zero_if_pred_zero(final_borrow, address_low, alphas, acc_quadratic, acc_linear);
       enforce_val_zero_if_pred_zero(final_borrow, address_high, alphas, acc_quadratic, acc_linear);
       enforce_val_zero_if_pred_zero(final_borrow, value_low, alphas, acc_quadratic, acc_linear);
       enforce_val_zero_if_pred_zero(final_borrow, value_high, alphas, acc_quadratic, acc_linear);
       enforce_val_zero_if_pred_zero(final_borrow, timestamp_low, alphas, acc_quadratic, acc_linear);
       enforce_val_zero_if_pred_zero(final_borrow, timestamp_high, alphas, acc_quadratic, acc_linear);
+    }
 
-      // now, enforce the lazy init arg itself
+    // Now enforce lazy init contributions to global memory accumulator
+    // TODO: try interleaving this with the above to avoid redundant loads
+    e4 e4_arg_prev{};
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+
+      const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+      const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+      const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
+      const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
+      const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
+      const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
+
       e4 numerator = e4::mul((helpers++).get(), address_low);
       numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
-      acc_linear = e4::sub(acc_linear, numerator);
 
       e4 denom{numerator};
       denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
@@ -606,14 +619,22 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
 
       const e4 alpha_times_gamma_adjusted = (helpers++).get();
       denom = e4::add(denom, alpha_times_gamma_adjusted);
-
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(init_teardown_args_start);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-      e4_arg_prev = e4_arg;
 
-      alphas++; // advance alpha explicitly
+      if (i == 0) {
+        acc_linear = e4::sub(acc_linear, numerator);
+        e4_arg_prev = e4_arg;
+      } else {
+        numerator = e4::add(numerator, alpha_times_gamma_adjusted);
+        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+        e4_arg_prev = e4_arg;
+      }
     }
 
+    alphas += lazy_init_teardown_layouts.num_lazy_init_teardown_sets;
+
+    // Now enforce access contributions to global memory accumulator
     // Some write timestamp limb contributions are common across accesses:
     const bf write_timestamp_in_setup_low = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_in_setup_start);
     const bf write_timestamp_in_setup_high = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_in_setup_start + 1);
@@ -863,7 +884,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   acc = e4::mul(acc, betas.get(5));
 
   // Constraints at every row except last two
-  if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layout.process_shuffle_ram_init) {
+  if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layouts.process_shuffle_ram_init) {
     e4 acc_linear{e4::zero()};
 
     {
@@ -888,30 +909,34 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       else
         memory_cols_next_row.sub_row(gid);
 
-      const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
-      {
-        const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-        const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
-        const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
-        bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
-        tmp = bf::add(tmp, this_low);
-        tmp = bf::sub(tmp, next_low);
-        tmp = bf::sub(tmp, aux_low);
-        const e4 alpha = (alphas_every_row_except_last_two++).get();
-        acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
-      }
-      {
-        const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
-        const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-        const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-        const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
-        bf tmp = bf::mul(SHIFT_16, final_borrow);
-        tmp = bf::add(tmp, this_high);
-        tmp = bf::sub(tmp, intermediate_borrow);
-        tmp = bf::sub(tmp, next_high);
-        tmp = bf::sub(tmp, aux_high);
-        const e4 alpha = (alphas_every_row_except_last_two++).get();
-        acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+      // TODO: Investigate how this is applied for unrolled circuits
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+        const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
+        {
+          const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+          const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
+          const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
+          bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
+          tmp = bf::add(tmp, this_low);
+          tmp = bf::sub(tmp, next_low);
+          tmp = bf::sub(tmp, aux_low);
+          const e4 alpha = (alphas_every_row_except_last_two++).get();
+          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+        }
+        {
+          const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
+          const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+          const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+          const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
+          bf tmp = bf::mul(SHIFT_16, final_borrow);
+          tmp = bf::add(tmp, this_high);
+          tmp = bf::sub(tmp, intermediate_borrow);
+          tmp = bf::sub(tmp, next_high);
+          tmp = bf::sub(tmp, aux_high);
+          const e4 alpha = (alphas_every_row_except_last_two++).get();
+          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+        }
       }
     }
 
@@ -930,7 +955,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   {
     e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
     unsigned i = 0;
-    if (lazy_init_teardown_layout.process_shuffle_ram_init)
+    // TODO: Fix for unrolled circuits
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init)
       for (; i < 6; i++)
         acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
     for (; i < boundary_constraints.num_first_row; i++)
@@ -944,7 +970,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   if (boundary_constraints.num_one_before_last_row > 0) {
     e4 acc_linear{};
     unsigned i = 0;
-    if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+    // TODO: Fix for unrolled circuits
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
       acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
       i++;
       for (; i < 6; i++)
@@ -976,8 +1003,11 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + expressions.num_range_check_16_expression_pairs;
       for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
         acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
-      if (lazy_init_teardown_layout.process_shuffle_ram_init)
+      // TODO: Fix for unrolled circuits
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
         acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
+      }
       acc_linear = e4::mul(acc_linear, (helpers++).get());
     }
     // validate col sums for timestamp range check e4 args

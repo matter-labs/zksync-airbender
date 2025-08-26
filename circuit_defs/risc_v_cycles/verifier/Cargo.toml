@@ -15,6 +15,9 @@ unroll = { workspace = true }
 verifier_common = { workspace = true , default-features = false}
 
 [features]
+security_80 = ["verifier_common/security_80"]
+security_100 = ["verifier_common/security_100"]
+security_128 = ["verifier_common/security_128"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 modular_ops = ["verifier_common/modular_ops"]
 modular_ext4_ops = ["verifier_common/modular_ext4_ops"]
@@ -25,7 +28,7 @@ proof_utils = ["verifier_common/proof_utils"]
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["verifier_common/replace_csr"]
 
-default = ["blake2_with_compression"]
+default = ["security_80", "blake2_with_compression"]
 
 [dev-dependencies]
 serde = "1"
