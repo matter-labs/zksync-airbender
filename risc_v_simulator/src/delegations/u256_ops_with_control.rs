@@ -32,12 +32,10 @@ pub fn u256_ops_with_control_impl<
 ) {
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
-    let mut state = state.observable;
-
     // read registers first
-    let x10 = state.registers[10];
-    let x11 = state.registers[11];
-    let x12 = state.registers[12];
+    let x10 = state.observable.registers[10];
+    let x11 = state.observable.registers[11];
+    let x12 = state.observable.registers[12];
 
     assert!(x10 % 32 == 0, "input pointer is unaligned");
     assert!(x11 % 32 == 0, "input pointer is unaligned");
@@ -164,7 +162,7 @@ pub fn u256_ops_with_control_impl<
     write_indirect_accesses::<_, 8>(x10 as usize, &a_accesses, memory_source);
 
     // update register
-    state.registers[12] = of as u32;
+    state.observable.registers[12] = of as u32;
 
     // make witness structures
     let mut register_accesses = [

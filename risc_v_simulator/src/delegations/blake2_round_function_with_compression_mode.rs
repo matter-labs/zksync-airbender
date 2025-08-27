@@ -32,13 +32,11 @@ pub fn blake2_round_function_with_extended_control<
 ) {
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
-    let state = state.observable;
-
     // read registers first
-    let x10 = state.registers[10];
-    let x11 = state.registers[11];
-    let x12 = state.registers[12];
-    let x13 = state.registers[13];
+    let x10 = state.observable.registers[10];
+    let x11 = state.observable.registers[11];
+    let x12 = state.observable.registers[12];
+    let x13 = state.observable.registers[13];
 
     assert!(x10 % 128 == 0, "input pointer is unaligned");
     assert!(x11 % 4 == 0, "input pointer is unaligned");
