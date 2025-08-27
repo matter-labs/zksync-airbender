@@ -293,28 +293,38 @@ EXTERN __launch_bounds__(128, 8) __global__
   // helped by precomputed cross-term challenge combinations.
   // It's hard to say what level of unrolling would be optimal.
 
+  e4 num_over_denom_acc{};
+
   // Shuffle ram init
-  e4 numerator{challenges.gamma};
-  const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-  numerator = e4::add(numerator, e4::mul(challenges.address_low_challenge, address_low));
-  const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-  numerator = e4::add(numerator, e4::mul(challenges.address_high_challenge, address_high));
+  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+    const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
-  e4 denom{numerator};
-  const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
-  denom = e4::add(denom, e4::mul(challenges.value_low_challenge, value_low));
-  const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
-  denom = e4::add(denom, e4::mul(challenges.value_high_challenge, value_high));
-  const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
-  denom = e4::add(denom, e4::mul(challenges.timestamp_low_challenge, timestamp_low));
-  const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
-  denom = e4::add(denom, e4::mul(challenges.timestamp_high_challenge, timestamp_high));
+    e4 numerator{challenges.gamma};
+    const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+    numerator = e4::add(numerator, e4::mul(challenges.address_low_challenge, address_low));
+    const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+    numerator = e4::add(numerator, e4::mul(challenges.address_high_challenge, address_high));
 
-  // flush result
-  e4 num_over_denom_acc = numerator;
-  e4 denom_inv{e4::inv(denom)};
-  num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
-  stage_2_e4_cols.set_at_col(lazy_init_teardown_args_start, num_over_denom_acc);
+    e4 denom{numerator};
+    const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
+    denom = e4::add(denom, e4::mul(challenges.value_low_challenge, value_low));
+    const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
+    denom = e4::add(denom, e4::mul(challenges.value_high_challenge, value_high));
+    const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
+    denom = e4::add(denom, e4::mul(challenges.timestamp_low_challenge, timestamp_low));
+    const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
+    denom = e4::add(denom, e4::mul(challenges.timestamp_high_challenge, timestamp_high));
+
+    // flush result
+    if (i == 0) {
+      e4 num_over_denom_acc = numerator;
+    } else {
+      num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
+    }
+    e4 denom_inv{e4::inv(denom)};
+    num_over_denom_acc = e4::mul(num_over_denom_acc, denom_inv);
+    stage_2_e4_cols.set_at_col(lazy_init_teardown_args_start + i, num_over_denom_acc);
+  }
 
   // Shuffle ram accesses
   // first, read a couple values common across accesses:
