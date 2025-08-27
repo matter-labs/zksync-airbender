@@ -868,7 +868,7 @@ mod tests {
         let domain_size = 1 << log_n;
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values,
+            &external_values.challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
@@ -1244,6 +1244,7 @@ mod tests {
                 // shuffle ram init/teardown comparison
                 let start = lazy_init_teardown_args_start;
                 let end = lazy_init_teardown_args_start + num_lazy_init_teardown_sets;
+                println!("start {} end {}", start, end);
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),

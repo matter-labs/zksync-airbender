@@ -37,7 +37,7 @@ log_gpu_mem_usage = []
 log_gpu_stages_timings = []
 
 [dev-dependencies]
-execution_utils = { workspace = true }
+# execution_utils = { workspace = true }
 prover = { workspace = true, features = ["default", "test"] }
 rand = { workspace = true, default-features = false }
 trace_and_split = { workspace = true }

@@ -317,7 +317,7 @@ EXTERN __launch_bounds__(128, 8) __global__
 
     // flush result
     if (i == 0) {
-      e4 num_over_denom_acc = numerator;
+      num_over_denom_acc = numerator;
     } else {
       num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
     }

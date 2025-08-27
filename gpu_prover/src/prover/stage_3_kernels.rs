@@ -2003,7 +2003,7 @@ mod tests {
 
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values,
+            &external_values.challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
