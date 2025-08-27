@@ -129,7 +129,7 @@ impl ProgramProof {
             recursion_chain_hash: proof_metadata.prev_end_params_output_hash,
         }
     }
-    pub fn to_metadata_from_program_proof(self) -> (ProofMetadata, ProofList) {
+    pub fn to_metadata_and_proof_list(self) -> (ProofMetadata, ProofList) {
         let reduced_proof_count = self.base_layer_proofs.len();
         let proof_list = ProofList {
             basic_proofs: vec![],

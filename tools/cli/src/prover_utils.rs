@@ -705,7 +705,7 @@ pub fn create_final_proofs_from_program_proof(
     recursion_mode: RecursionStrategy,
     use_gpu: bool,
 ) -> ProgramProof {
-    let (proof_metadata, proof_list) = input.to_metadata_from_program_proof();
+    let (proof_metadata, proof_list) = input.to_metadata_and_proof_list();
 
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
         assert!(
