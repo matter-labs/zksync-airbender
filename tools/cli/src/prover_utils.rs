@@ -1,18 +1,15 @@
 use crate::Machine;
 use clap::ValueEnum;
 use execution_utils::{
+    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
     get_padded_binary, ProgramProof, ProofList, ProofMetadata,
     UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
 use prover::{
-    cs::utils::split_timestamp,
     prover_stages::Proof,
-    risc_v_simulator::{
-        abstractions::non_determinism::QuasiUARTSource,
-        cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation, MachineConfig},
-    },
+    risc_v_simulator::abstractions::non_determinism::QuasiUARTSource,
     transcript::{Blake2sBufferingTranscript, Seed},
 };
 use std::{alloc::Global, fs, io::Read, path::Path};
@@ -154,18 +151,6 @@ impl RecursionStrategy {
     }
 }
 
-pub enum VerifierCircuitsIdentifiers {
-    // This enum is used inside tools/verifier/main.rs
-    BaseLayer = 0,
-    RecursionLayer = 1,
-    FinalLayer = 2,
-    RiscV = 3,
-    /// Combine 2 proofs (from recursion layers) into one.
-    // This is used in OhBender to combine previous block proof with current one.
-    CombinedRecursionLayers = 4,
-    RecursionLog23Layer = 5,
-}
-
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
     // Check the string length is a multiple of 8 (for valid u32 chunks)
     if hex_string.len() % 8 != 0 {
@@ -182,14 +167,6 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
         .collect();
 
     numbers
-}
-
-fn reduced_machine_allowed_delegation_types() -> Vec<u32> {
-    IWithoutByteAccessIsaConfigWithDelegation::ALLOWED_DELEGATION_CSRS.to_vec()
-}
-
-fn full_machine_allowed_delegation_types() -> Vec<u32> {
-    IMStandardIsaConfig::ALLOWED_DELEGATION_CSRS.to_vec()
 }
 
 pub fn create_proofs(
@@ -905,128 +882,4 @@ pub fn generate_oracle_data_from_metadata(metadata_path: &String) -> (ProofMetad
         ProofList::load_from_directory(&parent.to_str().unwrap().to_string(), &metadata);
     let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
     (metadata, oracle_data)
-}
-
-pub fn generate_oracle_data_for_universal_verifier(
-    metadata: &ProofMetadata,
-    proofs: &ProofList,
-) -> Vec<u32> {
-    let mut oracle = generate_oracle_data_from_metadata_and_proof_list(metadata, proofs);
-
-    if metadata.basic_proof_count > 0 {
-        oracle.insert(0, VerifierCircuitsIdentifiers::BaseLayer as u32);
-    } else if metadata.reduced_proof_count > 0 {
-        oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLayer as u32);
-    } else if metadata.reduced_log_23_proof_count > 0 {
-        oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLog23Layer as u32);
-    } else {
-        oracle.insert(0, VerifierCircuitsIdentifiers::FinalLayer as u32);
-    };
-    oracle
-}
-
-pub fn generate_oracle_data_from_metadata_and_proof_list(
-    metadata: &ProofMetadata,
-    proofs: &ProofList,
-) -> Vec<u32> {
-    let mut oracle_data = vec![];
-    // first - it reads all the register values.
-
-    assert_eq!(32, metadata.register_values.len());
-    for register in metadata.register_values.iter() {
-        oracle_data.push(register.value);
-        let (low, high) = split_timestamp(register.last_access_timestamp);
-        oracle_data.push(low);
-        oracle_data.push(high);
-    }
-
-    let delegations: Vec<u32> = if metadata.basic_proof_count > 0 {
-        // Then it needs the number of circuits.
-        oracle_data.push(metadata.basic_proof_count.try_into().unwrap());
-
-        assert_eq!(metadata.reduced_proof_count, 0);
-
-        // Then circuit proofs themselves.
-        for i in 0..metadata.basic_proof_count {
-            let proof = &proofs.basic_proofs[i];
-            oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-
-        full_machine_allowed_delegation_types()
-    } else if metadata.reduced_proof_count > 0 {
-        oracle_data.push(metadata.reduced_proof_count.try_into().unwrap());
-
-        // Or reduced proofs
-        for i in 0..metadata.reduced_proof_count {
-            let proof = &proofs.reduced_proofs[i];
-            oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-
-        reduced_machine_allowed_delegation_types()
-    } else if metadata.reduced_log_23_proof_count > 0 {
-        oracle_data.push(metadata.reduced_log_23_proof_count.try_into().unwrap());
-
-        // Or reduced log 23 proofs
-        for i in 0..metadata.reduced_log_23_proof_count {
-            let proof = &proofs.reduced_log_23_proofs[i];
-            oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-
-        reduced_machine_allowed_delegation_types()
-    } else {
-        oracle_data.push(metadata.final_proof_count.try_into().unwrap());
-
-        for i in 0..metadata.final_proof_count {
-            let proof = &proofs.final_proofs[i];
-            oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(proof, true));
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-
-        // For final proof - empty vec.
-        vec![]
-    };
-
-    for (k, _) in metadata.delegation_proof_count.iter() {
-        assert!(delegations.contains(k), "No delegation circuit for {}", k);
-    }
-
-    for delegation_type in &delegations {
-        let empty = vec![];
-        let delegation_proofs = proofs
-            .delegation_proofs
-            .iter()
-            .find(|(k, _)| k == delegation_type)
-            .map(|(_, v)| v)
-            .unwrap_or(&empty);
-        oracle_data.push(delegation_proofs.len() as u32);
-
-        for proof in delegation_proofs {
-            // Notice, that apply_shuffle is assumed false for delegation proofs.
-            oracle_data.extend(
-                verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, false),
-            );
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-    }
-    if let Some(prev_params) = metadata.prev_end_params_output {
-        oracle_data.extend(prev_params);
-    }
-    oracle_data
 }

@@ -7,13 +7,12 @@ use clap::{Parser, Subcommand};
 use cli_lib::generate_constants::generate_constants_for_binary;
 use cli_lib::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
-    serialize_to_file, u32_from_hex_string, ProvingLimit, RecursionStrategy,
-    VerifierCircuitsIdentifiers, DEFAULT_CYCLES,
+    serialize_to_file, u32_from_hex_string, ProvingLimit, RecursionStrategy, DEFAULT_CYCLES,
 };
 use cli_lib::Machine;
 
 use cli_lib::vk::generate_vk;
-use execution_utils::ProgramProof;
+use execution_utils::{ProgramProof, VerifierCircuitsIdentifiers};
 use reqwest::blocking::Client;
 use serde_json::Value;
 use std::path::Path;
@@ -577,7 +576,7 @@ fn verify_all(metadata_path: &String) {
 
 #[cfg(feature = "include_verifiers")]
 fn verify_all_program_proof(program_proof_path: &String) {
-    use cli_lib::prover_utils::generate_oracle_data_from_metadata_and_proof_list;
+    use execution_utils::generate_oracle_data_from_metadata_and_proof_list;
 
     let input_program_proof: ProgramProof = deserialize_from_file(&program_proof_path);
     //serde_json::from_str(&input.unwrap()).expect("Failed to parse input_hex into ProgramProof");

@@ -12,9 +12,15 @@ use verifier_common::transcript::Blake2sBufferingTranscript;
 
 mod constants;
 mod structs;
+mod verifiers;
 
 use self::constants::*;
 pub use self::structs::{ProgramProof, ProofList, ProofMetadata};
+
+pub use self::verifiers::{
+    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
+    VerifierCircuitsIdentifiers,
+};
 
 // pub const RUN_VERIFIERS_WITH_OUTPUT: bool = false;
 pub const RUN_VERIFIERS_WITH_OUTPUT: bool = true;
