@@ -544,6 +544,13 @@ impl LazyInitTeardownLayout {
         assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_aux_vars.len());
         assert_eq!(num_lazy_init_teardown_sets, lookup_set.base_field_oracles.num_elements());
         assert_eq!(num_lazy_init_teardown_sets, lookup_set.ext4_field_oracles.num_elements());
+        assert_eq!(
+            num_lazy_init_teardown_sets,
+            circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements()
+        );
         let mut layouts = [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS];
         for (i, (init_and_teardown, aux_vars)) in shuffle_ram_inits_and_teardowns
             .iter()

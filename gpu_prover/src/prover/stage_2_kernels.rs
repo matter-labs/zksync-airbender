@@ -1025,13 +1025,24 @@ mod tests {
             translate_e4_offset(args_metadata.ext_4_field_oracles.start());
         // collect locations of lazy init address args
         let lazy_init_lookup_set = cached_data.lazy_init_address_range_check_16;
-        let (lazy_init_bf_arg_col, lazy_init_e4_arg_col) = if cached_data.process_shuffle_ram_init {
+        assert_eq!(
+            lazy_init_lookup_set.base_field_oracles.num_elements(),
+            lazy_init_lookup_set.ext4_field_oracles.num_elements(),
+        );
+        let (
+            lazy_init_bf_args_start,
+            lazy_init_e4_args_start,
+            num_lazy_init_sets,
+        ) = if cached_data.process_shuffle_ram_init {
             (
                 lazy_init_lookup_set.base_field_oracles.start(),
                 translate_e4_offset(lazy_init_lookup_set.ext_4_field_oracles.start()),
+                lazy_init_lookup_set.base_field_oracles.num_elements(),
             )
         } else {
-            (0, 0)
+            assert_eq!(lazy_init_lookup_set.base_field_oracles.num_elements(), 0);
+            assert_eq!(lazy_init_lookup_set.ext4_field_oracles.num_elements(), 0);
+            (0, 0, 0)
         };
         // collect locations of generic args
         let raw_col = circuit
@@ -1066,6 +1077,13 @@ mod tests {
             .stage_2_layout
             .intermediate_polys_for_memory_init_teardown
             .start();
+        assert_eq!(
+            num_lazy_init_sets,
+            circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements(),
+        );
         let lazy_init_teardown_args_start = translate_e4_offset(raw_col);
         let raw_col = circuit
             .stage_2_layout
@@ -1092,59 +1110,53 @@ mod tests {
             );
             for i in 0..domain_size {
                 let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
+                let src_bf = stage_2_trace_view_row.as_ptr();
+                let src_e4 = stage_2_trace_view_row
+                    .as_ptr()
+                    .add(circuit.stage_2_layout.ext4_polys_offset)
+                    .cast::<E4>();
+                assert!(src_e4.is_aligned());
                 // range check 16 comparisons
-                let src = stage_2_trace_view_row.as_ptr();
                 let start = range_check_16_bf_args_start;
                 let end = start + range_check_16_num_bf_args;
                 for j in start..end {
                     assert_eq!(
                         h_stage_2_bf_cols[i + j * domain_size],
-                        src.add(j).read(),
+                        src_bf.add(j).read(),
                         "range check 16 bf failed at row {} col {}",
                         i,
                         j,
                     );
                 }
-                let src = stage_2_trace_view_row
-                    .as_ptr()
-                    .add(circuit.stage_2_layout.ext4_polys_offset)
-                    .cast::<E4>();
-                assert!(src.is_aligned());
                 let start = range_check_16_e4_args_start;
                 let end = start + range_check_16_num_e4_args;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "range check 16 e4 failed at row {} col {}",
                         i,
                         j,
                     );
                 }
                 // timestamp range check comparisons
-                let src = stage_2_trace_view_row.as_ptr();
                 let start = timestamp_range_check_bf_args_start;
                 let end = start + timestamp_range_check_num_bf_args;
                 for j in start..end {
                     assert_eq!(
                         h_stage_2_bf_cols[i + j * domain_size],
-                        src.add(j).read(),
+                        src_bf.add(j).read(),
                         "timestamp range check bf failed at row {} col {}",
                         i,
                         j,
                     );
                 }
-                let src = stage_2_trace_view_row
-                    .as_ptr()
-                    .add(circuit.stage_2_layout.ext4_polys_offset)
-                    .cast::<E4>();
-                assert!(src.is_aligned());
                 let start = timestamp_range_check_e4_args_start;
                 let end = start + timestamp_range_check_num_e4_args;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "timestamp range check e4 failed at row {} col {}",
                         i,
                         j,
@@ -1152,24 +1164,21 @@ mod tests {
                 }
                 // Comparisons for 32-bit lazy init address args,
                 // (treated as an extra pair of range check 16 args)
-                if cached_data.process_shuffle_ram_init {
-                    let src = stage_2_trace_view_row.as_ptr();
-                    let j = lazy_init_bf_arg_col;
+                let start = lazy_init_bf_args_start;
+                let end = lazy_init_bf_args_start + num_lazy_init_sets;
+                for j in start..end {
                     assert_eq!(
                         h_stage_2_bf_cols[i + j * domain_size],
-                        src.add(j).read(),
+                        src_bf.add(j).read(),
                         "lazy init address bf failed at row {}",
                         i,
                     );
-                    let src = stage_2_trace_view_row
-                        .as_ptr()
-                        .add(circuit.stage_2_layout.ext4_polys_offset)
-                        .cast::<E4>();
-                    assert!(src.is_aligned());
-                    let j = lazy_init_e4_arg_col;
+                let start = lazy_init_e4_args_start;
+                let end = lazy_init_e4_args_start + num_lazy_init_sets;
+                for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "lazy init address e4 failed at row {}",
                         i,
                     );
@@ -1180,7 +1189,7 @@ mod tests {
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "generic e4 failed at row {} col {}",
                         i,
                         j,
@@ -1192,7 +1201,7 @@ mod tests {
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "multiplicities args e4 failed at row {} col {}",
                         i,
                         j,
@@ -1203,27 +1212,30 @@ mod tests {
                     let j = delegation_aux_poly_col;
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "delegation aux poly failed at row {}",
                         i,
                     );
                 }
                 // shuffle ram init/teardown comparison
-                let j = lazy_init_teardown_args_start;
-                assert_eq!(
-                    get_vectorized_e4_val(i, j),
-                    src.add(j).read(),
-                    "init/teardown e4 failed at row {} col {}",
-                    i,
-                    j,
-                );
+                let start = lazy_init_teardown_args_start;
+                let end = lazy_init_teardown_args_start + num_lazy_init_sets;
+                for j in start..end {
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "init/teardown e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
                 // memory arg comparisons
                 let start = memory_args_start;
                 let end = start + num_memory_args;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
-                        src.add(j).read(),
+                        src_e4.add(j).read(),
                         "memory e4 failed at row {} col {}",
                         i,
                         j,
@@ -1233,7 +1245,7 @@ mod tests {
                 let j = grand_product_col;
                 assert_eq!(
                     get_vectorized_e4_val(i, j),
-                    src.add(j).read(),
+                    src_e4.add(j).read(),
                     "grand product e4 failed at row {} col {}",
                     i,
                     j,
@@ -1242,14 +1254,6 @@ mod tests {
             }
         }
     }
-
-    // #[test]
-    // #[serial]
-    // fn test_stage_2_for_basic_circuit() {
-    //     let ctx = Context::create(12).unwrap();
-    //     run_basic_test_impl(Some(Box::new(comparison_hook)));
-    //     ctx.destroy().unwrap();
-    // }
 
     #[test]
     #[serial]

@@ -250,7 +250,8 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 
   // 32-bit lazy init address cols, treated as an extra pair of range check 16 cols
-  if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+    const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
     const bf val0 = bf::into_canonical(memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start));
     const bf val1 = bf::into_canonical(memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1));
     const auto entry0 = aggregated_entry_invs_for_range_check_16.get(val0.limb);
@@ -273,7 +274,7 @@ EXTERN __launch_bounds__(128, 8) __global__
     void shuffle_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
                                         matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                        __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout,
+                                        __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
                                         const bf memory_timestamp_high_from_circuit_idx,
                                         const unsigned lazy_init_teardown_args_start,
                                         const unsigned memory_args_start, const unsigned log_n) {
