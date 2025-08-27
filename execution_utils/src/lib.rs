@@ -2,21 +2,19 @@
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
-use std::collections::BTreeMap;
-
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
-use trace_and_split::FinalRegisterValue;
-use verifier_common::cs::utils::split_timestamp;
 use verifier_common::prover::definitions::MerkleTreeCap;
 use verifier_common::prover::fft::GoodAllocator;
-use verifier_common::prover::prover_stages::{flatten_merkle_caps, Proof};
+use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
 mod constants;
+mod structs;
 
 use self::constants::*;
+pub use self::structs::{ProgramProof, ProofList, ProofMetadata};
 
 // pub const RUN_VERIFIERS_WITH_OUTPUT: bool = false;
 pub const RUN_VERIFIERS_WITH_OUTPUT: bool = true;
@@ -167,77 +165,6 @@ pub const EXIT_SEQUENCE: &[u32] = &[
     0x03cd2c83, //	lw	s9, 0x3c(s10)
     0x0000006f, //	loop
 ];
-
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
-pub struct ProgramProof {
-    pub base_layer_proofs: Vec<Proof>,
-    pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
-    pub register_final_values: Vec<FinalRegisterValue>,
-    pub end_params: [u32; 8],
-    pub recursion_chain_preimage: Option<[u32; 16]>,
-    pub recursion_chain_hash: Option<[u32; 8]>,
-}
-
-impl ProgramProof {
-    pub fn get_num_delegation_proofs_for_type(&self, delegation_type: u32) -> u32 {
-        if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
-            proofs.len() as u32
-        } else {
-            0
-        }
-    }
-
-    pub fn flatten_for_delegation_circuits_set(
-        &self,
-        allowed_delegation_circuits: &[u32],
-    ) -> Vec<u32> {
-        let mut responses = Vec::with_capacity(32 + 32 * 2);
-
-        assert_eq!(self.register_final_values.len(), 32);
-        // registers
-        for final_values in self.register_final_values.iter() {
-            responses.push(final_values.value);
-            let (low, high) = split_timestamp(final_values.last_access_timestamp);
-            responses.push(low);
-            responses.push(high);
-        }
-
-        // basic ones
-        responses.push(self.base_layer_proofs.len() as u32);
-        for proof in self.base_layer_proofs.iter() {
-            let t = verifier_common::proof_flattener::flatten_full_proof(proof, true);
-            responses.extend(t);
-        }
-        // then for every allowed delegation circuit
-        for delegation_type in allowed_delegation_circuits.iter() {
-            if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
-                responses.push(proofs.len() as u32);
-                for proof in proofs.iter() {
-                    let t = verifier_common::proof_flattener::flatten_full_proof(proof, false);
-                    responses.extend(t);
-                }
-            } else {
-                responses.push(0);
-            }
-        }
-
-        if let Some(preimage) = self.recursion_chain_preimage {
-            responses.extend(preimage);
-        }
-
-        // check that we didn't have unexpected ones
-        for t in self.delegation_proofs.keys() {
-            assert!(
-                allowed_delegation_circuits.contains(t),
-                "allowed set of delegation circuits {:?} doesn't contain circuit type {}",
-                allowed_delegation_circuits,
-                t
-            );
-        }
-
-        responses
-    }
-}
 
 /// VerificationKey represents the verification key for a specific machine type and bytecode hash.
 #[derive(Serialize, Deserialize, Debug)]
@@ -439,6 +366,7 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
 mod test {
     use risc_v_simulator::cycle::IMStandardIsaConfig;
     use std::alloc::Global;
+    use std::collections::BTreeMap;
     use std::io::Read;
     use verifier_common::cs::machine::Machine;
     use verifier_common::field::Mersenne31Field;

@@ -1,11 +1,9 @@
 use crate::Machine;
-use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use clap::ValueEnum;
 use execution_utils::{
-    get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
-    UNIVERSAL_CIRCUIT_VERIFIER,
+    get_padded_binary, ProgramProof, ProofList, ProofMetadata,
+    UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use trace_and_split::FinalRegisterValue;
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
 use prover::{
@@ -194,195 +192,6 @@ fn full_machine_allowed_delegation_types() -> Vec<u32> {
     IMStandardIsaConfig::ALLOWED_DELEGATION_CSRS.to_vec()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
-pub struct ProofMetadata {
-    pub basic_proof_count: usize,
-    pub reduced_proof_count: usize,
-    pub reduced_log_23_proof_count: usize,
-    pub final_proof_count: usize,
-    pub delegation_proof_count: Vec<(u32, usize)>,
-    pub register_values: Vec<FinalRegisterValue>,
-    // hash from current binary (from end pc and setup tree).
-    pub end_params: [u32; 8],
-    // blake hash of the prev_end_params_output (for debugging only).
-    pub prev_end_params_output_hash: Option<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]>,
-    // parameters from the previous recursion level.
-    pub prev_end_params_output: Option<[u32; 16]>,
-}
-
-impl ProofMetadata {
-    pub fn total_proofs(&self) -> usize {
-        self.basic_proof_count
-            + self.reduced_proof_count
-            + self.reduced_log_23_proof_count
-            + self.final_proof_count
-            + self
-                .delegation_proof_count
-                .iter()
-                .map(|(_, v)| *v)
-                .sum::<usize>()
-    }
-    pub fn create_prev_metadata(&self) -> ([u32; 8], Option<[u32; 16]>) {
-        (self.end_params, self.prev_end_params_output)
-    }
-}
-
-pub struct ProofList {
-    pub basic_proofs: Vec<Proof>,
-    pub reduced_proofs: Vec<Proof>,
-    pub reduced_log_23_proofs: Vec<Proof>,
-    pub final_proofs: Vec<Proof>,
-    pub delegation_proofs: Vec<(u32, Vec<Proof>)>,
-}
-
-impl ProofList {
-    pub fn write_to_directory(&self, output_dir: &Path) {
-        println!("Writing proofs to {:?}", output_dir);
-
-        for (i, proof) in self.basic_proofs.iter().enumerate() {
-            serialize_to_file(
-                proof,
-                &Path::new(output_dir).join(&format!("proof_{}.json", i)),
-            );
-        }
-        for (i, proof) in self.reduced_proofs.iter().enumerate() {
-            serialize_to_file(
-                proof,
-                &Path::new(output_dir).join(&format!("reduced_proof_{}.json", i)),
-            );
-        }
-        for (i, proof) in self.reduced_log_23_proofs.iter().enumerate() {
-            serialize_to_file(
-                proof,
-                &Path::new(output_dir).join(&format!("reduced_log_23_proof_{}.json", i)),
-            );
-        }
-        for (i, proof) in self.final_proofs.iter().enumerate() {
-            serialize_to_file(
-                proof,
-                &Path::new(output_dir).join(&format!("final_proof_{}.json", i)),
-            );
-        }
-        for (delegation_type, proofs) in self.delegation_proofs.iter() {
-            for (i, proof) in proofs.iter().enumerate() {
-                serialize_to_file(
-                    proof,
-                    &Path::new(output_dir)
-                        .join(&format!("delegation_proof_{}_{}.json", delegation_type, i)),
-                );
-            }
-        }
-    }
-
-    pub fn load_from_directory(input_dir: &String, metadata: &ProofMetadata) -> Self {
-        let mut basic_proofs = vec![];
-        for i in 0..metadata.basic_proof_count {
-            let proof_path = Path::new(input_dir).join(format!("proof_{}.json", i));
-            let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-            basic_proofs.push(proof);
-        }
-
-        let mut reduced_proofs = vec![];
-        for i in 0..metadata.reduced_proof_count {
-            let proof_path = Path::new(input_dir).join(format!("reduced_proof_{}.json", i));
-            let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-            reduced_proofs.push(proof);
-        }
-
-        let mut reduced_log_23_proofs = vec![];
-        for i in 0..metadata.reduced_log_23_proof_count {
-            let proof_path = Path::new(input_dir).join(format!("reduced_log_23_proof_{}.json", i));
-            let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-            reduced_log_23_proofs.push(proof);
-        }
-
-        let mut final_proofs = vec![];
-        for i in 0..metadata.final_proof_count {
-            let proof_path = Path::new(input_dir).join(format!("final_proof_{}.json", i));
-            let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-            final_proofs.push(proof);
-        }
-
-        let mut delegation_proofs = vec![];
-        for (delegation_type, count) in metadata.delegation_proof_count.iter() {
-            let mut proofs = vec![];
-            for i in 0..*count {
-                let proof_path = Path::new(input_dir)
-                    .join(format!("delegation_proof_{}_{}.json", delegation_type, i));
-                let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-                proofs.push(proof);
-            }
-            delegation_proofs.push((*delegation_type, proofs));
-        }
-
-        Self {
-            basic_proofs,
-            reduced_proofs,
-            reduced_log_23_proofs,
-            final_proofs,
-            delegation_proofs,
-        }
-    }
-
-    pub fn get_last_proof(&self) -> &Proof {
-        self.final_proofs.last().unwrap_or_else(|| {
-            self.basic_proofs.last().unwrap_or_else(|| {
-                self.reduced_log_23_proofs.last().unwrap_or_else(|| {
-                    self.reduced_proofs
-                        .last()
-                        .expect("Neither main proof nor reduced proof is present")
-                })
-            })
-        })
-    }
-}
-
-pub fn program_proof_from_proof_list_and_metadata(
-    proof_list: &ProofList,
-    proof_metadata: &ProofMetadata,
-) -> ProgramProof {
-    // program proof doesn't distinguish between final, reduced & basic proofs.
-    let mut base_layer_proofs = proof_list.final_proofs.clone();
-    base_layer_proofs.extend_from_slice(&proof_list.basic_proofs);
-    base_layer_proofs.extend_from_slice(&proof_list.reduced_log_23_proofs);
-    base_layer_proofs.extend_from_slice(&proof_list.reduced_proofs);
-
-    ProgramProof {
-        base_layer_proofs,
-        delegation_proofs: proof_list.delegation_proofs.clone().into_iter().collect(),
-        register_final_values: proof_metadata.register_values.clone(),
-        end_params: proof_metadata.end_params,
-        recursion_chain_preimage: proof_metadata.prev_end_params_output,
-        recursion_chain_hash: proof_metadata.prev_end_params_output_hash,
-    }
-}
-pub fn proof_list_and_metadata_from_program_proof(
-    input: ProgramProof,
-) -> (ProofMetadata, ProofList) {
-    let reduced_proof_count = input.base_layer_proofs.len();
-    let proof_list = ProofList {
-        basic_proofs: vec![],
-        // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
-        reduced_proofs: input.base_layer_proofs,
-        reduced_log_23_proofs: vec![],
-        final_proofs: vec![],
-        delegation_proofs: input.delegation_proofs.into_iter().collect(),
-    };
-
-    let proof_metadata = ProofMetadata {
-        basic_proof_count: 0,
-        reduced_proof_count,
-        reduced_log_23_proof_count: 0,
-        final_proof_count: 0,
-        delegation_proof_count: vec![],
-        register_values: input.register_final_values,
-        end_params: input.end_params,
-        prev_end_params_output_hash: input.recursion_chain_hash,
-        prev_end_params_output: input.recursion_chain_preimage,
-    };
-    (proof_metadata, proof_list)
-}
-
 pub fn create_proofs(
     bin_path: &String,
     output_dir: &String,
@@ -482,7 +291,7 @@ pub fn create_proofs(
                     &recursion_proof_metadata,
                     &Path::new(output_dir).join("metadata.json"),
                 );
-                let program_proof = program_proof_from_proof_list_and_metadata(
+                let program_proof = ProgramProof::from_proof_list_and_metadata(
                     &recursion_proof_list,
                     &recursion_proof_metadata,
                 );
@@ -919,7 +728,7 @@ pub fn create_final_proofs_from_program_proof(
     recursion_mode: RecursionStrategy,
     use_gpu: bool,
 ) -> ProgramProof {
-    let (proof_metadata, proof_list) = proof_list_and_metadata_from_program_proof(input);
+    let (proof_metadata, proof_list) = input.to_metadata_from_program_proof();
 
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
         assert!(
@@ -1006,7 +815,7 @@ pub fn create_final_proofs(
         final_proof_level += 1;
     }
 
-    program_proof_from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
+    ProgramProof::from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
 }
 
 pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<Seed> {

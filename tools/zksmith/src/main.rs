@@ -8,7 +8,7 @@ use clap::Parser;
 use cli_lib::{
     prover_utils::{
         create_proofs_internal, create_recursion_proofs, load_binary_from_path,
-        program_proof_from_proof_list_and_metadata, u32_from_hex_string, GpuSharedState,
+        u32_from_hex_string, GpuSharedState,
     },
     Machine,
 };
@@ -136,7 +136,7 @@ impl LocalProver {
             &mut total_proof_time,
         );
 
-        let program_proof = program_proof_from_proof_list_and_metadata(
+        let program_proof = ProgramProof::from_proof_list_and_metadata(
             &recursion_proof_list,
             &recursion_proof_metadata,
         );

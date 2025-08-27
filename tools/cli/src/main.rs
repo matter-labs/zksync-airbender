@@ -577,14 +577,11 @@ fn verify_all(metadata_path: &String) {
 
 #[cfg(feature = "include_verifiers")]
 fn verify_all_program_proof(program_proof_path: &String) {
-    use cli_lib::prover_utils::{
-        generate_oracle_data_from_metadata_and_proof_list,
-        proof_list_and_metadata_from_program_proof,
-    };
+    use cli_lib::prover_utils::generate_oracle_data_from_metadata_and_proof_list;
 
     let input_program_proof: ProgramProof = deserialize_from_file(&program_proof_path);
     //serde_json::from_str(&input.unwrap()).expect("Failed to parse input_hex into ProgramProof");
-    let (metadata, proof_list) = proof_list_and_metadata_from_program_proof(input_program_proof);
+    let (metadata, proof_list) = input_program_proof.to_metadata_and_proof_list();
 
     let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
     let it = oracle_data.into_iter();
