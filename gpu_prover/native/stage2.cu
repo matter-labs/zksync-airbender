@@ -157,7 +157,7 @@ EXTERN __launch_bounds__(128, 8) __global__
     void lookup_args_kernel(__grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
                             __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
                             __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
-                            __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout, matrix_getter<bf, ld_modifier::cs> setup_cols,
+                            __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, matrix_getter<bf, ld_modifier::cs> setup_cols,
                             matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
                             vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
                             vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_timestamp_range_checks,

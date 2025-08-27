@@ -535,7 +535,7 @@ impl LazyInitTeardownLayout {
     pub fn new<F: Fn(usize) -> usize>(
         circuit: &CompiledCircuitArtifact<BF>,
         lookup_set: &OptimizedOraclesForLookupWidth1,
-        shuffle_ram_inits_and_teardowns: &ShuffleRamInitAndTeardownLayout,
+        shuffle_ram_inits_and_teardowns: &Vec<ShuffleRamInitAndTeardownLayout>,
         translate_e4_offset: &F,
     ) -> Self {
         let lazy_init_address_aux_vars = &circuit.lazy_init_address_aux_vars;

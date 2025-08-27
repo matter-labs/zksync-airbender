@@ -238,6 +238,10 @@ pub fn compute_stage_2_args_on_main_domain(
         .stage_2_layout
         .intermediate_polys_for_memory_argument
         .num_elements();
+    let num_lazy_init_teardown_sets = circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown
+        .num_elements(),
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
     let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
     assert_eq!(setup_cols.rows(), n);
@@ -341,14 +345,14 @@ pub fn compute_stage_2_args_on_main_domain(
             .witness_layout
             .multiplicities_columns_for_range_check_16
             .num_elements(),
-        1
+        1,
     );
     assert_eq!(
         circuit
             .witness_layout
             .multiplicities_columns_for_timestamp_range_check
             .num_elements(),
-        1
+        1,
     );
     let num_generic_multiplicities_cols = circuit
         .setup_layout
@@ -366,6 +370,10 @@ pub fn compute_stage_2_args_on_main_domain(
         generic_lookup_setup_columns_start,
         circuit.setup_layout.generic_lookup_setup_columns.start()
     );
+    assert_eq!(process_shuffle_ram_init, num_lazy_init_teardown_sets > 0);
+    assert_eq!(num_lazy_init_teardown_sets, shuffle_ram_inits_and_teardowns.len());
+    assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_range_check_16.base_field_oracles.num_elements());
+    assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_range_check_16.ext4_field_oracles.num_elements());
     // overall size checks
     let mut num_expected_bf_args = 0;
     // we assume (and assert later) that the numbers of range check 8 and 16 cols are both even.
@@ -375,7 +383,8 @@ pub fn compute_stage_2_args_on_main_domain(
     num_expected_bf_args +=
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram.len();
     if process_shuffle_ram_init {
-        num_expected_bf_args += 1; // lazy init address cols are treated as 1 pair of range check 16
+        // lazy init address cols are treated as 1 pair of range check 16
+        num_expected_bf_args += lazy_init_address_range_check_16.base_field_oracles.num_elements();
     }
     assert_eq!(num_stage_2_bf_cols, num_expected_bf_args);
     let mut num_expected_e4_args = 0;
@@ -388,7 +397,7 @@ pub fn compute_stage_2_args_on_main_domain(
         num_expected_e4_args += 1; // delegation_processing_aux_poly
     }
     if process_shuffle_ram_init {
-        num_expected_e4_args += 1;
+        num_expected_e4_args += lazy_init_address_range_check_16.ext4_field_oracles.num_elements();
     }
     num_expected_e4_args += num_memory_args;
     num_expected_e4_args += 1; // memory grand product
@@ -1032,7 +1041,7 @@ mod tests {
         let (
             lazy_init_bf_args_start,
             lazy_init_e4_args_start,
-            num_lazy_init_sets,
+            num_lazy_init_teardown_sets,
         ) = if cached_data.process_shuffle_ram_init {
             (
                 lazy_init_lookup_set.base_field_oracles.start(),
@@ -1078,7 +1087,7 @@ mod tests {
             .intermediate_polys_for_memory_init_teardown
             .start();
         assert_eq!(
-            num_lazy_init_sets,
+            num_lazy_init_teardown_sets,
             circuit
                 .stage_2_layout
                 .intermediate_polys_for_memory_init_teardown
@@ -1165,7 +1174,7 @@ mod tests {
                 // Comparisons for 32-bit lazy init address args,
                 // (treated as an extra pair of range check 16 args)
                 let start = lazy_init_bf_args_start;
-                let end = lazy_init_bf_args_start + num_lazy_init_sets;
+                let end = lazy_init_bf_args_start + num_lazy_init_teardown_sets;
                 for j in start..end {
                     assert_eq!(
                         h_stage_2_bf_cols[i + j * domain_size],
@@ -1174,7 +1183,7 @@ mod tests {
                         i,
                     );
                 let start = lazy_init_e4_args_start;
-                let end = lazy_init_e4_args_start + num_lazy_init_sets;
+                let end = lazy_init_e4_args_start + num_lazy_init_teardown_sets;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
@@ -1219,7 +1228,7 @@ mod tests {
                 }
                 // shuffle ram init/teardown comparison
                 let start = lazy_init_teardown_args_start;
-                let end = lazy_init_teardown_args_start + num_lazy_init_sets;
+                let end = lazy_init_teardown_args_start + num_lazy_init_teardown_sets;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
