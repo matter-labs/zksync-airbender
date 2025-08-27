@@ -241,7 +241,7 @@ pub fn compute_stage_2_args_on_main_domain(
     let num_lazy_init_teardown_sets = circuit
         .stage_2_layout
         .intermediate_polys_for_memory_init_teardown
-        .num_elements(),
+        .num_elements();
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
     let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
     assert_eq!(setup_cols.rows(), n);
@@ -371,9 +371,22 @@ pub fn compute_stage_2_args_on_main_domain(
         circuit.setup_layout.generic_lookup_setup_columns.start()
     );
     assert_eq!(process_shuffle_ram_init, num_lazy_init_teardown_sets > 0);
-    assert_eq!(num_lazy_init_teardown_sets, shuffle_ram_inits_and_teardowns.len());
-    assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_range_check_16.base_field_oracles.num_elements());
-    assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_range_check_16.ext4_field_oracles.num_elements());
+    assert_eq!(
+        num_lazy_init_teardown_sets,
+        shuffle_ram_inits_and_teardowns.len()
+    );
+    assert_eq!(
+        num_lazy_init_teardown_sets,
+        lazy_init_address_range_check_16
+            .base_field_oracles
+            .num_elements()
+    );
+    assert_eq!(
+        num_lazy_init_teardown_sets,
+        lazy_init_address_range_check_16
+            .ext_4_field_oracles
+            .num_elements()
+    );
     // overall size checks
     let mut num_expected_bf_args = 0;
     // we assume (and assert later) that the numbers of range check 8 and 16 cols are both even.
@@ -384,7 +397,9 @@ pub fn compute_stage_2_args_on_main_domain(
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram.len();
     if process_shuffle_ram_init {
         // lazy init address cols are treated as 1 pair of range check 16
-        num_expected_bf_args += lazy_init_address_range_check_16.base_field_oracles.num_elements();
+        num_expected_bf_args += lazy_init_address_range_check_16
+            .base_field_oracles
+            .num_elements();
     }
     assert_eq!(num_stage_2_bf_cols, num_expected_bf_args);
     let mut num_expected_e4_args = 0;
@@ -397,7 +412,9 @@ pub fn compute_stage_2_args_on_main_domain(
         num_expected_e4_args += 1; // delegation_processing_aux_poly
     }
     if process_shuffle_ram_init {
-        num_expected_e4_args += lazy_init_address_range_check_16.ext4_field_oracles.num_elements();
+        num_expected_e4_args += lazy_init_address_range_check_16
+            .ext_4_field_oracles
+            .num_elements();
     }
     num_expected_e4_args += num_memory_args;
     num_expected_e4_args += 1; // memory grand product
@@ -772,7 +789,7 @@ pub fn compute_stage_2_args_on_main_domain(
     // last memory arg is the grand product of the second-to-last memory arg
     // Args are vectorized E4, so I need to transpose the second-to-last col
     // to a col of E4 tuples, do the grand product, then transpose back.
-    let grand_product_offset_in_e4_cols = get_grand_product_col(circuit); 
+    let grand_product_offset_in_e4_cols = get_grand_product_col(circuit);
     let stride = stage_2_e4_cols.stride();
     let offset = stage_2_e4_cols.offset();
     let second_to_last_slice_start = 4 * (grand_product_offset_in_e4_cols - 1) * stride;
@@ -1036,23 +1053,20 @@ mod tests {
         let lazy_init_lookup_set = cached_data.lazy_init_address_range_check_16;
         assert_eq!(
             lazy_init_lookup_set.base_field_oracles.num_elements(),
-            lazy_init_lookup_set.ext4_field_oracles.num_elements(),
+            lazy_init_lookup_set.ext_4_field_oracles.num_elements(),
         );
-        let (
-            lazy_init_bf_args_start,
-            lazy_init_e4_args_start,
-            num_lazy_init_teardown_sets,
-        ) = if cached_data.process_shuffle_ram_init {
-            (
-                lazy_init_lookup_set.base_field_oracles.start(),
-                translate_e4_offset(lazy_init_lookup_set.ext_4_field_oracles.start()),
-                lazy_init_lookup_set.base_field_oracles.num_elements(),
-            )
-        } else {
-            assert_eq!(lazy_init_lookup_set.base_field_oracles.num_elements(), 0);
-            assert_eq!(lazy_init_lookup_set.ext4_field_oracles.num_elements(), 0);
-            (0, 0, 0)
-        };
+        let (lazy_init_bf_args_start, lazy_init_e4_args_start, num_lazy_init_teardown_sets) =
+            if cached_data.process_shuffle_ram_init {
+                (
+                    lazy_init_lookup_set.base_field_oracles.start(),
+                    translate_e4_offset(lazy_init_lookup_set.ext_4_field_oracles.start()),
+                    lazy_init_lookup_set.base_field_oracles.num_elements(),
+                )
+            } else {
+                assert_eq!(lazy_init_lookup_set.base_field_oracles.num_elements(), 0);
+                assert_eq!(lazy_init_lookup_set.ext_4_field_oracles.num_elements(), 0);
+                (0, 0, 0)
+            };
         // collect locations of generic args
         let raw_col = circuit
             .stage_2_layout
@@ -1182,6 +1196,7 @@ mod tests {
                         "lazy init address bf failed at row {}",
                         i,
                     );
+                }
                 let start = lazy_init_e4_args_start;
                 let end = lazy_init_e4_args_start + num_lazy_init_teardown_sets;
                 for j in start..end {

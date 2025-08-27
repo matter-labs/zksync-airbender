@@ -10,10 +10,9 @@ use cs::definitions::{
     REGISTER_SIZE,
 };
 use cs::one_row_compiler::{
-    ColumnAddress, CompiledCircuitArtifact,
-    LookupWidth1SourceDestInformation, LookupWidth1SourceDestInformationForExpressions,
-    RegisterOnlyAccessAddress, RegisterOrRamAccessAddress, ShuffleRamAddress,
-    ShuffleRamQueryColumns,
+    ColumnAddress, CompiledCircuitArtifact, LookupWidth1SourceDestInformation,
+    LookupWidth1SourceDestInformationForExpressions, RegisterOnlyAccessAddress,
+    RegisterOrRamAccessAddress, ShuffleRamAddress, ShuffleRamQueryColumns,
 };
 use field::{Field, FieldExtension, PrimeField};
 use prover::definitions::{ExternalDelegationArgumentChallenges, ExternalMemoryArgumentChallenges};
@@ -510,7 +509,6 @@ pub struct LazyInitTeardownLayout {
     pub init_address_final_borrow: u32,
     pub bf_arg_col: u32,
     pub e4_arg_col: u32,
-    pub process_shuffle_ram_init: bool,
 }
 
 const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
@@ -518,12 +516,12 @@ const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
 #[derive(Clone)]
 #[repr(C)]
 pub struct LazyInitTeardownLayouts {
-    pub layouts: [LazyInitTeardownLayout; MAX_LAZY_INIT_TEARDOWN_SETS];
+    pub layouts: [LazyInitTeardownLayout; MAX_LAZY_INIT_TEARDOWN_SETS],
     pub num_lazy_init_teardown_sets: u32,
     pub process_shuffle_ram_init: bool,
 }
 
-impl LazyInitTeardownLayout {
+impl LazyInitTeardownLayouts {
     fn unpack_witness_column_address(column_address: ColumnAddress) -> usize {
         if let ColumnAddress::WitnessSubtree(col) = column_address {
             col
@@ -541,9 +539,18 @@ impl LazyInitTeardownLayout {
         let lazy_init_address_aux_vars = &circuit.lazy_init_address_aux_vars;
         let num_lazy_init_teardown_sets = shuffle_ram_inits_and_teardowns.len();
         assert!(num_lazy_init_teardown_sets <= MAX_LAZY_INIT_TEARDOWN_SETS);
-        assert_eq!(num_lazy_init_teardown_sets, lazy_init_address_aux_vars.len());
-        assert_eq!(num_lazy_init_teardown_sets, lookup_set.base_field_oracles.num_elements());
-        assert_eq!(num_lazy_init_teardown_sets, lookup_set.ext4_field_oracles.num_elements());
+        assert_eq!(
+            num_lazy_init_teardown_sets,
+            lazy_init_address_aux_vars.len()
+        );
+        assert_eq!(
+            num_lazy_init_teardown_sets,
+            lookup_set.base_field_oracles.num_elements()
+        );
+        assert_eq!(
+            num_lazy_init_teardown_sets,
+            lookup_set.ext_4_field_oracles.num_elements()
+        );
         assert_eq!(
             num_lazy_init_teardown_sets,
             circuit
@@ -555,25 +562,21 @@ impl LazyInitTeardownLayout {
         for (i, (init_and_teardown, aux_vars)) in shuffle_ram_inits_and_teardowns
             .iter()
             .zip(lazy_init_address_aux_vars.iter())
-            .enumerate() {
-            let init_address_start = init_and_teardown
-                .lazy_init_addresses_columns
-                .start();
-            let teardown_value_start = init_and_teardown
-                .lazy_teardown_values_columns
-                .start();
-            let teardown_timestamp_start = init_and_teardown
-                .lazy_teardown_timestamps_columns
-                .start();
+            .enumerate()
+        {
+            let init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
+            let teardown_value_start = init_and_teardown.lazy_teardown_values_columns.start();
+            let teardown_timestamp_start =
+                init_and_teardown.lazy_teardown_timestamps_columns.start();
             let ShuffleRamAuxComparisonSet {
                 aux_low_high: [address_aux_low, address_aux_high],
                 intermediate_borrow,
                 final_borrow,
             } = aux_vars;
-            let init_address_aux_low = Self::unpack_witness_column_address(address_aux_low);
-            let init_address_aux_high = Self::unpack_witness_column_address(address_aux_high);
-            let intermediate_borrow = Self::unpack_witness_column_address(intermediate_borrow);
-            let final_borrow = Self::unpack_witness_column_address(final_borrow);
+            let init_address_aux_low = Self::unpack_witness_column_address(*address_aux_low);
+            let init_address_aux_high = Self::unpack_witness_column_address(*address_aux_high);
+            let intermediate_borrow = Self::unpack_witness_column_address(*intermediate_borrow);
+            let final_borrow = Self::unpack_witness_column_address(*final_borrow);
             layouts[i] = LazyInitTeardownLayout {
                 init_address_start: init_address_start as u32,
                 teardown_value_start: teardown_value_start as u32,
@@ -583,12 +586,13 @@ impl LazyInitTeardownLayout {
                 init_address_intermediate_borrow: intermediate_borrow as u32,
                 init_address_final_borrow: final_borrow as u32,
                 bf_arg_col: (lookup_set.base_field_oracles.start() + i) as u32,
-                e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start() + 4 * i) as u32,
+                e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start() + 4 * i)
+                    as u32,
             }
         }
         Self {
             layouts,
-            num_lazy_init_teardown_sets,
+            num_lazy_init_teardown_sets: num_lazy_init_teardown_sets as u32,
             process_shuffle_ram_init: true,
         }
     }
@@ -597,7 +601,7 @@ impl LazyInitTeardownLayout {
 impl Default for LazyInitTeardownLayouts {
     fn default() -> Self {
         Self {
-            layouts: [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS]; 
+            layouts: [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS],
             num_lazy_init_teardown_sets: 0,
             process_shuffle_ram_init: false,
         }
@@ -835,7 +839,7 @@ impl RegisterAndIndirectAccesses {
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let Some((coeff, col)) = variable_dependent {
+                        ) = if let Some((coeff, col, _)) = variable_dependent {
                             (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)
@@ -887,7 +891,7 @@ impl RegisterAndIndirectAccesses {
                             maybe_variable_dependent_coeff,
                             maybe_variable_dependent_col,
                             has_variable_dependent,
-                        ) = if let Some((coeff, col)) = variable_dependent {
+                        ) = if let Some((coeff, col, _)) = variable_dependent {
                             (*coeff, col.start() as u32, true)
                         } else {
                             (0, 0, false)

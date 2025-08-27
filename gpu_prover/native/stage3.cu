@@ -484,7 +484,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
     }
 
     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
-      const auto &lazy_init_teardown_layout = lazy_init_teardown_layout.layouts[i];
+      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
       const bf a = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
       const bf b = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
       const bf bf_arg = stage_2_bf_cols.get_at_col(lazy_init_teardown_layout.bf_arg_col);
@@ -574,7 +574,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
   }
 
-  if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+  if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
     // First enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
@@ -902,7 +902,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
       }
     }
 
-    if (lazy_init_teardown_layout.process_shuffle_ram_init) {
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
       auto memory_cols_next_row = memory_cols.copy();
       if (gid < n - 1)
         memory_cols_next_row.add_row(1);

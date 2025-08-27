@@ -1474,7 +1474,7 @@ impl Metadata {
                 .stage_2_layout
                 .intermediate_polys_for_memory_init_teardown
                 .num_elements(),
-            lazy_init_teardown_layouts.num_lazy_init_teardown_sets<
+            lazy_init_teardown_layouts.num_lazy_init_teardown_sets as usize,
         );
         let raw_lazy_init_teardown_args_start = circuit
             .stage_2_layout
@@ -1482,7 +1482,7 @@ impl Metadata {
             .start();
         let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
         // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
-        for _ in lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
+        for _ in 0..lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
             alpha_offset += 6;
         }
         // for lazy init memory accumulator contributions
@@ -1624,9 +1624,9 @@ impl Metadata {
             external_values,
             public_inputs,
             process_shuffle_ram_init,
-            lazy_init_teardown_layouts[0].init_address_start as usize,
-            lazy_init_teardown_layouts[0].teardown_value_start as usize,
-            lazy_init_teardown_layouts[0].teardown_timestamp_start as usize,
+            lazy_init_teardown_layouts.layouts[0].init_address_start as usize,
+            lazy_init_teardown_layouts.layouts[0].teardown_value_start as usize,
+            lazy_init_teardown_layouts.layouts[0].teardown_timestamp_start as usize,
             h_alphas_for_first_row,
             h_alphas_for_one_before_last_row,
             helpers,
@@ -2196,14 +2196,6 @@ mod tests {
             }
         }
     }
-
-    // #[test]
-    // #[serial]
-    // fn test_stage_3_for_basic_circuit() {
-    //     let ctx = Context::create(12).unwrap();
-    //     run_basic_test_impl(Some(Box::new(comparison_hook)));
-    //     ctx.destroy().unwrap();
-    // }
 
     #[test]
     #[serial]
