@@ -948,7 +948,6 @@ impl Metadata {
             range_check_16_width_1_lookups_access_via_expressions,
             timestamp_range_check_width_1_lookups_access_via_expressions,
             timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
-            memory_accumulator_dst_start,
             ..
         } = cached_data.clone();
         if process_batch_ram_access {
