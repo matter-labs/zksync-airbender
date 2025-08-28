@@ -11,11 +11,11 @@ use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
 mod constants;
-mod structs;
+mod proofs;
 mod verifiers;
 
 use self::constants::*;
-pub use self::structs::{ProgramProof, ProofList, ProofMetadata};
+pub use self::proofs::{ProgramProof, ProofList, ProofMetadata};
 
 pub use self::verifiers::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
@@ -370,7 +370,6 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
 
 #[cfg(test)]
 mod test {
-    use risc_v_simulator::cycle::IMStandardIsaConfig;
     use std::alloc::Global;
     use std::collections::BTreeMap;
     use std::io::Read;
