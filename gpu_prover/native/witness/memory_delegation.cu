@@ -2,6 +2,12 @@
 #include "memory.cuh"
 #include "trace_delegation.cuh"
 
+using namespace ::airbender::witness::layout;
+using namespace ::airbender::witness::memory;
+using namespace ::airbender::witness::trace::delegation;
+
+namespace airbender::witness::memory::delegation {
+
 #define MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT 4
 
 struct DelegationMemorySubtree {
@@ -160,16 +166,18 @@ DEVICE_FORCEINLINE void generate(const DelegationMemorySubtree &subtree, const R
   process_indirect_memory_accesses<COMPUTE_WITNESS>(subtree, aux_vars, trace, memory, witness, gid);
 }
 
-EXTERN __global__ void generate_memory_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
-                                                                const __grid_constant__ DelegationTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
-                                                                const unsigned count) {
+EXTERN __global__ void ab_generate_memory_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
+                                                                   const __grid_constant__ DelegationTrace trace,
+                                                                   const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
   generate<false>(subtree, {}, trace, memory, memory, count);
 }
 
 EXTERN __global__ void
-generate_memory_and_witness_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
-                                                     const __grid_constant__ RegisterAndIndirectAccessTimestampComparisonAuxVars aux_vars,
-                                                     const __grid_constant__ DelegationTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
-                                                     const matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
+ab_generate_memory_and_witness_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
+                                                        const __grid_constant__ RegisterAndIndirectAccessTimestampComparisonAuxVars aux_vars,
+                                                        const __grid_constant__ DelegationTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
+                                                        const matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
   generate<true>(subtree, aux_vars, trace, memory, witness, count);
 }
+
+} // namespace airbender::witness::memory::delegation

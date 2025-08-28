@@ -42,7 +42,7 @@ cuda_kernel!(
     coset_idx: u32,
 );
 
-b2n_one_stage_kernel!(bitrev_Z_to_natural_coset_evals_one_stage);
+b2n_one_stage_kernel!(ab_bitrev_Z_to_natural_coset_evals_one_stage);
 
 // "v" indicates a vectorized layout of BF columns,
 // For the final output, columns represent distinct base field values.
@@ -62,10 +62,10 @@ cuda_kernel!(
     grid_offset: u32,
 );
 
-b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block);
-b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_initial_7_stages_warp);
-b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_initial_8_stages_warp);
-b2n_multi_stage_kernel!(bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block);
+b2n_multi_stage_kernel!(ab_bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block);
+b2n_multi_stage_kernel!(ab_bitrev_Z_to_natural_coset_evals_initial_7_stages_warp);
+b2n_multi_stage_kernel!(ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp);
+b2n_multi_stage_kernel!(ab_bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block);
 
 #[allow(clippy::too_many_arguments)]
 fn bitrev_Z_to_natural_evals(
@@ -106,7 +106,7 @@ fn bitrev_Z_to_natural_evals(
         let blocks_per_ntt = n.get_chunks_count(2 * threads);
         let blocks = blocks_per_ntt * num_Z_cols;
         let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        let kernel_function = B2NOneStageFunction(bitrev_Z_to_natural_coset_evals_one_stage);
+        let kernel_function = B2NOneStageFunction(ab_bitrev_Z_to_natural_coset_evals_one_stage);
         let args = B2NOneStageArguments::new(
             inputs_matrix,
             outputs_matrix_mut,
@@ -143,22 +143,22 @@ fn bitrev_Z_to_natural_evals(
             let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, usize, usize) =
                 match kern {
                     INITIAL_7_WARP => (
-                        bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
                         n / vals_per_block,
                         128,
                     ),
                     INITIAL_8_WARP => (
-                        bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
                         n / vals_per_block,
                         128,
                     ),
                     INITIAL_9_TO_12_BLOCK => (
-                        bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
                         n / vals_per_block,
                         512,
                     ),
                     NONINITIAL_7_OR_8_BLOCK => (
-                        bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
+                        ab_bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
                         n / vals_per_block,
                         512,
                     ),
@@ -242,7 +242,7 @@ cuda_kernel!(
     evals_are_coset: bool,
 );
 
-one_stage_kernel!(evals_to_Z_one_stage);
+one_stage_kernel!(ab_evals_to_Z_one_stage);
 
 cuda_kernel!(
     N2BMultiStage,
@@ -256,13 +256,13 @@ cuda_kernel!(
     grid_offset: u32,
 );
 
-n2b_multi_stage_kernel!(evals_to_Z_nonfinal_7_or_8_stages_block);
-n2b_multi_stage_kernel!(main_domain_evals_to_Z_final_7_stages_warp);
-n2b_multi_stage_kernel!(main_domain_evals_to_Z_final_8_stages_warp);
-n2b_multi_stage_kernel!(main_domain_evals_to_Z_final_9_to_12_stages_block);
-n2b_multi_stage_kernel!(coset_evals_to_Z_final_7_stages_warp);
-n2b_multi_stage_kernel!(coset_evals_to_Z_final_8_stages_warp);
-n2b_multi_stage_kernel!(coset_evals_to_Z_final_9_to_12_stages_block);
+n2b_multi_stage_kernel!(ab_evals_to_Z_nonfinal_7_or_8_stages_block);
+n2b_multi_stage_kernel!(ab_main_domain_evals_to_Z_final_7_stages_warp);
+n2b_multi_stage_kernel!(ab_main_domain_evals_to_Z_final_8_stages_warp);
+n2b_multi_stage_kernel!(ab_main_domain_evals_to_Z_final_9_to_12_stages_block);
+n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_7_stages_warp);
+n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_8_stages_warp);
+n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_9_to_12_stages_block);
 
 #[allow(clippy::too_many_arguments)]
 fn natural_evals_to_bitrev_Z(
@@ -294,7 +294,7 @@ fn natural_evals_to_bitrev_Z(
         let blocks_per_ntt = (n + 2 * threads - 1) / (2 * threads);
         let blocks = blocks_per_ntt * num_Z_cols;
         let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        let kernel_function = N2BOneStageKernelFunction(evals_to_Z_one_stage);
+        let kernel_function = N2BOneStageKernelFunction(ab_evals_to_Z_one_stage);
         let args = N2BOneStageKernelArguments::new(
             inputs_matrix,
             outputs_matrix_mut,
@@ -330,33 +330,33 @@ fn natural_evals_to_bitrev_Z(
                 match kern {
                     FINAL_7_WARP => (
                         if evals_are_coset {
-                            coset_evals_to_Z_final_7_stages_warp
+                            ab_coset_evals_to_Z_final_7_stages_warp
                         } else {
-                            main_domain_evals_to_Z_final_7_stages_warp
+                            ab_main_domain_evals_to_Z_final_7_stages_warp
                         },
                         n / vals_per_block,
                         128,
                     ),
                     FINAL_8_WARP => (
                         if evals_are_coset {
-                            coset_evals_to_Z_final_8_stages_warp
+                            ab_coset_evals_to_Z_final_8_stages_warp
                         } else {
-                            main_domain_evals_to_Z_final_8_stages_warp
+                            ab_main_domain_evals_to_Z_final_8_stages_warp
                         },
                         n / vals_per_block,
                         128,
                     ),
                     FINAL_9_TO_12_BLOCK => (
                         if evals_are_coset {
-                            coset_evals_to_Z_final_9_to_12_stages_block
+                            ab_coset_evals_to_Z_final_9_to_12_stages_block
                         } else {
-                            main_domain_evals_to_Z_final_9_to_12_stages_block
+                            ab_main_domain_evals_to_Z_final_9_to_12_stages_block
                         },
                         n / vals_per_block,
                         512,
                     ),
                     NONFINAL_7_OR_8_BLOCK => (
-                        evals_to_Z_nonfinal_7_or_8_stages_block,
+                        ab_evals_to_Z_nonfinal_7_or_8_stages_block,
                         n / vals_per_block,
                         512,
                     ),
@@ -554,7 +554,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             num_Z_cols as u32,
             0,
         );
-        N2BMultiStageFunction(evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
+        N2BMultiStageFunction(ab_evals_to_Z_nonfinal_7_or_8_stages_block).launch(&config, &args)?;
         persistence_chain_start_stage += stages_first_launch;
     }
 
@@ -575,22 +575,22 @@ pub fn natural_main_evals_to_natural_coset_evals(
             let (function, grid_dim_x, block_dim_x): (N2BMultiStageSignature, usize, u32) =
                 match kern {
                     FINAL_7_WARP => (
-                        main_domain_evals_to_Z_final_7_stages_warp,
+                        ab_main_domain_evals_to_Z_final_7_stages_warp,
                         rows_per_packet / vals_per_block,
                         128,
                     ),
                     FINAL_8_WARP => (
-                        main_domain_evals_to_Z_final_8_stages_warp,
+                        ab_main_domain_evals_to_Z_final_8_stages_warp,
                         rows_per_packet / vals_per_block,
                         128,
                     ),
                     FINAL_9_TO_12_BLOCK => (
-                        main_domain_evals_to_Z_final_9_to_12_stages_block,
+                        ab_main_domain_evals_to_Z_final_9_to_12_stages_block,
                         rows_per_packet / vals_per_block,
                         512,
                     ),
                     NONFINAL_7_OR_8_BLOCK => (
-                        evals_to_Z_nonfinal_7_or_8_stages_block,
+                        ab_evals_to_Z_nonfinal_7_or_8_stages_block,
                         rows_per_packet / vals_per_block,
                         512,
                     ),
@@ -615,22 +615,22 @@ pub fn natural_main_evals_to_natural_coset_evals(
             let (function, grid_dim_x, block_dim_x): (B2NMultiStageSignature, usize, u32) =
                 match kern {
                     INITIAL_7_WARP => (
-                        bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_7_stages_warp,
                         rows_per_packet / vals_per_block,
                         128,
                     ),
                     INITIAL_8_WARP => (
-                        bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp,
                         rows_per_packet / vals_per_block,
                         128,
                     ),
                     INITIAL_9_TO_12_BLOCK => (
-                        bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
+                        ab_bitrev_Z_to_natural_coset_evals_initial_9_to_12_stages_block,
                         rows_per_packet / vals_per_block,
                         512,
                     ),
                     NONINITIAL_7_OR_8_BLOCK => (
-                        bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
+                        ab_bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block,
                         rows_per_packet / vals_per_block,
                         512,
                     ),
@@ -800,7 +800,7 @@ pub fn natural_main_evals_to_natural_coset_evals(
             1, // coset_index
             0,
         );
-        B2NMultiStageFunction(bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block)
+        B2NMultiStageFunction(ab_bitrev_Z_to_natural_coset_evals_noninitial_7_or_8_stages_block)
             .launch(&config, &args)?;
     }
 

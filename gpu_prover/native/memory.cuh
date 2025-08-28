@@ -1,6 +1,7 @@
 #pragma once
 
-namespace memory {
+namespace airbender::memory {
+
 using namespace std;
 
 enum class ld_modifier { none, g, cg, ca, cs, lu, cv };
@@ -532,4 +533,4 @@ template <typename T> struct wrapping_matrix_getter_setter : wrapping_matrix_acc
     this->internal.set(row % this->rows, col % this->cols, value);
   }
 };
-} // namespace memory
+} // namespace airbender::memory

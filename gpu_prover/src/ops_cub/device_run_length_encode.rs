@@ -8,7 +8,7 @@ use era_cudart_sys::{cudaError_t, cudaStream_t, cuda_fn_and_stub};
 use crate::field::BaseField;
 
 cuda_fn_and_stub! {
-    fn encode_u32(
+    fn ab_encode_u32(
         d_temp_storage: *mut u8,
         temp_storage_bytes: &mut usize,
         d_in: *const u32,
@@ -88,7 +88,7 @@ pub trait Encode: Sized {
 
 impl Encode for u32 {
     fn get_function() -> EncodeFunction<Self> {
-        encode_u32
+        ab_encode_u32
     }
 }
 

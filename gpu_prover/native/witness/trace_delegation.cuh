@@ -4,6 +4,12 @@
 #include "placeholder.cuh"
 #include "trace.cuh"
 
+using namespace ::airbender::witness;
+using namespace ::airbender::witness::placeholder;
+using namespace ::airbender::witness::trace;
+
+namespace airbender::witness::trace::delegation {
+
 struct RegisterOrIndirectReadData {
   const u32 read_value;
   const TimestampData timestamp;
@@ -118,3 +124,5 @@ DEVICE_FORCEINLINE TimestampData DelegationTrace::get_witness_from_placeholder<T
     __trap();
   }
 }
+
+} // namespace airbender::witness::trace::delegation

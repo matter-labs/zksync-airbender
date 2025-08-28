@@ -3,6 +3,13 @@
 #include "option.cuh"
 #include "trace_main.cuh"
 
+using namespace ::airbender::witness::layout;
+using namespace ::airbender::witness::memory;
+using namespace ::airbender::witness::option;
+using namespace ::airbender::witness::trace::main;
+
+namespace airbender::witness::memory::main {
+
 #define MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT 4
 
 struct MainMemorySubtree {
@@ -180,14 +187,14 @@ DEVICE_FORCEINLINE void generate(const MainMemorySubtree &subtree, const MemoryQ
     process_delegation_requests(subtree, trace, memory, gid);
 }
 
-EXTERN __global__ void generate_memory_values_main_kernel(const __grid_constant__ MainMemorySubtree subtree,
-                                                          const __grid_constant__ ShuffleRamSetupAndTeardown setup_and_teardown,
-                                                          const __grid_constant__ MainTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
-                                                          const unsigned count) {
+EXTERN __global__ void ab_generate_memory_values_main_kernel(const __grid_constant__ MainMemorySubtree subtree,
+                                                             const __grid_constant__ ShuffleRamSetupAndTeardown setup_and_teardown,
+                                                             const __grid_constant__ MainTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
+                                                             const unsigned count) {
   generate<false>(subtree, {}, setup_and_teardown, {}, trace, {}, memory, memory, count);
 }
 
-EXTERN __global__ void generate_memory_and_witness_values_main_kernel(
+EXTERN __global__ void ab_generate_memory_and_witness_values_main_kernel(
     const __grid_constant__ MainMemorySubtree subtree,
     const __grid_constant__ MemoryQueriesTimestampComparisonAuxVars memory_queries_timestamp_comparison_aux_vars,
     const __grid_constant__ ShuffleRamSetupAndTeardown setup_and_teardown, const __grid_constant__ ShuffleRamAuxComparisonSet lazy_init_address_aux_vars,
@@ -196,3 +203,5 @@ EXTERN __global__ void generate_memory_and_witness_values_main_kernel(
   generate<true>(subtree, memory_queries_timestamp_comparison_aux_vars, setup_and_teardown, lazy_init_address_aux_vars, trace,
                  timestamp_high_from_circuit_sequence, memory, witness, count);
 }
+
+} // namespace airbender::witness::memory::main

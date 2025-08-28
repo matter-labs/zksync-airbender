@@ -2,8 +2,12 @@
 #include "ops_complex.cuh"
 #include "vectorized.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+using namespace ::airbender::ops_complex;
+using namespace ::airbender::vectorized;
+
+namespace airbender::barycentric {
 
 using bf = base_field;
 using e2 = ext2_field;
@@ -19,8 +23,8 @@ using e4 = ext4_field;
 // Split-quotient evals are e4.
 
 // Helper functions to compute common_factor for precompute_lagrange_coeffs
-EXTERN __global__ void barycentric_precompute_common_factor_kernel(const e4 *z_ref, e4 *common_factor_ref, const e2 coset, const e2 decompression_factor,
-                                                                   const unsigned count) {
+EXTERN __global__ void ab_barycentric_precompute_common_factor_kernel(const e4 *z_ref, e4 *common_factor_ref, const e2 coset, const e2 decompression_factor,
+                                                                      const unsigned count) {
   // common_factor = coset * (z^N - coset^N) / (N * coset^N)
   // Note that common_factor depends on z through z^N.
   // The "shift trick" used in the partial reduce kernel to compute evals at z, omega * z, omega^2 * z, etc...
@@ -44,8 +48,8 @@ EXTERN __global__ void barycentric_precompute_common_factor_kernel(const e4 *z_r
 
 // TODO: Deep quotiening needs 1 / (w^i - z). We could stash an intermediate here that deep could use.
 EXTERN __launch_bounds__(128, 8) __global__
-    void barycentric_precompute_lagrange_coeffs_kernel(const e4 *z_ref, const e4 *common_factor_ref, const e2 w_inv_step, const e2 coset,
-                                                       vector_setter<e4, st_modifier::cs> lagrange_coeffs, const unsigned log_count) {
+    void ab_barycentric_precompute_lagrange_coeffs_kernel(const e4 *z_ref, const e4 *common_factor_ref, const e2 w_inv_step, const e2 coset,
+                                                          vector_setter<e4, st_modifier::cs> lagrange_coeffs, const unsigned log_count) {
   constexpr unsigned INV_BATCH = InvBatch<e4>::INV_BATCH;
 
   // per_elem_factor = w^i / (z - coset * w^i)
@@ -94,7 +98,9 @@ EXTERN __launch_bounds__(128, 8) __global__
 constexpr unsigned MAX_COLS = 1344;
 constexpr unsigned DOES_NOT_NEED_Z_OMEGA = UINT_MAX;
 
-extern "C" struct ColIdxsToEvalAtZOmegaIdxsMap { const unsigned map[MAX_COLS]; };
+struct ColIdxsToEvalAtZOmegaIdxsMap {
+  const unsigned map[MAX_COLS];
+};
 
 template <bool ANY_AT_Z_OMEGA, typename GETTER_T, bool IS_COMPOSITION_COL = false>
 DEVICE_FORCEINLINE void accumulate(GETTER_T &cols_in, const e4 *coeff_chunk, const matrix_setter<e4, st_modifier::cs> &partial_sums,
@@ -146,14 +152,14 @@ DEVICE_FORCEINLINE void accumulate(GETTER_T &cols_in, const e4 *coeff_chunk, con
 }
 
 EXTERN __launch_bounds__(512, 2) __global__
-    void barycentric_partial_reduce_kernel(matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> witness_cols,
-                                           matrix_getter<bf, ld_modifier::cs> memory_cols, matrix_getter<bf, ld_modifier::cs> stage_2_bf_cols,
-                                           vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
-                                           vectorized_e4_matrix_getter<ld_modifier::cs> composition_col, vector_getter<e4, ld_modifier::ca> lagrange_coeffs,
-                                           matrix_setter<e4, st_modifier::cs> partial_sums, __grid_constant__ const ColIdxsToEvalAtZOmegaIdxsMap map,
-                                           const e2 decompression_factor_inv, const unsigned num_setup_cols, const unsigned num_witness_cols,
-                                           const unsigned num_memory_cols, const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols,
-                                           const unsigned row_chunk_size, const unsigned log_n) {
+    void ab_barycentric_partial_reduce_kernel(matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> witness_cols,
+                                              matrix_getter<bf, ld_modifier::cs> memory_cols, matrix_getter<bf, ld_modifier::cs> stage_2_bf_cols,
+                                              vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
+                                              vectorized_e4_matrix_getter<ld_modifier::cs> composition_col, vector_getter<e4, ld_modifier::ca> lagrange_coeffs,
+                                              matrix_setter<e4, st_modifier::cs> partial_sums, __grid_constant__ const ColIdxsToEvalAtZOmegaIdxsMap map,
+                                              const e2 decompression_factor_inv, const unsigned num_setup_cols, const unsigned num_witness_cols,
+                                              const unsigned num_memory_cols, const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols,
+                                              const unsigned row_chunk_size, const unsigned log_n) {
   // TODO: make sure the slightly-ragged smem allocation does not hurt occupancy
   // We could eliminate raggedness by fetching elems in the "shift tail" from gmem on demand, and hope for L1 hits.
   // We could even eliminate smem altogether, just read lagrange coeffs on demand, and hope for L1 hits.
@@ -194,3 +200,5 @@ EXTERN __launch_bounds__(512, 2) __global__
   accumulate<false, decltype(composition_col), true>(composition_col, coeff_chunk, partial_sums, map, 1, row_chunk_size, block_row_offset, n, col_offset,
                                                      decompression_factor_inv);
 }
+
+} // namespace airbender::barycentric

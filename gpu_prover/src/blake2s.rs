@@ -23,7 +23,7 @@ pub type Digest = [u32; STATE_SIZE];
 
 cuda_kernel!(
     Leaves,
-    blake2s_leaves_kernel(
+    ab_blake2s_leaves_kernel(
         values: *const BF,
         results: *mut Digest,
         log_rows_per_hash: u32,
@@ -66,7 +66,7 @@ pub fn build_merkle_tree_leaves(
     launch_leaves_kernel(values, results, log_rows_per_hash, stream)
 }
 
-cuda_kernel!(Nodes, blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
+cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
 
 pub fn launch_nodes_kernel(
     values: &DeviceSlice<Digest>,
@@ -131,7 +131,7 @@ pub fn build_merkle_tree(
 
 cuda_kernel!(
     GatherRows,
-    gather_rows_kernel(
+    ab_gather_rows_kernel(
         indexes: *const u32,
         indexes_count: u32,
         bit_reversed_indexes: bool,
@@ -189,7 +189,7 @@ pub fn gather_rows(
 
 cuda_kernel!(
     GatherMerklePaths,
-    gather_merkle_paths_kernel(
+    ab_gather_merkle_paths_kernel(
         indexes: *const u32,
         indexes_count: u32,
         values: *const Digest,
@@ -241,7 +241,7 @@ pub fn merkle_tree_cap(
     &values[offset..offset + (1 << log_tree_cap_size)]
 }
 
-cuda_kernel!(Blake2SPow, blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
+cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
 
 pub fn blake2s_pow(
     seed: &DeviceSlice<u32>,

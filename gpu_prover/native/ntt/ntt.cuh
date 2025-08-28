@@ -3,13 +3,15 @@
 #include "../memory.cuh"
 #include "../vectorized.cuh"
 
-using namespace field;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+using namespace ::airbender::vectorized;
+
+namespace airbender::ntt {
 
 using bf = base_field;
 using e2f = ext2_field;
 using e4f = ext2_field;
-
-namespace ntt {
 
 DEVICE_FORCEINLINE unsigned bitrev(const unsigned idx, const unsigned log_n) { return __brev(idx) >> (32 - log_n); }
 
@@ -70,7 +72,7 @@ DEVICE_FORCEINLINE void exchg_dif(e2f &a, e2f &b, const e2f &twiddle) {
 // it assumes "i" NEEDS to be bitreved and accounts for that by assuming "fine" and "coarse"
 // arrays are already bitreved.
 template <bool inverse> DEVICE_FORCEINLINE e2f get_twiddle(const unsigned i) {
-  const powers_data_2_layer &data = inverse ? powers_data_w_inv_bitrev_for_ntt : powers_data_w_bitrev_for_ntt;
+  const powers_data_2_layer &data = inverse ? ab_powers_data_w_inv_bitrev_for_ntt : ab_powers_data_w_bitrev_for_ntt;
   unsigned fine_idx = (i >> data.coarse.log_count) & data.fine.mask;
   unsigned coarse_idx = i & data.coarse.mask;
   auto coarse = memory::load_ca(data.coarse.values + coarse_idx);
@@ -177,11 +179,19 @@ DEVICE_FORCEINLINE e2f lde_scale(const e2f Zk, const unsigned k, const unsigned 
 }
 
 template <typename T> struct COLS_PER_BLOCK {};
-template <> struct COLS_PER_BLOCK<bf> { static constexpr unsigned VAL = 8; };
-template <> struct COLS_PER_BLOCK<e2f> { static constexpr unsigned VAL = 4; };
+template <> struct COLS_PER_BLOCK<bf> {
+  static constexpr unsigned VAL = 8;
+};
+template <> struct COLS_PER_BLOCK<e2f> {
+  static constexpr unsigned VAL = 4;
+};
 
 template <typename T> struct COLS_INC {};
-template <> struct COLS_INC<bf> { static constexpr unsigned VAL = 2; };
-template <> struct COLS_INC<e2f> { static constexpr unsigned VAL = 1; };
+template <> struct COLS_INC<bf> {
+  static constexpr unsigned VAL = 2;
+};
+template <> struct COLS_INC<e2f> {
+  static constexpr unsigned VAL = 1;
+};
 
-} // namespace ntt
+} // namespace airbender::ntt

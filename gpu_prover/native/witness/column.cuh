@@ -2,6 +2,8 @@
 
 #include "common.cuh"
 
+namespace airbender::witness::column {
+
 #define REGISTER_SIZE 2
 #define NUM_TIMESTAMP_COLUMNS_FOR_RAM 2
 
@@ -21,3 +23,5 @@ struct ColumnAddress {
   ColumnAddressTag tag;
   u32 offset;
 };
+
+} // namespace airbender::witness::column

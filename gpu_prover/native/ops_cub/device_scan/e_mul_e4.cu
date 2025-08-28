@@ -1,7 +1,7 @@
 #include "common.cuh"
 
-namespace device_scan {
+namespace airbender::ops_cub::device_scan {
 
 SCAN_E(mul, e4);
 
-} // namespace device_scan
+} // namespace airbender::ops_cub::device_scan

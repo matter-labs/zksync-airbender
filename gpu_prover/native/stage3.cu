@@ -3,8 +3,13 @@
 #include "ops_complex.cuh"
 #include "vectorized.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::arg_utils;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+using namespace ::airbender::ops_complex;
+using namespace ::airbender::vectorized;
+
+namespace airbender::stage3 {
 
 using bf = base_field;
 using e2 = ext2_field;
@@ -20,7 +25,7 @@ constexpr uint8_t COEFF_IS_ONE = 0x00;
 constexpr uint8_t COEFF_IS_MINUS_ONE = 0x01;
 // constexpr uint8_t COEFF_IS_EXPLICIT = 0x02; // technically unused, "default" case
 
-extern "C" struct FlattenedGenericConstraintsMetadata {
+struct FlattenedGenericConstraintsMetadata {
   const uint8_t coeffs_info[MAX_TERMS];
   const bf explicit_coeffs[MAX_EXPLICIT_COEFFS];
   const uint16_t col_idxs[MAX_FLAT_COL_IDXS];
@@ -39,23 +44,22 @@ extern "C" struct FlattenedGenericConstraintsMetadata {
   const unsigned num_non_boolean_constraints;
 };
 
-template <typename T>
-DEVICE_FORCEINLINE void maybe_apply_coeff(const T &metadata, const unsigned coeff_idx, unsigned &explicit_coeff_idx, field::base_field &val) {
+template <typename T> DEVICE_FORCEINLINE void maybe_apply_coeff(const T &metadata, const unsigned coeff_idx, unsigned &explicit_coeff_idx, bf &val) {
   switch (metadata.coeffs_info[coeff_idx]) {
   case COEFF_IS_ONE:
     break;
   case COEFF_IS_MINUS_ONE:
-    val = field::base_field::neg(val);
+    val = bf::neg(val);
     break;
   default:
-    val = field::base_field::mul(val, metadata.explicit_coeffs[explicit_coeff_idx++]);
+    val = bf::mul(val, metadata.explicit_coeffs[explicit_coeff_idx++]);
   }
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void generic_constraints_kernel(__grid_constant__ const FlattenedGenericConstraintsMetadata metadata, matrix_getter<bf, ld_modifier::cg> witness_cols,
-                                    matrix_getter<bf, ld_modifier::cg> memory_cols, vector_getter<e4, ld_modifier::ca> alphas,
-                                    vectorized_e4_matrix_setter<st_modifier::cs> quotient, const unsigned log_n) {
+    void ab_generic_constraints_kernel(__grid_constant__ const FlattenedGenericConstraintsMetadata metadata, matrix_getter<bf, ld_modifier::cg> witness_cols,
+                                       matrix_getter<bf, ld_modifier::cg> memory_cols, vector_getter<e4, ld_modifier::ca> alphas,
+                                       vectorized_e4_matrix_setter<st_modifier::cs> quotient, const unsigned log_n) {
   const unsigned n = 1 << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -146,7 +150,7 @@ constexpr unsigned DELEGATED_MAX_WIDTH_3_LOOKUP_VALS = 640;
 constexpr unsigned DELEGATED_MAX_WIDTH_3_LOOKUP_COEFFS = 1408;
 constexpr unsigned DELEGATED_MAX_WIDTH_3_LOOKUP_COLS = 1888;
 
-extern "C" struct DelegatedWidth3LookupsLayout {
+struct DelegatedWidth3LookupsLayout {
   const unsigned coeffs[DELEGATED_MAX_WIDTH_3_LOOKUP_COEFFS];
   const uint16_t col_idxs[DELEGATED_MAX_WIDTH_3_LOOKUP_COLS];
   const uint8_t num_terms_per_expression[DELEGATED_MAX_WIDTH_3_LOOKUP_VALS];
@@ -163,7 +167,7 @@ constexpr unsigned NON_DELEGATED_MAX_WIDTH_3_LOOKUP_VALS = 72;
 constexpr unsigned NON_DELEGATED_MAX_WIDTH_3_LOOKUP_COEFFS = 32;
 constexpr unsigned NON_DELEGATED_MAX_WIDTH_3_LOOKUP_COLS = 96;
 
-extern "C" struct NonDelegatedWidth3LookupsLayout {
+struct NonDelegatedWidth3LookupsLayout {
   const unsigned coeffs[NON_DELEGATED_MAX_WIDTH_3_LOOKUP_COEFFS];
   const uint16_t col_idxs[NON_DELEGATED_MAX_WIDTH_3_LOOKUP_COLS];
   const uint8_t num_terms_per_expression[NON_DELEGATED_MAX_WIDTH_3_LOOKUP_VALS];
@@ -216,11 +220,11 @@ DEVICE_FORCEINLINE void enforce_width_3_lookup_args_construction(const T &layout
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void delegated_width_3_lookups_kernel(__grid_constant__ const DelegatedWidth3LookupsLayout layout, matrix_getter<bf, ld_modifier::cg> witness_cols,
-                                          matrix_getter<bf, ld_modifier::cg> memory_cols, vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
-                                          vector_getter<e4, ld_modifier::ca> helpers,
-                                          vectorized_e4_matrix_getter_setter<ld_modifier::cs, st_modifier::cs> quotient, const e2 decompression_factor_squared,
-                                          const unsigned log_n) {
+    void ab_delegated_width_3_lookups_kernel(__grid_constant__ const DelegatedWidth3LookupsLayout layout, matrix_getter<bf, ld_modifier::cg> witness_cols,
+                                             matrix_getter<bf, ld_modifier::cg> memory_cols, vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                             vector_getter<e4, ld_modifier::ca> helpers,
+                                             vectorized_e4_matrix_getter_setter<ld_modifier::cs, st_modifier::cs> quotient,
+                                             const e2 decompression_factor_squared, const unsigned log_n) {
   const unsigned n = 1 << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -303,7 +307,7 @@ DEVICE_FORCEINLINE void enforce_range_check_expressions_with_constant_terms(cons
   }
 }
 
-extern "C" struct MultiplicitiesLayout {
+struct MultiplicitiesLayout {
   const unsigned src_cols_start;
   const unsigned dst_cols_start;
   const unsigned setup_cols_start;
@@ -338,7 +342,7 @@ enforce_lookup_multiplicities(const MultiplicitiesLayout &layout, const matrix_g
 
 constexpr unsigned MAX_STATE_LINKAGE_CONSTRAINTS = 2;
 
-extern "C" struct StateLinkageConstraints {
+struct StateLinkageConstraints {
   const unsigned srcs[MAX_STATE_LINKAGE_CONSTRAINTS];
   const unsigned dsts[MAX_STATE_LINKAGE_CONSTRAINTS];
   const unsigned num_constraints;
@@ -349,14 +353,14 @@ constexpr bf SHIFT_16 = bf{1 << 16};
 constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 8;
 constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW = 8;
 
-extern "C" struct BoundaryConstraints {
+struct BoundaryConstraints {
   const unsigned first_row_cols[MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW];
   const unsigned one_before_last_row_cols[MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW];
   const unsigned num_first_row;
   const unsigned num_one_before_last_row;
 };
 
-extern "C" struct ConstantsTimesChallenges {
+struct ConstantsTimesChallenges {
   const e4 first_row;
   const e4 one_before_last_row;
   const e4 sum;
@@ -366,7 +370,7 @@ extern "C" struct ConstantsTimesChallenges {
 //  - think about the most sensible way to split them up into multiple kernels.
 //    e.g. one kernel for memory-col-heavy terms and one kernel for witness-col-heavy terms.
 //  - Turn e4::sub contributions to acc_linear into e4::adds and negate acc_linear once at the end
-EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
+EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel(
     matrix_getter<bf, ld_modifier::cg> setup_cols, matrix_getter<bf, ld_modifier::cg> witness_cols, matrix_getter<bf, ld_modifier::cg> memory_cols,
     matrix_getter<bf, ld_modifier::cg> stage_2_bf_cols, vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols, const bool process_delegations,
     const bool handle_delegation_requests, const unsigned delegation_aux_poly_col, __grid_constant__ const DelegationChallenges delegation_challenges,
@@ -929,7 +933,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   const e4 current_quotient = quotient.get();
   acc = e4::add(acc, current_quotient);
   acc = e4::add(acc, constants_times_challenges->sum);
-  const unsigned shift = 1 << (field::CIRCLE_GROUP_LOG_ORDER - log_n - 1);
+  const unsigned shift = 1 << (CIRCLE_GROUP_LOG_ORDER - log_n - 1);
   const e2 x = get_power_of_w(shift * (2 * gid + 1), false);
   const e2 num = e2::sub(x, omega_inv);
   e2 multiplier = e2::mul(num, every_row_zerofier);
@@ -1091,3 +1095,5 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
 
   quotient.set(acc);
 }
+
+} // namespace airbender::stage3

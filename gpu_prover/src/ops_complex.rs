@@ -41,7 +41,7 @@ macro_rules! get_powers_by_val_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<get_powers_by_val_ $type:lower _kernel>](
+                [<ab_get_powers_by_val_ $type:lower _kernel>](
                     base: $type,
                     offset: u32,
                     bit_reverse: bool,
@@ -78,7 +78,7 @@ macro_rules! get_powers_by_val_impl {
         paste! {
             get_powers_by_val_kernel!($type);
             impl GetPowersByVal for $type {
-                const KERNEL_FUNCTION: GetPowersByValSignature<Self> = [<get_powers_by_val_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: GetPowersByValSignature<Self> = [<ab_get_powers_by_val_ $type:lower _kernel>];
             }
         }
     };
@@ -101,7 +101,7 @@ macro_rules! get_powers_by_ref_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<get_powers_by_ref_ $type:lower _kernel>](
+                [<ab_get_powers_by_ref_ $type:lower _kernel>](
                     base: *const $type,
                     offset: u32,
                     bit_reverse: bool,
@@ -139,7 +139,7 @@ macro_rules! get_powers_by_ref_impl {
         paste! {
             get_powers_by_ref_kernel!($type);
             impl GetPowersByRef for $type {
-                const KERNEL_FUNCTION: GetPowersByRefSignature<Self> = [<get_powers_by_ref_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: GetPowersByRefSignature<Self> = [<ab_get_powers_by_ref_ $type:lower _kernel>];
             }
         }
     };
@@ -160,7 +160,7 @@ macro_rules! batch_inv_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<batch_inv_ $type:lower _kernel>](
+                [<ab_batch_inv_ $type:lower _kernel>](
                     src: *const $type,
                     dst: *mut $type,
                     count: u32,
@@ -217,7 +217,7 @@ macro_rules! batch_inv_impl {
             batch_inv_kernel!($type);
             impl BatchInv for $type {
                 const BATCH_SIZE: u32 = $batch_size;
-                const KERNEL_FUNCTION: BatchInvSignature<Self> = [<batch_inv_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: BatchInvSignature<Self> = [<ab_batch_inv_ $type:lower _kernel>];
             }
         }
     };
@@ -239,7 +239,7 @@ macro_rules! transpose_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<transpose_ $type:lower _kernel>](
+                [<ab_transpose_ $type:lower _kernel>](
                     src: PtrAndStride<$type>,
                     dst: MutPtrAndStride<$type>,
                     src_rows: u32,
@@ -296,7 +296,7 @@ macro_rules! transpose_impl {
             transpose_kernel!($type);
             impl Transpose for $type {
                 const LOG_TILE_SIZE: u32 = $log_tile_size;
-                const KERNEL_FUNCTION: TransposeSignature<Self> = [<transpose_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: TransposeSignature<Self> = [<ab_transpose_ $type:lower _kernel>];
             }
         }
     };
@@ -395,14 +395,14 @@ macro_rules! bit_reverse_kernels {
     ($type:ty, $chunk_type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<bit_reverse_naive_ $type:lower _kernel>](
+                [<ab_bit_reverse_naive_ $type:lower _kernel>](
                     src: PtrAndStride<$type>,
                     dst: MutPtrAndStride<$type>,
                     log_count: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<bit_reverse_ $type:lower _kernel>](
+                [<ab_bit_reverse_ $type:lower _kernel>](
                     src: PtrAndStride<$chunk_type>,
                     dst: MutPtrAndStride<$chunk_type>,
                     log_count: u32,
@@ -418,8 +418,8 @@ macro_rules! bit_reverse_impl {
             bit_reverse_kernels!($type, $chunk_type);
             impl BitReverse for $type {
                 type ChunkType = $chunk_type;
-                const NAIVE_KERNEL_FUNCTION: BitReverseSignature<Self> = [<bit_reverse_naive_ $type:lower _kernel>];
-                const KERNEL_FUNCTION: BitReverseSignature<Self::ChunkType> = [<bit_reverse_ $type:lower _kernel>];
+                const NAIVE_KERNEL_FUNCTION: BitReverseSignature<Self> = [<ab_bit_reverse_naive_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: BitReverseSignature<Self::ChunkType> = [<ab_bit_reverse_ $type:lower _kernel>];
             }
         }
     };
@@ -432,7 +432,7 @@ bit_reverse_impl!(DG, E4);
 
 cuda_kernel!(
     Fold,
-    fold_kernel(
+    ab_fold_kernel(
         challenge: *const E4,
         src: *const E4,
         dst: *mut E4,

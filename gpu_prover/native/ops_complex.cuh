@@ -2,6 +2,14 @@
 
 #include "field.cuh"
 
+using namespace ::airbender::field;
+
+namespace airbender::ops_complex {
+
+using bf = base_field;
+using e2 = ext2_field;
+using e4 = ext4_field;
+
 // I could also remove INV_BATCH as a separate arg and use T::INV_BATCH internally
 // But with nvcc 12.3 and 12.4, the max inv batch I can use with triggering a compile-hang
 // weirdly depends on the point of use. So for now, the InvBatch structs below are just hints,
@@ -34,19 +42,21 @@ DEVICE_FORCEINLINE void batch_inv_registers(const T *inputs, T *fwd_scan_and_out
 }
 
 template <typename T> struct InvBatch {};
-template <> struct InvBatch<field::base_field> {
+template <> struct InvBatch<bf> {
   // INV_BATCH = 20 incurs 58 registers per thread with nvcc 12.4 targeting sm_89.
   static constexpr unsigned INV_BATCH = 20;
   // INV_BATCH = 21 would incur 62 regs/thread, but I think 20 is good enough
   // to amortize invs while staying comfortably beneath the 64-reg mark.
 };
-template <> struct InvBatch<field::ext2_field> {
+template <> struct InvBatch<e2> {
   // INV_BATCH = 5 incurs 48 registers per thread with nvcc 12.4 targeting sm_89.
   // When I increase it to 6 or more, the build appears to hang, which is weird
   // because it compiles quickly with 5.
   static constexpr unsigned INV_BATCH = 5;
 };
-template <> struct InvBatch<field::ext4_field> {
+template <> struct InvBatch<e4> {
   // INV_BATCH = 3 is the highest I can set without nvcc hanging.
   static constexpr unsigned INV_BATCH = 3;
 };
+
+} // namespace airbender::ops_complex

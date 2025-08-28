@@ -88,10 +88,10 @@ impl PowersData3Layer {
 #[cfg(no_cuda)]
 unsafe impl Sync for PowersData3Layer {}
 
-cuda_struct_and_stub! { static powers_data_w: PowersData3Layer; }
-cuda_struct_and_stub! { static powers_data_w_bitrev_for_ntt: PowersData2Layer; }
-cuda_struct_and_stub! { static powers_data_w_inv_bitrev_for_ntt: PowersData2Layer; }
-cuda_struct_and_stub! { static inv_sizes: [BaseField; OMEGA_LOG_ORDER as usize + 1]; }
+cuda_struct_and_stub! { static ab_powers_data_w: PowersData3Layer; }
+cuda_struct_and_stub! { static ab_powers_data_w_bitrev_for_ntt: PowersData2Layer; }
+cuda_struct_and_stub! { static ab_powers_data_w_inv_bitrev_for_ntt: PowersData2Layer; }
+cuda_struct_and_stub! { static ab_inv_sizes: [BaseField; OMEGA_LOG_ORDER as usize + 1]; }
 
 unsafe fn copy_to_symbol<T>(symbol: &T, src: &T) -> CudaResult<()> {
     cudaMemcpyToSymbol(
@@ -119,7 +119,7 @@ unsafe fn copy_to_symbols(
     let coarsest_log_count = powers_of_w_coarsest_log_count;
     let coarser_log_count = OMEGA_LOG_ORDER - coarsest_log_count;
     copy_to_symbol(
-        &powers_data_w,
+        &ab_powers_data_w,
         &PowersData3Layer::new(
             powers_of_w_fine,
             FINEST_LOG_COUNT,
@@ -133,7 +133,7 @@ unsafe fn copy_to_symbols(
     let fine_log_count = coarser_log_count - 1;
     let coarse_log_count = coarsest_log_count;
     copy_to_symbol(
-        &powers_data_w_bitrev_for_ntt,
+        &ab_powers_data_w_bitrev_for_ntt,
         &PowersData2Layer::new(
             powers_of_w_fine_bitrev_for_ntt,
             fine_log_count,
@@ -142,7 +142,7 @@ unsafe fn copy_to_symbols(
         ),
     )?;
     copy_to_symbol(
-        &powers_data_w_inv_bitrev_for_ntt,
+        &ab_powers_data_w_inv_bitrev_for_ntt,
         &PowersData2Layer::new(
             powers_of_w_inv_fine_bitrev_for_ntt,
             fine_log_count,
@@ -150,7 +150,7 @@ unsafe fn copy_to_symbols(
             coarse_log_count,
         ),
     )?;
-    copy_to_symbol(&inv_sizes, &inv_sizes_host)?;
+    copy_to_symbol(&ab_inv_sizes, &inv_sizes_host)?;
     Ok(())
 }
 

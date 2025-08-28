@@ -21,8 +21,8 @@ cuda_kernel!(GenerateWitnessDelegationKernel,
     count: u32,
 );
 
-generate_witness_delegation_kernel!(generate_bigint_with_control_witness_kernel);
-generate_witness_delegation_kernel!(generate_blake2_with_compression_witness_kernel);
+generate_witness_delegation_kernel!(ab_generate_bigint_with_control_witness_kernel);
+generate_witness_delegation_kernel!(ab_generate_blake2_with_compression_witness_kernel);
 
 pub fn generate_witness_values_delegation(
     circuit_type: DelegationCircuitType,
@@ -59,9 +59,9 @@ pub fn generate_witness_values_delegation(
         count,
     );
     let kernel = match circuit_type {
-        DelegationCircuitType::BigIntWithControl => generate_bigint_with_control_witness_kernel,
+        DelegationCircuitType::BigIntWithControl => ab_generate_bigint_with_control_witness_kernel,
         DelegationCircuitType::Blake2WithCompression => {
-            generate_blake2_with_compression_witness_kernel
+            ab_generate_blake2_with_compression_witness_kernel
         }
     };
     GenerateWitnessDelegationKernelFunction(kernel).launch(&config, &args)

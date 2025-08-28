@@ -2,6 +2,10 @@
 
 #include "column.cuh"
 
+using namespace ::airbender::witness::column;
+
+namespace airbender::witness::ram_access {
+
 struct RegisterOnlyAccessAddress {
   ColumnSet<1> register_index;
 };
@@ -171,3 +175,5 @@ struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
   u32 aux_borrow_sets_count;
   AuxBorrowSet aux_borrow_sets[MAX_AUX_BORROW_SETS_COUNT];
 };
+
+} // namespace airbender::witness::ram_access

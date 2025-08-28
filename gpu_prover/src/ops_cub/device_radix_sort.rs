@@ -10,7 +10,7 @@ use crate::field::BaseField;
 type BF = BaseField;
 
 cuda_fn_and_stub! {
-    fn sort_keys_a_u32(
+    fn ab_sort_keys_a_u32(
         d_temp_storage: *mut u8,
         temp_storage_bytes: &mut usize,
         d_keys_in: *const u32,
@@ -23,7 +23,7 @@ cuda_fn_and_stub! {
 }
 
 cuda_fn_and_stub! {
-    fn sort_keys_d_u32(
+    fn ab_sort_keys_d_u32(
         d_temp_storage: *mut u8,
         temp_storage_bytes: &mut usize,
         d_keys_in: *const u32,
@@ -108,9 +108,9 @@ pub trait SortKeys: Sized {
 impl SortKeys for u32 {
     fn get_function(descending: bool) -> SortKeysFunction<Self> {
         if descending {
-            sort_keys_d_u32
+            ab_sort_keys_d_u32
         } else {
-            sort_keys_a_u32
+            ab_sort_keys_a_u32
         }
     }
 }
@@ -173,7 +173,7 @@ pub fn sort_keys<T: SortKeys>(
 }
 
 cuda_fn_and_stub! {
-    fn sort_pairs_a_u32_u32(
+    fn ab_sort_pairs_a_u32_u32(
         d_temp_storage: *mut u8,
         temp_storage_bytes: &mut usize,
         d_keys_in: *const u32,
@@ -188,7 +188,7 @@ cuda_fn_and_stub! {
 }
 
 cuda_fn_and_stub! {
-    fn sort_pairs_d_u32_u32(
+    fn ab_sort_pairs_d_u32_u32(
         d_temp_storage: *mut u8,
         temp_storage_bytes: &mut usize,
         d_keys_in: *const u32,
@@ -288,9 +288,9 @@ pub trait SortPairs<K, V> {
 impl SortPairs<u32, u32> for (u32, u32) {
     fn get_function(descending: bool) -> SortPairsFunction<u32, u32> {
         if descending {
-            sort_pairs_d_u32_u32
+            ab_sort_pairs_d_u32_u32
         } else {
-            sort_pairs_a_u32_u32
+            ab_sort_pairs_a_u32_u32
         }
     }
 }

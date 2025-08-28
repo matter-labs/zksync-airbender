@@ -22,11 +22,11 @@ cuda_kernel!(GenerateWitnessMainKernel,
     count: u32,
 );
 
-generate_witness_main_kernel!(generate_final_reduced_risc_v_machine_witness_kernel);
-generate_witness_main_kernel!(generate_machine_without_signed_mul_div_witness_kernel);
-generate_witness_main_kernel!(generate_reduced_risc_v_machine_witness_kernel);
-generate_witness_main_kernel!(generate_reduced_risc_v_log_23_machine_witness_kernel);
-generate_witness_main_kernel!(generate_risc_v_cycles_witness_kernel);
+generate_witness_main_kernel!(ab_generate_final_reduced_risc_v_machine_witness_kernel);
+generate_witness_main_kernel!(ab_generate_machine_without_signed_mul_div_witness_kernel);
+generate_witness_main_kernel!(ab_generate_reduced_risc_v_machine_witness_kernel);
+generate_witness_main_kernel!(ab_generate_reduced_risc_v_log_23_machine_witness_kernel);
+generate_witness_main_kernel!(ab_generate_risc_v_cycles_witness_kernel);
 
 pub fn generate_witness_values_main(
     circuit_type: MainCircuitType,
@@ -64,16 +64,16 @@ pub fn generate_witness_values_main(
     );
     let kernel = match circuit_type {
         MainCircuitType::FinalReducedRiscVMachine => {
-            generate_final_reduced_risc_v_machine_witness_kernel
+            ab_generate_final_reduced_risc_v_machine_witness_kernel
         }
         MainCircuitType::MachineWithoutSignedMulDiv => {
-            generate_machine_without_signed_mul_div_witness_kernel
+            ab_generate_machine_without_signed_mul_div_witness_kernel
         }
-        MainCircuitType::ReducedRiscVMachine => generate_reduced_risc_v_machine_witness_kernel,
+        MainCircuitType::ReducedRiscVMachine => ab_generate_reduced_risc_v_machine_witness_kernel,
         MainCircuitType::ReducedRiscVLog23Machine => {
-            generate_reduced_risc_v_log_23_machine_witness_kernel
+            ab_generate_reduced_risc_v_log_23_machine_witness_kernel
         }
-        MainCircuitType::RiscVCycles => generate_risc_v_cycles_witness_kernel,
+        MainCircuitType::RiscVCycles => ab_generate_risc_v_cycles_witness_kernel,
     };
     GenerateWitnessMainKernelFunction(kernel).launch(&config, &args)
 }

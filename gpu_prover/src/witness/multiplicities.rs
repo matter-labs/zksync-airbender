@@ -24,7 +24,7 @@ use prover::prover_stages::cached_data::{
 };
 
 cuda_kernel!(GenerateMultiplicities,
-    generate_multiplicities_kernel(
+    ab_generate_multiplicities_kernel(
         unique_indexes: *const u32,
         counts: *const u32,
         num_runs: *const u32,
@@ -115,7 +115,7 @@ pub(crate) fn generate_generic_lookup_multiplicities(
 }
 
 cuda_kernel!(GenerateRangeCheckLookupMappings,
-    generate_range_check_lookup_mappings_kernel(
+    ab_generate_range_check_lookup_mappings_kernel(
         setup_cols: PtrAndStride<BF>,
         witness_cols: PtrAndStride<BF>,
         memory_cols: PtrAndStride<BF>,

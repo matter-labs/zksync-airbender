@@ -1,6 +1,8 @@
 #include "field.cuh"
 
-using namespace field;
+using namespace ::airbender::field;
+
+namespace airbender::monolith {
 
 typedef base_field bf;
 
@@ -78,10 +80,10 @@ DEVICE_FORCEINLINE void initialize_lookup(const unsigned tid, const unsigned blo
 // }
 
 DEVICE_FORCEINLINE void print_state(const bf state[WIDTH]) {
-// #pragma unroll
-//   for (unsigned i = 0; i < WIDTH; i++)
-//     printf("%d ", state[i].limb);
-//   printf("\n");
+  // #pragma unroll
+  //   for (unsigned i = 0; i < WIDTH; i++)
+  //     printf("%d ", state[i].limb);
+  //   printf("\n");
 }
 
 DEVICE_FORCEINLINE uint32_t bar(uint32_t limb) {
@@ -220,7 +222,7 @@ DEVICE_FORCEINLINE void permutation_mt(bf &state, const unsigned tid) {
 }
 
 EXTERN __launch_bounds__(128, 7) __global__
-    void monolith_leaves_st_kernel(const bf *values, bf *results, const unsigned log_rows_count, const unsigned cols_count, const unsigned count) {
+    void ab_monolith_leaves_st_kernel(const bf *values, bf *results, const unsigned log_rows_count, const unsigned cols_count, const unsigned count) {
   static_assert(CAPACITY + RATE == WIDTH);
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   initialize_lookup(threadIdx.x, blockDim.x);
@@ -252,7 +254,7 @@ EXTERN __launch_bounds__(128, 7) __global__
 }
 
 EXTERN __launch_bounds__(128, 9) __global__
-    void monolith_leaves_mt_kernel(const bf *values, bf *results, const unsigned log_rows_count, const unsigned cols_count, const unsigned count) {
+    void ab_monolith_leaves_mt_kernel(const bf *values, bf *results, const unsigned log_rows_count, const unsigned cols_count, const unsigned count) {
   static_assert(CAPACITY + RATE == WIDTH);
   static_assert(WARP_SIZE % WIDTH == 0);
   const unsigned gid = threadIdx.y + blockIdx.x * blockDim.y;
@@ -279,7 +281,7 @@ EXTERN __launch_bounds__(128, 9) __global__
     store_cs(results, state);
 }
 
-EXTERN __launch_bounds__(128, 7) __global__ void monolith_nodes_st_kernel(const bf *values, bf *results, const unsigned count) {
+EXTERN __launch_bounds__(128, 7) __global__ void ab_monolith_nodes_st_kernel(const bf *values, bf *results, const unsigned count) {
   static_assert(CAPACITY == RATE);
   static_assert(CAPACITY + RATE == WIDTH);
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -298,7 +300,7 @@ EXTERN __launch_bounds__(128, 7) __global__ void monolith_nodes_st_kernel(const 
     store_cs(&results[i], state[i]);
 }
 
-EXTERN __launch_bounds__(128, 10) __global__ void monolith_nodes_mt_kernel(const bf *values, bf *results, const unsigned count) {
+EXTERN __launch_bounds__(128, 10) __global__ void ab_monolith_nodes_mt_kernel(const bf *values, bf *results, const unsigned count) {
   static_assert(CAPACITY == RATE);
   static_assert(CAPACITY + RATE == WIDTH);
   static_assert(WARP_SIZE % WIDTH == 0);
@@ -313,8 +315,8 @@ EXTERN __launch_bounds__(128, 10) __global__ void monolith_nodes_mt_kernel(const
     store_cs(results + gid * CAPACITY + tid, state);
 }
 
-EXTERN __global__ void gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const matrix_getter<bf, ld_modifier::cs> values,
-                                          const matrix_setter<bf, st_modifier::cs> results) {
+EXTERN __global__ void ab_gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const matrix_getter<bf, ld_modifier::cs> values,
+                                             const matrix_setter<bf, st_modifier::cs> results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;
@@ -325,8 +327,8 @@ EXTERN __global__ void gather_rows_kernel(const unsigned *indexes, const unsigne
   results.set(dst_row, col, values.get(src_row, col));
 }
 
-EXTERN __global__ void gather_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const bf *values, const unsigned log_leaves_count,
-                                                  bf *results) {
+EXTERN __global__ void ab_gather_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const bf *values, const unsigned log_leaves_count,
+                                                     bf *results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;
@@ -537,3 +539,5 @@ EXTERN __global__ void gather_merkle_paths_kernel(const unsigned *indexes, const
 //   //  for (unsigned i = 0; i < WIDTH; i++)
 //   //    state[i] = state_u64[i];
 // }
+
+} // namespace airbender::monolith

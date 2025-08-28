@@ -2,6 +2,10 @@
 
 #include "common.cuh"
 
+using namespace ::airbender::witness;
+
+namespace airbender::witness::trace {
+
 typedef u64 TimestampScalar;
 
 struct TimestampData {
@@ -49,3 +53,5 @@ struct RegIndexOrMemWordIndex {
 
   DEVICE_FORCEINLINE bool is_register() const { return !(value & IS_RAM_MASK); }
 };
+
+} // namespace airbender::witness::trace

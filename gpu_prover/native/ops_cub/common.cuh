@@ -1,10 +1,14 @@
 #pragma once
 
 #include "../field.cuh"
+#include "../memory.cuh"
 #include <cub/cub.cuh>
 
-using namespace cub;
-using namespace field;
+using namespace ::cub;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+
+namespace airbender::ops_cub {
 
 typedef uint32_t u32;
 typedef uint64_t u64;
@@ -30,3 +34,4 @@ template <> struct mul<u32> {
   DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a * b; }
   static HOST_DEVICE_FORCEINLINE u32 init() { return 1; }
 };
+} // namespace airbender::ops_cub

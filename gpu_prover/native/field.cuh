@@ -6,7 +6,8 @@
 // https://github.com/Plonky3/Plonky3/tree/main/mersenne-31
 // https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf
 
-namespace field {
+namespace airbender::field {
+
 struct base_field {
   static constexpr uint32_t ORDER = (1u << 31) - 1;
   static constexpr uint32_t MINUS_ONE = ORDER - 1;
@@ -18,13 +19,9 @@ struct base_field {
   constexpr base_field() = default;
   explicit constexpr HOST_DEVICE_FORCEINLINE base_field(const uint32_t limb) : limb(limb) {}
 
-  static constexpr DEVICE_FORCEINLINE uint32_t into_canonical_u32(const base_field value) {
-    return value.limb == ORDER ? 0 : value.limb;
-  }
+  static constexpr DEVICE_FORCEINLINE uint32_t into_canonical_u32(const base_field value) { return value.limb == ORDER ? 0 : value.limb; }
 
-  static constexpr DEVICE_FORCEINLINE base_field into_canonical(const base_field value) {
-    return base_field(into_canonical_u32(value));
-  }
+  static constexpr DEVICE_FORCEINLINE base_field into_canonical(const base_field value) { return base_field(into_canonical_u32(value)); }
 
   static DEVICE_FORCEINLINE base_field from_u32(const uint32_t value) {
     const uint32_t msb = value >> 31;
@@ -389,4 +386,4 @@ template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER =
 struct e4_matrix_getter_setter : matrix_getter_setter<ext4_field, LD_MODIFIER, ST_MODIFIER> {
   explicit e4_matrix_getter_setter(size_t stride) : matrix_getter_setter<ext4_field, LD_MODIFIER, ST_MODIFIER>(stride) {}
 };
-} // namespace field
+} // namespace airbender::field

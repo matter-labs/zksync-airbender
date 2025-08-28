@@ -340,7 +340,7 @@ macro_rules! reduce_fns {
     ($function:ident, $type:ty) => {
         paste! {
             ::era_cudart_sys::cuda_fn_and_stub! {
-                fn [<reduce_ $function _ $type:lower>](
+                fn [<ab_reduce_ $function _ $type:lower>](
                     d_temp_storage: *mut u8,
                     temp_storage_bytes: &mut usize,
                     d_in: *const $type,
@@ -351,7 +351,7 @@ macro_rules! reduce_fns {
             }
 
             ::era_cudart_sys::cuda_fn_and_stub! {
-                fn [<segmented_reduce_ $function _ $type:lower>](
+                fn [<ab_segmented_reduce_ $function _ $type:lower>](
                     d_temp_storage: *mut u8,
                     temp_storage_bytes: &mut usize,
                     d_in: PtrAndStride<$type>,
@@ -373,8 +373,8 @@ macro_rules! reduce_impl {
             impl Reduce for $type {
                 fn get_reduce_function(operation: ReduceOperation) -> ReduceFunction<Self> {
                     match operation {
-                        ReduceOperation::Sum => [<reduce_add_ $type:lower>],
-                        ReduceOperation::Product => [<reduce_mul_ $type:lower>],
+                        ReduceOperation::Sum => [<ab_reduce_add_ $type:lower>],
+                        ReduceOperation::Product => [<ab_reduce_mul_ $type:lower>],
                     }
                 }
 
@@ -382,8 +382,8 @@ macro_rules! reduce_impl {
                     operation: ReduceOperation,
                 ) -> SegmentedReduceFunction<Self> {
                     match operation {
-                        ReduceOperation::Sum => [<segmented_reduce_add_ $type:lower>],
-                        ReduceOperation::Product => [<segmented_reduce_mul_ $type:lower>],
+                        ReduceOperation::Sum => [<ab_segmented_reduce_add_ $type:lower>],
+                        ReduceOperation::Product => [<ab_segmented_reduce_mul_ $type:lower>],
                     }
                 }
             }

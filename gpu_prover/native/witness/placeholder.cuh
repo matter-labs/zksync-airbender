@@ -2,6 +2,10 @@
 
 #include "common.cuh"
 
+using namespace ::airbender::witness;
+
+namespace airbender::witness::placeholder {
+
 enum PlaceholderTag : u32 {
   XregsInit,
   XregsFin,
@@ -78,3 +82,5 @@ struct Placeholder {
   PlaceholderTag tag;
   PlaceholderPayload payload;
 };
+
+} // namespace airbender::witness::placeholder

@@ -45,7 +45,7 @@ cuda_kernel!(
 );
 
 range_check_aggregated_entry_invs_and_multiplicities_arg!(
-    range_check_aggregated_entry_invs_and_multiplicities_arg_kernel
+    ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel
 );
 
 cuda_kernel!(
@@ -65,7 +65,7 @@ cuda_kernel!(
 );
 
 generic_aggregated_entry_invs_and_multiplicities_arg!(
-    generic_aggregated_entry_invs_and_multiplicities_arg_kernel
+    ab_generic_aggregated_entry_invs_and_multiplicities_arg_kernel
 );
 
 cuda_kernel!(
@@ -82,7 +82,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-delegation_aux_poly!(delegation_aux_poly_kernel);
+delegation_aux_poly!(ab_delegation_aux_poly_kernel);
 
 cuda_kernel!(
     LookupArgs,
@@ -108,7 +108,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-lookup_args!(lookup_args_kernel);
+lookup_args!(ab_lookup_args_kernel);
 
 // Q: Why not use a unified memory and lookup args kernel?
 // Possible advantages of unified kernel:
@@ -136,7 +136,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-shuffle_ram_memory_args!(shuffle_ram_memory_args_kernel);
+shuffle_ram_memory_args!(ab_shuffle_ram_memory_args_kernel);
 
 cuda_kernel!(
     BatchedRamMemoryArgs,
@@ -149,7 +149,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-batched_ram_memory_args!(batched_ram_memory_args_kernel);
+batched_ram_memory_args!(ab_batched_ram_memory_args_kernel);
 
 cuda_kernel!(
     RegisterAndIndirectMemoryArgs,
@@ -162,7 +162,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-register_and_indirect_memory_args!(register_and_indirect_memory_args_kernel);
+register_and_indirect_memory_args!(ab_register_and_indirect_memory_args_kernel);
 
 pub fn get_stage_2_e4_scratch(domain_size: usize, circuit: &CompiledCircuitArtifact<BF>) -> usize {
     max(
@@ -477,7 +477,7 @@ pub fn compute_stage_2_args_on_main_domain(
         log_n as u32,
     );
     RangeCheckAggregatedEntryInvsAndMultiplicitiesArgFunction(
-        range_check_aggregated_entry_invs_and_multiplicities_arg_kernel,
+        ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel,
     )
     .launch(&config, &args)?;
     let num_timestamp_range_check_rows = 1 << TIMESTAMP_COLUMNS_NUM_BITS;
@@ -502,7 +502,7 @@ pub fn compute_stage_2_args_on_main_domain(
         log_n as u32,
     );
     RangeCheckAggregatedEntryInvsAndMultiplicitiesArgFunction(
-        range_check_aggregated_entry_invs_and_multiplicities_arg_kernel,
+        ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel,
     )
     .launch(&config, &args)?;
     if num_generic_table_rows > 0 {
@@ -535,7 +535,7 @@ pub fn compute_stage_2_args_on_main_domain(
             log_n as u32,
         );
         GenericAggregatedEntryInvsAndMultiplicitiesArgFunction(
-            generic_aggregated_entry_invs_and_multiplicities_arg_kernel,
+            ab_generic_aggregated_entry_invs_and_multiplicities_arg_kernel,
         )
         .launch(&config, &args)?;
     } else {
@@ -579,7 +579,7 @@ pub fn compute_stage_2_args_on_main_domain(
             handle_delegation_requests,
             log_n as u32,
         );
-        DelegationAuxPolyFunction(delegation_aux_poly_kernel).launch(&config, &args)?;
+        DelegationAuxPolyFunction(ab_delegation_aux_poly_kernel).launch(&config, &args)?;
     }
     // Identify range check 16 src (witness) cols, bf args, and e4 args
     // CPU code doesn't fully support an isolated (odd-tail) remainder col yet.
@@ -667,7 +667,7 @@ pub fn compute_stage_2_args_on_main_domain(
         num_stage_2_e4_cols as u32,
         log_n as u32,
     );
-    LookupArgsFunction(lookup_args_kernel).launch(&config, &args)?;
+    LookupArgsFunction(ab_lookup_args_kernel).launch(&config, &args)?;
     // Pack metadata for memory args
     let memory_challenges = MemoryChallenges::new(&memory_argument_challenges);
     let raw_memory_args_start = circuit
@@ -705,7 +705,7 @@ pub fn compute_stage_2_args_on_main_domain(
             memory_args_start as u32,
             log_n as u32,
         );
-        ShuffleRamMemoryArgsFunction(shuffle_ram_memory_args_kernel).launch(&config, &args)?;
+        ShuffleRamMemoryArgsFunction(ab_shuffle_ram_memory_args_kernel).launch(&config, &args)?;
     } else {
         assert!(process_batch_ram_access || process_registers_and_indirect_access);
         // In principle we can rig batch ram access and registers_and_indirect_access
@@ -750,7 +750,7 @@ pub fn compute_stage_2_args_on_main_domain(
             memory_args_start as u32,
             log_n as u32,
         );
-        BatchedRamMemoryArgsFunction(batched_ram_memory_args_kernel).launch(&config, &args)?;
+        BatchedRamMemoryArgsFunction(ab_batched_ram_memory_args_kernel).launch(&config, &args)?;
     }
     if process_registers_and_indirect_access {
         let register_and_indirect_accesses = &circuit.memory_layout.register_and_indirect_accesses;
@@ -772,7 +772,7 @@ pub fn compute_stage_2_args_on_main_domain(
             memory_args_start as u32,
             log_n as u32,
         );
-        RegisterAndIndirectMemoryArgsFunction(register_and_indirect_memory_args_kernel)
+        RegisterAndIndirectMemoryArgsFunction(ab_register_and_indirect_memory_args_kernel)
             .launch(&config, &args)?;
     }
     // quick and dirty c0 = 0 adjustment for bf cols

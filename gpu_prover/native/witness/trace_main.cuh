@@ -3,6 +3,11 @@
 #include "placeholder.cuh"
 #include "trace.cuh"
 
+using namespace ::airbender::witness::placeholder;
+using namespace ::airbender::witness::trace;
+
+namespace airbender::witness::trace::main {
+
 struct __align__(8) SingleCycleTracingData {
   u32 pc;
   u32 rs1_read_value;
@@ -172,3 +177,5 @@ struct __align__(16) LazyInitAndTeardown {
 struct ShuffleRamSetupAndTeardown {
   const LazyInitAndTeardown *const __restrict__ lazy_init_data;
 };
+
+} // namespace airbender::witness::trace::main

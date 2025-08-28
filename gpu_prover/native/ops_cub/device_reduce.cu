@@ -1,13 +1,10 @@
 #include "common.cuh"
 
-namespace device_reduce {
-
-using namespace field;
-using namespace memory;
+namespace airbender::ops_cub::device_reduce {
 
 #define REDUCE(op, arg_t)                                                                                                                                      \
-  EXTERN cudaError_t reduce_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const arg_t *d_in, arg_t *d_out, const int num_items,             \
-                                           const cudaStream_t stream) {                                                                                        \
+  EXTERN cudaError_t ab_reduce_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const arg_t *d_in, arg_t *d_out, const int num_items,          \
+                                              const cudaStream_t stream) {                                                                                     \
     return DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out, num_items, op<arg_t>(), op<arg_t>::init(), stream);                           \
   }
 
@@ -32,8 +29,8 @@ struct offset_iterator {
 };
 
 #define SEGMENTED_REDUCE(op, arg_t)                                                                                                                            \
-  EXTERN cudaError_t segmented_reduce_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const matrix_accessor<arg_t> d_in, arg_t *d_out,        \
-                                                     const int num_segments, const int num_items, const cudaStream_t stream) {                                 \
+  EXTERN cudaError_t ab_segmented_reduce_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const matrix_accessor<arg_t> d_in, arg_t *d_out,     \
+                                                        const int num_segments, const int num_items, const cudaStream_t stream) {                              \
     const int stride = static_cast<int>(d_in.stride);                                                                                                          \
     const offset_iterator d_begin_offsets{0, stride};                                                                                                          \
     const offset_iterator d_end_offsets{num_items, stride};                                                                                                    \
@@ -48,4 +45,4 @@ SEGMENTED_REDUCE(mul, bf);
 SEGMENTED_REDUCE(mul, e2);
 SEGMENTED_REDUCE(mul, e4);
 
-} // namespace device_reduce
+} // namespace airbender::ops_cub::device_reduce

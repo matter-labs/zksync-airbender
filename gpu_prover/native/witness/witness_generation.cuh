@@ -2,6 +2,11 @@
 #include "placeholder.cuh"
 #include "tables.cuh"
 
+using namespace ::airbender::witness::placeholder;
+using namespace ::airbender::witness::tables;
+
+namespace airbender::witness::generation {
+
 // #define PRINT_ENABLED
 #define PRINT_THREAD_IDX 0
 
@@ -385,14 +390,16 @@ template <class R> struct WitnessProxy {
 
 #define FN_CALL(N) fn_##N(p);
 
-#define INCLUDE_PREFIX ../../../../circuit_defs/ // whitespace!
+// clang-format off
+#define INCLUDE_PREFIX ../../../../circuit_defs/ // whitespace! NOLINT
 #define INCLUDE_SUFFIX /generated/witness_generation_fn.cuh
+// clang-format on
 #define STRINGIFY(X) STRINGIFY2(X)
 #define STRINGIFY2(X) #X
 #define IDENT(x) x
 #define CAT_3(x, y, z) IDENT(x) IDENT(y) IDENT(z)
 #define CIRCUIT_INCLUDE(NAME) STRINGIFY(CAT_3(INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
-#define KERNEL_NAME(NAME) generate_## NAME ##_witness_kernel
+#define KERNEL_NAME(NAME) ab_generate_##NAME##_witness_kernel
 #define KERNEL(NAME, ORACLE)                                                                                                                                   \
   EXTERN __global__ void KERNEL_NAME(NAME)(const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables,                   \
                                            const wrapped_f *const __restrict__ memory, wrapped_f *const __restrict__ witness,                                  \
@@ -404,3 +411,5 @@ template <class R> struct WitnessProxy {
     const WitnessProxy<ORACLE> p = {oracle, generic_lookup_tables, memory, witness, lookup_mappings, scratch, stride, gid};                                    \
     FN_CALL(generate)                                                                                                                                          \
   }
+
+} // namespace airbender::witness::generation

@@ -3,6 +3,11 @@
 #include "field.cuh"
 #include "memory.cuh"
 
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+
+namespace airbender::vectorized {
+
 // I'm basically imitating the wrapping_matrix pattern.
 // vectorized_e4_matrix_setter and getter both use "internal" and the add_row and add_col methods,
 // so it's nice to inherit them from a common parent.
@@ -19,8 +24,12 @@ template <typename T, unsigned WIDTH> struct vectorized_matrix_accessor {
 };
 
 template <unsigned WIDTH> struct width_to_value_type;
-template <> struct width_to_value_type<2> { using VALUE_TYPE = field::ext2_field; };
-template <> struct width_to_value_type<4> { using VALUE_TYPE = field::ext4_field; };
+template <> struct width_to_value_type<2> {
+  using VALUE_TYPE = field::ext2_field;
+};
+template <> struct width_to_value_type<4> {
+  using VALUE_TYPE = field::ext4_field;
+};
 
 template <memory::ld_modifier LD_MODIFIER, unsigned WIDTH>
 struct vectorized_matrix_getter : vectorized_matrix_accessor<memory::matrix_getter<field::base_field, LD_MODIFIER>, WIDTH> {
@@ -109,9 +118,8 @@ template <memory::st_modifier ST_MODIFIER> using vectorized_e4_matrix_setter = v
 template <memory::ld_modifier LD_MODIFIER, memory::st_modifier ST_MODIFIER>
 using vectorized_e4_matrix_getter_setter = vectorized_matrix_getter_setter<LD_MODIFIER, ST_MODIFIER, 4>;
 
-template <memory::ld_modifier LD_MODIFIER>
-struct vectorized_e2_matrix_getter : vectorized_matrix_getter<LD_MODIFIER, 2> {
-  DEVICE_FORCEINLINE void get_two_adjacent(const unsigned row, field::ext2_field &val0, field::ext2_field& val1) const {
+template <memory::ld_modifier LD_MODIFIER> struct vectorized_e2_matrix_getter : vectorized_matrix_getter<LD_MODIFIER, 2> {
+  DEVICE_FORCEINLINE void get_two_adjacent(const unsigned row, field::ext2_field &val0, field::ext2_field &val1) const {
     const field::base_field *ptr = this->internal.ptr + row;
     const auto c0s = memory::load<uint2, LD_MODIFIER>(reinterpret_cast<const uint2 *>(ptr));
     const auto c1s = memory::load<uint2, LD_MODIFIER>(reinterpret_cast<const uint2 *>(ptr + this->internal.stride));
@@ -120,13 +128,13 @@ struct vectorized_e2_matrix_getter : vectorized_matrix_getter<LD_MODIFIER, 2> {
   }
 };
 
-template <memory::st_modifier ST_MODIFIER>
-struct vectorized_e2_matrix_setter : vectorized_matrix_setter<ST_MODIFIER, 2> {
+template <memory::st_modifier ST_MODIFIER> struct vectorized_e2_matrix_setter : vectorized_matrix_setter<ST_MODIFIER, 2> {
   DEVICE_FORCEINLINE void set_two_adjacent(const unsigned row, const field::ext2_field val0, const field::ext2_field val1) const {
     field::base_field *ptr = this->internal.ptr + row;
-    const uint2 c0s{val0[0].limb, val1[0].limb}; 
-    const uint2 c1s{val0[1].limb, val1[1].limb}; 
+    const uint2 c0s{val0[0].limb, val1[0].limb};
+    const uint2 c1s{val0[1].limb, val1[1].limb};
     memory::store<uint2, ST_MODIFIER>(reinterpret_cast<uint2 *>(ptr), c0s);
     memory::store<uint2, ST_MODIFIER>(reinterpret_cast<uint2 *>(ptr + this->internal.stride), c1s);
   }
 };
+} // namespace airbender::vectorized

@@ -1,7 +1,9 @@
 #include "common.cuh"
 #include "field.cuh"
 
-using namespace field;
+using namespace ::airbender::field;
+
+namespace airbender::blake2s {
 
 typedef uint32_t u32;
 typedef uint64_t u64;
@@ -72,7 +74,8 @@ template <bool IS_FINAL_BLOCK> DEVICE_FORCEINLINE void compress(u32 state[STATE_
     state[i] ^= v[i] ^ v[i + STATE_SIZE];
 }
 
-EXTERN __global__ void blake2s_leaves_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count, const unsigned count) {
+EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
+                                                const unsigned count) {
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
@@ -106,7 +109,7 @@ EXTERN __global__ void blake2s_leaves_kernel(const bf *values, u32 *results, con
     store_cs(&results[i], state[i]);
 }
 
-EXTERN __global__ void blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
+EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
@@ -125,8 +128,9 @@ EXTERN __global__ void blake2s_nodes_kernel(const u32 *values, u32 *results, con
     store_cs(&results[i], state[i]);
 }
 
-EXTERN __global__ void gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes, const unsigned log_rows_count,
-                                          const matrix_getter<bf, ld_modifier::cs> values, const matrix_setter<bf, st_modifier::cs> results) {
+EXTERN __global__ void ab_gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
+                                             const unsigned log_rows_count, const matrix_getter<bf, ld_modifier::cs> values,
+                                             const matrix_setter<bf, st_modifier::cs> results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;
@@ -140,8 +144,8 @@ EXTERN __global__ void gather_rows_kernel(const unsigned *indexes, const unsigne
   results.set(dst_row, col, result);
 }
 
-EXTERN __global__ void gather_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const u32 *values, const unsigned log_leaves_count,
-                                                  u32 *results) {
+EXTERN __global__ void ab_gather_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const u32 *values, const unsigned log_leaves_count,
+                                                     u32 *results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;
@@ -155,7 +159,7 @@ EXTERN __global__ void gather_merkle_paths_kernel(const unsigned *indexes, const
   results[dst_index] = values[src_index];
 }
 
-EXTERN __global__ void blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
+EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
   const uint32_t digest_mask = 0xffffffff << 32 - bits_count;
   __align__(8) u32 m_u32[BLOCK_SIZE] = {};
   auto m_u64 = reinterpret_cast<u64 *>(m_u32);
@@ -173,6 +177,9 @@ EXTERN __global__ void blake2s_pow_kernel(const u64 *seed, const u32 bits_count,
       atomicCAS(reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result)), UINT64_MAX, nonce);
       __threadfence();
     }
-    if (*result != UINT64_MAX) return;
+    if (*result != UINT64_MAX)
+      return;
   }
 }
+
+} // namespace airbender::blake2s

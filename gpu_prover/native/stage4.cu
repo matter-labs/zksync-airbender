@@ -2,8 +2,12 @@
 #include "ops_complex.cuh"
 #include "vectorized.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+using namespace ::airbender::ops_complex;
+using namespace ::airbender::vectorized;
+
+namespace airbender::stage4 {
 
 using bf = base_field;
 using e2 = ext2_field;
@@ -15,7 +19,7 @@ constexpr unsigned DOES_NOT_NEED_Z_OMEGA = UINT_MAX;
 constexpr unsigned MAX_NON_WITNESS_TERMS_AT_Z_OMEGA = 3;
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void deep_denom_at_z_kernel(vector_setter<e4, st_modifier::cs> denom_at_z, const e4 *z_ref, const unsigned log_n, const bool bit_reversed) {
+    void ab_deep_denom_at_z_kernel(vector_setter<e4, st_modifier::cs> denom_at_z, const e4 *z_ref, const unsigned log_n, const bool bit_reversed) {
   constexpr unsigned INV_BATCH = InvBatch<e4>::INV_BATCH;
 
   const unsigned n = 1u << log_n;
@@ -53,16 +57,20 @@ EXTERN __launch_bounds__(128, 8) __global__
       denom_at_z.set(g, per_elem_factors[i]);
 }
 
-extern "C" struct ColIdxsToChallengeIdxsMap { const unsigned map[MAX_WITNESS_COLS]; };
+struct ColIdxsToChallengeIdxsMap {
+  const unsigned map[MAX_WITNESS_COLS];
+};
 
-extern "C" struct NonWitnessChallengesAtZOmega { const e4 challenges[MAX_NON_WITNESS_TERMS_AT_Z_OMEGA]; };
+struct NonWitnessChallengesAtZOmega {
+  const e4 challenges[MAX_NON_WITNESS_TERMS_AT_Z_OMEGA];
+};
 
-extern "C" struct ChallengesTimesEvals {
+struct ChallengesTimesEvals {
   const e4 at_z_sum_neg;
   const e4 at_z_omega_sum_neg;
 };
 
-EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
+EXTERN __launch_bounds__(512, 2) __global__ void ab_deep_quotient_kernel(
     matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
     matrix_getter<bf, ld_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
     vectorized_e4_matrix_getter<ld_modifier::cs> composition_col, vector_getter<e4, ld_modifier::ca> denom_at_z,
@@ -167,3 +175,5 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
 
   quotient.set(e4::add(acc_z, acc_z_omega));
 }
+
+} // namespace airbender::stage4

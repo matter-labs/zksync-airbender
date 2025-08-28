@@ -2,6 +2,10 @@
 
 #include "column.cuh"
 
+using namespace ::airbender::witness::column;
+
+namespace airbender::witness::layout {
+
 struct ShuffleRamInitAndTeardownLayout {
   ColumnSet<REGISTER_SIZE> lazy_init_addresses_columns;
   ColumnSet<REGISTER_SIZE> lazy_teardown_values_columns;
@@ -19,3 +23,5 @@ struct DelegationProcessingLayout {
   ColumnSet<1> abi_mem_offset_high;
   ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> write_timestamp;
 };
+
+} // namespace airbender::witness::layout

@@ -37,7 +37,7 @@ cuda_kernel!(
     count: u32,
 );
 
-precompute_common_factor!(barycentric_precompute_common_factor_kernel);
+precompute_common_factor!(ab_barycentric_precompute_common_factor_kernel);
 
 cuda_kernel!(
     PrecomputeLagrangeCoeffs,
@@ -50,7 +50,7 @@ cuda_kernel!(
     log_count: u32,
 );
 
-precompute_lagrange_coeffs!(barycentric_precompute_lagrange_coeffs_kernel);
+precompute_lagrange_coeffs!(ab_barycentric_precompute_lagrange_coeffs_kernel);
 
 pub fn precompute_lagrange_coeffs(
     z: &DeviceVariable<E4>,
@@ -70,7 +70,7 @@ pub fn precompute_lagrange_coeffs(
     let z = z.as_ptr();
     let args =
         PrecomputeCommonFactorArguments::new(z, common_factor, coset, decompression_factor, count);
-    PrecomputeCommonFactorFunction(barycentric_precompute_common_factor_kernel)
+    PrecomputeCommonFactorFunction(ab_barycentric_precompute_common_factor_kernel)
         .launch(&config, &args)?;
     let log_count: u32 = count.trailing_zeros();
     let block_dim = WARP_SIZE * 4;
@@ -83,7 +83,7 @@ pub fn precompute_lagrange_coeffs(
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args =
         PrecomputeLagrangeCoeffsArguments::new(z, common_factor, w_inv_step, coset, dst, log_count);
-    PrecomputeLagrangeCoeffsFunction(barycentric_precompute_lagrange_coeffs_kernel)
+    PrecomputeLagrangeCoeffsFunction(ab_barycentric_precompute_lagrange_coeffs_kernel)
         .launch(&config, &args)?;
     Ok(())
 }
@@ -120,7 +120,7 @@ cuda_kernel!(
     log_count: u32,
 );
 
-barycentric_partial_reduce!(barycentric_partial_reduce_kernel);
+barycentric_partial_reduce!(ab_barycentric_partial_reduce_kernel);
 
 fn get_batch_partial_reduce_grid_block(domain_size: u32, row_chunk_size: u32) -> (Dim3, u32) {
     let block_dim_x = WARP_SIZE;
@@ -313,7 +313,8 @@ pub fn batch_barycentric_eval(
         row_chunk_size,
         log_n,
     );
-    BarycentricPartialReduceFunction(barycentric_partial_reduce_kernel).launch(&config, &args)?;
+    BarycentricPartialReduceFunction(ab_barycentric_partial_reduce_kernel)
+        .launch(&config, &args)?;
     batch_reduce::<E4>(
         ReduceOperation::Sum,
         temp_storage_final_cub_reduce,

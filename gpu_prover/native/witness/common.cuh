@@ -5,7 +5,11 @@
 #include "../common.cuh"
 #include "../field.cuh"
 
-typedef field::base_field bf;
+using namespace ::airbender::field;
+
+namespace airbender::witness {
+
+typedef base_field bf;
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -52,3 +56,5 @@ DEVICE_FORCEINLINE uint2 sub_borrow(const u32 lhs, const u32 rhs) {
   const u64 diff = u32_tuple_to_u64(uint2(lhs, 1)) - static_cast<u64>(rhs);
   return u64_to_u32_tuple(diff ^ 1ull << 32);
 }
+
+} // namespace airbender::witness

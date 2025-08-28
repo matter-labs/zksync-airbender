@@ -30,8 +30,8 @@ cuda_kernel!(
     count: u32,
 );
 
-leaves_kernel!(monolith_leaves_st_kernel);
-leaves_kernel!(monolith_leaves_mt_kernel);
+leaves_kernel!(ab_monolith_leaves_st_kernel);
+leaves_kernel!(ab_monolith_leaves_mt_kernel);
 
 #[allow(clippy::too_many_arguments)]
 pub fn launch_leaves_generic_kernel(
@@ -67,7 +67,7 @@ pub fn launch_leaves_st_kernel(
 ) -> CudaResult<()> {
     assert_eq!(RATE, CAPACITY);
     let count = results.len() as u32;
-    let kernel_function = monolith_leaves_st_kernel;
+    let kernel_function = ab_monolith_leaves_st_kernel;
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     launch_leaves_generic_kernel(
         kernel_function,
@@ -88,7 +88,7 @@ pub fn launch_leaves_mt_kernel(
 ) -> CudaResult<()> {
     assert_eq!(RATE, CAPACITY);
     let count = results.len() as u32;
-    let kernel_function = monolith_leaves_mt_kernel;
+    let kernel_function = ab_monolith_leaves_mt_kernel;
     assert_eq!((WARP_SIZE * 4) % WIDTH as u32, 0);
     let threads_per_block = WARP_SIZE * 4 / WIDTH as u32;
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(threads_per_block, count);
@@ -119,9 +119,9 @@ pub fn launch_leaves_kernel(
     let threads_per_block = WARP_SIZE * 4 / WIDTH as u32;
     let (grid_dim, _) = get_grid_block_dims_for_threads_count(threads_per_block, count);
     let launch = if grid_dim.x > MT_BPM * mpc {
-        launch_leaves_st_kernel
+        ab_launch_leaves_st_kernel
     } else {
-        launch_leaves_mt_kernel
+        ab_launch_leaves_mt_kernel
     };
     launch(values, results, log_rows_per_hash, stream)
 }
@@ -146,8 +146,8 @@ cuda_kernel!(
     count: u32,
 );
 
-nodes_kernel!(monolith_nodes_st_kernel);
-nodes_kernel!(monolith_nodes_mt_kernel);
+nodes_kernel!(ab_monolith_nodes_st_kernel);
+nodes_kernel!(ab_monolith_nodes_mt_kernel);
 
 fn launch_nodes_generic_kernel(
     kernel_function: NodesSignature,
@@ -177,7 +177,7 @@ pub fn launch_nodes_st_kernel(
 ) -> CudaResult<()> {
     assert_eq!(RATE, CAPACITY);
     let count = results.len() as u32;
-    let kernel_function = monolith_nodes_st_kernel;
+    let kernel_function = ab_monolith_nodes_st_kernel;
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     launch_nodes_generic_kernel(
         kernel_function,
@@ -196,7 +196,7 @@ pub fn launch_nodes_mt_kernel(
 ) -> CudaResult<()> {
     assert_eq!(RATE, CAPACITY);
     let count = results.len() as u32;
-    let kernel_function = monolith_nodes_mt_kernel;
+    let kernel_function = ab_monolith_nodes_mt_kernel;
     assert_eq!((WARP_SIZE * 4) % WIDTH as u32, 0);
     let threads_per_block = WARP_SIZE * 4 / WIDTH as u32;
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(threads_per_block, count);
@@ -276,7 +276,7 @@ pub fn build_merkle_tree(
 
 cuda_kernel!(
     GatherRows,
-    gather_rows_kernel(
+    ab_gather_rows_kernel(
         indexes: *const u32,
         indexes_count: u32,
         values: PtrAndStride<BF>,
@@ -316,7 +316,7 @@ pub fn gather_rows(
 
 cuda_kernel!(
     GatherMerklePaths,
-    gather_merkle_paths_kernel(
+    ab_gather_merkle_paths_kernel(
         indexes: *const u32,
         indexes_count: u32,
         values: *const Digest,

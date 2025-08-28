@@ -16,7 +16,7 @@ macro_rules! scan_fn {
     ($i_or_e:ident, $function:ident, $type:ty) => {
         paste! {
             ::era_cudart_sys::cuda_fn_and_stub! {
-                fn [<scan_ $i_or_e _ $function _ $type:lower>](
+                fn [<ab_scan_ $i_or_e _ $function _ $type:lower>](
                     d_temp_storage: *mut u8,
                     temp_storage_bytes: &mut usize,
                     d_in: *const $type,
@@ -279,8 +279,8 @@ scan_fn!(i, add, u32);
 impl Scan for u32 {
     fn get_function(operation: ScanOperation, inclusive: bool) -> ScanFunction<Self> {
         match (operation, inclusive) {
-            (ScanOperation::Sum, false) => scan_e_add_u32,
-            (ScanOperation::Sum, true) => scan_i_add_u32,
+            (ScanOperation::Sum, false) => ab_scan_e_add_u32,
+            (ScanOperation::Sum, true) => ab_scan_i_add_u32,
             (ScanOperation::Product, _) => unimplemented!(),
         }
     }
@@ -296,10 +296,10 @@ macro_rules! scan_impl {
                     inclusive: bool,
                 ) -> ScanFunction<Self> {
                     match (operation, inclusive) {
-                        (ScanOperation::Sum, false) => [<scan_e_add_ $type:lower>],
-                        (ScanOperation::Sum, true) => [<scan_i_add_ $type:lower>],
-                        (ScanOperation::Product, false) => [<scan_e_mul_ $type:lower>],
-                        (ScanOperation::Product, true) => [<scan_i_mul_ $type:lower>],
+                        (ScanOperation::Sum, false) => [<ab_scan_e_add_ $type:lower>],
+                        (ScanOperation::Sum, true) => [<ab_scan_i_add_ $type:lower>],
+                        (ScanOperation::Product, false) => [<ab_scan_e_mul_ $type:lower>],
+                        (ScanOperation::Product, true) => [<ab_scan_i_mul_ $type:lower>],
                     }
                 }
             }

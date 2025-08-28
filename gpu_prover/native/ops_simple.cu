@@ -1,8 +1,10 @@
 #include "field.cuh"
 #include "memory.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+
+namespace airbender::ops_simple {
 
 template <typename T> struct value_getter {
   using value_type = T;
@@ -114,7 +116,7 @@ template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_add(co
 template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_sub(const T0 x, const T1 y, const T2 z) { return sub(mul(x, y), z); }
 
 #define SET_BY_VAL_KERNEL(arg_t)                                                                                                                               \
-  EXTERN __global__ void set_by_val_##arg_t##_kernel(const arg_t##_value_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
+  EXTERN __global__ void ab_set_by_val_##arg_t##_kernel(const arg_t##_value_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
 
 SET_BY_VAL_KERNEL(u32)
 SET_BY_VAL_KERNEL(u64)
@@ -123,7 +125,7 @@ SET_BY_VAL_KERNEL(e2)
 SET_BY_VAL_KERNEL(e4)
 
 #define SET_BY_REF_KERNEL(arg_t)                                                                                                                               \
-  EXTERN __global__ void set_by_ref_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
+  EXTERN __global__ void ab_set_by_ref_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
 
 SET_BY_REF_KERNEL(u32)
 SET_BY_REF_KERNEL(u64)
@@ -132,7 +134,7 @@ SET_BY_REF_KERNEL(e2)
 SET_BY_REF_KERNEL(e4)
 
 #define UNARY_KERNEL(op, arg_t)                                                                                                                                \
-  EXTERN __global__ void op##_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(arg_t::op, arg, result); }
+  EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(arg_t::op, arg, result); }
 
 UNARY_KERNEL(dbl, bf)
 UNARY_KERNEL(dbl, e2)
@@ -148,7 +150,7 @@ UNARY_KERNEL(sqr, e2)
 UNARY_KERNEL(sqr, e4)
 
 #define PARAMETRIZED_KERNEL(op, arg_t)                                                                                                                         \
-  EXTERN __global__ void op##_##arg_t##_kernel(const arg_t##_getter arg, const u32_value_getter parameter, arg_t##_setter result) {                            \
+  EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg, const u32_value_getter parameter, arg_t##_setter result) {                       \
     binary_op(arg_t::op, arg, parameter, result);                                                                                                              \
   }
 
@@ -163,7 +165,7 @@ PARAMETRIZED_KERNEL(shr, e2)
 PARAMETRIZED_KERNEL(shr, e4)
 
 #define BINARY_KERNEL(op, arg0_t, arg1_t, result_t)                                                                                                            \
-  EXTERN __global__ void op##_##arg0_t##_##arg1_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {                 \
+  EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {            \
     binary_op(result_t::op, arg0, arg1, result);                                                                                                               \
   }
 
@@ -196,8 +198,8 @@ BINARY_KERNEL(sub, e4, e2, e4)
 BINARY_KERNEL(sub, e4, e4, e4)
 
 #define TERNARY_KERNEL(op, arg0_t, arg1_t, arg2_t, result_t)                                                                                                   \
-  EXTERN __global__ void op##_##arg0_t##_##arg1_t##_##arg2_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, const arg2_t##_getter arg2,      \
-                                                                      result_t##_setter result) {                                                              \
+  EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_##arg2_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, const arg2_t##_getter arg2, \
+                                                                           result_t##_setter result) {                                                         \
     ternary_op(op, arg0, arg1, arg2, result);                                                                                                                  \
   }
 
@@ -255,3 +257,5 @@ TERNARY_KERNEL(mul_sub, e4, e2, e4, e4)
 TERNARY_KERNEL(mul_sub, e4, e4, bf, e4)
 TERNARY_KERNEL(mul_sub, e4, e4, e2, e4)
 TERNARY_KERNEL(mul_sub, e4, e4, e4, e4)
+
+} // namespace airbender::ops_simple

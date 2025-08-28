@@ -1,11 +1,15 @@
 #include "../arg_utils.cuh"
+#include "../memory.cuh"
 #include "common.cuh"
 
-using namespace memory;
+using namespace ::airbender::arg_utils;
+using namespace ::airbender::memory;
 
-EXTERN __global__ void generate_multiplicities_kernel(const u32 *const __restrict__ unique_indexes, const u32 *const __restrict__ counts,
-                                                      const u32 *const __restrict__ num_runs, const matrix_setter<bf, st_modifier::cs> multiplicities,
-                                                      const unsigned count) {
+namespace airbender::witness::multiplicities {
+
+EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __restrict__ unique_indexes, const u32 *const __restrict__ counts,
+                                                         const u32 *const __restrict__ num_runs, const matrix_setter<bf, st_modifier::cs> multiplicities,
+                                                         const unsigned count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
     return;
@@ -19,7 +23,7 @@ EXTERN __global__ void generate_multiplicities_kernel(const u32 *const __restric
   multiplicities.set(row, col, value);
 }
 
-EXTERN __launch_bounds__(128, 8) __global__ void generate_range_check_lookup_mappings_kernel(
+EXTERN __launch_bounds__(128, 8) __global__ void ab_generate_range_check_lookup_mappings_kernel(
     matrix_getter<bf, ld_modifier::cg> setup_cols, matrix_getter<bf, ld_modifier::cg> witness_cols, matrix_getter<bf, ld_modifier::cg> memory_cols,
     matrix_setter<unsigned, st_modifier::cs> range_check_16_lookup_mapping, matrix_setter<unsigned, st_modifier::cs> timestamp_lookup_mapping,
     __grid_constant__ const RangeCheckArgsLayout explicit_range_check_16_layout, __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
@@ -88,3 +92,5 @@ EXTERN __launch_bounds__(128, 8) __global__ void generate_range_check_lookup_map
     range_check_16_lookup_mapping.set(bf::into_canonical_u32(val1));
   }
 }
+
+} // namespace airbender::witness::multiplicities

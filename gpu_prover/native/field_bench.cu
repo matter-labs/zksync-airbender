@@ -1,6 +1,6 @@
 #include "field.cuh"
 
-using namespace field;
+namespace airbender::field {
 
 using bf = base_field;
 
@@ -8,7 +8,7 @@ constexpr unsigned OUTER_COUNT = 1024;
 constexpr unsigned INNER_COUNT = 64;
 constexpr unsigned VALUES_COUNT = 16;
 
-EXTERN __launch_bounds__(1024, 1) __global__ void add_bench_kernel(bf *values) {
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_bench_kernel(bf *values) {
   bf v[VALUES_COUNT];
   bf r[VALUES_COUNT];
   if (threadIdx.x == 0xffffffff)
@@ -25,7 +25,7 @@ EXTERN __launch_bounds__(1024, 1) __global__ void add_bench_kernel(bf *values) {
       values[i] = r[i];
 }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void mul_bench_kernel(bf *values) {
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_bench_kernel(bf *values) {
   bf v[VALUES_COUNT];
   bf r[VALUES_COUNT];
   if (threadIdx.x == 0xffffffff)
@@ -41,3 +41,5 @@ EXTERN __launch_bounds__(1024, 1) __global__ void mul_bench_kernel(bf *values) {
     for (unsigned i = 0; i < VALUES_COUNT; i++)
       values[i] = r[i];
 }
+
+} // namespace airbender::field

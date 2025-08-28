@@ -11,15 +11,15 @@ type BF = BaseField;
 
 cuda_kernel!(Bench, bench, values: *const BF);
 
-bench!(add_bench_kernel);
-bench!(mul_bench_kernel);
+bench!(ab_add_bench_kernel);
+bench!(ab_mul_bench_kernel);
 
 pub fn add_bench(stream: &CudaStream) -> CudaResult<()> {
     let device_id = get_device()?;
     let mpc = device_get_attribute(MultiProcessorCount, device_id)? as u32;
     let config = CudaLaunchConfig::basic(mpc, 1024, stream);
     let args = BenchArguments::new(null_mut());
-    BenchFunction(add_bench_kernel).launch(&config, &args)
+    BenchFunction(ab_add_bench_kernel).launch(&config, &args)
 }
 
 pub fn mul_bench(stream: &CudaStream) -> CudaResult<()> {
@@ -27,5 +27,5 @@ pub fn mul_bench(stream: &CudaStream) -> CudaResult<()> {
     let mpc = device_get_attribute(MultiProcessorCount, device_id)? as u32;
     let config = CudaLaunchConfig::basic(mpc, 1024, stream);
     let args = BenchArguments::new(null_mut());
-    BenchFunction(mul_bench_kernel).launch(&config, &args)
+    BenchFunction(ab_mul_bench_kernel).launch(&config, &args)
 }

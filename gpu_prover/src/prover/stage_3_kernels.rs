@@ -276,7 +276,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-generic_constraints!(generic_constraints_kernel);
+generic_constraints!(ab_generic_constraints_kernel);
 
 pub(super) const MAX_HELPER_VALUES: usize = 1536;
 
@@ -556,7 +556,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-delegated_width_3_lookups!(delegated_width_3_lookups_kernel);
+delegated_width_3_lookups!(ab_delegated_width_3_lookups_kernel);
 
 #[derive(Clone)]
 #[repr(C)]
@@ -866,7 +866,7 @@ cuda_kernel!(
     log_n: u32,
 );
 
-hardcoded_constraints!(hardcoded_constraints_kernel);
+hardcoded_constraints!(ab_hardcoded_constraints_kernel);
 
 pub struct Metadata {
     alpha_powers_layout: AlphaPowersLayout,
@@ -1901,7 +1901,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         quotient,
         log_n,
     );
-    GenericConstraintsFunction(generic_constraints_kernel).launch(&config, &args)?;
+    GenericConstraintsFunction(ab_generic_constraints_kernel).launch(&config, &args)?;
     // for convenience, demarcate bf and vectorized e4 sections of stage_2_cols
     assert_eq!(stage_2_cols.rows(), n);
     assert_eq!(
@@ -1944,7 +1944,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
             flat_generic_constraints_metadata.decompression_factor_squared,
             log_n,
         );
-        DelegatedWidth3LookupsFunction(delegated_width_3_lookups_kernel).launch(&config, &args)?;
+        DelegatedWidth3LookupsFunction(ab_delegated_width_3_lookups_kernel)
+            .launch(&config, &args)?;
     }
     let omega_inv = flat_generic_constraints_metadata.omega_inv;
     let omega_inv_squared = *omega_inv.clone().square();
@@ -1991,7 +1992,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         omega_inv_squared,
         log_n,
     );
-    HardcodedConstraintsFunction(hardcoded_constraints_kernel).launch(&config, &args)
+    HardcodedConstraintsFunction(ab_hardcoded_constraints_kernel).launch(&config, &args)
 }
 
 #[cfg(test)]

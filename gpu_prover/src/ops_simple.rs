@@ -38,7 +38,7 @@ macro_rules! set_by_val_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<set_by_val_ $type:lower _kernel>](
+                [<ab_set_by_val_ $type:lower _kernel>](
                     value: $type,
                     result: MutPtrAndStrideWrappingMatrix<$type>,
                 )
@@ -68,7 +68,7 @@ macro_rules! set_by_val_impl {
         paste! {
             set_by_val_kernel!($type);
             impl SetByVal for $type {
-                const KERNEL_FUNCTION: SetByValSignature<Self> = [<set_by_val_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: SetByValSignature<Self> = [<ab_set_by_val_ $type:lower _kernel>];
             }
         }
     };
@@ -91,7 +91,7 @@ macro_rules! set_by_ref_kernel {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<set_by_ref_ $type:lower _kernel>](
+                [<ab_set_by_ref_ $type:lower _kernel>](
                     values: PtrAndStrideWrappingMatrix<$type>,
                     result: MutPtrAndStrideWrappingMatrix<$type>,
                 )
@@ -122,7 +122,7 @@ macro_rules! set_by_ref_impl {
         paste! {
             set_by_ref_kernel!($type);
             impl SetByRef for $type {
-                const KERNEL_FUNCTION: SetByRefSignature<Self> = [<set_by_ref_ $type:lower _kernel>];
+                const KERNEL_FUNCTION: SetByRefSignature<Self> = [<ab_set_by_ref_ $type:lower _kernel>];
             }
         }
     };
@@ -145,7 +145,7 @@ macro_rules! unary_op_kernel {
     ($op:ty, $type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<$op:lower _ $type:lower _kernel>](
+                [<ab_ $op:lower _ $type:lower _kernel>](
                     values: PtrAndStrideWrappingMatrix<$type>,
                     result: MutPtrAndStrideWrappingMatrix<$type>,
                 )
@@ -225,7 +225,7 @@ macro_rules! unary_op_impl {
         paste! {
             unary_op_kernel!($op, $type);
             impl UnaryOp<$type> for $op {
-                const KERNEL_FUNCTION: UnaryOpSignature<$type> = [<$op:lower _ $type:lower _kernel>];
+                const KERNEL_FUNCTION: UnaryOpSignature<$type> = [<ab_ $op:lower _ $type:lower _kernel>];
             }
         }
     };
@@ -256,7 +256,7 @@ macro_rules! parametrized_op_kernel {
     ($op:ty, $type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<$op:lower _ $type:lower _kernel>](
+                [<ab_ $op:lower _ $type:lower _kernel>](
                     values: PtrAndStrideWrappingMatrix<$type>,
                     param: u32,
                     result: MutPtrAndStrideWrappingMatrix<$type>,
@@ -343,7 +343,7 @@ macro_rules! parametrized_op_impl {
         paste! {
             parametrized_op_kernel!($op, $type);
             impl ParametrizedOp<$type> for $op {
-                const KERNEL_FUNCTION: ParametrizedOpSignature<$type> = [<$op:lower _ $type:lower _kernel>];
+                const KERNEL_FUNCTION: ParametrizedOpSignature<$type> = [<ab_ $op:lower _ $type:lower _kernel>];
             }
         }
     };
@@ -373,7 +373,7 @@ macro_rules! binary_op_kernel {
     ($op:ty, $t0:ty, $t1:ty, $tr:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<$op:lower _ $t0:lower _ $t1:lower _kernel>](
+                [<ab_ $op:lower _ $t0:lower _ $t1:lower _kernel>](
                     x: PtrAndStrideWrappingMatrix<$t0>,
                     y: PtrAndStrideWrappingMatrix<$t1>,
                     result: MutPtrAndStrideWrappingMatrix<$tr>,
@@ -488,7 +488,7 @@ macro_rules! binary_op_impl {
         paste! {
             binary_op_kernel!($op, $t0, $t1, $tr);
             impl BinaryOp<$t0, $t1, $tr> for $op {
-                const KERNEL_FUNCTION: BinaryOpSignature<$t0, $t1, $tr> = [<$op:lower _ $t0:lower _ $t1:lower _kernel>];
+                const KERNEL_FUNCTION: BinaryOpSignature<$t0, $t1, $tr> = [<ab_ $op:lower _ $t0:lower _ $t1:lower _kernel>];
             }
         }
     };
@@ -525,7 +525,7 @@ macro_rules! ternary_op_kernel {
     ($fn_name:ident, $t0:ty, $t1:ty, $t2:ty, $tr:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<$fn_name _ $t0:lower _ $t1:lower _ $t2:lower _kernel>](
+                [<ab_ $fn_name _ $t0:lower _ $t1:lower _ $t2:lower _kernel>](
                     x: PtrAndStrideWrappingMatrix<$t0>,
                     y: PtrAndStrideWrappingMatrix<$t1>,
                     z: PtrAndStrideWrappingMatrix<$t2>,
@@ -680,7 +680,7 @@ macro_rules! ternary_op_impl {
             ternary_op_kernel!($fn_name, $t0, $t1, $t2, $tr);
             impl TernaryOp<$t0, $t1, $t2, $tr> for $op {
                 fn get_kernel_function() -> TernaryOpSignature<$t0, $t1, $t2, $tr> {
-                    [<$fn_name _ $t0:lower _ $t1:lower _ $t2:lower _kernel>]
+                    [<ab_ $fn_name _ $t0:lower _ $t1:lower _ $t2:lower _kernel>]
                 }
             }
         }

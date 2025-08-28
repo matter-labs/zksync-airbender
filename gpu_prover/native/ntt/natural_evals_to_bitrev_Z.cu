@@ -1,6 +1,6 @@
 #include "ntt.cuh"
 
-namespace ntt {
+namespace airbender::ntt {
 
 // Note: "#pragma unroll 1 here makes no sense"
 // This note marks some weird spots I found when playing whack a mole with loop unrolling to prevent register spilling.
@@ -92,7 +92,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
 
 #pragma unroll
     for (unsigned i = 0; i < VALS_PER_THREAD; i++)
-      vals[i] = e2f::mul(vals[i], inv_sizes[log_n]);
+      vals[i] = e2f::mul(vals[i], ab_inv_sizes[log_n]);
 
     if (evals_are_coset) {
 #pragma unroll 1
@@ -114,31 +114,33 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
   }
 }
 
-extern "C" __launch_bounds__(128, 8) __global__
-    void main_domain_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                    const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                    const unsigned num_Z_cols, const unsigned grid_offset) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_main_domain_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                       const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                       const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
-extern "C" __launch_bounds__(128, 8) __global__
-    void main_domain_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                    const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
-                                                    const unsigned num_Z_cols, const unsigned grid_offset) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_main_domain_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                       const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                       const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<2, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
-extern "C" __launch_bounds__(128, 8) __global__
-    void coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                              const unsigned grid_offset) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
+                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                 const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
-extern "C" __launch_bounds__(128, 8) __global__
-    void coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                              const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                              const unsigned grid_offset) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
+                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                 const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<2, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
@@ -316,7 +318,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
 
 #pragma unroll
     for (unsigned i = 0; i < VALS_PER_THREAD; i++)
-      vals[i] = e2f::mul(vals[i], inv_sizes[log_n]);
+      vals[i] = e2f::mul(vals[i], ab_inv_sizes[log_n]);
 
     if (evals_are_coset) {
 #pragma unroll 1
@@ -338,19 +340,19 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
   }
 }
 
-extern "C" __launch_bounds__(512, 2) __global__
-    void main_domain_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
-                                                           vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                           const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                           const unsigned grid_offset) {
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_main_domain_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                              vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                              const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                              const unsigned grid_offset) {
   evals_to_Z_final_stages_block<3, false>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
-extern "C" __launch_bounds__(512, 2) __global__
-    void coset_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
-                                                     vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                     const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                     const unsigned grid_offset) {
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_coset_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                        vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                        const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                        const unsigned grid_offset) {
   evals_to_Z_final_stages_block<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
@@ -547,17 +549,17 @@ DEVICE_FORCEINLINE void evals_to_Z_nonfinal_stages_block(vectorized_e2_matrix_ge
   }
 }
 
-extern "C" __launch_bounds__(512, 2) __global__
-    void evals_to_Z_nonfinal_7_or_8_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                 const unsigned grid_offset) {
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_evals_to_Z_nonfinal_7_or_8_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
+                                                    const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n,
+                                                    const unsigned num_Z_cols, const unsigned grid_offset) {
   evals_to_Z_nonfinal_stages_block<3>(gmem_in, gmem_out, start_stage, stages_this_launch == 7, log_n, num_Z_cols, grid_offset);
 }
 
 // Simple, non-optimized kernel used for log_n < 16, to unblock debugging small proofs.
-extern "C" __launch_bounds__(512, 2) __global__
-    void evals_to_Z_one_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                              const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt, const bool evals_are_coset) {
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_evals_to_Z_one_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
+                                 const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt, const bool evals_are_coset) {
   const unsigned col_pair = blockIdx.x / blocks_per_ntt;
   const unsigned bid_in_ntt = blockIdx.x % blocks_per_ntt;
   const unsigned tid_in_ntt = threadIdx.x + bid_in_ntt * blockDim.x;
@@ -580,8 +582,8 @@ extern "C" __launch_bounds__(512, 2) __global__
   exchg_dit(a, b, twiddle);
 
   if (start_stage + 1 == log_n) {
-    a = e2f::mul(a, inv_sizes[log_n]);
-    b = e2f::mul(b, inv_sizes[log_n]);
+    a = e2f::mul(a, ab_inv_sizes[log_n]);
+    b = e2f::mul(b, ab_inv_sizes[log_n]);
     if (evals_are_coset) {
       a = lde_scale<true>(a, bitrev(a_idx, log_n), 1, 1, log_n);
       b = lde_scale<true>(b, bitrev(b_idx, log_n), 1, 1, log_n);
@@ -592,4 +594,4 @@ extern "C" __launch_bounds__(512, 2) __global__
   gmem_out.set_at_row(b_idx, b);
 }
 
-} // namespace ntt
+} // namespace airbender::ntt

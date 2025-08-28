@@ -72,7 +72,7 @@ impl From<&[cs::definitions::ColumnAddress]> for MemoryQueriesTimestampCompariso
 }
 
 cuda_kernel!(GenerateMemoryValuesMain,
-    generate_memory_values_main_kernel(
+    ab_generate_memory_values_main_kernel(
         subtree: MainMemorySubtree,
         setup_and_teardown: ShuffleRamSetupAndTeardownRaw,
         trace: MainTraceRaw,
@@ -82,7 +82,7 @@ cuda_kernel!(GenerateMemoryValuesMain,
 );
 
 cuda_kernel!(GenerateMemoryAndWitnessValuesMain,
-    generate_memory_and_witness_values_main_kernel(
+    ab_generate_memory_and_witness_values_main_kernel(
         subtree: MainMemorySubtree,
         memory_queries_timestamp_comparison_aux_vars: MemoryQueriesTimestampComparisonAuxVars,
         setup_and_teardown: ShuffleRamSetupAndTeardownRaw,

@@ -36,7 +36,7 @@ cuda_kernel!(
     bit_reversed: bool,
 );
 
-deep_denom_at_z!(deep_denom_at_z_kernel);
+deep_denom_at_z!(ab_deep_denom_at_z_kernel);
 
 pub fn compute_deep_denom_at_z_on_main_domain(
     denom_at_z: &mut DeviceSlice<E4>,
@@ -54,7 +54,7 @@ pub fn compute_deep_denom_at_z_on_main_domain(
     let grid_dim = (n + inv_batch * block_dim - 1) / (inv_batch * block_dim);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = DeepDenomAtZArguments::new(denom_at_z, z, log_n, bit_reversed);
-    DeepDenomAtZFunction(deep_denom_at_z_kernel).launch(&config, &args)
+    DeepDenomAtZFunction(ab_deep_denom_at_z_kernel).launch(&config, &args)
 }
 
 // Clone but not Copy, I'd rather know explicitly when it's being cloned.
@@ -107,7 +107,7 @@ cuda_kernel!(
     bit_reversed: bool,
 );
 
-deep_quotient!(deep_quotient_kernel);
+deep_quotient!(ab_deep_quotient_kernel);
 
 pub fn get_e4_scratch_count_for_deep_quotiening() -> usize {
     let e4_scratch_elems = 2 * MAX_WITNESS_COLS + MAX_NON_WITNESS_TERMS_AT_Z;
@@ -397,7 +397,7 @@ pub fn compute_deep_quotient_on_main_domain(
         log_n,
         bit_reversed,
     );
-    DeepQuotientFunction(deep_quotient_kernel).launch(&config, &args)
+    DeepQuotientFunction(ab_deep_quotient_kernel).launch(&config, &args)
 }
 
 #[cfg(test)]

@@ -51,7 +51,7 @@ impl From<&MemorySubtree> for DelegationMemorySubtree {
 }
 
 cuda_kernel!(GenerateMemoryValuesDelegation,
-    generate_memory_values_delegation_kernel(
+    ab_generate_memory_values_delegation_kernel(
         subtree: DelegationMemorySubtree,
         trace: DelegationTraceRaw,
         memory: MutPtrAndStride<BF>,
@@ -60,7 +60,7 @@ cuda_kernel!(GenerateMemoryValuesDelegation,
 );
 
 cuda_kernel!(GenerateMemoryAndWitnessValuesDelegation,
-    generate_memory_and_witness_values_delegation_kernel(
+    ab_generate_memory_and_witness_values_delegation_kernel(
         subtree: DelegationMemorySubtree,
         aux_vars: RegisterAndIndirectAccessTimestampComparisonAuxVars,
         trace: DelegationTraceRaw,

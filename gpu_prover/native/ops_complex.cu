@@ -1,12 +1,15 @@
 #include "context.cuh"
 #include "ops_complex.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+
+namespace airbender::ops_complex {
 
 using bf = base_field;
 using e2 = ext2_field;
 using e4 = ext4_field;
+
 struct __align__(32) dg {
   bf values[8];
 };
@@ -23,13 +26,13 @@ DEVICE_FORCEINLINE void get_powers(const F &base, const unsigned offset, const b
 }
 
 #define GET_POWERS_BY_VAL_KERNEL(arg_t)                                                                                                                        \
-  EXTERN __global__ void get_powers_by_val_##arg_t##_kernel(const arg_t base, const unsigned offset, const bool bit_reverse,                                   \
-                                                            vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                              \
+  EXTERN __global__ void ab_get_powers_by_val_##arg_t##_kernel(const arg_t base, const unsigned offset, const bool bit_reverse,                                \
+                                                               vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                           \
     get_powers(base, offset, bit_reverse, result, count);                                                                                                      \
   }
 #define GET_POWERS_BY_REF_KERNEL(arg_t)                                                                                                                        \
-  EXTERN __global__ void get_powers_by_ref_##arg_t##_kernel(const arg_t *base, const unsigned offset, const bool bit_reverse,                                  \
-                                                            vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                              \
+  EXTERN __global__ void ab_get_powers_by_ref_##arg_t##_kernel(const arg_t *base, const unsigned offset, const bool bit_reverse,                               \
+                                                               vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                           \
     get_powers(*base, offset, bit_reverse, result, count);                                                                                                     \
   }
 
@@ -79,17 +82,17 @@ template <typename T, typename GETTER, typename SETTER> DEVICE_FORCEINLINE void 
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void batch_inv_bf_kernel(const bf_vector_getter<ld_modifier::cs> src, const bf_vector_setter<st_modifier::cs> dst, const unsigned count) {
+    void ab_batch_inv_bf_kernel(const bf_vector_getter<ld_modifier::cs> src, const bf_vector_setter<st_modifier::cs> dst, const unsigned count) {
   batch_inv_impl<bf>(src, dst, count);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void batch_inv_e2_kernel(const e2_vector_getter<ld_modifier::cs> src, const e2_vector_setter<st_modifier::cs> dst, const unsigned count) {
+    void ab_batch_inv_e2_kernel(const e2_vector_getter<ld_modifier::cs> src, const e2_vector_setter<st_modifier::cs> dst, const unsigned count) {
   batch_inv_impl<e2>(src, dst, count);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void batch_inv_e4_kernel(const e4_vector_getter<ld_modifier::cs> src, const e4_vector_setter<st_modifier::cs> dst, const unsigned count) {
+    void ab_batch_inv_e4_kernel(const e4_vector_getter<ld_modifier::cs> src, const e4_vector_setter<st_modifier::cs> dst, const unsigned count) {
   batch_inv_impl<e4>(src, dst, count);
 }
 
@@ -133,8 +136,8 @@ DEVICE_FORCEINLINE void transpose(const matrix_getter<T, ld_modifier::cs> src, c
 }
 
 #define TRANSPOSE_KERNEL(arg_t, log_tile_dim)                                                                                                                  \
-  EXTERN __global__ void transpose_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src, const matrix_setter<arg_t, st_modifier::cs> dst,          \
-                                                    const unsigned src_rows, const unsigned src_cols) {                                                        \
+  EXTERN __global__ void ab_transpose_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src, const matrix_setter<arg_t, st_modifier::cs> dst,       \
+                                                       const unsigned src_rows, const unsigned src_cols) {                                                     \
     transpose<arg_t, log_tile_dim>(src, dst, src_rows, src_cols);                                                                                              \
   }
 
@@ -159,8 +162,8 @@ DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs
 }
 
 #define BIT_REVERSE_NAIVE(arg_t)                                                                                                                               \
-  EXTERN __global__ void bit_reverse_naive_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src, const matrix_setter<arg_t, st_modifier::cs> dst,  \
-                                                            const unsigned log_count) {                                                                        \
+  EXTERN __global__ void ab_bit_reverse_naive_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src,                                                \
+                                                               const matrix_setter<arg_t, st_modifier::cs> dst, const unsigned log_count) {                    \
     bit_reverse_naive(src, dst, log_count);                                                                                                                    \
   }
 
@@ -224,8 +227,8 @@ DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src,
 }
 
 #define BIT_REVERSE(name, arg_t, lcs)                                                                                                                          \
-  EXTERN __launch_bounds__(128) __global__ void bit_reverse_##name##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src,                                   \
-                                                                            const matrix_setter<arg_t, st_modifier::cs> dst, const unsigned log_count) {       \
+  EXTERN __launch_bounds__(128) __global__ void ab_bit_reverse_##name##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src,                                \
+                                                                               const matrix_setter<arg_t, st_modifier::cs> dst, const unsigned log_count) {    \
     bit_reverse<arg_t, lcs>(src, dst, log_count);                                                                                                              \
   }
 
@@ -234,7 +237,7 @@ BIT_REVERSE(e2, e2, 0);
 BIT_REVERSE(e4, e4, 0);
 BIT_REVERSE(dg, e4, 1);
 
-EXTERN __global__ void fold_kernel(const e4 *challenge, const e4 *src, e4 *dst, const unsigned root_offset, const unsigned log_count) {
+EXTERN __global__ void ab_fold_kernel(const e4 *challenge, const e4 *src, e4 *dst, const unsigned root_offset, const unsigned log_count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= 1u << log_count)
     return;
@@ -249,3 +252,5 @@ EXTERN __global__ void fold_kernel(const e4 *challenge, const e4 *src, e4 *dst, 
   const e4 result = sum + diff;
   dst[gid] = result;
 }
+
+} // namespace airbender::ops_complex

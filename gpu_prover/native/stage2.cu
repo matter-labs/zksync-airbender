@@ -2,8 +2,13 @@
 #include "ops_complex.cuh"
 #include "vectorized.cuh"
 
-using namespace field;
-using namespace memory;
+using namespace ::airbender::arg_utils;
+using namespace ::airbender::field;
+using namespace ::airbender::memory;
+using namespace ::airbender::ops_complex;
+using namespace ::airbender::vectorized;
+
+namespace airbender::stage2 {
 
 using bf = base_field;
 using e2 = ext2_field;
@@ -81,7 +86,7 @@ aggregated_entry_invs_and_multiplicities_arg_kernel(const LookupChallenges *chal
 // generic_aggregated_entry_invs_and_multiplicities_arg_kernel
 // into a one-size-fits-all kernel by making ENTRY_WIDTH a runtime argument instead of a template parameter.
 // I think they're alright as-is.
-EXTERN __launch_bounds__(128, 8) __global__ void range_check_aggregated_entry_invs_and_multiplicities_arg_kernel(
+EXTERN __launch_bounds__(128, 8) __global__ void ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel(
     const LookupChallenges *challenges, matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> setup_cols,
     vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
     // st_modifier::cg to cache stores for upcoming lookup_a_args_kernel
@@ -93,7 +98,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void range_check_aggregated_entry_in
                                                          num_table_rows_tail, log_n);
 }
 
-EXTERN __launch_bounds__(128, 8) __global__ void generic_aggregated_entry_invs_and_multiplicities_arg_kernel(
+EXTERN __launch_bounds__(128, 8) __global__ void ab_generic_aggregated_entry_invs_and_multiplicities_arg_kernel(
     const LookupChallenges *challenges, matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> setup_cols,
     vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
     // st_modifier::cg to cache stores for upcoming lookup_a_args_kernel
@@ -108,10 +113,11 @@ EXTERN __launch_bounds__(128, 8) __global__ void generic_aggregated_entry_invs_a
 // I'm making it standalone because it doesn't quite fit with the others and
 // for easier comparison to zksync_airbender's stage2.rs control flow.
 EXTERN __launch_bounds__(128, 8) __global__
-    void delegation_aux_poly_kernel(__grid_constant__ const DelegationChallenges challenges, __grid_constant__ const DelegationRequestMetadata request_metadata,
-                                    __grid_constant__ const DelegationProcessingMetadata processing_metadata, matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                    matrix_getter<bf, ld_modifier::cs> setup_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                    const unsigned delegation_aux_poly_col, const bool handle_delegation_requests, const unsigned log_n) {
+    void ab_delegation_aux_poly_kernel(__grid_constant__ const DelegationChallenges challenges,
+                                       __grid_constant__ const DelegationRequestMetadata request_metadata,
+                                       __grid_constant__ const DelegationProcessingMetadata processing_metadata, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                       matrix_getter<bf, ld_modifier::cs> setup_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                       const unsigned delegation_aux_poly_col, const bool handle_delegation_requests, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -154,18 +160,18 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void lookup_args_kernel(__grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
-                            __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
-                            __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
-                            __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout, matrix_getter<bf, ld_modifier::cs> setup_cols,
-                            matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
-                            vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
-                            vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_timestamp_range_checks,
-                            vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_generic_lookups, const unsigned generic_args_start,
-                            const unsigned num_generic_args, matrix_getter<unsigned, ld_modifier::cs> generic_lookups_args_to_table_entries_map,
-                            matrix_setter<bf, st_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                            const bf memory_timestamp_high_from_circuit_idx, const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols,
-                            const unsigned log_n) {
+    void ab_lookup_args_kernel(__grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
+                               __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
+                               __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
+                               __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout, matrix_getter<bf, ld_modifier::cs> setup_cols,
+                               matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
+                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_timestamp_range_checks,
+                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_generic_lookups, const unsigned generic_args_start,
+                               const unsigned num_generic_args, matrix_getter<unsigned, ld_modifier::cs> generic_lookups_args_to_table_entries_map,
+                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                               const bf memory_timestamp_high_from_circuit_idx, const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols,
+                               const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -270,11 +276,11 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void shuffle_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-                                        matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                        vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                        __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout,
-                                        const bf memory_timestamp_high_from_circuit_idx, const unsigned memory_args_start, const unsigned log_n) {
+    void ab_shuffle_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+                                           matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                           vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                           __grid_constant__ const LazyInitTeardownLayout lazy_init_teardown_layout,
+                                           const bf memory_timestamp_high_from_circuit_idx, const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -383,9 +389,9 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void batched_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const BatchedRamAccesses batched_ram_accesses,
-                                        matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                        const unsigned memory_args_start, const unsigned log_n) {
+    void ab_batched_ram_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges, __grid_constant__ const BatchedRamAccesses batched_ram_accesses,
+                                           matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                           const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -454,10 +460,11 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void register_and_indirect_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges,
-                                                  __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses,
-                                                  matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                                  const unsigned memory_args_start, const unsigned log_n) {
+    void ab_register_and_indirect_memory_args_kernel(__grid_constant__ const MemoryChallenges challenges,
+                                                     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses,
+                                                     matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                                     vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned memory_args_start,
+                                                     const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -586,3 +593,5 @@ EXTERN __launch_bounds__(128, 8) __global__
     }
   }
 }
+
+} // namespace airbender::stage2
