@@ -90,6 +90,21 @@ impl Profiler {
         if cycle % self.frequency_recip == 0 {
             self.stats.samples_total += 1;
             let st = machine.collect_stacktrace(&self.symbol_info, &mut self.dwarf_cache, cycle);
+            match st {
+                StacktraceCollectionResult::Failed => {
+                    self.stats.samples_failed += 1;
+                }
+                StacktraceCollectionResult::ServiceCode => {
+                    self.stats.samples_service += 1;
+                }
+                StacktraceCollectionResult::Skipped => {
+                    self.stats.samples_skipped += 1;
+                }
+                StacktraceCollectionResult::UserCode(stacktrace) => {
+                    self.stats.samples_success += 1;
+                    self.stacktraces.absorb(stacktrace)
+                }
+            }
             // self.collect_stacktrace(state, memory_source, memory_tracer, mmu, cycle);
         }
     }
