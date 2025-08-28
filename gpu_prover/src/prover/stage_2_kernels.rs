@@ -790,15 +790,30 @@ pub fn compute_stage_2_args_on_main_domain(
     // Args are vectorized E4, so I need to transpose the second-to-last col
     // to a col of E4 tuples, do the grand product, then transpose back.
     let grand_product_offset_in_e4_cols = get_grand_product_col(circuit);
+    // TODO: double-check that the following is actually the grand product input
+    // for unrolled circuits
+    let last_memory_arg_offset_in_e4_cols = memory_args_start + num_memory_args - 1;
+    assert!(grand_product_offset_in_e4_cols > last_memory_arg_offset_in_e4_cols);
+    // TODO: this assert in particular is not necessary for correctness.
+    // It's a sanity check for non-unrolled circuits and a reminder to double-check
+    // the layout for unrolled circuits.
+    assert_eq!(
+        grand_product_offset_in_e4_cols - 1,
+        last_memory_arg_offset_in_e4_cols
+    );
     let stride = stage_2_e4_cols.stride();
     let offset = stage_2_e4_cols.offset();
-    let second_to_last_slice_start = 4 * (grand_product_offset_in_e4_cols - 1) * stride;
-    let (_, slice) = stage_2_e4_cols
+    let last_memory_arg_slice_start = 4 * last_memory_arg_offset_in_e4_cols * stride;
+    let (_, rest) = stage_2_e4_cols
         .slice_mut()
-        .split_at_mut(second_to_last_slice_start);
-    let (second_to_last_slice, last_slice) = slice.split_at_mut(4 * stride);
-    let second_to_last_col = DeviceMatrixChunk::new(second_to_last_slice, stride, offset, n);
-    let mut last_col = DeviceMatrixChunkMut::new(last_slice, stride, offset, n);
+        .split_at_mut(last_memory_arg_slice_start);
+    let (last_memory_arg_slice, rest) = rest.split_at_mut(4 * stride);
+    let grand_product_slice_start_in_rest =
+        4 * (grand_product_offset_in_e4_cols - last_memory_arg_offset_in_e4_cols - 1);
+    let (_, rest) = rest.split_at_mut(grand_product_slice_start_in_rest);
+    let (grand_product_slice, _) = rest.split_at_mut(4 * stride);
+    let last_memory_arg = DeviceMatrixChunk::new(last_memory_arg_slice, stride, offset, n);
+    let mut grand_product = DeviceMatrixChunkMut::new(grand_product_slice, stride, offset, n);
     // Repurposes aggregated_entry_inv scratch space, which should have
     // an underlying allocation of size >= 2 * n E4 elements
     // I think 2 size-n scratch arrays is the best we can do, keeping in mind that device scan
@@ -809,15 +824,9 @@ pub fn compute_stage_2_args_on_main_domain(
         scratch_for_aggregated_entry_invs.split_at_mut(n);
     let (grand_product_e4_scratch_slice, _) = grand_product_e4_scratch_slice.split_at_mut(n);
     let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<BF>() };
-    let mut second_to_last_col_transposed = DeviceMatrixMut::new(transposed_scratch_slice, 4);
-    transpose(
-        &second_to_last_col,
-        &mut second_to_last_col_transposed,
-        stream,
-    )?;
+    let mut last_memory_arg_transposed = DeviceMatrixMut::new(transposed_scratch_slice, 4);
+    transpose(&last_memory_arg, &mut last_memory_arg_transposed, stream)?;
     let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<E4>() };
-    let grand_product_e4_scratch_slice =
-        unsafe { grand_product_e4_scratch_slice.transmute_mut::<E4>() };
     scan(
         ScanOperation::Product,
         false,
@@ -829,7 +838,7 @@ pub fn compute_stage_2_args_on_main_domain(
     let grand_product_e4_scratch_slice =
         unsafe { grand_product_e4_scratch_slice.transmute_mut::<BF>() };
     let grand_product_transposed = DeviceMatrix::new(grand_product_e4_scratch_slice, 4);
-    transpose(&grand_product_transposed, &mut last_col, stream)
+    transpose(&grand_product_transposed, &mut grand_product, stream)
 }
 
 #[cfg(test)]
