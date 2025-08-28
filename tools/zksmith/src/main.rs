@@ -5,21 +5,17 @@ use std::{
 };
 
 use clap::Parser;
-use cli_lib::{
-    prover_utils::{
-        create_proofs_internal, create_recursion_proofs, load_binary_from_path,
-        u32_from_hex_string, GpuSharedState,
-    },
-    Machine,
+use cli_lib::prover_utils::{
+    create_proofs_internal, create_recursion_proofs, load_binary_from_path, u32_from_hex_string,
+    GpuSharedState,
 };
-use execution_utils::ProgramProof;
+use execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use warp::Filter;
 
-use cli_lib::prover_utils::RecursionStrategy;
 const DEFAULT_RECURSION_STRATEGY: RecursionStrategy = RecursionStrategy::UseFinalMachine;
 
 #[derive(Parser)]
