@@ -133,17 +133,17 @@ impl RecursionStrategy {
 
 pub fn generate_constants_for_binary(
     bin: &String,
-    recursion_mode: &RecursionStrategy,
-    universal_verifier: &bool,
-    recompute: &bool,
+    recursion_mode: RecursionStrategy,
+    universal_verifier: bool,
+    recompute: bool,
 ) -> (
     [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
     [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
 ) {
     let base_layer_bin = std::fs::read(bin).expect("Failed to read base layer binary file");
 
-    let (end_params, aux_values) = if *universal_verifier {
-        if *recompute {
+    let (end_params, aux_values) = if universal_verifier {
+        if recompute {
             match recursion_mode {
                 RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
                     &[
@@ -234,7 +234,7 @@ pub fn generate_constants_for_binary(
             }
         }
     } else {
-        if *recompute {
+        if recompute {
             match recursion_mode {
                 RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
                     &[

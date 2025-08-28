@@ -372,7 +372,7 @@ fn main() {
             mode,
         } => {
             let (end_params, aux_values) =
-                generate_constants_for_binary(bin, mode, universal_verifier, recompute);
+                generate_constants_for_binary(bin, *mode, *universal_verifier, *recompute);
 
             println!("End params: {:?}", end_params);
             println!("Aux values: {:?}", aux_values);
