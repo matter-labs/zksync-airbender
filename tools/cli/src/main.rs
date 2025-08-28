@@ -4,15 +4,16 @@
 
 use blake2s_u32::Blake2sState;
 use clap::{Parser, Subcommand};
-use cli_lib::generate_constants::generate_constants_for_binary;
 use cli_lib::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
-    serialize_to_file, u32_from_hex_string, ProvingLimit, RecursionStrategy, DEFAULT_CYCLES,
+    serialize_to_file, u32_from_hex_string, ProvingLimit, DEFAULT_CYCLES,
 };
-use cli_lib::Machine;
 
 use cli_lib::vk::generate_vk;
-use execution_utils::{ProgramProof, VerifierCircuitsIdentifiers};
+use execution_utils::{
+    generate_constants_for_binary, Machine, ProgramProof, RecursionStrategy,
+    VerifierCircuitsIdentifiers,
+};
 use reqwest::blocking::Client;
 use serde_json::Value;
 use std::path::Path;
@@ -369,7 +370,13 @@ fn main() {
             universal_verifier,
             recompute,
             mode,
-        } => generate_constants_for_binary(bin, mode, universal_verifier, recompute),
+        } => {
+            let (end_params, aux_values) =
+                generate_constants_for_binary(bin, mode, universal_verifier, recompute);
+
+            println!("End params: {:?}", end_params);
+            println!("Aux values: {:?}", aux_values);
+        }
     }
 }
 

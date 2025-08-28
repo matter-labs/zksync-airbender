@@ -26,7 +26,7 @@ serde = { workspace = true }
 serde_json = "*"
 prover_examples = {path = "../../circuit_defs/prover_examples"}
 worker = {path = "../../worker"}
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { workspace = true }
 blake2s_u32 = { workspace = true }
 execution_utils = { path = "../../execution_utils"}
 field = { workspace = true }

@@ -2,6 +2,7 @@
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
+use clap::ValueEnum;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use verifier_common::transcript::Blake2sBufferingTranscript;
 
 mod constants;
 mod proofs;
+mod recursion;
 mod verifiers;
 
 use self::constants::*;
@@ -20,6 +22,10 @@ pub use self::proofs::{ProgramProof, ProofList, ProofMetadata};
 pub use self::verifiers::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
     VerifierCircuitsIdentifiers,
+};
+
+pub use self::recursion::{
+    generate_constants_for_binary, generate_params_for_binary, RecursionStrategy,
 };
 
 // pub const RUN_VERIFIERS_WITH_OUTPUT: bool = false;
@@ -172,11 +178,20 @@ pub const EXIT_SEQUENCE: &[u32] = &[
     0x0000006f, //	loop
 ];
 
+#[derive(Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Machine {
+    Standard,
+    Reduced,
+    ReducedLog23,
+    // Final reduced machine, used to generate a single proof at the end.
+    ReducedFinal,
+}
+
 /// VerificationKey represents the verification key for a specific machine type and bytecode hash.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VerificationKey {
     /// Type of the machine (standard, reduced, final)
-    pub machine_type: String,
+    pub machine_type: Machine,
     /// Keccak of the bytecode
     pub bytecode_hash_hex: String,
     /// Verification key (a.k.a params that are used in the verifier)

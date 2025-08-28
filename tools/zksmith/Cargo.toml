@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = "*"
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { workspace = true }
 execution_utils = { path = "../../execution_utils"}
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3_ce", version = "=0.10.6" }

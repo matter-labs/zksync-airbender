@@ -13,6 +13,7 @@ categories.workspace = true
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
 trace_and_split = { workspace = true }
+clap = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 
