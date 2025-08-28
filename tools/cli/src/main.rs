@@ -373,8 +373,12 @@ fn main() {
         } => {
             let base_layer_bin = std::fs::read(bin).expect("Failed to read base layer binary file");
 
-            let (end_params, aux_values) =
-                generate_constants_for_binary(&base_layer_bin, *mode, *universal_verifier, *recompute);
+            let (end_params, aux_values) = generate_constants_for_binary(
+                &base_layer_bin,
+                *mode,
+                *universal_verifier,
+                *recompute,
+            );
 
             println!("End params: {:?}", end_params);
             println!("Aux values: {:?}", aux_values);
