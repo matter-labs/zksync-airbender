@@ -275,8 +275,7 @@ EXTERN __launch_bounds__(128, 8) __global__
                                         matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
                                         __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-                                        const bf memory_timestamp_high_from_circuit_idx,
-                                        const unsigned lazy_init_teardown_args_start,
+                                        const bf memory_timestamp_high_from_circuit_idx, const unsigned lazy_init_teardown_args_start,
                                         const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
