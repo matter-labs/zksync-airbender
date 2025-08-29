@@ -20,88 +20,8 @@ use prover::prover_stages::cached_data::ProverCachedData;
 
 use super::{BF, E4};
 use std::mem::size_of;
-// TODO: Once we have an overall prove function, consider making a big standalon helper
+// TODO: Once we have an overall prove function, consider making a big standalone helper
 // that creates all args common to stages 2 and 3.
-
-#[derive(Clone, Default)]
-#[repr(C)]
-pub struct LookupChallenges {
-    pub linearization_challenges: [E4; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1],
-    pub gamma: E4,
-}
-
-impl LookupChallenges {
-    #[allow(dead_code)]
-    pub fn new(challenges: &[E4], gamma: E4) -> Self {
-        // ensures size matches corresponding cuda struct
-        assert_eq!(NUM_LOOKUP_ARGUMENT_KEY_PARTS, 4);
-        assert_eq!(challenges.len(), NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1);
-        let linearization_challenges: [E4; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1] =
-            std::array::from_fn(|i| challenges[i]);
-        Self {
-            linearization_challenges,
-            gamma,
-        }
-    }
-}
-
-#[derive(Clone)]
-#[repr(C)]
-pub struct RangeCheck16ArgsLayout {
-    pub num_dst_cols: u32,
-    pub src_cols_start: u32,
-    pub bf_args_start: u32,
-    pub e4_args_start: u32,
-    // to be used if num_src_cols is odd, currently not supported on CPU
-    // pub maybe_e4_arg_remainder_col: u32,
-}
-
-impl RangeCheck16ArgsLayout {
-    pub fn new<F: Fn(usize) -> usize>(
-        circuit: &CompiledCircuitArtifact<BF>,
-        range_check_16_width_1_lookups_access: &Vec<LookupWidth1SourceDestInformation>,
-        range_check_16_width_1_lookups_access_via_expressions: &Vec<
-            LookupWidth1SourceDestInformationForExpressions<BF>,
-        >,
-        translate_e4_offset: &F,
-    ) -> Self {
-        let num_src_cols = circuit.witness_layout.range_check_16_columns.num_elements();
-        assert_eq!(num_src_cols % 2, 0);
-        let num_dst_cols = num_src_cols / 2;
-        let src_cols_start = circuit.witness_layout.range_check_16_columns.start();
-        let args_metadata = &circuit.stage_2_layout.intermediate_polys_for_range_check_16;
-        assert_eq!(
-            num_dst_cols + range_check_16_width_1_lookups_access_via_expressions.len(),
-            args_metadata.base_field_oracles.num_elements()
-        );
-        assert_eq!(
-            args_metadata.base_field_oracles.num_elements(),
-            args_metadata.ext_4_field_oracles.num_elements()
-        );
-        let bf_args_start = args_metadata.base_field_oracles.start();
-        let e4_args_start = translate_e4_offset(args_metadata.ext_4_field_oracles.start());
-        // double-check that expected layout is consistent with layout in CachedData
-        assert_eq!(range_check_16_width_1_lookups_access.len(), num_dst_cols);
-        for (i, lookup_set) in range_check_16_width_1_lookups_access.iter().enumerate() {
-            assert_eq!(lookup_set.a_col, src_cols_start + 2 * i);
-            assert_eq!(lookup_set.b_col, src_cols_start + 2 * i + 1);
-            assert_eq!(
-                lookup_set.base_field_quadratic_oracle_col,
-                bf_args_start + i
-            );
-            assert_eq!(
-                translate_e4_offset(lookup_set.ext4_field_inverses_columns_start),
-                e4_args_start + i,
-            );
-        }
-        Self {
-            num_dst_cols: num_dst_cols as u32,
-            src_cols_start: src_cols_start as u32,
-            bf_args_start: bf_args_start as u32,
-            e4_args_start: e4_args_start as u32,
-        }
-    }
-}
 
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -198,6 +118,124 @@ pub fn get_delegation_metadata(
             DelegationRequestMetadata::default(),
             DelegationProcessingMetadata::default(),
         )
+    }
+}
+
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct LookupChallenges {
+    pub linearization_challenges: [E4; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1],
+    pub gamma: E4,
+}
+
+impl LookupChallenges {
+    #[allow(dead_code)]
+    pub fn new(challenges: &[E4], gamma: E4) -> Self {
+        // ensures size matches corresponding cuda struct
+        assert_eq!(NUM_LOOKUP_ARGUMENT_KEY_PARTS, 4);
+        assert_eq!(challenges.len(), NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1);
+        let linearization_challenges: [E4; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1] =
+            std::array::from_fn(|i| challenges[i]);
+        Self {
+            linearization_challenges,
+            gamma,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct RangeCheck16ArgsLayout {
+    pub num_dst_cols: u32,
+    pub src_cols_start: u32,
+    pub bf_args_start: u32,
+    pub e4_args_start: u32,
+    // to be used if num_src_cols is odd, currently not supported on CPU
+    // pub maybe_e4_arg_remainder_col: u32,
+}
+
+impl RangeCheck16ArgsLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        range_check_16_width_1_lookups_access: &Vec<LookupWidth1SourceDestInformation>,
+        range_check_16_width_1_lookups_access_via_expressions: &Vec<
+            LookupWidth1SourceDestInformationForExpressions<BF>,
+        >,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let num_src_cols = circuit.witness_layout.range_check_16_columns.num_elements();
+        assert_eq!(num_src_cols % 2, 0);
+        let num_dst_cols = num_src_cols / 2;
+        let src_cols_start = circuit.witness_layout.range_check_16_columns.start();
+        let args_metadata = &circuit.stage_2_layout.intermediate_polys_for_range_check_16;
+        assert_eq!(
+            num_dst_cols + range_check_16_width_1_lookups_access_via_expressions.len(),
+            args_metadata.base_field_oracles.num_elements()
+        );
+        assert_eq!(
+            args_metadata.base_field_oracles.num_elements(),
+            args_metadata.ext_4_field_oracles.num_elements()
+        );
+        let bf_args_start = args_metadata.base_field_oracles.start();
+        let e4_args_start = translate_e4_offset(args_metadata.ext_4_field_oracles.start());
+        // double-check that expected layout is consistent with layout in CachedData
+        assert_eq!(range_check_16_width_1_lookups_access.len(), num_dst_cols);
+        for (i, lookup_set) in range_check_16_width_1_lookups_access.iter().enumerate() {
+            assert_eq!(lookup_set.a_col, src_cols_start + 2 * i);
+            assert_eq!(lookup_set.b_col, src_cols_start + 2 * i + 1);
+            assert_eq!(
+                lookup_set.base_field_quadratic_oracle_col,
+                bf_args_start + i
+            );
+            assert_eq!(
+                translate_e4_offset(lookup_set.ext4_field_inverses_columns_start),
+                e4_args_start + i,
+            );
+        }
+        Self {
+            num_dst_cols: num_dst_cols as u32,
+            src_cols_start: src_cols_start as u32,
+            bf_args_start: bf_args_start as u32,
+            e4_args_start: e4_args_start as u32,
+        }
+    }
+}
+
+const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
+
+#[derive(Clone)]
+#[repr(C)]
+struct StateLinkageConstraints {
+    pub srcs: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
+    pub dsts: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
+    num_constraints: u32,
+}
+
+impl StateLinkageConstraints {
+    pub fn new(circuit: &CompiledCircuitArtifact<BF>) -> Self {
+        let num_constraints = circuit.state_linkage_constraints.len();
+        if circuit.memory_layout.shuffle_ram_inits_and_teardowns.is_empty() {
+            assert_eq!(num_constraints, 0);
+        } else {
+            assert_eq!(num_constraints, NUM_STATE_LINKAGE_CONSTRAINTS);
+        }
+        let mut srcs = [0; NUM_STATE_LINKAGE_CONSTRAINTS];
+        let mut dsts = [0; NUM_STATE_LINKAGE_CONSTRAINTS];
+        for (i, (src, dst)) in circuit.state_linkage_constraints.iter().enumerate() {
+            let ColumnAddress::WitnessSubtree(col) = *src else {
+                panic!()
+            };
+            srcs[i] = col as u32;
+            let ColumnAddress::WitnessSubtree(col) = *dst else {
+                panic!()
+            };
+            dsts[i] = col as u32;
+        }
+        Self {
+            srcs,
+            dsts,
+            num_constraints: num_constraints as u32,
+        }
     }
 }
 

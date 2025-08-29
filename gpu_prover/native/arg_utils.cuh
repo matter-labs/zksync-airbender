@@ -41,6 +41,14 @@ extern "C" struct RangeCheckArgsLayout {
   // const unsigned maybe_e4_arg_remainder_col;
 };
 
+constexpr unsigned NUM_STATE_LINKAGE_CONSTRAINTS = 2;
+
+extern "C" struct StateLinkageConstraints {
+  const unsigned srcs[NUM_STATE_LINKAGE_CONSTRAINTS];
+  const unsigned dsts[NUM_STATE_LINKAGE_CONSTRAINTS];
+  const unsigned num_constraints;
+};
+
 extern "C" struct MemoryChallenges {
   const field::ext4_field address_low_challenge;
   const field::ext4_field address_high_challenge;

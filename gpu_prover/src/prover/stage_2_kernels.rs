@@ -891,6 +891,7 @@ mod tests {
         let num_witness_cols = circuit.witness_layout.total_width;
         let num_memory_cols = circuit.memory_layout.total_width;
         let num_trace_cols = num_witness_cols + num_memory_cols;
+        println!("num_witness_cols {} num_memory_cols {}", num_witness_cols, num_memory_cols);
         let num_stage_2_cols = circuit.stage_2_layout.total_width;
         let num_generic_args = circuit
             .stage_2_layout

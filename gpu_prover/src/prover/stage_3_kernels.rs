@@ -607,40 +607,6 @@ impl MultiplicitiesLayout {
     }
 }
 
-const MAX_STATE_LINKAGE_CONSTRAINTS: usize = 2;
-
-#[derive(Clone)]
-#[repr(C)]
-struct StateLinkageConstraints {
-    pub srcs: [u32; MAX_STATE_LINKAGE_CONSTRAINTS],
-    pub dsts: [u32; MAX_STATE_LINKAGE_CONSTRAINTS],
-    num_constraints: u32,
-}
-
-impl StateLinkageConstraints {
-    pub fn new(circuit: &CompiledCircuitArtifact<BF>) -> Self {
-        let num_constraints = circuit.state_linkage_constraints.len();
-        assert!(num_constraints <= MAX_STATE_LINKAGE_CONSTRAINTS);
-        let mut srcs = [0; MAX_STATE_LINKAGE_CONSTRAINTS];
-        let mut dsts = [0; MAX_STATE_LINKAGE_CONSTRAINTS];
-        for (i, (src, dst)) in circuit.state_linkage_constraints.iter().enumerate() {
-            let ColumnAddress::WitnessSubtree(col) = *src else {
-                panic!()
-            };
-            srcs[i] = col as u32;
-            let ColumnAddress::WitnessSubtree(col) = *dst else {
-                panic!()
-            };
-            dsts[i] = col as u32;
-        }
-        Self {
-            srcs,
-            dsts,
-            num_constraints: num_constraints as u32,
-        }
-    }
-}
-
 const MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW: usize = 8;
 const MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW: usize = 8;
 

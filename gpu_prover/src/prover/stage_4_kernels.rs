@@ -4,7 +4,7 @@ use crate::device_structures::{
 };
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
-use crate::prover::arg_utils::get_grand_product_col;
+use crate::prover::arg_utils::{get_grand_product_col, StateLinkageConstraints};
 use crate::utils::WARP_SIZE;
 
 use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};
@@ -23,6 +23,7 @@ type E2 = Ext2Field;
 type E4 = Ext4Field;
 
 const MAX_WITNESS_COLS: usize = 672;
+const MAX_MEMORY_COLS: usize = 256;
 const DOES_NOT_NEED_Z_OMEGA: u32 = u32::MAX;
 const MAX_NON_WITNESS_TERMS_AT_Z: usize = 704;
 const MAX_NON_WITNESS_TERMS_AT_Z_OMEGA: usize = 3;
@@ -60,7 +61,15 @@ pub fn compute_deep_denom_at_z_on_main_domain(
 // Clone but not Copy, I'd rather know explicitly when it's being cloned.
 #[derive(Clone)]
 #[repr(C)]
-pub struct ColIdxsToChallengeIdxsMap {
+pub struct WitnessColIdxsToChallengeIdxsMap {
+    // these could be u16, but there's no need to economize,
+    // args fit comfortably in < 8KB regardless
+    pub map: [u32; MAX_WITNESS_COLS],
+}
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct MemoryColIdxsToChallengeIdxsMap {
     // these could be u16, but there's no need to economize,
     // args fit comfortably in < 8KB regardless
     pub map: [u32; MAX_WITNESS_COLS],

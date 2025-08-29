@@ -336,14 +336,6 @@ enforce_lookup_multiplicities(const MultiplicitiesLayout &layout, const matrix_g
   }
 }
 
-constexpr unsigned MAX_STATE_LINKAGE_CONSTRAINTS = 2;
-
-extern "C" struct StateLinkageConstraints {
-  const unsigned srcs[MAX_STATE_LINKAGE_CONSTRAINTS];
-  const unsigned dsts[MAX_STATE_LINKAGE_CONSTRAINTS];
-  const unsigned num_constraints;
-};
-
 constexpr bf SHIFT_16 = bf{1 << 16};
 
 constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 8;
