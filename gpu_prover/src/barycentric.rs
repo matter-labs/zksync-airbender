@@ -247,22 +247,19 @@ pub fn batch_barycentric_eval(
         eval_at_z_omega_offset += 1;
     }
     col_offset += num_witness_cols;
-    if let Some(shuffle_ram_inits_and_teardowns) =
-        circuit.memory_layout.shuffle_ram_inits_and_teardowns
-    {
-        assert!(cached_data.process_shuffle_ram_init);
-        let start = shuffle_ram_inits_and_teardowns
-            .lazy_init_addresses_columns
-            .start();
+    assert_eq!(
+        cached_data.process_shuffle_ram_init,
+        circuit.memory_layout.shuffle_ram_inits_and_teardowns.len() > 0
+    );
+    for init_and_teardown in circuit.memory_layout.shuffle_ram_inits_and_teardowns.iter() {
+        let start = init_and_teardown.lazy_init_addresses_columns.start();
         map[col_offset + start] = eval_at_z_omega_offset as u32;
         eval_at_z_omega_offset += 1;
         map[col_offset + start + 1] = eval_at_z_omega_offset as u32;
         eval_at_z_omega_offset += 1;
-    } else {
-        assert!(!cached_data.process_shuffle_ram_init);
-    };
+    }
     col_offset += num_memory_cols + num_stage_2_bf_cols;
-    let memory_grand_product_offset = get_grand_product_col(circuit, cached_data);
+    let memory_grand_product_offset = get_grand_product_col(circuit);
     map[col_offset + memory_grand_product_offset] = eval_at_z_omega_offset as u32;
     assert_eq!(eval_at_z_omega_offset + 1, num_evals_total);
     let (block_dim, grid_dim) = get_batch_partial_reduce_grid_block(n as u32, row_chunk_size);
@@ -334,7 +331,7 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use era_cudart::stream::CudaStream;
     use field::FieldExtension;
-    use prover::tests::{run_basic_delegation_test_impl, GpuComparisonArgs};
+    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
     use serial_test::serial;
 
     use crate::prover::arg_utils::print_size;
@@ -369,7 +366,7 @@ mod tests {
         let decompression_factor = tau.pow((domain_size / 2) as u32);
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values,
+            &external_values.challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
