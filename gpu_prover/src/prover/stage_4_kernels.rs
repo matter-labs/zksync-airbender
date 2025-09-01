@@ -206,21 +206,10 @@ pub(super) fn get_metadata(
     assert_eq!(flat_offset, num_terms_at_z);
     // Organize challenges at z * omega
     assert!(num_witness_cols <= MAX_WITNESS_COLS);
-    let mut witness_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
-        map: [DOES_NOT_NEED_Z_OMEGA; MAX_WITNESS_COLS],
+    let mut memory_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
+        map: [DOES_NOT_NEED_Z_OMEGA; MAX_MEMORY_COLS],
     };
-    // I could move this logic to a ColIdxsToChallengeIdxsMap;:new method but there
-    // are too many side effects
-    for (i, (_src, dst)) in circuit.state_linkage_constraints.iter().enumerate() {
-        let ColumnAddress::WitnessSubtree(col_idx) = *dst else {
-            panic!()
-        };
-        assert_eq!(
-            witness_cols_to_challenges_at_z_omega_map.map[col_idx],
-            DOES_NOT_NEED_Z_OMEGA
-        );
-        assert!(i < (MAX_WITNESS_COLS as usize));
-        witness_cols_to_challenges_at_z_omega_map.map[col_idx] = i as u32;
+    let state_linkage_constraints = StateLinkageConstraints::new(circuit):
         scratch_e4[num_witness_cols + i] = challenges[flat_offset];
         flat_offset += 1;
     }

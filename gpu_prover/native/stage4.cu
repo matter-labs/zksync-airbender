@@ -64,15 +64,31 @@ extern "C" struct ChallengesTimesEvals {
 };
 
 EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
-    matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
-    matrix_getter<bf, ld_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
-    vectorized_e4_matrix_getter<ld_modifier::cs> composition_col, vector_getter<e4, ld_modifier::ca> denom_at_z,
-    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z, vector_getter<e4, ld_modifier::ca> witness_challenges_at_z_omega,
-    __grid_constant__ const ColIdxsToChallengeIdxsMap witness_cols_to_challenges_at_z_omega_map, vector_getter<e4, ld_modifier::ca> non_witness_challenges_at_z,
-    const NonWitnessChallengesAtZOmega *non_witness_challenges_at_z_omega_ref, const ChallengesTimesEvals *challenges_times_evals_ref,
-    vectorized_e4_matrix_setter<st_modifier::cs> quotient, const unsigned num_setup_cols, const unsigned num_witness_cols, const unsigned num_memory_cols,
-    const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols, const bool process_shuffle_ram_init,
-    const unsigned memory_lazy_init_addresses_cols_start, const unsigned stage_2_memory_grand_product_offset, const unsigned log_n, const bool bit_reversed) {
+    matrix_getter<bf, ld_modifier::cs> setup_cols,
+    matrix_getter<bf, ld_modifier::cs> witness_cols,
+    matrix_getter<bf, ld_modifier::cs> memory_cols,
+    matrix_getter<bf, ld_modifier::cs> stage_2_bf_cols,
+    vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
+    vectorized_e4_matrix_getter<ld_modifier::cs> composition_col,
+    vector_getter<e4, ld_modifier::ca> denom_at_z,
+    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z_omega,
+    __grid_constant__ const StateLinkageConstraints state_linkage_constraints,
+    __grid_constant__ const ColIdxsToChallengeIdxsMap memory_cols_to_challenges_at_z_omega_map,
+    vector_getter<e4, ld_modifier::ca> non_witness_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> non_witness_challenges_at_z_omega,
+    const ChallengesTimesEvals *challenges_times_evals_ref,
+    vectorized_e4_matrix_setter<st_modifier::cs> quotient,
+    const unsigned num_setup_cols,
+    const unsigned num_witness_cols,
+    const unsigned num_memory_cols,
+    const unsigned num_stage_2_bf_cols,
+    const unsigned num_stage_2_e4_cols,
+    const bool process_shuffle_ram_init,
+    const unsigned memory_lazy_init_addresses_cols_start,
+    const unsigned stage_2_memory_grand_product_offset,
+    const unsigned log_n,
+    const bool bit_reversed) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -86,20 +102,21 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
   composition_col.add_row(gid);
   quotient.add_row(gid);
 
-  const auto non_witness_challenges_at_z_omega = *non_witness_challenges_at_z_omega_ref;
   e4 acc_z = e4::zero();
   e4 acc_z_omega = e4::zero();
 
-  // Witness terms at z and z * omega
+  // Witness terms at z
   for (unsigned i = 0; i < num_witness_cols; i++) {
     const bf val = witness_cols.get_at_col(i);
     const e4 challenge = witness_challenges_at_z.get(i);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    const unsigned maybe_challenge_at_z_omega_idx = witness_cols_to_challenges_at_z_omega_map.map[i];
-    if (maybe_challenge_at_z_omega_idx != DOES_NOT_NEED_Z_OMEGA) {
-      const e4 challenge = witness_challenges_at_z_omega.get(maybe_challenge_at_z_omega_idx);
-      acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
-    }
+  }
+
+  // Witness terms at z * omega (state linkage). Redundant loads, but negligible.
+  for (unsigned i = 0; i < state_linkage_constraints.num_constraints; i++) {
+    const bf val = witness_cols.get_at_col(state_linkage_constraints.dsts[i]);
+    const e4 challenge = witness_challenges_at_z_omega.get(i);
+    acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
   }
 
   // Non-witness terms at z and z * omega
@@ -118,10 +135,13 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     const bf val = memory_cols.get_at_col(i);
     const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    if (process_shuffle_ram_init && i >= memory_lazy_init_addresses_cols_start && i < memory_lazy_init_addresses_cols_start + 2) {
-      const e4 challenge = non_witness_challenges_at_z_omega.challenges[i - memory_lazy_init_addresses_cols_start];
+
+    const unsigned maybe_challenge_at_z_omega_idx = memory_cols_to_challenges_at_z_omega_map.map[i];
+    if (maybe_challenge_at_z_omega_idx != DOES_NOT_NEED_Z_OMEGA) {
+      const e4 challenge = non_witness_challenges_at_z_omega.get(maybe_challenge_at_z_omega_idx);
       acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
     }
+
     flat_idx++;
   }
 
@@ -140,7 +160,7 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
     if (i == stage_2_memory_grand_product_offset) {
-      const e4 challenge = non_witness_challenges_at_z_omega.challenges[grand_product_challenge_at_z_omega_idx];
+      const e4 challenge = non_witness_challenges_at_z_omega.get(grand_product_challenge_at_z_omega_idx);
       acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
     }
     flat_idx++;
