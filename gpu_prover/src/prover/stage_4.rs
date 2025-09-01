@@ -13,7 +13,7 @@ use crate::prover::stage_2::StageTwoOutput;
 use crate::prover::stage_3::StageThreeOutput;
 use crate::prover::stage_4_kernels::{
     compute_deep_denom_at_z_on_main_domain, compute_deep_quotient_on_main_domain,
-    stage_challenges_for_gpu_transfer, ChallengesTimesEvals,
+    prepare_challenges_for_gpu_transfer, ChallengesTimesEvals,
 };
 use crate::prover::trace_holder::{extend_trace, flatten_tree_caps, TraceHolder};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
@@ -228,7 +228,7 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
         let layout_metadata = get_layout_metadata(&cached_data, &circuit);
         let layout_metadata_clone = layout_metadata.clone();
         let get_challenges = move || {
-            stage_challenges_for_gpu_transfer(
+            prepare_challenges_for_gpu_transfer(
                 // TODO: Ask Robert
                 // This used to be a &values_at_z_clone.
                 // But it's an Arc, so we should (or at least can) move by value.

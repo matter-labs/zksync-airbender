@@ -112,7 +112,7 @@ cuda_kernel!(
 
 deep_quotient!(deep_quotient_kernel);
 
-pub(super) fn stage_challenges_for_gpu_transfer(
+pub(super) fn prepare_challenges_for_gpu_transfer(
     evals: &[E4],
     alpha: E4,
     omega_inv: E2,
@@ -220,13 +220,15 @@ pub fn compute_deep_quotient_on_main_domain(
         )
     };
     if cached_data.process_shuffle_ram_init {
-        assert_eq!(circuit.state_linkage_constraints.len(), NUM_STATE_LINKAGE_CONSTRAINTS);
+        assert_eq!(
+            circuit.state_linkage_constraints.len(),
+            NUM_STATE_LINKAGE_CONSTRAINTS
+        );
     } else {
         assert_eq!(circuit.state_linkage_constraints.len(), 0);
     }
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
     let state_linkage_constraints = StateLinkageConstraints::new(circuit);
-    let num_non_witness_terms_at_z_omega = 1; // grand product
     let mut memory_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
         map: [DOES_NOT_NEED_Z_OMEGA; MAX_MEMORY_COLS],
     };
@@ -236,7 +238,11 @@ pub fn compute_deep_quotient_on_main_domain(
         assert!(cached_data.shuffle_ram_inits_and_teardowns.len() <= MAX_LAZY_INIT_TEARDOWN_SETS);
         for init_and_teardown in cached_data.shuffle_ram_inits_and_teardowns.iter() {
             let start = init_and_teardown.lazy_init_addresses_columns.start();
-            memory_cols_to_challenges_at_z_omega_map.map[start] = num_memory_terms_at_z_omega as u32;
+            memory_cols_to_challenges_at_z_omega_map.map[start] =
+                num_memory_terms_at_z_omega as u32;
+            num_memory_terms_at_z_omega += 1;
+            memory_cols_to_challenges_at_z_omega_map.map[start + 1] =
+                num_memory_terms_at_z_omega as u32;
             num_memory_terms_at_z_omega += 1;
         }
     } else {
@@ -371,7 +377,7 @@ pub(crate) mod tests {
 
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values,
+            &external_values.challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
@@ -493,8 +499,7 @@ pub(crate) mod tests {
             )
             .unwrap();
             let mut h_challenges_times_evals_sums = ChallengesTimesEvalsSums::default();
-            let mut h_non_witness_challenges_at_z_omega = NonWitnessChallengesAtZOmega::default();
-            stage_challenges_for_gpu_transfer(
+            prepare_challenges_for_gpu_transfer(
                 evals,
                 alpha,
                 twiddles.omega_inv,
@@ -502,22 +507,13 @@ pub(crate) mod tests {
                 num_terms_at_z_omega,
                 &mut h_e4_scratch,
                 &mut h_challenges_times_evals_sums,
-                &mut h_non_witness_challenges_at_z_omega,
             );
             let mut d_challenges_times_evals_sums =
                 DeviceAllocation::<ChallengesTimesEvalsSums>::alloc(1).unwrap();
-            let mut d_non_witness_challenges_at_z_omega =
-                DeviceAllocation::<NonWitnessChallengesAtZOmega>::alloc(1).unwrap();
             memory_copy_async(&mut d_e4_scratch, &h_e4_scratch, &stream).unwrap();
             memory_copy_async(
                 &mut d_challenges_times_evals_sums,
                 &[h_challenges_times_evals_sums],
-                &stream,
-            )
-            .unwrap();
-            memory_copy_async(
-                &mut d_non_witness_challenges_at_z_omega,
-                &[h_non_witness_challenges_at_z_omega],
                 &stream,
             )
             .unwrap();
@@ -545,7 +541,6 @@ pub(crate) mod tests {
                 &d_denom_at_z,
                 &d_e4_scratch,
                 &d_challenges_times_evals_sums[0],
-                &d_non_witness_challenges_at_z_omega[0],
                 &mut d_quotient,
                 &cached_data,
                 &circuit,
