@@ -12,6 +12,8 @@ pub(crate) fn transform_grand_product_accumulators(
         memory_argument_linearization_challenges_ident,
         memory_argument_gamma_ident,
         memory_timestamp_high_from_sequence_idx_ident,
+        state_permutation_argument_linearization_challenges_ident,
+        state_permutation_argument_gamma_ident,
         ..
     } = idents;
 
@@ -282,27 +284,51 @@ pub(crate) fn transform_grand_product_accumulators(
                 );
             let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
 
-            let (write_timestamp_low_expr, write_timestamp_high_expr) =
-                if let Some(intermediate_state_layout) =
-                    memory_layout.intermediate_state_layout.as_ref()
-                {
-                    todo!();
-                } else {
-                    let write_timestamp_low_expr = read_value_expr(
-                        ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start()),
-                        idents,
-                        false,
-                    );
-                    let write_timestamp_high_expr = read_value_expr(
-                        ColumnAddress::SetupSubtree(
-                            setup_layout.timestamp_setup_columns.start() + 1,
-                        ),
-                        idents,
-                        false,
-                    );
+            let (
+                write_timestamp_low_expr,
+                write_timestamp_high_expr,
+                contribution_from_circuit_timestamp,
+            ) = if let Some(intermediate_state_layout) =
+                memory_layout.intermediate_state_layout.as_ref()
+            {
+                let write_timestamp_low_expr = read_value_expr(
+                    ColumnAddress::MemorySubtree(intermediate_state_layout.timestamp.start()),
+                    idents,
+                    false,
+                );
+                let write_timestamp_high_expr = read_value_expr(
+                    ColumnAddress::MemorySubtree(intermediate_state_layout.timestamp.start() + 1),
+                    idents,
+                    false,
+                );
 
-                    (write_timestamp_low_expr, write_timestamp_high_expr)
+                (
+                    write_timestamp_low_expr,
+                    write_timestamp_high_expr,
+                    quote! {},
+                )
+            } else {
+                let write_timestamp_low_expr = read_value_expr(
+                    ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start()),
+                    idents,
+                    false,
+                );
+                let write_timestamp_high_expr = read_value_expr(
+                    ColumnAddress::SetupSubtree(setup_layout.timestamp_setup_columns.start() + 1),
+                    idents,
+                    false,
+                );
+
+                let from_circuit_idx = quote! {
+                    write_timestamp_high.add_assign_base(&#memory_timestamp_high_from_sequence_idx_ident);
                 };
+
+                (
+                    write_timestamp_low_expr,
+                    write_timestamp_high_expr,
+                    from_circuit_idx,
+                )
+            };
 
             let baseline_quote = match memory_access_columns {
                 ShuffleRamQueryColumns::Readonly(_) => {
@@ -352,7 +378,9 @@ pub(crate) fn transform_grand_product_accumulators(
                                 .mul_assign(&write_timestamp_low);
 
                             let mut write_timestamp_high = #write_timestamp_high_expr;
-                            write_timestamp_high.add_assign_base(&#memory_timestamp_high_from_sequence_idx_ident);
+                            // maybe use circuit index for timestamps
+                            #contribution_from_circuit_timestamp
+
                             let mut t = #memory_argument_linearization_challenges_ident
                                 [#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                             t.mul_assign(&write_timestamp_high);
@@ -433,7 +461,9 @@ pub(crate) fn transform_grand_product_accumulators(
                                 .mul_assign(&write_timestamp_low);
 
                             let mut write_timestamp_high = #write_timestamp_high_expr;
-                            write_timestamp_high.add_assign_base(&#memory_timestamp_high_from_sequence_idx_ident);
+                            // maybe use circuit index for timestamps
+                            #contribution_from_circuit_timestamp
+
                             let mut t = #memory_argument_linearization_challenges_ident
                                 [#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                             t.mul_assign(&write_timestamp_high);
@@ -516,7 +546,124 @@ pub(crate) fn transform_grand_product_accumulators(
         .num_elements()
         > 0
     {
-        todo!();
+        // sequence of keys is pc_low || pc_high || timestamp low || timestamp_high
+
+        // we assemble P(x) = write set / read set
+
+        let previous_offset = previous_acc_value_offset
+            .take()
+            .expect("some value to accumulate");
+
+        let initial_machine_state = memory_layout.intermediate_state_layout.unwrap();
+        let final_machine_state = memory_layout.machine_state_layout.unwrap();
+        assert_eq!(
+            stage_2_layout
+                .intermediate_polys_for_state_permutation
+                .num_elements(),
+            1
+        );
+        let offset = stage_2_layout
+            .get_intermediate_polys_for_machine_state_permutation_absolute_poly_idx_for_verifier();
+        let previous_expr = read_stage_2_value_expr(previous_offset, idents, false);
+        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+
+        let final_c0 = read_value_expr(
+            ColumnAddress::MemorySubtree(final_machine_state.pc.start()),
+            idents,
+            false,
+        );
+        let final_c1 = read_value_expr(
+            ColumnAddress::MemorySubtree(final_machine_state.pc.start() + 1),
+            idents,
+            false,
+        );
+        let final_c2 = read_value_expr(
+            ColumnAddress::MemorySubtree(final_machine_state.timestamp.start()),
+            idents,
+            false,
+        );
+        let final_c3 = read_value_expr(
+            ColumnAddress::MemorySubtree(final_machine_state.timestamp.start() + 1),
+            idents,
+            false,
+        );
+
+        let initial_c0 = read_value_expr(
+            ColumnAddress::MemorySubtree(initial_machine_state.pc.start()),
+            idents,
+            false,
+        );
+        let initial_c1 = read_value_expr(
+            ColumnAddress::MemorySubtree(initial_machine_state.pc.start() + 1),
+            idents,
+            false,
+        );
+        let initial_c2 = read_value_expr(
+            ColumnAddress::MemorySubtree(initial_machine_state.timestamp.start()),
+            idents,
+            false,
+        );
+        let initial_c3 = read_value_expr(
+            ColumnAddress::MemorySubtree(initial_machine_state.timestamp.start() + 1),
+            idents,
+            false,
+        );
+
+        let assembly_quote = quote! {
+            let mut numerator = #state_permutation_argument_gamma_ident;
+            numerator.add_assign(&#final_c0);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [0];
+            t.mul_assign(&#final_c1);
+            numerator.add_assign(&t);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [1];
+            t.mul_assign(&#final_c2);
+            numerator.add_assign(&t);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [2];
+            t.mul_assign(&#final_c3);
+            numerator.add_assign(&t);
+
+            let mut denom = #state_permutation_argument_gamma_ident;
+            denom.add_assign(&#initial_c0);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [0];
+            t.mul_assign(&#initial_c1);
+            denom.add_assign(&t);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [1];
+            t.mul_assign(&#initial_c2);
+            denom.add_assign(&t);
+
+            let mut t = #state_permutation_argument_linearization_challenges_ident
+                [2];
+            t.mul_assign(&#initial_c3);
+            denom.add_assign(&t);
+        };
+
+        let t = quote! {
+            let #individual_term_ident = {
+                #assembly_quote
+
+                // this * demon - previous * numerator
+                let mut #individual_term_ident = #accumulator_expr;
+                #individual_term_ident.mul_assign(&denom);
+                let mut t = #previous_expr;
+                t.mul_assign(&numerator);
+                #individual_term_ident.sub_assign(&t);
+
+                #individual_term_ident
+            };
+        };
+
+        previous_acc_value_offset = Some(offset);
+        accumulate_contributions(into, None, vec![t], idents);
     }
 
     // masking
@@ -525,7 +672,39 @@ pub(crate) fn transform_grand_product_accumulators(
         .num_elements()
         > 0
     {
-        todo!()
+        let previous_offset = previous_acc_value_offset
+            .take()
+            .expect("some value to accumulate");
+        let execute = memory_layout
+            .intermediate_state_layout
+            .expect("must be present")
+            .execute;
+        let execute_expr =
+            read_value_expr(ColumnAddress::MemorySubtree(execute.start()), idents, false);
+        let offset = stage_2_layout
+            .get_intermediate_polys_for_permutation_masking_absolute_poly_idx_for_verifier();
+        let previous_expr = read_stage_2_value_expr(previous_offset, idents, false);
+        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+
+        let t = quote! {
+            let #individual_term_ident = {
+                // this = execute * previous + (1 - execute) * 1
+                // this - execute * previous + execute - 1;
+
+                let mut #individual_term_ident = #accumulator_expr;
+                let predicate = #execute_expr;
+                let mut t = #previous_expr;
+                t.mul_assign(&predicate);
+                #individual_term_ident.sub_assign(&t);
+                #individual_term_ident.add_assign(&predicate);
+                #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
+
+                #individual_term_ident
+            };
+        };
+
+        previous_acc_value_offset = Some(offset);
+        accumulate_contributions(into, None, vec![t], idents);
     }
 
     // and now we need to make Z(next) = Z(this) * previous(this)

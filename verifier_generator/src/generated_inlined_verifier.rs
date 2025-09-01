@@ -11,15 +11,19 @@ unsafe fn evaluate_every_row_except_last(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 0usize],
     aux_proof_values: &ProofAuxValues,
     aux_boundary_values: &[AuxArgumentsBoundaryValues; 0usize],
@@ -13375,15 +13379,19 @@ unsafe fn evaluate_every_row_except_two(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 0usize],
     aux_proof_values: &ProofAuxValues,
     aux_boundary_values: &[AuxArgumentsBoundaryValues; 0usize],
@@ -13407,15 +13415,19 @@ unsafe fn evaluate_last_row_and_zero(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 0usize],
     aux_proof_values: &ProofAuxValues,
     aux_boundary_values: &[AuxArgumentsBoundaryValues; 0usize],
@@ -13644,15 +13656,19 @@ pub unsafe fn evaluate_quotient(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 0usize],
     aux_proof_values: &ProofAuxValues,
     aux_boundary_values: &[AuxArgumentsBoundaryValues; 0usize],
@@ -13679,6 +13695,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -13705,6 +13725,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -13731,6 +13755,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -13756,7 +13784,7 @@ pub unsafe fn evaluate_quotient(
         let mut accumulated_contribution = {
             let individual_term = {
                 let mut individual_term = *(stage_2.get_unchecked(112usize));
-                let t = aux_proof_values.memory_grand_product_accumulator_final_value;
+                let t = aux_proof_values.grand_product_accumulator_final_value;
                 individual_term.sub_assign(&t);
                 individual_term
             };

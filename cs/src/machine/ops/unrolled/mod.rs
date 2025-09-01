@@ -39,20 +39,6 @@ pub fn compile_unrolled_circuit_state_transition<F: PrimeField>(
 
     compiled
 }
-// impl<F: PrimeField> From<OpcodeFamilyCircuitState<F>> for FamilyInput<F>{
-//     fn from(inputs: OpcodeFamilyCircuitState<F>) -> Self {
-//         Self {
-//             pc: Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x))),
-//             f3: inputs.decoder_data.funct3,
-//             bitmask: inputs.decoder_data.circuit_family_extra_mask,
-//             rs1_index: inputs.decoder_data.rs1_index,
-//             rs2_index: inputs.decoder_data.rs2_index,
-//             rd_index: inputs.decoder_data.rd_index,
-//             immediate: Register(inputs.decoder_data.imm.map(Num::Var)),
-//             is_rd_x0: Boolean::Is(inputs.decoder_data.rd_is_zero)
-//         }
-//     }
-// }
 
 pub fn dump_wintess_graph_for_unrolled_circuit<F: PrimeField>(
     table_addition_fn: &dyn Fn(

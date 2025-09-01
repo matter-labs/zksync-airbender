@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use core::alloc::Allocator;
 use cs::definitions::ShuffleRamInitAndTeardownLayout;
+use cs::one_row_compiler::CompiledCircuitArtifact;
 use prover::field::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::{Proof, QuerySet};
@@ -63,6 +64,119 @@ pub fn flatten_proof_for_skeleton(
     result.extend(
         proof
             .memory_grand_product_accumulator
+            .into_coeffs_in_base()
+            .map(|el: Mersenne31Field| el.to_reduced_u32()),
+    );
+    if let Some(delegation_argument_accumulator) = proof.delegation_argument_accumulator {
+        result.extend(
+            delegation_argument_accumulator
+                .into_coeffs_in_base()
+                .map(|el: Mersenne31Field| el.to_reduced_u32()),
+        );
+    }
+    // quotient root
+    flatten_merkle_caps_into(&proof.quotient_tree_caps, &mut result);
+    result.extend(
+        proof
+            .evaluations_at_random_points
+            .iter()
+            .map(|el| {
+                el.into_coeffs_in_base()
+                    .map(|el: Mersenne31Field| el.to_reduced_u32())
+            })
+            .flatten(),
+    );
+    flatten_merkle_caps_into(&proof.deep_poly_caps, &mut result);
+    for el in proof.intermediate_fri_oracle_caps.iter() {
+        flatten_merkle_caps_into(el, &mut result);
+    }
+    if proof.last_fri_step_plain_leaf_values.len() > 0 {
+        for el in proof.last_fri_step_plain_leaf_values.iter() {
+            result.extend(
+                el.iter()
+                    .map(|el| {
+                        el.into_coeffs_in_base()
+                            .map(|el: Mersenne31Field| el.to_reduced_u32())
+                    })
+                    .flatten(),
+            );
+        }
+    }
+    result.extend(
+        proof
+            .final_monomial_form
+            .iter()
+            .map(|el| {
+                el.into_coeffs_in_base()
+                    .map(|el: Mersenne31Field| el.to_reduced_u32())
+            })
+            .flatten(),
+    );
+    result.push(proof.pow_nonce as u32);
+    result.push((proof.pow_nonce >> 32) as u32);
+
+    result
+}
+
+pub fn flatten_unrolled_circuits_proof_for_skeleton(
+    proof: &prover::prover_stages::unrolled_prover::UnrolledModeProof,
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+) -> Vec<u32> {
+    let mut result = Vec::new();
+
+    // sequence idx - legacy, we pad with 0
+    result.push(0u32);
+    // delegation type - legacy
+    result.push(proof.delegation_type as u32);
+    // and public input
+    result.extend(proof.public_inputs.iter().map(|el| el.to_reduced_u32()));
+
+    // setup merkle cap
+    flatten_merkle_caps_into(&proof.setup_tree_caps, &mut result);
+    // memory argument challenges
+    result.extend(proof.external_challenges.memory_argument.flatten());
+    // delegation argument challenges
+    if compiled_circuit
+        .stage_2_layout
+        .delegation_processing_aux_poly
+        .is_some()
+    {
+        let Some(delegation_argument) = proof.external_challenges.delegation_argument else {
+            panic!("Must have a delegation argument challenge if argument is present");
+        };
+        result.extend(delegation_argument.flatten());
+    }
+    // state permutation argument challenges
+    if compiled_circuit
+        .memory_layout
+        .machine_state_layout
+        .is_some()
+        || compiled_circuit
+            .memory_layout
+            .intermediate_state_layout
+            .is_some()
+    {
+        let Some(machine_state_permutation_argument) =
+            proof.external_challenges.machine_state_permutation_argument
+        else {
+            panic!(
+                "Must have a machine state permutation argument challenge if argument is present"
+            );
+        };
+        result.extend(machine_state_permutation_argument.flatten());
+    }
+    for el in proof.aux_boundary_values.iter() {
+        result.extend(el.flatten());
+    }
+    // witness and memory trees
+    flatten_merkle_caps_into(&proof.witness_tree_caps, &mut result);
+    flatten_merkle_caps_into(&proof.memory_tree_caps, &mut result);
+    // stage 2 root
+    flatten_merkle_caps_into(&proof.stage_2_tree_caps, &mut result);
+    // grand product and delegation accumulators
+    result.extend(
+        proof
+            .permutation_grand_product_accumulator
             .into_coeffs_in_base()
             .map(|el: Mersenne31Field| el.to_reduced_u32()),
     );

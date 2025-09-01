@@ -61,7 +61,7 @@ pub fn u256_ops_with_control_impl<
             for (dst, [l, h]) in result
                 .as_limbs_mut()
                 .iter_mut()
-                .zip(words.array_chunks::<2>())
+                .zip(words.as_chunks::<2>().0.into_iter())
             {
                 *dst = ((h.read_value as u64) << 32) | (l.read_value as u64);
             }
@@ -76,7 +76,7 @@ pub fn u256_ops_with_control_impl<
             for (dst, [l, h]) in result
                 .as_limbs_mut()
                 .iter_mut()
-                .zip(words.array_chunks::<2>())
+                .zip(words.as_chunks::<2>().0.into_iter())
             {
                 *dst = ((h.read_value as u64) << 32) | (l.read_value as u64);
             }
@@ -150,7 +150,9 @@ pub fn u256_ops_with_control_impl<
     };
 
     for ([l, h], src) in a_accesses
-        .array_chunks_mut::<2>()
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
         .zip(result.as_limbs().iter())
     {
         l.write_value = *src as u32;

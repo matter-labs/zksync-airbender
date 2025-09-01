@@ -106,11 +106,6 @@ pub(crate) fn writeback_no_exception_with_opcodes_in_rom<
             let final_state = MinimalStateRegistersInMemory { pc: new_pc };
 
             cs.set_log(&opt_ctx, "EXECUTOR");
-            cs.view_log(if PERFORM_DELEGATION {
-                "ISA_WITH_DELEGATION"
-            } else {
-                "ISA_WITHOUT_DELEGATION"
-            });
 
             final_state
         } else {

@@ -156,40 +156,46 @@ fn gpu_worker<C: ProverContext>(
                 GpuWorkRequest::Proof(request) => {
                     let batch_id = request.batch_id;
                     let precomputations = &request.precomputations;
-                    let setup = if let Some(holder) = &current_setup
-                        && Arc::ptr_eq(&holder.trace, &precomputations.setup)
-                    {
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for delegation circuit {delegation:?}"),
+                    let setup = match (
+                        &current_setup,
+                        Arc::ptr_eq(&holder.trace, &precomputations.setup),
+                    ) {
+                        (Some(holder), true) => {
+                            match request.circuit_type {
+                                CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for main circuit {main:?}"),
+                                CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] reusing setup for delegation circuit {delegation:?}"),
+                            }
+                            holder.setup.clone()
                         }
-                        holder.setup.clone()
-                    } else {
-                        let lde_factor = precomputations.lde_precomputations.lde_factor;
-                        assert!(lde_factor.is_power_of_two());
-                        let log_lde_factor = lde_factor.trailing_zeros();
-                        let domain_size = precomputations.lde_precomputations.domain_size;
-                        assert!(domain_size.is_power_of_two());
-                        let log_domain_size = domain_size.trailing_zeros();
-                        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-                        let mut setup = SetupPrecomputations::new(
-                            &precomputations.compiled_circuit,
-                            log_lde_factor,
-                            log_tree_cap_size,
-                            &context,
-                        )?;
-                        match request.circuit_type {
-                            CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for main circuit {main:?}"),
-                            CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for delegation circuit {delegation:?}"),
+                        _ => {
+                            let lde_factor = precomputations.lde_precomputations.lde_factor;
+                            assert!(lde_factor.is_power_of_two());
+                            let log_lde_factor = lde_factor.trailing_zeros();
+                            let domain_size = precomputations.lde_precomputations.domain_size;
+                            assert!(domain_size.is_power_of_two());
+                            let log_domain_size = domain_size.trailing_zeros();
+                            let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+                            let mut setup = SetupPrecomputations::new(
+                                &precomputations.compiled_circuit,
+                                log_lde_factor,
+                                log_tree_cap_size,
+                                &context,
+                            )?;
+                            match request.circuit_type {
+                                CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for main circuit {main:?}"),
+                                CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for delegation circuit {delegation:?}"),
+                            }
+                            setup.schedule_transfer(precomputations.setup.clone(), &context)?;
+                            let setup = Rc::new(RefCell::new(setup));
+                            current_setup = Some(SetupHolder {
+                                setup: setup.clone(),
+                                trace: precomputations.setup.clone(),
+                            });
+
+                            setup
                         }
-                        setup.schedule_transfer(precomputations.setup.clone(), &context)?;
-                        let setup = Rc::new(RefCell::new(setup));
-                        current_setup = Some(SetupHolder {
-                            setup: setup.clone(),
-                            trace: precomputations.setup.clone(),
-                        });
-                        setup
                     };
+
                     (
                         request.batch_id,
                         request.circuit_type,

@@ -110,12 +110,20 @@ pub fn evaluate_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
 
     unsafe {
         worker.scope(cycles, |scope, geometry| {
-            let mut range_16_multiplicity_subcounters_chunks =
-                range_16_multiplicity_subcounters.array_chunks_mut::<1>();
+            let mut range_16_multiplicity_subcounters_chunks = range_16_multiplicity_subcounters
+                .as_chunks_mut::<1>()
+                .0
+                .iter_mut();
             let mut timestamp_range_check_multiplicity_subcounters_chunks =
-                timestamp_range_check_multiplicity_subcounters.array_chunks_mut::<1>();
+                timestamp_range_check_multiplicity_subcounters
+                    .as_chunks_mut::<1>()
+                    .0
+                    .iter_mut();
             let mut general_purpose_multiplicity_subcounters_chunks =
-                general_purpose_multiplicity_subcounters.array_chunks_mut::<1>();
+                general_purpose_multiplicity_subcounters
+                    .as_chunks_mut::<1>()
+                    .0
+                    .iter_mut();
 
             for thread_idx in 0..geometry.len() {
                 let chunk_size = geometry.get_chunk_size(thread_idx);

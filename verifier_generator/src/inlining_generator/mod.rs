@@ -40,6 +40,10 @@ struct Idents {
     lookup_argument_two_gamma_ident: Ident,
     delegation_argument_linearization_challenges_ident: Ident,
     delegation_argument_gamma_ident: Ident,
+    state_permutation_argument_linearization_challenges_ident: Ident,
+    state_permutation_argument_gamma_ident: Ident,
+    decoder_lookup_argument_linearization_challenges_ident: Ident,
+    decoder_lookup_argument_gamma_ident: Ident,
     memory_timestamp_high_from_sequence_idx_ident: Ident,
     public_inputs_ident: Ident,
     #[allow(dead_code)]
@@ -100,6 +104,21 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     );
     let delegation_argument_gamma_ident =
         Ident::new("delegation_argument_gamma", Span::call_site());
+
+    let state_permutation_argument_linearization_challenges_ident = Ident::new(
+        "state_permutation_argument_linearization_challenges",
+        Span::call_site(),
+    );
+    let state_permutation_argument_gamma_ident =
+        Ident::new("state_permutation_argument_gamma", Span::call_site());
+
+    let decoder_lookup_argument_linearization_challenges_ident = Ident::new(
+        "decoder_lookup_argument_linearization_challenges",
+        Span::call_site(),
+    );
+    let decoder_lookup_argument_gamma_ident =
+        Ident::new("decoder_lookup_argument_gamma", Span::call_site());
+
     let memory_timestamp_high_from_sequence_idx_ident =
         Ident::new("memory_timestamp_high_from_sequence_idx", Span::call_site());
     let public_inputs_ident = Ident::new("public_inputs", Span::call_site());
@@ -133,6 +152,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         lookup_argument_two_gamma_ident,
         delegation_argument_linearization_challenges_ident,
         delegation_argument_gamma_ident,
+        state_permutation_argument_linearization_challenges_ident,
+        state_permutation_argument_gamma_ident,
+        decoder_lookup_argument_linearization_challenges_ident,
+        decoder_lookup_argument_gamma_ident,
         memory_timestamp_high_from_sequence_idx_ident,
         public_inputs_ident,
         external_values_ident,
@@ -191,8 +214,16 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     }
 
     // now lookup width 1
+    if stage_2_layout
+        .intermediate_poly_for_range_check_16_multiplicity
+        .num_elements()
+        > 0
     {
         // range check 16
+        if stage_2_layout
+            .intermediate_polys_for_range_check_16
+            .num_pairs
+            > 0
         {
             let bound = stage_2_layout
                 .intermediate_polys_for_range_check_16
@@ -201,12 +232,12 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 bound,
                 witness_layout.range_check_16_lookup_expressions.len() / 2
             );
-            let num_shuffle_ram_accesses = memory_layout.shuffle_ram_access_sets.len();
-            let shuffle_ram_special_case_bound = bound - num_shuffle_ram_accesses;
             assert!(witness_layout.range_check_16_lookup_expressions.len() % 2 == 0);
             for (i, pair) in witness_layout
                 .range_check_16_lookup_expressions
-                .array_chunks::<2>()
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .enumerate()
             {
                 let (common, exprs) = transform_width_1_range_checks_pair(
@@ -231,7 +262,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             let lazy_init_address_range_check_16 = stage_2_layout
                 .lazy_init_address_range_check_16
                 .expect("must exist if we do lazy init");
-            let exprs = transform_shuffle_ram_lazy_init_range_checks(
+            transform_shuffle_ram_lazy_init_range_checks(
                 lazy_init_address_range_check_16,
                 &memory_layout.shuffle_ram_inits_and_teardowns,
                 &idents,
@@ -248,6 +279,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     }
 
     // timestamp range checks
+    if stage_2_layout
+        .intermediate_poly_for_timestamp_range_check_multiplicity
+        .num_elements()
+        > 0
     {
         let bound = stage_2_layout
             .intermediate_polys_for_timestamp_range_checks
@@ -259,8 +294,9 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 .len()
                 / 2
         );
-        let num_shuffle_ram_accesses = memory_layout.shuffle_ram_access_sets.len();
-        let shuffle_ram_special_case_bound = bound - num_shuffle_ram_accesses;
+        let shuffle_ram_special_case_bound =
+            witness_layout.offset_for_special_shuffle_ram_timestamps_range_check_expressions;
+        assert_eq!(shuffle_ram_special_case_bound % 2, 0);
         assert!(
             witness_layout
                 .timestamp_range_check_lookup_expressions
@@ -275,7 +311,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             .iter()
             .enumerate()
         {
-            if i < shuffle_ram_special_case_bound {
+            if i < shuffle_ram_special_case_bound / 2 {
                 let (common, exprs) = transform_width_1_range_checks_pair(
                     pair,
                     i,
@@ -311,7 +347,129 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         }
     }
 
+    // decoder lookup
+    if stage_2_layout
+        .intermediate_polys_for_decoder_multiplicities
+        .num_elements()
+        > 0
+    {
+        let offset = stage_2_layout
+            .get_intermediate_poly_for_decoder_lookup_absolute_poly_idx_for_verifier();
+        let accumulator_expr = read_stage_2_value_expr(offset, &idents, false);
+
+        // depending on the location we generate columns
+
+        let intermediate_state_layout = memory_layout.intermediate_state_layout.as_ref().unwrap();
+        let IntermediateStatePermutationVariables {
+            execute,
+            pc,
+            timestamp: _,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            decoder_witness_is_in_memory,
+            rd_is_zero,
+            imm,
+            funct3,
+            funct7,
+            circuit_family,
+            circuit_family_extra_mask,
+        } = *intermediate_state_layout;
+
+        let multiplicity_expr = read_value_expr(
+            ColumnAddress::MemorySubtree(execute.start()),
+            &idents,
+            false,
+        );
+
+        assert!(funct7.num_elements() == 0);
+        assert!(circuit_family.num_elements() == 0);
+
+        let pc_0 = ColumnAddress::MemorySubtree(pc.start());
+        let pc_1 = ColumnAddress::MemorySubtree(pc.start() + 1);
+        let rs1_index = ColumnAddress::MemorySubtree(rs1_index.start());
+
+        // rs2 and rd are column addresses explicily
+
+        // then we need to make it conditionally
+        let [rd_is_zero, imm_0, imm_1, funct3] = [
+            rd_is_zero.start(),
+            imm.start(),
+            imm.start() + 1,
+            funct3.start(),
+        ]
+        .map(|el| {
+            if decoder_witness_is_in_memory {
+                unreachable!()
+                // ColumnAddress::MemorySubtree(el)
+            } else {
+                ColumnAddress::WitnessSubtree(el)
+            }
+        });
+
+        let key_values_to_aggregate = [
+            pc_0,
+            pc_1,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            rd_is_zero,
+            imm_0,
+            imm_1,
+            funct3,
+            circuit_family_extra_mask,
+        ];
+
+        assert_eq!(
+            key_values_to_aggregate.len(),
+            EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH
+        );
+        let c0_expr = read_value_expr(key_values_to_aggregate[0], &idents, false);
+
+        let decoder_lookup_argument_gamma_ident = &idents.decoder_lookup_argument_gamma_ident;
+        let mut accumulation_expr = quote! {
+            let mut denom = #decoder_lookup_argument_gamma_ident;
+            denom.add_assign(& #c0_expr);
+        };
+
+        // now in the cycle
+        for i in 1..EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH {
+            let challenge_idx = i - 1;
+            let column = key_values_to_aggregate[i];
+            let column_expr = read_value_expr(column, &idents, false);
+
+            let decoder_lookup_argument_linearization_challenges_ident =
+                &idents.decoder_lookup_argument_linearization_challenges_ident;
+            accumulation_expr.extend(quote! {
+                let mut t = #decoder_lookup_argument_linearization_challenges_ident[#challenge_idx];
+                t.mul_assign(& #column_expr);
+                denom.add_assign(&t);
+            });
+        }
+
+        let individual_term_ident = &idents.individual_term_ident;
+        let t = quote! {
+            let #individual_term_ident = {
+                let m = #multiplicity_expr;
+
+                #accumulation_expr
+
+                let mut #individual_term_ident = denom;
+                #individual_term_ident.mul_assign(& #accumulator_expr);
+                #individual_term_ident.sub_assign(&m);
+
+                #individual_term_ident
+            };
+        };
+
+        accumulate_contributions(&mut every_row_except_last_stream, None, vec![t], &idents);
+    }
+
     // now generic lookup
+    if stage_2_layout
+        .intermediate_polys_for_generic_lookup
+        .num_elements()
+        > 0
     {
         let exprs =
             transform_generic_lookup(&witness_layout, &stage_2_layout, &setup_layout, &idents);
@@ -400,7 +558,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
     // and shuffle RAM lazy init if it exists
     if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
-        transform_shuffle_ram_lazy_init(
+        transform_shuffle_ram_lazy_init_address_ordering(
             &memory_layout.shuffle_ram_inits_and_teardowns,
             &lazy_init_address_aux_vars,
             &idents,
@@ -524,8 +682,6 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         stage_2_values_next_row_ident,
         quotient_alpha_ident,
         quotient_beta_ident,
-        // individual_term_ident,
-        // terms_accumulator_ident,
         divisors_ident,
         memory_argument_linearization_challenges_ident,
         memory_argument_gamma_ident,
@@ -536,11 +692,14 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         delegation_argument_gamma_ident,
         memory_timestamp_high_from_sequence_idx_ident,
         public_inputs_ident,
-        // external_values_ident,
         aux_proof_values_ident,
         aux_boundary_values_ident,
         delegation_type_ident,
         delegation_argument_interpolant_linear_coeff_ident,
+        state_permutation_argument_linearization_challenges_ident,
+        state_permutation_argument_gamma_ident,
+        decoder_lookup_argument_linearization_challenges_ident,
+        decoder_lookup_argument_gamma_ident,
         ..
     } = idents;
 
@@ -562,13 +721,17 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #quotient_alpha_ident: Mersenne31Quartic,
             #quotient_beta_ident: Mersenne31Quartic,
             #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
             #lookup_argument_gamma_ident: Mersenne31Quartic,
             #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
             #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
             #delegation_argument_gamma_ident: Mersenne31Quartic,
+            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
+            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
             #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
@@ -594,13 +757,17 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #quotient_alpha_ident: Mersenne31Quartic,
             #quotient_beta_ident: Mersenne31Quartic,
             #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
             #lookup_argument_gamma_ident: Mersenne31Quartic,
             #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
             #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
             #delegation_argument_gamma_ident: Mersenne31Quartic,
+            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
+            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
             #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
@@ -626,13 +793,17 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #quotient_alpha_ident: Mersenne31Quartic,
             #quotient_beta_ident: Mersenne31Quartic,
             #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
             #lookup_argument_gamma_ident: Mersenne31Quartic,
             #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
             #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
             #delegation_argument_gamma_ident: Mersenne31Quartic,
+            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
+            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
             #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
@@ -658,13 +829,17 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #quotient_alpha_ident: Mersenne31Quartic,
             #quotient_beta_ident: Mersenne31Quartic,
             #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
             #lookup_argument_gamma_ident: Mersenne31Quartic,
             #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
             #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: [Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
             #delegation_argument_gamma_ident: Mersenne31Quartic,
+            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
+            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
             #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
             #aux_proof_values_ident: &ProofAuxValues,
             #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
@@ -691,6 +866,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 #memory_argument_gamma_ident,
                 #delegation_argument_linearization_challenges_ident,
                 #delegation_argument_gamma_ident,
+                #decoder_lookup_argument_linearization_challenges_ident,
+                #decoder_lookup_argument_gamma_ident,
+                #state_permutation_argument_linearization_challenges_ident,
+                #state_permutation_argument_gamma_ident,
                 #public_inputs_ident,
                 #aux_proof_values_ident,
                 #aux_boundary_values_ident,
@@ -718,6 +897,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 #memory_argument_gamma_ident,
                 #delegation_argument_linearization_challenges_ident,
                 #delegation_argument_gamma_ident,
+                #decoder_lookup_argument_linearization_challenges_ident,
+                #decoder_lookup_argument_gamma_ident,
+                #state_permutation_argument_linearization_challenges_ident,
+                #state_permutation_argument_gamma_ident,
                 #public_inputs_ident,
                 #aux_proof_values_ident,
                 #aux_boundary_values_ident,
@@ -745,6 +928,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 #memory_argument_gamma_ident,
                 #delegation_argument_linearization_challenges_ident,
                 #delegation_argument_gamma_ident,
+                #decoder_lookup_argument_linearization_challenges_ident,
+                #decoder_lookup_argument_gamma_ident,
+                #state_permutation_argument_linearization_challenges_ident,
+                #state_permutation_argument_gamma_ident,
                 #public_inputs_ident,
                 #aux_proof_values_ident,
                 #aux_boundary_values_ident,

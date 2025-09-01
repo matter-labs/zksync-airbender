@@ -273,5 +273,7 @@ pub(crate) fn optimized_reduced_isa_state_transition<
         &opt_ctx,
     );
 
+    cs.view_log("Reduced ISA with delegation");
+
     (initial_state, final_state)
 }

@@ -211,7 +211,7 @@ pub(crate) fn transform_first_or_last_rows(
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = #value_expr;
-                let t = #aux_proof_values_ident.memory_grand_product_accumulator_final_value;
+                let t = #aux_proof_values_ident.grand_product_accumulator_final_value;
                 #individual_term_ident.sub_assign(&t);
 
                 #individual_term_ident
@@ -228,6 +228,10 @@ pub(crate) fn transform_first_or_last_rows(
         // range checks
         {
             // range check 16
+            if stage_2_layout
+                .intermediate_poly_for_range_check_16_multiplicity
+                .num_elements()
+                > 0
             {
                 let offset = stage_2_layout
                     .range_check_16_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier();
@@ -257,15 +261,17 @@ pub(crate) fn transform_first_or_last_rows(
                 if let Some(lazy_init_address_range_check_16) =
                     stage_2_layout.lazy_init_address_range_check_16
                 {
-                    let offset = lazy_init_address_range_check_16
-                        .get_ext4_poly_index_in_openings(0, stage_2_layout);
-                    let el_expr = read_stage_2_value_expr(offset, idents, false);
+                    for i in 0..lazy_init_address_range_check_16.num_pairs {
+                        let offset = lazy_init_address_range_check_16
+                            .get_ext4_poly_index_in_openings(i, stage_2_layout);
+                        let el_expr = read_stage_2_value_expr(offset, idents, false);
 
-                    let t = quote! {
-                        let t = #el_expr;
-                        #individual_term_ident.sub_assign(&t);
-                    };
-                    substream.extend(t);
+                        let t = quote! {
+                            let t = #el_expr;
+                            #individual_term_ident.sub_assign(&t);
+                        };
+                        substream.extend(t);
+                    }
                 }
 
                 if let Some(_remainder) = stage_2_layout.remainder_for_range_check_16 {
@@ -284,6 +290,10 @@ pub(crate) fn transform_first_or_last_rows(
             }
 
             // timestamp range checks
+            if stage_2_layout
+                .intermediate_poly_for_timestamp_range_check_multiplicity
+                .num_elements()
+                > 0
             {
                 let offset = stage_2_layout
                     .timestamp_range_check_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier();
@@ -320,6 +330,33 @@ pub(crate) fn transform_first_or_last_rows(
 
                 accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
             }
+        }
+
+        // Decoder lookups
+        if stage_2_layout
+            .intermediate_poly_for_decoder_accesses
+            .num_elements()
+            > 0
+        {
+            let offset = stage_2_layout
+                .decoder_lookup_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
+                );
+            let multiplicities_acc_expr = read_stage_2_value_expr(offset, idents, false);
+
+            let offset = stage_2_layout
+                .get_intermediate_poly_for_decoder_lookup_absolute_poly_idx_for_verifier();
+            let lookup_acc_expr = read_stage_2_value_expr(offset, idents, false);
+
+            let t = quote! {
+                let #individual_term_ident = {
+                    let mut #individual_term_ident = #multiplicities_acc_expr;
+                    #individual_term_ident.sub_assign(&#lookup_acc_expr);
+
+                    #individual_term_ident
+                };
+            };
+
+            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
         // generic lookup

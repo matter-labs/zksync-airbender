@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn transform_shuffle_ram_lazy_init(
+pub(crate) fn transform_shuffle_ram_lazy_init_address_ordering(
     shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
     lazy_init_address_aux_vars: &[ShuffleRamAuxComparisonSet],
     idents: &Idents,
@@ -21,12 +21,6 @@ pub(crate) fn transform_shuffle_ram_lazy_init(
     {
         let lazy_init_address_start = inits_and_teardowns.lazy_init_addresses_columns.start();
 
-        let teardown_values_start = inits_and_teardowns.lazy_teardown_values_columns.start();
-
-        let teardown_timestamps_start =
-            inits_and_teardowns.lazy_teardown_timestamps_columns.start();
-
-        let comparison_aux_vars = lazy_init_address_aux_vars;
         let lazy_init_address_low = lazy_init_address_start;
         let lazy_init_address_high = lazy_init_address_start + 1;
         let lazy_init_address_low_place = ColumnAddress::MemorySubtree(lazy_init_address_low);

@@ -70,9 +70,15 @@ pub(crate) fn accumulate_contributions(
     }
 
     if let Some(common_stream_for_terms) = common_stream_for_terms {
-        // assume not first
-        let is_first = into.is_empty();
-        assert!(is_first == false, "alternative mode is unsupported");
+        if into.is_empty() {
+            let terms_accumulator_ident = &idents.terms_accumulator_ident;
+            // a little inefficient, but simplifies leaking of common expressions
+            let t = quote! {
+                let mut #terms_accumulator_ident = Mersenne31Quartic::ZERO;
+            };
+            into.extend(t);
+        }
+
         let mut inner_stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
             accumulate_contribution(&mut inner_stream, false, el, idents);

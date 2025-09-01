@@ -158,12 +158,14 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
     Transcript::draw_randomness(seed, &mut transcript_challenges);
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let z = Mersenne31Quartic::from_coeffs_in_base(
         &it.next()
             .unwrap()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
+
+    dbg!(z);
 
     #[cfg(feature = "debug_logs")]
     dbg!(z);
@@ -488,7 +490,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
     Transcript::draw_randomness(seed, &mut transcript_challenges);
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let deep_poly_alpha = Mersenne31Quartic::from_coeffs_in_base(
         &it.next()
             .unwrap()

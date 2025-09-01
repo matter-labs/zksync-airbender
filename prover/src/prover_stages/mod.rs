@@ -312,15 +312,23 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
                                 Mersenne31Field(timestamp_high as u32);
                         }
 
-                        if absolute_row_idx < range_check_16_table_content_len {
-                            trace_view_row[setup_layout.range_check_16_setup_column.start()] =
-                                range_check_16_table_content_ref[absolute_row_idx][0];
+                        if setup_layout.range_check_16_setup_column.num_elements() > 0 {
+                            if absolute_row_idx < range_check_16_table_content_len {
+                                trace_view_row[setup_layout.range_check_16_setup_column.start()] =
+                                    range_check_16_table_content_ref[absolute_row_idx][0];
+                            }
                         }
 
-                        if absolute_row_idx < timestamp_range_check_table_content_len {
-                            trace_view_row
-                                [setup_layout.timestamp_range_check_setup_column.start()] =
-                                timestamp_range_check_table_content_ref[absolute_row_idx];
+                        if setup_layout
+                            .timestamp_range_check_setup_column
+                            .num_elements()
+                            > 0
+                        {
+                            if absolute_row_idx < timestamp_range_check_table_content_len {
+                                trace_view_row
+                                    [setup_layout.timestamp_range_check_setup_column.start()] =
+                                    timestamp_range_check_table_content_ref[absolute_row_idx];
+                            }
                         }
 
                         for (tuple_idx, encoding_chunk) in all_generic_tables_ref.iter().enumerate()

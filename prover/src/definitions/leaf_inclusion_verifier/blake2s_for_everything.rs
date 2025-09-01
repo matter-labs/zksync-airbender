@@ -37,7 +37,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
         let mut num_full_rounds = input_len_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
         let mut last_round_len = input_len_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
         if last_round_len == 0 {
-            if num_full_rounds > 1 {
+            if num_full_rounds > 0 {
                 num_full_rounds -= 1;
             }
             last_round_len = BLAKE2S_BLOCK_SIZE_U32_WORDS;

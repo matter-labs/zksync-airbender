@@ -899,9 +899,10 @@ pub(crate) unsafe fn evaluate_decoder_table_access(
     debug_assert!(funct7.num_elements() == 0);
     debug_assert!(circuit_family.num_elements() == 0);
 
-    // read all the inputs
-
+    // execute is an analog of 0/1 multiplicity
     let execute = *memory_trace_view_row.get_unchecked(execute.start());
+
+    // read all the inputs
     let pc: [Mersenne31Field; 2] = memory_trace_view_row
         .as_ptr()
         .add(pc.start())
@@ -1691,10 +1692,6 @@ pub(crate) unsafe fn evaluate_permutation_masking(
     other_challenges_ptr: &mut *const Mersenne31Quartic,
     permutation_argument_src: &mut *const Mersenne31Quartic,
 ) {
-    // sequence of keys is pc_low || pc_high || timestamp low || timestamp_high
-
-    // we assemble P(x) = write set / read set
-
     let initial_machine_state = compiled_circuit
         .memory_layout
         .intermediate_state_layout

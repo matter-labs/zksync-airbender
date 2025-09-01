@@ -625,10 +625,6 @@ pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
 
         let t0 = quote! {
             let #individual_term_ident = {
-                let a = #a_expr;
-                let b = #b_expr;
-                let c = #c_expr;
-
                 let mut #individual_term_ident = a;
                 #individual_term_ident.mul_assign(&b);
                 #individual_term_ident.sub_assign(&c);
@@ -639,15 +635,12 @@ pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
         streams.push(t0);
 
         // now accumulator * denom - numerator == 0
-        let acc_offset =
-            lazy_init_address_range_check_16.get_ext4_poly_index_in_openings(0, stage_2_layout);
+        let acc_offset = lazy_init_address_range_check_16
+            .get_ext4_poly_index_in_openings(init_idx, stage_2_layout);
         let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
 
         let t1 = quote! {
             let #individual_term_ident = {
-                let a = #a_expr;
-                let b = #b_expr;
-                let c = #c_expr;
                 let acc_value = #acc_expr;
 
                 let mut denom = #lookup_argument_gamma_ident;
@@ -676,159 +669,6 @@ pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
         accumulate_contributions(into, Some(common_stream), streams, idents);
     }
 }
-
-// pub(crate) fn transform_generic_lookup(
-//     witness_layout: &WitnessSubtree<Mersenne31Field>,
-//     stage_2_layout: &LookupAndMemoryArgumentLayout,
-//     setup_layout: &SetupLayout,
-//     idents: &Idents,
-// ) -> Vec<TokenStream> {
-//     if stage_2_layout
-//         .intermediate_polys_for_generic_lookup
-//         .num_elements()
-//         == 0
-//     {
-//         return vec![];
-//     }
-
-//     let Idents {
-//         individual_term_ident,
-//         lookup_argument_linearization_challenges_ident,
-//         lookup_argument_gamma_ident,
-//         ..
-//     } = idents;
-
-//     let mut streams = vec![];
-
-//     let mut dst_iter = stage_2_layout.intermediate_polys_for_generic_lookup.iter();
-//     let mut width_3_lookups_with_fixed_col_id = vec![];
-//     for lookup in witness_layout.width_3_lookups.iter() {
-//         if let TableIndex::Constant(table_type) = lookup.table_index {
-//             let src = lookup.input_columns.clone();
-//             let dst = dst_iter.next().unwrap().start;
-//             let column_type =
-//                 Mersenne31Field::from_u64_with_reduction(table_type.to_table_id() as u64);
-//             width_3_lookups_with_fixed_col_id.push((src, dst, column_type));
-//         }
-//     }
-//     let mut width_3_lookups_with_variable_col_id = vec![];
-//     for lookup in witness_layout.width_3_lookups.iter() {
-//         if let TableIndex::Variable(table_type) = lookup.table_index {
-//             let src = lookup.input_columns.clone();
-//             let dst = dst_iter.next().unwrap().start;
-//             let ColumnAddress::WitnessSubtree(table_type_idx) = table_type else {
-//                 panic!();
-//             };
-//             width_3_lookups_with_variable_col_id.push((src, table_type_idx, dst));
-//         }
-//     }
-
-//     assert!(dst_iter.next().is_none());
-
-//     assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
-
-//     // width-3 generic lookup
-//     {
-//         let mut i = 0;
-//         for (src, _dst, table_type) in width_3_lookups_with_fixed_col_id.iter() {
-//             let table_type = table_type.to_reduced_u32();
-//             let acc = stage_2_layout
-//                 .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
-//             let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
-//             let src = src.clone();
-//             let [src0, src1, src2] = src;
-//             let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-//             let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-//             let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
-
-//             let t = quote! {
-//                 let #individual_term_ident = {
-//                     let src0 = #src_0_expr;
-//                     let src1 = #src_1_expr;
-//                     let src2 = #src_2_expr;
-
-//                     let mut denom = #lookup_argument_linearization_challenges_ident[2];
-//                     let table_id = Mersenne31Field(#table_type);
-//                     denom.mul_assign_by_base(&table_id);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[1];
-//                     t.mul_assign_by_base(&src2);
-//                     denom.add_assign(&t);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[0];
-//                     t.mul_assign_by_base(&src1);
-//                     denom.add_assign(&t);
-
-//                     denom.add_assign(&src0);
-
-//                     denom.add_assign(&#lookup_argument_gamma_ident);
-
-//                     let mut #individual_term_ident = denom;
-//                     #individual_term_ident.mul_assign(& #accumulator_expr);
-//                     #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-
-//                     #individual_term_ident
-//                 };
-//             };
-
-//             streams.push(t);
-
-//             i += 1;
-//         }
-
-//         for (src, table_type_offset, _dst) in width_3_lookups_with_variable_col_id.iter() {
-//             let acc = stage_2_layout
-//                 .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
-//             let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
-//             let src = src.clone();
-//             let [src0, src1, src2] = src;
-//             let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-//             let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-//             let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
-//             let src_3_expr = read_value_expr(
-//                 ColumnAddress::WitnessSubtree(*table_type_offset),
-//                 idents,
-//                 false,
-//             );
-
-//             let t = quote! {
-//                 let #individual_term_ident = {
-//                     let src0 = #src_0_expr;
-//                     let src1 = #src_1_expr;
-//                     let src2 = #src_2_expr;
-//                     let table_id = #src_3_expr;
-
-//                     let mut denom = #lookup_argument_linearization_challenges_ident[2];
-//                     denom.mul_assign(&table_id);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[1];
-//                     t.mul_assign_by_base(&src2);
-//                     denom.add_assign(&t);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[0];
-//                     t.mul_assign_by_base(&src1);
-//                     denom.add_assign(&t);
-
-//                     denom.add_assign(&src0);
-
-//                     denom.add_assign(&#lookup_argument_gamma_ident);
-
-//                     let mut #individual_term_ident = denom;
-//                     #individual_term_ident.mul_assign(& #accumulator_expr);
-//                     #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-
-//                     #individual_term_ident
-//                 };
-//             };
-
-//             streams.push(t);
-
-//             i += 1;
-//         }
-//     }
-
-//     streams
-// }
 
 pub(crate) fn transform_generic_lookup(
     witness_layout: &WitnessSubtree<Mersenne31Field>,
@@ -974,29 +814,22 @@ pub(crate) fn transform_multiplicities(
         individual_term_ident,
         lookup_argument_linearization_challenges_ident,
         lookup_argument_gamma_ident,
+        decoder_lookup_argument_linearization_challenges_ident,
+        decoder_lookup_argument_gamma_ident,
         ..
     } = idents;
 
-    let range_check_16_multiplicities_src = witness_layout
-        .multiplicities_columns_for_range_check_16
-        .start();
-    let range_check_16_setup_column = setup_layout.range_check_16_setup_column.start();
-
-    let timestamp_range_check_multiplicities_src = witness_layout
-        .multiplicities_columns_for_timestamp_range_check
-        .start();
-    let timestamp_range_check_setup_column =
-        setup_layout.timestamp_range_check_setup_column.start();
-
-    let generic_lookup_multiplicities_src = witness_layout
-        .multiplicities_columns_for_generic_lookup
-        .start();
-    assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
-
-    let generic_lookup_setup_columns_start = setup_layout.generic_lookup_setup_columns.start();
-
     // range check 16
+    if stage_2_layout
+        .intermediate_poly_for_range_check_16_multiplicity
+        .num_elements()
+        > 0
     {
+        let range_check_16_multiplicities_src = witness_layout
+            .multiplicities_columns_for_range_check_16
+            .start();
+        let range_check_16_setup_column = setup_layout.range_check_16_setup_column.start();
+
         let intermediate_poly_expr = read_stage_2_value_expr(
             stage_2_layout
                 .range_check_16_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
@@ -1037,7 +870,17 @@ pub(crate) fn transform_multiplicities(
     }
 
     // timestamp range check
+    if stage_2_layout
+        .intermediate_poly_for_timestamp_range_check_multiplicity
+        .num_elements()
+        > 0
     {
+        let timestamp_range_check_multiplicities_src = witness_layout
+            .multiplicities_columns_for_timestamp_range_check
+            .start();
+        let timestamp_range_check_setup_column =
+            setup_layout.timestamp_range_check_setup_column.start();
+
         let intermediate_poly_expr = read_stage_2_value_expr(
             stage_2_layout
                 .timestamp_range_check_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
@@ -1077,8 +920,88 @@ pub(crate) fn transform_multiplicities(
         streams.push(t);
     }
 
-    // generic lookup
+    if stage_2_layout
+        .intermediate_polys_for_decoder_multiplicities
+        .num_elements()
+        > 0
     {
+        assert_eq!(
+            witness_layout
+                .multiplicities_columns_for_decoder_in_executor_families
+                .num_elements(),
+            1
+        );
+
+        let offset = stage_2_layout
+            .decoder_lookup_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier();
+        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+
+        let multiplicity_offset = witness_layout
+            .multiplicities_columns_for_decoder_in_executor_families
+            .start();
+        let multiplicity_expr = read_value_expr(
+            ColumnAddress::WitnessSubtree(multiplicity_offset),
+            idents,
+            false,
+        );
+
+        assert_eq!(
+            setup_layout
+                .preprocessed_decoder_setup_columns
+                .num_elements(),
+            1
+        );
+        let setup_start = setup_layout.preprocessed_decoder_setup_columns.start();
+        let c0_expr = read_value_expr(ColumnAddress::SetupSubtree(setup_start), idents, false);
+
+        let mut accumulation_expr = quote! {
+            let mut denom = #decoder_lookup_argument_gamma_ident;
+            denom.add_assign(& #c0_expr);
+        };
+
+        // now in the cycle
+        for i in 1..EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH {
+            let challenge_idx = i - 1;
+            let setup_column_expr =
+                read_value_expr(ColumnAddress::SetupSubtree(setup_start + i), idents, false);
+
+            accumulation_expr.extend(quote! {
+                let mut t = #decoder_lookup_argument_linearization_challenges_ident[#challenge_idx];
+                t.mul_assign(& #setup_column_expr);
+                denom.add_assign(&t);
+            });
+        }
+
+        let t = quote! {
+            let #individual_term_ident = {
+                let m = #multiplicity_expr;
+
+                #accumulation_expr
+
+                let mut #individual_term_ident = denom;
+                #individual_term_ident.mul_assign(& #accumulator_expr);
+                #individual_term_ident.sub_assign(&m);
+
+                #individual_term_ident
+            };
+        };
+
+        streams.push(t);
+    }
+
+    // generic lookup
+    if stage_2_layout
+        .intermediate_polys_for_generic_multiplicities
+        .num_elements()
+        > 0
+    {
+        let generic_lookup_multiplicities_src = witness_layout
+            .multiplicities_columns_for_generic_lookup
+            .start();
+        assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
+
+        let generic_lookup_setup_columns_start = setup_layout.generic_lookup_setup_columns.start();
+
         let bound = stage_2_layout
             .intermediate_polys_for_generic_multiplicities
             .num_elements();
@@ -1876,12 +1799,9 @@ pub(crate) fn transform_shuffle_ram_lazy_init_padding(
         .zip(lazy_init_address_aux_vars.iter())
     {
         let lazy_init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
-
         let teardown_values_start = init_and_teardown.lazy_teardown_values_columns.start();
-
         let teardown_timestamps_start = init_and_teardown.lazy_teardown_timestamps_columns.start();
 
-        let comparison_aux_vars = lazy_init_address_aux_vars;
         let ShuffleRamAuxComparisonSet { final_borrow, .. } = *aux_vars;
 
         let final_borrow_value_expr = read_value_expr(final_borrow, idents, false);

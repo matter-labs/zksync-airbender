@@ -36,7 +36,9 @@ pub fn run_basic_delegation_test_impl(
     let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
-        .array_chunks::<4>()
+        .as_chunks::<4>()
+        .0
+        .into_iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 

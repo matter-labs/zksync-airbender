@@ -20,7 +20,7 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
 }
 
 #[test]
-fn test_transcript() {
+fn test_unified_cycle_or_delegation() {
     // create an oracle to feed into verifier and look at the transcript values
 
     // let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
@@ -44,6 +44,65 @@ fn test_transcript() {
         &compiled_circuit
             .memory_layout
             .shuffle_ram_inits_and_teardowns,
+    ));
+    for query in proof.queries.iter() {
+        oracle_data.extend(flatten_query(query));
+    }
+
+    // Spawn a new thread as it's large stack in debug builds
+    let result = std::thread::Builder::new()
+        .name("verifier thread".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let it = oracle_data.into_iter();
+
+            set_iterator(it);
+
+            #[allow(invalid_value)]
+            unsafe {
+                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
+                    &mut MaybeUninit::uninit().assume_init(),
+                    &mut ProofPublicInputs::uninit(),
+                )
+            };
+        })
+        .map(|t| t.join());
+
+    match result {
+        Ok(..) => {}
+        Err(err) => {
+            panic!("Verifier thread failes with {}", err);
+        }
+    }
+}
+
+#[test]
+fn test_unrolled_circuit() {
+    // create an oracle to feed into verifier and look at the transcript values
+
+    // let name = "add_sub_lui_auipc_mop";
+    // let name = "jump_branch_slt";
+    // let name = "shift_binop_csrrw";
+    // let name = "mul_div_unsigned";
+    // let name = "word_only_load_store";
+    // let name = "subword_only_load_store";
+    let name = "inits_and_teardowns";
+
+    let proof: prover::prover_stages::unrolled_prover::UnrolledModeProof =
+        deserialize_from_file(&format!("../prover/{}_unrolled_proof.json", name));
+    let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
+        deserialize_from_file(&format!("../cs/{}_preprocessed_layout.json", name));
+
+    dbg!(&proof.public_inputs);
+    dbg!(&proof.aux_boundary_values);
+
+    // now form flattened iterator
+    use verifier_common::proof_flattener::*;
+
+    let mut oracle_data = vec![];
+    oracle_data.extend(flatten_unrolled_circuits_proof_for_skeleton(
+        &proof,
+        &compiled_circuit,
     ));
     for query in proof.queries.iter() {
         oracle_data.extend(flatten_query(query));

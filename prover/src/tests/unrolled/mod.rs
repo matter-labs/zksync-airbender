@@ -283,7 +283,9 @@ pub fn run_basic_unrolled_test_impl(
     let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
-        .array_chunks::<4>()
+        .as_chunks::<4>()
+        .0
+        .into_iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -291,7 +293,9 @@ pub fn run_basic_unrolled_test_impl(
     let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
-        .array_chunks::<4>()
+        .as_chunks::<4>()
+        .0
+        .into_iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 

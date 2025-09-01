@@ -23,6 +23,18 @@ pub struct LookupAndMemoryArgumentLayout {
 }
 
 impl LookupAndMemoryArgumentLayout {
+    pub fn get_intermediate_poly_for_decoder_lookup_absolute_poly_idx_for_verifier(&self) -> usize {
+        let poly_idx = self
+            .intermediate_poly_for_decoder_accesses
+            .get_range(0)
+            .start
+            - self.ext4_polys_offset;
+        assert_eq!(poly_idx % 4, 0);
+        let poly_idx = poly_idx / 4;
+
+        self.num_base_field_polys() + poly_idx
+    }
+
     pub fn get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(
         &self,
         idx: usize,
@@ -57,6 +69,20 @@ impl LookupAndMemoryArgumentLayout {
     ) -> usize {
         let poly_idx = self
             .intermediate_poly_for_timestamp_range_check_multiplicity
+            .get_range(0)
+            .start
+            - self.ext4_polys_offset;
+        assert_eq!(poly_idx % 4, 0);
+        let poly_idx = poly_idx / 4;
+
+        self.num_base_field_polys() + poly_idx
+    }
+
+    pub fn decoder_lookup_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
+        &self,
+    ) -> usize {
+        let poly_idx = self
+            .intermediate_polys_for_decoder_multiplicities
             .get_range(0)
             .start
             - self.ext4_polys_offset;
@@ -103,6 +129,34 @@ impl LookupAndMemoryArgumentLayout {
         let poly_idx = self
             .intermediate_polys_for_memory_argument
             .get_range(idx)
+            .start
+            - self.ext4_polys_offset;
+        assert!(poly_idx % 4 == 0);
+        let poly_idx = poly_idx / 4;
+
+        self.num_base_field_polys() + poly_idx
+    }
+
+    pub const fn get_intermediate_polys_for_machine_state_permutation_absolute_poly_idx_for_verifier(
+        &self,
+    ) -> usize {
+        let poly_idx = self
+            .intermediate_polys_for_state_permutation
+            .get_range(0)
+            .start
+            - self.ext4_polys_offset;
+        assert!(poly_idx % 4 == 0);
+        let poly_idx = poly_idx / 4;
+
+        self.num_base_field_polys() + poly_idx
+    }
+
+    pub const fn get_intermediate_polys_for_permutation_masking_absolute_poly_idx_for_verifier(
+        &self,
+    ) -> usize {
+        let poly_idx = self
+            .intermediate_polys_for_permutation_masking
+            .get_range(0)
             .start
             - self.ext4_polys_offset;
         assert!(poly_idx % 4 == 0);

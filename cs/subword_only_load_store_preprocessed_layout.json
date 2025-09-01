@@ -548,12 +548,12 @@
       "start": 28,
       "num_elements": 4
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 48,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
       "start": 44,
+      "num_elements": 1
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 48,
       "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
@@ -2739,7 +2739,13 @@
     4521985,
     4521985,
     4521985,
-    6619137
+    6619137,
+    8716289,
+    8716289,
+    8716289,
+    8716289,
+    8716289,
+    8716289
   ],
   "total_tables_size": 8716289
 }

@@ -1,6 +1,3 @@
-#![expect(warnings)]
-#![feature(array_chunks)]
-
 use ::prover::*;
 use prover::cs::one_row_compiler::*;
 use prover::field::*;
@@ -47,7 +44,8 @@ mod test {
     fn launch() {
         // let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
         // let compiled_circuit = deserialize_from_file("../prover/blake2s_delegation_circuit_layout.json");
-        let compiled_circuit = deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
+        let compiled_circuit =
+            deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
 
         let result = generate_from_parts(&compiled_circuit);
 
@@ -60,12 +58,41 @@ mod test {
         // let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
         // let compiled_circuit =
         //     deserialize_from_file("../prover/blake2s_delegation_circuit_layout.json");
-        let compiled_circuit = deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
+        let compiled_circuit =
+            deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
 
         let result = generate_inlined(compiled_circuit);
 
         let mut dst = std::fs::File::create("./src/generated_inlined_verifier.rs").unwrap();
         dst.write_all(&result.to_string().as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn generate_for_unrolled_circuits() {
+        let circuit_names = vec![
+            "add_sub_lui_auipc_mop_preprocessed",
+            "jump_branch_slt_preprocessed",
+            "shift_binop_csrrw_preprocessed",
+            "mul_div_preprocessed",
+            "mul_div_unsigned_preprocessed",
+            "load_store_preprocessed",
+            "word_only_load_store_preprocessed",
+            "subword_only_load_store_preprocessed",
+            "inits_and_teardowns_preprocessed",
+        ];
+
+        for name in circuit_names {
+            let compiled_circuit = deserialize_from_file(&format!("../cs/{}_layout.json", name));
+
+            let result = generate_from_parts(&compiled_circuit);
+            let mut dst = std::fs::File::create(format!("./generated/{}_layout.rs", name)).unwrap();
+            dst.write_all(&result.to_string().as_bytes()).unwrap();
+
+            let result = generate_inlined(compiled_circuit);
+            let mut dst =
+                std::fs::File::create(format!("./generated/{}_quotient.rs", name)).unwrap();
+            dst.write_all(&result.to_string().as_bytes()).unwrap();
+        }
     }
 
     #[test]

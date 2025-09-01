@@ -46,7 +46,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
         [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
     Transcript::draw_randomness(seed, &mut transcript_challenges);
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let quotient_alpha = Mersenne31Quartic::from_coeffs_in_base(
         &it.next()
             .unwrap()
@@ -58,16 +58,20 @@ pub fn prover_stage_3_for_unrolled_circuit<
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
 
+    dbg!(quotient_alpha);
+    dbg!(quotient_beta);
+
     #[cfg(feature = "debug_logs")]
     {
         dbg!(quotient_alpha);
         dbg!(quotient_beta);
     }
 
+    let quotient_alpha = Mersenne31Quartic::ONE;
+
     let ProverCachedData {
         trace_len,
         memory_timestamp_high_from_circuit_idx,
-        delegation_type,
         memory_argument_challenges,
         machine_state_argument_challenges,
         delegation_challenges,

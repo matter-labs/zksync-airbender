@@ -96,7 +96,7 @@ pub struct ProofOutput<
         serialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Serialize"
     ))]
     pub lazy_init_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
-    pub memory_grand_product_accumulator: Mersenne31Quartic,
+    pub grand_product_accumulator: Mersenne31Quartic,
     #[serde(bound(
         deserialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
     ))]

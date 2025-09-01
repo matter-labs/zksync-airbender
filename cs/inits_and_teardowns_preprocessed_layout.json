@@ -497,13 +497,13 @@
       "start": 160,
       "num_elements": 0
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 160,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
       "start": 0,
       "num_elements": 0
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 160,
+      "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
       "start": 0,
@@ -2032,6 +2032,12 @@
   "executor_family_decoder_table_size": 0,
   "trace_len": 16777216,
   "table_offsets": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     0,
     0,
     0,

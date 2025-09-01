@@ -573,12 +573,12 @@
       "start": 36,
       "num_elements": 6
     },
-    "intermediate_poly_for_range_check_16_multiplicity": {
-      "start": 64,
-      "num_elements": 1
-    },
     "intermediate_poly_for_decoder_accesses": {
       "start": 60,
+      "num_elements": 1
+    },
+    "intermediate_poly_for_range_check_16_multiplicity": {
+      "start": 64,
       "num_elements": 1
     },
     "intermediate_poly_for_timestamp_range_check_multiplicity": {
@@ -2433,6 +2433,12 @@
     0,
     0,
     0,
+    65536,
+    65536,
+    65536,
+    65536,
+    65536,
+    65536,
     65536,
     65536,
     65536,

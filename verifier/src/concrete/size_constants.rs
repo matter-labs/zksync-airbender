@@ -42,6 +42,21 @@ const MIN_REQUIRED_WORDS_FOR_QUERY_INDEXES: usize = (BITS_FOR_QUERY_INDEX * NUM_
 pub const NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES: usize =
     (MIN_REQUIRED_WORDS_FOR_QUERY_INDEXES + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
 
+pub const NUM_STAGE_2_CHALLENGES: usize = const {
+    let mut result =
+        verifier_common::cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
+    if VERIFIER_COMPILED_LAYOUT
+        .witness_layout
+        .multiplicities_columns_for_decoder_in_executor_families
+        .num_elements()
+        > 0
+    {
+        result += verifier_common::cs::definitions::EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES + 1;
+    }
+
+    result
+};
+
 pub const NUM_FRI_MERKLE_TREE_CAPS: usize = FOLDING_PROPERTIES.folding_sequence.len() - 1;
 pub const NUM_FRI_STEPS: usize = FOLDING_PROPERTIES.folding_sequence.len();
 pub const FRI_FINAL_DEGREE: usize = 1 << FOLDING_PROPERTIES.final_monomial_degree_log2;
@@ -175,6 +190,18 @@ pub const NUM_DELEGATION_CHALLENGES: usize = const {
             .is_some();
 
     process_delegations as usize
+};
+pub const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize = const {
+    let machine_state_permutation = VERIFIER_COMPILED_LAYOUT
+        .memory_layout
+        .machine_state_layout
+        .is_some()
+        | VERIFIER_COMPILED_LAYOUT
+            .memory_layout
+            .intermediate_state_layout
+            .is_some();
+
+    machine_state_permutation as usize
 };
 pub const NUM_AUX_BOUNDARY_VALUES: usize = VERIFIER_COMPILED_LAYOUT
     .memory_layout

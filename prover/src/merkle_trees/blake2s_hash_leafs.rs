@@ -42,8 +42,9 @@ pub fn blake2s_leaf_hashes_for_coset<A: GoodAllocator, B: GoodAllocator, const N
                         let only_full_rounds =
                             trace_view_row.len() % BLAKE2S_BLOCK_SIZE_U32_WORDS == 0;
                         let num_full_roudns = trace_view_row.len() / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-                        let mut array_chunks =
-                            trace_view_row.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                        let (array_chunks, remainder) =
+                            trace_view_row.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                        let mut array_chunks = array_chunks.into_iter();
 
                         let write_into = (&mut *dst_ptr).assume_init_mut();
                         for i in 0..num_full_roudns {
@@ -64,7 +65,6 @@ pub fn blake2s_leaf_hashes_for_coset<A: GoodAllocator, B: GoodAllocator, const N
                         }
 
                         if only_full_rounds == false {
-                            let remainder = array_chunks.remainder();
                             let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                             let len = remainder.len();
                             for i in 0..len {
@@ -188,8 +188,9 @@ pub fn blake2s_leaf_hashes_separated_for_coset<
                                 chunk_widths_clone[j] % BLAKE2S_BLOCK_SIZE_U32_WORDS == 0;
                             let num_full_roudns =
                                 chunk_widths_clone[j] / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-                            let mut array_chunks =
-                                cur_trace_view_row.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                            let (array_chunks, remainder) =
+                                cur_trace_view_row.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                            let mut array_chunks = array_chunks.into_iter();
 
                             let write_into = (&mut *dst_ptrs[j]).assume_init_mut();
                             for i in 0..num_full_roudns {
@@ -210,7 +211,6 @@ pub fn blake2s_leaf_hashes_separated_for_coset<
                             }
 
                             if only_full_rounds == false {
-                                let remainder = array_chunks.remainder();
                                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                 let len = remainder.len();
                                 for i in 0..len {
@@ -312,8 +312,9 @@ pub fn blake2s_leaf_hashes_for_column_major_coset<A: GoodAllocator, B: GoodAlloc
                             src_ptr.cast::<Mersenne31Field>(),
                             combine_by * 4,
                         );
-                        let mut array_chunks =
-                            src_chunk.array_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                        let (array_chunks, remainder) =
+                            src_chunk.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                        let mut array_chunks = array_chunks.into_iter();
                         debug_assert_eq!(src_chunk.len(), leaf_width_in_field_elements);
 
                         let write_into = (&mut *dst_ptr).assume_init_mut();
@@ -335,7 +336,6 @@ pub fn blake2s_leaf_hashes_for_column_major_coset<A: GoodAllocator, B: GoodAlloc
                         }
 
                         if only_full_rounds == false {
-                            let remainder = array_chunks.remainder();
                             let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                             let len = remainder.len();
                             for i in 0..len {

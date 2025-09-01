@@ -237,7 +237,11 @@ unsafe fn count_special_range_check_multiplicities(
         [offset_for_special_shuffle_ram_timestamps_range_check_expressions..];
     assert!(shuffle_ram_partial_expressions.len() % 2 == 0);
 
-    for [low, high] in shuffle_ram_partial_expressions.array_chunks::<2>() {
+    for [low, high] in shuffle_ram_partial_expressions
+        .as_chunks::<2>()
+        .0
+        .into_iter()
+    {
         {
             let LookupExpression::Expression(constraint_low) = low else {
                 unreachable!()

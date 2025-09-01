@@ -67,7 +67,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
             .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
     Transcript::draw_randomness(seed, &mut transcript_challenges);
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let lookup_argument_linearization_challenges: [Mersenne31Quartic;
         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES] = std::array::from_fn(|_| {
         Mersenne31Quartic::from_coeffs_in_base(

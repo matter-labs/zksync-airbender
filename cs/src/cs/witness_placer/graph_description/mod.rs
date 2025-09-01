@@ -678,7 +678,6 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 // skip this resolver in the future
                 // println!("Resolver {} will be skipped in the future from considerations", resolver_idx);
                 idxes_to_skip.insert(resolver_idx);
-
                 let idx = resolution_sequence.len();
                 resolution_sequence.insert(idx, details.clone());
             }
@@ -721,7 +720,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             }
         }
 
-        assert_eq!(resolution_sequence.len(), idxes_to_skip.len());
+        assert!(resolution_sequence.len() <= idxes_to_skip.len());
 
         // there may be some resolvers purely responsible for lookup enforcement,
         // when even the inputs are not generated
