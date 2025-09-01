@@ -69,8 +69,8 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     vectorized_e4_matrix_getter<ld_modifier::cs> stage_2_e4_cols,
     vectorized_e4_matrix_getter<ld_modifier::cs> composition_col,
     vector_getter<e4, ld_modifier::ca> denom_at_z,
-    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z,
     vector_getter<e4, ld_modifier::ca> setup_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z,
     vector_getter<e4, ld_modifier::ca> memory_challenges_at_z,
     vector_getter<e4, ld_modifier::ca> stage_2_bf_challenges_at_z,
     vector_getter<e4, ld_modifier::ca> stage_2_e4_challenges_at_z,
@@ -106,6 +106,13 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
   e4 acc_z = e4::zero();
   e4 acc_z_omega = e4::zero();
 
+  // Setup terms at z
+  for (unsigned i = 0; i < num_setup_cols; i++) {
+    const bf val = setup_cols.get_at_col(i);
+    const e4 challenge = setup_challenges_at_z.get(i);
+    acc_z = e4::add(acc_z, e4::mul(challenge, val));
+  }
+
   // Witness terms at z
   for (unsigned i = 0; i < num_witness_cols; i++) {
     const bf val = witness_cols.get_at_col(i);
@@ -120,16 +127,7 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
   }
 
-  // Non-witness terms at z and z * omega
-
-  // setup terms at z
-  for (unsigned i = 0; i < num_setup_cols; i++) {
-    const bf val = setup_cols.get_at_col(i);
-    const e4 challenge = setup_challenges_at_z.get(i);
-    acc_z = e4::add(acc_z, e4::mul(challenge, val));
-  }
-
-  // memory terms at z and z * omega
+  // Memory terms at z and z * omega
   {
     unsigned challenge_at_z_omega_idx = 0;
     for (unsigned i = 0; i < num_memory_cols; i++) {
@@ -144,14 +142,14 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     }
   }
 
-  // stage 2 bf terms at z
+  // Stage 2 bf terms at z
   for (unsigned i = 0; i < num_stage_2_bf_cols; i++) {
     const bf val = stage_2_bf_cols.get_at_col(i);
     const e4 challenge = stage_2_bf_challenges_at_z.get(i);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
   }
 
-  // stage 2 e4 terms at z and z * omega
+  // Stage 2 e4 terms at z and z * omega
   for (unsigned i = 0; i < num_stage_2_e4_cols; i++) {
     const e4 val = stage_2_e4_cols.get_at_col(i);
     const e4 challenge = stage_2_e4_challenges_at_z.get(i);
@@ -162,7 +160,7 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     }
   }
 
-  // // composition term at z
+  // Composition term at z
   const e4 val = composition_col.get();
   const e4 challenge = composition_challenge_at_z.get(0);
   acc_z = e4::add(acc_z, e4::mul(challenge, val));

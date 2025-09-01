@@ -87,8 +87,8 @@ cuda_kernel!(
     stage_2_e4_cols: PtrAndStride<BF>,
     composition_col: PtrAndStride<BF>,
     denom_at_z: *const E4,
-    witness_challenges_at_z: *const E4,
     setup_challenges_at_z: *const E4,
+    witness_challenges_at_z: *const E4,
     memory_challenges_at_z: *const E4,
     stage_2_bf_challenges_at_z: *const E4,
     stage_2_e4_challenges_at_z: *const E4,
@@ -276,8 +276,8 @@ pub fn compute_deep_quotient_on_main_domain(
     let stage_2_e4_cols = stage_2_e4_cols.as_ptr_and_stride();
     let composition_col = composition_col.as_ptr_and_stride();
     let denom_at_z = denom_at_z.as_ptr();
-    let (witness_challenges_at_z, rest) = scratch_e4.split_at(num_witness_cols);
-    let (setup_challenges_at_z, rest) = rest.split_at(num_setup_cols);
+    let (setup_challenges_at_z, rest) = scratch_e4.split_at(num_setup_cols);
+    let (witness_challenges_at_z, rest) = rest.split_at(num_witness_cols);
     let (memory_challenges_at_z, rest) = rest.split_at(num_memory_cols);
     let (stage_2_bf_challenges_at_z, rest) = rest.split_at(num_stage_2_bf_cols);
     let (stage_2_e4_challenges_at_z, rest) = rest.split_at(num_stage_2_e4_cols);
@@ -287,8 +287,8 @@ pub fn compute_deep_quotient_on_main_domain(
     let (grand_product_challenge_at_z_omega, rest) = rest.split_at(1);
     assert_eq!(rest.len(), 0);
 
-    let witness_challenges_at_z = witness_challenges_at_z.as_ptr();
     let setup_challenges_at_z = setup_challenges_at_z.as_ptr();
+    let witness_challenges_at_z = witness_challenges_at_z.as_ptr();
     let memory_challenges_at_z = memory_challenges_at_z.as_ptr();
     let stage_2_bf_challenges_at_z = stage_2_bf_challenges_at_z.as_ptr();
     let stage_2_e4_challenges_at_z = stage_2_e4_challenges_at_z.as_ptr();
@@ -313,8 +313,8 @@ pub fn compute_deep_quotient_on_main_domain(
         stage_2_e4_cols,
         composition_col,
         denom_at_z,
-        witness_challenges_at_z,
         setup_challenges_at_z,
+        witness_challenges_at_z,
         memory_challenges_at_z,
         stage_2_bf_challenges_at_z,
         stage_2_e4_challenges_at_z,
