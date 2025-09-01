@@ -205,10 +205,10 @@ const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
 
 #[derive(Clone)]
 #[repr(C)]
-struct StateLinkageConstraints {
+pub(crate) struct StateLinkageConstraints {
     pub srcs: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
     pub dsts: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
-    num_constraints: u32,
+    pub num_constraints: u32,
 }
 
 impl StateLinkageConstraints {

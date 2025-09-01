@@ -11,7 +11,7 @@ using e2 = ext2_field;
 using e4 = ext4_field;
 
 // so I can use a u8 to represent 255 column indexes and 1 sentinel value
-constexpr unsigned MAX_WITNESS_COLS = 672;
+constexpr unsigned MAX_MEMORY_COLS = 256;
 constexpr unsigned DOES_NOT_NEED_Z_OMEGA = UINT_MAX;
 constexpr unsigned MAX_NON_WITNESS_TERMS_AT_Z_OMEGA = 3;
 
@@ -54,11 +54,9 @@ EXTERN __launch_bounds__(128, 8) __global__
       denom_at_z.set(g, per_elem_factors[i]);
 }
 
-extern "C" struct ColIdxsToChallengeIdxsMap { const unsigned map[MAX_WITNESS_COLS]; };
+extern "C" struct ColIdxsToChallengeIdxsMap { const unsigned map[MAX_MEMORY_COLS]; };
 
-extern "C" struct NonWitnessChallengesAtZOmega { const e4 challenges[MAX_NON_WITNESS_TERMS_AT_Z_OMEGA]; };
-
-extern "C" struct ChallengesTimesEvals {
+extern "C" struct ChallengesTimesEvalsSums {
   const e4 at_z_sum_neg;
   const e4 at_z_omega_sum_neg;
 };
@@ -72,20 +70,23 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
     vectorized_e4_matrix_getter<ld_modifier::cs> composition_col,
     vector_getter<e4, ld_modifier::ca> denom_at_z,
     vector_getter<e4, ld_modifier::ca> witness_challenges_at_z,
-    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z_omega,
+    vector_getter<e4, ld_modifier::ca> setup_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> memory_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> stage_2_bf_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> stage_2_e4_challenges_at_z,
+    vector_getter<e4, ld_modifier::ca> composition_challenge_at_z,
     __grid_constant__ const StateLinkageConstraints state_linkage_constraints,
     __grid_constant__ const ColIdxsToChallengeIdxsMap memory_cols_to_challenges_at_z_omega_map,
-    vector_getter<e4, ld_modifier::ca> non_witness_challenges_at_z,
-    vector_getter<e4, ld_modifier::ca> non_witness_challenges_at_z_omega,
-    const ChallengesTimesEvals *challenges_times_evals_ref,
+    vector_getter<e4, ld_modifier::ca> witness_challenges_at_z_omega,
+    vector_getter<e4, ld_modifier::ca> memory_challenges_at_z_omega,
+    vector_getter<e4, ld_modifier::ca> grand_product_challenge_at_z_omega,
+    const ChallengesTimesEvalsSums *challenges_times_evals_sums_ref,
     vectorized_e4_matrix_setter<st_modifier::cs> quotient,
     const unsigned num_setup_cols,
     const unsigned num_witness_cols,
     const unsigned num_memory_cols,
     const unsigned num_stage_2_bf_cols,
     const unsigned num_stage_2_e4_cols,
-    const bool process_shuffle_ram_init,
-    const unsigned memory_lazy_init_addresses_cols_start,
     const unsigned stage_2_memory_grand_product_offset,
     const unsigned log_n,
     const bool bit_reversed) {
@@ -120,55 +121,50 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
   }
 
   // Non-witness terms at z and z * omega
-  unsigned flat_idx = 0;
 
   // setup terms at z
   for (unsigned i = 0; i < num_setup_cols; i++) {
     const bf val = setup_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = setup_challenges_at_z.get(i);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    flat_idx++;
   }
 
   // memory terms at z and z * omega
-  for (unsigned i = 0; i < num_memory_cols; i++) {
-    const bf val = memory_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
-    acc_z = e4::add(acc_z, e4::mul(challenge, val));
-
-    const unsigned maybe_challenge_at_z_omega_idx = memory_cols_to_challenges_at_z_omega_map.map[i];
-    if (maybe_challenge_at_z_omega_idx != DOES_NOT_NEED_Z_OMEGA) {
-      const e4 challenge = non_witness_challenges_at_z_omega.get(maybe_challenge_at_z_omega_idx);
-      acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
+  {
+    unsigned challenge_at_z_omega_idx = 0;
+    for (unsigned i = 0; i < num_memory_cols; i++) {
+      const bf val = memory_cols.get_at_col(i);
+      const e4 challenge = memory_challenges_at_z.get(i);
+      acc_z = e4::add(acc_z, e4::mul(challenge, val));
+      const unsigned maybe_challenge_at_z_omega_idx = memory_cols_to_challenges_at_z_omega_map.map[i];
+      if (maybe_challenge_at_z_omega_idx != DOES_NOT_NEED_Z_OMEGA) {
+        const e4 challenge = memory_challenges_at_z_omega.get(challenge_at_z_omega_idx++);
+        acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
+      }
     }
-
-    flat_idx++;
   }
 
   // stage 2 bf terms at z
   for (unsigned i = 0; i < num_stage_2_bf_cols; i++) {
     const bf val = stage_2_bf_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = stage_2_bf_challenges_at_z.get(i);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
-    flat_idx++;
   }
 
   // stage 2 e4 terms at z and z * omega
-  const unsigned grand_product_challenge_at_z_omega_idx = process_shuffle_ram_init ? 2 : 0;
   for (unsigned i = 0; i < num_stage_2_e4_cols; i++) {
     const e4 val = stage_2_e4_cols.get_at_col(i);
-    const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+    const e4 challenge = stage_2_e4_challenges_at_z.get(i);
     acc_z = e4::add(acc_z, e4::mul(challenge, val));
     if (i == stage_2_memory_grand_product_offset) {
-      const e4 challenge = non_witness_challenges_at_z_omega.get(grand_product_challenge_at_z_omega_idx);
+      const e4 challenge = grand_product_challenge_at_z_omega.get(0);
       acc_z_omega = e4::add(acc_z_omega, e4::mul(challenge, val));
     }
-    flat_idx++;
   }
 
   // // composition term at z
   const e4 val = composition_col.get();
-  const e4 challenge = non_witness_challenges_at_z.get(flat_idx);
+  const e4 challenge = composition_challenge_at_z.get(0);
   acc_z = e4::add(acc_z, e4::mul(challenge, val));
 
   const e4 denom_z = denom_at_z.get(gid);
@@ -178,8 +174,8 @@ EXTERN __launch_bounds__(512, 2) __global__ void deep_quotient_kernel(
   const unsigned shifted_row = bit_reversed ? __brev(raw_shifted_row) >> (32 - log_n) : raw_shifted_row;
   const e4 denom_z_omega = denom_at_z.get(shifted_row);
 
-  acc_z = e4::add(acc_z, challenges_times_evals_ref->at_z_sum_neg);
-  acc_z_omega = e4::add(acc_z_omega, challenges_times_evals_ref->at_z_omega_sum_neg);
+  acc_z = e4::add(acc_z, challenges_times_evals_sums_ref->at_z_sum_neg);
+  acc_z_omega = e4::add(acc_z_omega, challenges_times_evals_sums_ref->at_z_omega_sum_neg);
   acc_z = e4::mul(acc_z, denom_z);
   acc_z_omega = e4::mul(acc_z_omega, denom_z_omega);
 

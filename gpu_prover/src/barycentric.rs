@@ -544,19 +544,23 @@ mod tests {
         }
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_barycentric_for_basic_circuit() {
-    //     let ctx = Context::create(12).unwrap();
-    //     run_basic_test_impl(Some(Box::new(comparison_hook)));
-    //     ctx.destroy().unwrap();
-    // }
+    #[test]
+    #[serial]
+    fn test_barycentric_for_main_and_blake() {
+        let ctx = Context::create(12).unwrap();
+        run_basic_delegation_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
 
     #[test]
     #[serial]
-    fn test_barycentric_for_delegation_circuit() {
+    #[ignore]
+    fn test_barycentric_for_main_and_keccak() {
         let ctx = Context::create(12).unwrap();
-        run_basic_delegation_test_impl(
+        run_keccak_test_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

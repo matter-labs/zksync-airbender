@@ -13,7 +13,7 @@ mod stage_2_kernels;
 // mod stage_3;
 mod stage_3_kernels;
 // mod stage_4;
-// mod stage_4_kernels;
+mod stage_4_kernels;
 // mod stage_5;
 // pub(crate) mod trace_holder;
 // pub mod tracing_data;

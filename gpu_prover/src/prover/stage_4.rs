@@ -13,8 +13,7 @@ use crate::prover::stage_2::StageTwoOutput;
 use crate::prover::stage_3::StageThreeOutput;
 use crate::prover::stage_4_kernels::{
     compute_deep_denom_at_z_on_main_domain, compute_deep_quotient_on_main_domain,
-    get_e4_scratch_count_for_deep_quotiening, get_metadata, ChallengesTimesEvals,
-    NonWitnessChallengesAtZOmega,
+    stage_challenges_for_gpu_transfer, ChallengesTimesEvals,
 };
 use crate::prover::trace_holder::{extend_trace, flatten_tree_caps, TraceHolder};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
@@ -211,42 +210,40 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             false,
             &stream,
         )?;
-        let e4_scratch_elems = get_e4_scratch_count_for_deep_quotiening();
-        let mut h_e4_scratch = Vec::with_capacity_in(e4_scratch_elems, C::HostAllocator::default());
-        unsafe { h_e4_scratch.set_len(e4_scratch_elems) };
+        let num_terms_at_z = circuit.num_openings_at_z();
+        let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
+        let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+        let mut h_e4_scratch = Vec::with_capacity_in(num_terms_total, C::HostAllocator::default());
+        unsafe { h_e4_scratch.set_len(num_terms_total) };
         let h_e4_scratch = Arc::new(Mutex::new(h_e4_scratch));
         let h_challenges_times_evals = Arc::new(Mutex::new(Box::new_in(
             ChallengesTimesEvals::default(),
-            C::HostAllocator::default(),
-        )));
-        let h_non_witness_challenges_at_z_omega = Arc::new(Mutex::new(Box::new_in(
-            NonWitnessChallengesAtZOmega::default(),
             C::HostAllocator::default(),
         )));
         let values_at_z_clone = values_at_z.clone();
         let alpha_clone = alpha.clone();
         let h_e4_scratch_clone = h_e4_scratch.clone();
         let h_challenges_times_evals_clone = h_challenges_times_evals.clone();
-        let h_non_witness_challenges_at_z_omega_clone = h_non_witness_challenges_at_z_omega.clone();
-        let cached_data_clone = cached_data.clone();
         let twiddles_omega_inv = twiddles.omega_inv;
-        let circuit_clone = circuit.clone();
+        let layout_metadata = get_layout_metadata(&cached_data, &circuit);
+        let layout_metadata_clone = layout_metadata.clone();
         let get_challenges = move || {
-            let _ = get_metadata(
-                &values_at_z_clone,
+            stage_challenges_for_gpu_transfer(
+                // TODO: Ask Robert
+                // This used to be a &values_at_z_clone.
+                // But it's an Arc, so we should (or at least can) move by value.
+                values_at_z_clone,
                 *alpha_clone.lock().unwrap().deref(),
                 twiddles_omega_inv,
-                &cached_data_clone,
-                &circuit_clone,
+                num_terms_at_z,
+                num_terms_at_z_omega,
                 &mut h_e4_scratch_clone.lock().unwrap().deref_mut(),
                 &mut h_challenges_times_evals_clone.lock().unwrap(),
-                &mut h_non_witness_challenges_at_z_omega_clone.lock().unwrap(),
             );
         };
         callbacks.schedule(get_challenges, stream)?;
-        let mut d_e4_scratch = context.alloc(e4_scratch_elems)?;
+        let mut d_e4_scratch = context.alloc(num_terms_total)?;
         let mut d_challenges_times_evals = context.alloc(1)?;
-        let mut d_non_witness_challenges_at_z_omega = context.alloc(1)?;
         memory_copy_async(
             &mut d_e4_scratch,
             h_e4_scratch.lock().unwrap().deref(),
@@ -257,30 +254,8 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             slice::from_ref(h_challenges_times_evals.lock().unwrap().deref().deref()),
             stream,
         )?;
-        memory_copy_async(
-            &mut d_non_witness_challenges_at_z_omega,
-            slice::from_ref(
-                h_non_witness_challenges_at_z_omega
-                    .lock()
-                    .unwrap()
-                    .deref()
-                    .deref(),
-            ),
-            stream,
-        )?;
         let mut d_quotient = DeviceMatrixMut::new(&mut vectorized_ldes[COSET_INDEX], trace_len);
-        let metadata = get_metadata(
-            &vec![E4::ZERO; num_evals],
-            E4::ZERO,
-            twiddles.omega_inv,
-            &cached_data,
-            &circuit,
-            &mut vec![E4::ZERO; e4_scratch_elems],
-            &mut ChallengesTimesEvals::default(),
-            &mut NonWitnessChallengesAtZOmega::default(),
-        );
         compute_deep_quotient_on_main_domain(
-            metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,
@@ -289,7 +264,6 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
             &d_denom_at_z,
             &mut d_e4_scratch,
             &d_challenges_times_evals[0],
-            &d_non_witness_challenges_at_z_omega[0],
             &mut d_quotient,
             &cached_data,
             &circuit,
