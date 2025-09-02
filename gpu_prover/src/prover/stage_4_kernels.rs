@@ -7,7 +7,7 @@ use crate::ops_complex::BatchInv;
 use crate::prover::arg_utils::{get_grand_product_col, StateLinkageConstraints};
 use crate::utils::WARP_SIZE;
 
-use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};
+use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
