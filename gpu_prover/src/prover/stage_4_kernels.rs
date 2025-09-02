@@ -263,11 +263,10 @@ pub fn compute_deep_quotient_on_main_domain(
     num_terms_at_z_omega_doublecheck += num_memory_terms_at_z_omega;
     num_terms_at_z_omega_doublecheck += 1; // grand product
     assert_eq!(num_terms_at_z_omega, num_terms_at_z_omega_doublecheck);
-
     // double-check number of challenges passed by the caller
     let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
     assert_eq!(num_terms_total, scratch_e4.len());
-
+    // prepare data matrix args
     let stage_2_memory_grand_product_offset = get_grand_product_col(circuit);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
@@ -276,6 +275,7 @@ pub fn compute_deep_quotient_on_main_domain(
     let stage_2_e4_cols = stage_2_e4_cols.as_ptr_and_stride();
     let composition_col = composition_col.as_ptr_and_stride();
     let denom_at_z = denom_at_z.as_ptr();
+    // prepare challenges for each matrix
     let (setup_challenges_at_z, rest) = scratch_e4.split_at(num_setup_cols);
     let (witness_challenges_at_z, rest) = rest.split_at(num_witness_cols);
     let (memory_challenges_at_z, rest) = rest.split_at(num_memory_cols);
@@ -286,18 +286,15 @@ pub fn compute_deep_quotient_on_main_domain(
     let (memory_challenges_at_z_omega, rest) = rest.split_at(num_memory_terms_at_z_omega);
     let (grand_product_challenge_at_z_omega, rest) = rest.split_at(1);
     assert_eq!(rest.len(), 0);
-
     let setup_challenges_at_z = setup_challenges_at_z.as_ptr();
     let witness_challenges_at_z = witness_challenges_at_z.as_ptr();
     let memory_challenges_at_z = memory_challenges_at_z.as_ptr();
     let stage_2_bf_challenges_at_z = stage_2_bf_challenges_at_z.as_ptr();
     let stage_2_e4_challenges_at_z = stage_2_e4_challenges_at_z.as_ptr();
     let composition_challenge_at_z = composition_challenge_at_z.as_ptr();
-
     let witness_challenges_at_z_omega = witness_challenges_at_z_omega.as_ptr();
     let memory_challenges_at_z_omega = memory_challenges_at_z_omega.as_ptr();
     let grand_product_challenge_at_z_omega = grand_product_challenge_at_z_omega.as_ptr();
-
     let challenges_times_evals_sums = challenges_times_evals_sums.as_ptr();
     let quotient = quotient.as_mut_ptr_and_stride();
     // denom at z * omega loads are offset by 16B.

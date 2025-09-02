@@ -171,9 +171,7 @@ impl<'a, C: ProverContext> StageTwoOutput<'a, C> {
         let last_row = Arc::new(last_row);
         let last_row_clone = last_row.clone();
         self.last_row = Some(last_row);
-        let offset_for_grand_product_poly = layout
-            .intermediate_poly_for_grand_product
-            .start();
+        let offset_for_grand_product_poly = layout.intermediate_poly_for_grand_product.start();
         self.offset_for_grand_product_poly = offset_for_grand_product_poly;
         let offset_for_sum_over_delegation_poly =
             if cached_data.handle_delegation_requests || cached_data.process_delegations {

@@ -87,7 +87,6 @@ EXTERN __launch_bounds__(128, 8) __global__ void range_check_aggregated_entry_in
     // st_modifier::cg to cache stores for upcoming lookup_a_args_kernel
     vector_setter<e4, st_modifier::cg> aggregated_entry_invs, const unsigned start_col_in_setup, const unsigned multiplicities_src_cols_start,
     const unsigned multiplicities_dst_cols_start, const unsigned num_multiplicities_cols, const unsigned num_table_rows_tail, const unsigned log_n) {
-
   aggregated_entry_invs_and_multiplicities_arg_kernel<1>(challenges, witness_cols, setup_cols, stage_2_e4_cols, aggregated_entry_invs, start_col_in_setup,
                                                          multiplicities_src_cols_start, multiplicities_dst_cols_start, num_multiplicities_cols,
                                                          num_table_rows_tail, log_n);

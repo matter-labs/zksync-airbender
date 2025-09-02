@@ -762,7 +762,6 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
         }
       }
 
-      const unsigned start = flat_indirect_idx;
       const unsigned end = flat_indirect_idx + register_and_indirect_accesses.indirect_accesses_per_register_access[i];
 #pragma unroll 1
       for (; flat_indirect_idx < end; flat_indirect_idx++) {

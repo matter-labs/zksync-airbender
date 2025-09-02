@@ -214,7 +214,11 @@ pub(crate) struct StateLinkageConstraints {
 impl StateLinkageConstraints {
     pub fn new(circuit: &CompiledCircuitArtifact<BF>) -> Self {
         let num_constraints = circuit.state_linkage_constraints.len();
-        if circuit.memory_layout.shuffle_ram_inits_and_teardowns.is_empty() {
+        if circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .is_empty()
+        {
             assert_eq!(num_constraints, 0);
         } else {
             assert_eq!(num_constraints, NUM_STATE_LINKAGE_CONSTRAINTS);
