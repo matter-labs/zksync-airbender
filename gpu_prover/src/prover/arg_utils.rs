@@ -915,7 +915,6 @@ impl RegisterAndIndirectAccesses {
                         // The following asserts are sanity checks
                         // based on our known circuit geometries
                         // (slightly different from ReadAccess arm above).
-                        println!("j {} offset_constant {}", j, offset_constant);
                         if j == 0 {
                             assert!(!has_address_derivation_carry_bit);
                             assert_eq!(*offset_constant, 0);

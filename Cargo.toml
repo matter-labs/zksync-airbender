@@ -51,6 +51,7 @@ members = [
     "witness_eval_generator",
     "gpu_witness_eval_generator",
     "circuit_defs/machine_without_signed_mul_div",
+    "circuit_defs/keccak_special5",
 ]
 
 default-members = [
@@ -62,8 +63,8 @@ default-members = [
     "circuit_defs/prover_examples",
     "circuit_defs/reduced_risc_v_machine",
     "circuit_defs/final_reduced_risc_v_machine",
+    "circuit_defs/keccak_special5",
     "circuit_defs/risc_v_cycles",
-    "circuit_defs/risc_v_cycles/verifier",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cs",
@@ -109,6 +110,7 @@ prover = { path = "./prover", default-features = false }
 cs = { path = "./cs", default-features = false }
 transcript = { path = "./transcript", default-features = false }
 verifier_generator = { path = "./verifier_generator" }
+
 circuit_common = { path = "./circuit_defs/circuit_common" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
@@ -116,12 +118,17 @@ risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
 machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
 reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }
 final_reduced_risc_v_machine = {path = "./circuit_defs/final_reduced_risc_v_machine"}
+keccak_special5 = {path = "./circuit_defs/keccak_special5"}
+
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
 setups = { path = "./circuit_defs/setups" }
+
 # verifier = {path = "./verifier", default-features = false}
 verifier_common = { path = "./verifier_common", default-features = false }
 # full_statement_verifier  = { path = "./full_statement_verifier", default-features = false }
+
 poseidon2 = { path = "./poseidon2", default-features = false }
+
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }

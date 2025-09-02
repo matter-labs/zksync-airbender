@@ -158,7 +158,10 @@ fn gpu_worker<C: ProverContext>(
                     let precomputations = &request.precomputations;
                     let setup = match (
                         &current_setup,
-                        Arc::ptr_eq(&holder.trace, &precomputations.setup),
+                        current_setup
+                            .as_ref()
+                            .map(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup))
+                            .unwrap_or_default(),
                     ) {
                         (Some(holder), true) => {
                             match request.circuit_type {

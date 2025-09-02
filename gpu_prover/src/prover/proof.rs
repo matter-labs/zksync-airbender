@@ -180,7 +180,7 @@ where
     let delegation_processing_type = delegation_processing_type.unwrap_or_default();
     let cached_data_values = ProverCachedData::new(
         &circuit,
-        &external_values,
+        &external_values.challenges,
         trace_len,
         circuit_sequence,
         delegation_processing_type,
@@ -460,10 +460,10 @@ where
         {
             input.extend_from_slice(&delegation_argument_challenges.flatten());
         }
-        if circuit_clone
+        if !circuit_clone
             .memory_layout
             .shuffle_ram_inits_and_teardowns
-            .is_some()
+            .is_empty()
         {
             input.extend_from_slice(&external_values.aux_boundary_values.flatten());
         }

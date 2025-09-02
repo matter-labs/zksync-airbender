@@ -401,19 +401,17 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         // and prove
         let mut public_inputs = witness_trace.aux_data.first_row_public_inputs.clone();
         public_inputs.extend_from_slice(&witness_trace.aux_data.one_before_last_row_public_inputs);
-
+        let aux_boundary_data = witness_trace.aux_data.aux_boundary_data[0];
         let external_values = ExternalValues {
             challenges: external_challenges,
             aux_boundary_values: AuxArgumentsBoundaryValues {
-                lazy_init_first_row: witness_trace.aux_data.lazy_init_first_row,
-                teardown_value_first_row: witness_trace.aux_data.teardown_value_first_row,
-                teardown_timestamp_first_row: witness_trace.aux_data.teardown_timestamp_first_row,
-                lazy_init_one_before_last_row: witness_trace.aux_data.lazy_init_one_before_last_row,
-                teardown_value_one_before_last_row: witness_trace
-                    .aux_data
+                lazy_init_first_row: aux_boundary_data.lazy_init_first_row,
+                teardown_value_first_row: aux_boundary_data.teardown_value_first_row,
+                teardown_timestamp_first_row: aux_boundary_data.teardown_timestamp_first_row,
+                lazy_init_one_before_last_row: aux_boundary_data.lazy_init_one_before_last_row,
+                teardown_value_one_before_last_row: aux_boundary_data
                     .teardown_value_one_before_last_row,
-                teardown_timestamp_one_before_last_row: witness_trace
-                    .aux_data
+                teardown_timestamp_one_before_last_row: aux_boundary_data
                     .teardown_timestamp_one_before_last_row,
             },
         };

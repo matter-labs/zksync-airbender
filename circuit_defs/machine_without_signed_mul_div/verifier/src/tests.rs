@@ -19,80 +19,120 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
-#[ignore = "explicit panic in verifier"]
 #[test]
-fn test_transcript() {
-    use crate::layout_import::VERIFIER_COMPILED_LAYOUT;
-
+fn test_unified_cycle_or_delegation() {
     // create an oracle to feed into verifier and look at the transcript values
 
-    // let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/proof");
-    let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
+    // let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
     // let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/blake2s_delegator_proof");
+    let proof: Proof =
+        deserialize_from_file("../../zksync-airbender/prover/keccak_delegator_proof");
 
     // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //     deserialize_from_file("../../zksync-airbender/prover/layout");
-    let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-        deserialize_from_file("../../zksync-airbender/prover/full_machine_layout.json");
+    //     deserialize_from_file("../../zksync-airbender/prover/full_machine_layout.json");
     // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
     // deserialize_from_file("../../zksync-airbender/prover/blake2s_delegator_layout");
+    let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
+        deserialize_from_file("../prover/keccak_delegation_circuit_layout.json");
 
     // now form flattened iterator
-
-    dbg!(LAST_FRI_STEP_EXPOSE_LEAFS);
-    dbg!(LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET);
-
-    dbg!(NUM_FRI_STEPS);
-    dbg!(TREE_CAP_SIZE);
-    dbg!(SKELETON_PADDING);
-    dbg!(LEAF_SIZE_WITNESS_TREE);
-    dbg!(LEAF_SIZE_MEMORY_TREE);
-    dbg!(LEAF_SIZE_SETUP);
-    dbg!(LEAF_SIZE_STAGE_2);
-    dbg!(TREE_CAP_SIZE);
-    dbg!(NUM_OPENINGS_AT_Z);
-    dbg!(NUM_OPENINGS_AT_Z_OMEGA);
-    dbg!(NUM_QUOTIENT_TERMS);
-    dbg!(WITNESS_NEXT_ROW_OPENING_INDEXES);
-    dbg!(MEMORY_NEXT_ROW_OPENING_INDEXES);
-    dbg!(VERIFIER_COMPILED_LAYOUT
-        .stage_2_layout
-        .num_base_field_polys());
-    dbg!(VERIFIER_COMPILED_LAYOUT
-        .stage_2_layout
-        .num_ext4_field_polys());
-    dbg!(VERIFIER_COMPILED_LAYOUT
-        .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .num_elements());
-    dbg!(VERIFIER_COMPILED_LAYOUT.num_quotient_terms());
-
     use verifier_common::proof_flattener::*;
 
     let mut oracle_data = vec![];
     oracle_data.extend(flatten_proof_for_skeleton(
         &proof,
-        compiled_circuit
+        &compiled_circuit
             .memory_layout
-            .shuffle_ram_inits_and_teardowns
-            .is_some(),
+            .shuffle_ram_inits_and_teardowns,
     ));
     for query in proof.queries.iter() {
         oracle_data.extend(flatten_query(query));
     }
 
-    // let it = [0u32; 8].into_iter();
-    let it = oracle_data.into_iter();
+    // Spawn a new thread as it's large stack in debug builds
+    let result = std::thread::Builder::new()
+        .name("verifier thread".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let it = oracle_data.into_iter();
 
-    set_iterator(it);
+            set_iterator(it);
 
-    #[allow(invalid_value)]
-    unsafe {
-        verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
-            &mut MaybeUninit::uninit().assume_init(),
-            &mut ProofPublicInputs::uninit(),
-        )
-    };
+            #[allow(invalid_value)]
+            unsafe {
+                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
+                    &mut MaybeUninit::uninit().assume_init(),
+                    &mut ProofPublicInputs::uninit(),
+                )
+            };
+        })
+        .map(|t| t.join());
+
+    match result {
+        Ok(..) => {}
+        Err(err) => {
+            panic!("Verifier thread failes with {}", err);
+        }
+    }
+}
+
+#[test]
+fn test_unrolled_circuit() {
+    // create an oracle to feed into verifier and look at the transcript values
+
+    // let name = "add_sub_lui_auipc_mop";
+    // let name = "jump_branch_slt";
+    // let name = "shift_binop_csrrw";
+    // let name = "mul_div_unsigned";
+    // let name = "word_only_load_store";
+    // let name = "subword_only_load_store";
+    let name = "inits_and_teardowns";
+
+    let proof: prover::prover_stages::unrolled_prover::UnrolledModeProof =
+        deserialize_from_file(&format!("../prover/{}_unrolled_proof.json", name));
+    let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
+        deserialize_from_file(&format!("../cs/{}_preprocessed_layout.json", name));
+
+    dbg!(&proof.public_inputs);
+    dbg!(&proof.aux_boundary_values);
+
+    // now form flattened iterator
+    use verifier_common::proof_flattener::*;
+
+    let mut oracle_data = vec![];
+    oracle_data.extend(flatten_unrolled_circuits_proof_for_skeleton(
+        &proof,
+        &compiled_circuit,
+    ));
+    for query in proof.queries.iter() {
+        oracle_data.extend(flatten_query(query));
+    }
+
+    // Spawn a new thread as it's large stack in debug builds
+    let result = std::thread::Builder::new()
+        .name("verifier thread".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let it = oracle_data.into_iter();
+
+            set_iterator(it);
+
+            #[allow(invalid_value)]
+            unsafe {
+                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
+                    &mut MaybeUninit::uninit().assume_init(),
+                    &mut ProofPublicInputs::uninit(),
+                )
+            };
+        })
+        .map(|t| t.join());
+
+    match result {
+        Ok(..) => {}
+        Err(err) => {
+            panic!("Verifier thread failes with {}", err);
+        }
+    }
 }
 
 use risc_v_simulator::{
@@ -128,10 +168,9 @@ fn test_full_machine_verifier_out_of_simulator() {
 
     oracle_data.extend(flatten_proof_for_skeleton(
         &proof,
-        compiled_circuit
+        &compiled_circuit
             .memory_layout
-            .shuffle_ram_inits_and_teardowns
-            .is_some(),
+            .shuffle_ram_inits_and_teardowns,
     ));
     for query in proof.queries.iter() {
         oracle_data.extend(flatten_query(query));
@@ -173,10 +212,9 @@ fn test_reduced_machine_verifier_out_of_simulator() {
 
     oracle_data.extend(flatten_proof_for_skeleton(
         &proof,
-        compiled_circuit
+        &compiled_circuit
             .memory_layout
-            .shuffle_ram_inits_and_teardowns
-            .is_some(),
+            .shuffle_ram_inits_and_teardowns,
     ));
     for query in proof.queries.iter() {
         oracle_data.extend(flatten_query(query));
@@ -223,10 +261,9 @@ fn test_verifier_in_simulator() {
     {
         oracle_data.extend(flatten_proof_for_skeleton(
             &proof,
-            compiled_circuit
+            &compiled_circuit
                 .memory_layout
-                .shuffle_ram_inits_and_teardowns
-                .is_some(),
+                .shuffle_ram_inits_and_teardowns,
         ));
         for query in proof.queries.iter() {
             oracle_data.extend(flatten_query(query));

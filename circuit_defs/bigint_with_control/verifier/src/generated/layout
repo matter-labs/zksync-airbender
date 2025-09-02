@@ -8,6 +8,10 @@
       "start": 1,
       "num_elements": 1
     },
+    "multiplicities_columns_for_decoder_in_executor_families": {
+      "start": 0,
+      "num_elements": 0
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 2,
       "num_elements": 1
@@ -3120,7 +3124,7 @@
     "total_width": 258
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": null,
+    "shuffle_ram_inits_and_teardowns": [],
     "shuffle_ram_access_sets": [],
     "delegation_request_layout": null,
     "delegation_processor_layout": {
@@ -3137,6 +3141,8 @@
         "num_elements": 1
       }
     },
+    "machine_state_layout": null,
+    "intermediate_state_layout": null,
     "batched_ram_accesses": [],
     "register_and_indirect_accesses": [
       {
@@ -3156,7 +3162,6 @@
         "indirect_accesses": [
           {
             "WriteAccess": {
-              "offset": 0,
               "read_timestamp": {
                 "start": 8,
                 "num_elements": 1
@@ -3172,12 +3177,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 0
             }
           },
           {
             "WriteAccess": {
-              "offset": 4,
               "read_timestamp": {
                 "start": 14,
                 "num_elements": 1
@@ -3193,12 +3199,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 4
             }
           },
           {
             "WriteAccess": {
-              "offset": 8,
               "read_timestamp": {
                 "start": 20,
                 "num_elements": 1
@@ -3214,12 +3221,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 8
             }
           },
           {
             "WriteAccess": {
-              "offset": 12,
               "read_timestamp": {
                 "start": 26,
                 "num_elements": 1
@@ -3235,12 +3243,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 12
             }
           },
           {
             "WriteAccess": {
-              "offset": 16,
               "read_timestamp": {
                 "start": 32,
                 "num_elements": 1
@@ -3256,12 +3265,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 16
             }
           },
           {
             "WriteAccess": {
-              "offset": 20,
               "read_timestamp": {
                 "start": 38,
                 "num_elements": 1
@@ -3277,12 +3287,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 20
             }
           },
           {
             "WriteAccess": {
-              "offset": 24,
               "read_timestamp": {
                 "start": 44,
                 "num_elements": 1
@@ -3298,12 +3309,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 24
             }
           },
           {
             "WriteAccess": {
-              "offset": 28,
               "read_timestamp": {
                 "start": 50,
                 "num_elements": 1
@@ -3319,7 +3331,9 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 28
             }
           }
         ]
@@ -3341,7 +3355,6 @@
         "indirect_accesses": [
           {
             "ReadAccess": {
-              "offset": 0,
               "read_timestamp": {
                 "start": 60,
                 "num_elements": 1
@@ -3353,12 +3366,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 0
             }
           },
           {
             "ReadAccess": {
-              "offset": 4,
               "read_timestamp": {
                 "start": 64,
                 "num_elements": 1
@@ -3370,12 +3384,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 4
             }
           },
           {
             "ReadAccess": {
-              "offset": 8,
               "read_timestamp": {
                 "start": 68,
                 "num_elements": 1
@@ -3387,12 +3402,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 8
             }
           },
           {
             "ReadAccess": {
-              "offset": 12,
               "read_timestamp": {
                 "start": 72,
                 "num_elements": 1
@@ -3404,12 +3420,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 12
             }
           },
           {
             "ReadAccess": {
-              "offset": 16,
               "read_timestamp": {
                 "start": 76,
                 "num_elements": 1
@@ -3421,12 +3438,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 16
             }
           },
           {
             "ReadAccess": {
-              "offset": 20,
               "read_timestamp": {
                 "start": 80,
                 "num_elements": 1
@@ -3438,12 +3456,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 20
             }
           },
           {
             "ReadAccess": {
-              "offset": 24,
               "read_timestamp": {
                 "start": 84,
                 "num_elements": 1
@@ -3455,12 +3474,13 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 24
             }
           },
           {
             "ReadAccess": {
-              "offset": 28,
               "read_timestamp": {
                 "start": 88,
                 "num_elements": 1
@@ -3472,7 +3492,9 @@
               "address_derivation_carry_bit": {
                 "start": 0,
                 "num_elements": 0
-              }
+              },
+              "variable_dependent": null,
+              "offset_constant": 28
             }
           }
         ]
@@ -3517,6 +3539,10 @@
       "start": 2,
       "num_elements": 1
     },
+    "preprocessed_decoder_setup_columns": {
+      "start": 0,
+      "num_elements": 0
+    },
     "total_width": 6
   },
   "stage_2_layout": {
@@ -3548,6 +3574,10 @@
       "start": 180,
       "num_elements": 61
     },
+    "intermediate_poly_for_decoder_accesses": {
+      "start": 0,
+      "num_elements": 0
+    },
     "intermediate_poly_for_range_check_16_multiplicity": {
       "start": 424,
       "num_elements": 1
@@ -3560,13 +3590,33 @@
       "start": 432,
       "num_elements": 1
     },
+    "intermediate_polys_for_decoder_multiplicities": {
+      "start": 0,
+      "num_elements": 0
+    },
     "delegation_processing_aux_poly": {
       "start": 436,
       "num_elements": 1
     },
+    "intermediate_polys_for_memory_init_teardown": {
+      "start": 440,
+      "num_elements": 0
+    },
     "intermediate_polys_for_memory_argument": {
       "start": 440,
-      "num_elements": 20
+      "num_elements": 19
+    },
+    "intermediate_polys_for_state_permutation": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_polys_for_permutation_masking": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_poly_for_grand_product": {
+      "start": 516,
+      "num_elements": 1
     },
     "ext4_polys_offset": 36,
     "total_width": 520
@@ -22528,7 +22578,7 @@
     }
   },
   "scratch_space_size_for_witness_gen": 1,
-  "lazy_init_address_aux_vars": null,
+  "lazy_init_address_aux_vars": [],
   "memory_queries_timestamp_comparison_aux_vars": [],
   "batched_memory_access_timestamp_comparison_aux_vars": {
     "predicate": {
@@ -22635,6 +22685,8 @@
       ]
     ]
   },
+  "executor_family_circuit_next_timestamp_aux_var": null,
+  "executor_family_decoder_table_size": 0,
   "trace_len": 2097152,
   "table_offsets": [
     0,
@@ -22674,6 +22726,25 @@
     1376256,
     1378304,
     1382400,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
     1390592,
     1390592,
     1390592,

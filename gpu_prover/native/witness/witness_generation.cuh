@@ -85,6 +85,8 @@ template <typename T> struct wrapped_integer {
 
   static DEVICE_FORCEINLINE wrapped_integer shr(const wrapped_integer &value, const unsigned &shift) { return wrapped_integer(value.inner >> shift); }
 
+  static DEVICE_FORCEINLINE wrapped_integer inot(const wrapped_integer &value) { return wrapped_integer(~value.inner); }
+
   static DEVICE_FORCEINLINE wrapped_integer lowest_bits(const wrapped_integer &value, const unsigned &count) {
     return wrapped_integer(value.inner & (1u << count) - 1);
   }
@@ -104,6 +106,12 @@ template <typename T> struct wrapped_integer {
   template <typename U> static DEVICE_FORCEINLINE U mixed_mul_low(const wrapped_integer &lhs, const U &rhs);
 
   template <typename U> static DEVICE_FORCEINLINE U mixed_mul_high(const wrapped_integer &lhs, const U &rhs);
+
+  static DEVICE_FORCEINLINE wrapped_integer iand(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner & rhs.inner); }
+
+  static DEVICE_FORCEINLINE wrapped_integer ior(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner | rhs.inner); }
+
+  static DEVICE_FORCEINLINE wrapped_integer ixor(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner ^ rhs.inner); }
 };
 
 typedef wrapped_integer<u8> wrapped_u8;
@@ -363,6 +371,7 @@ template <class R> struct WitnessProxy {
 #define INV(T, N, I) const wrapped_##T VAR(N) = wrapped_##T::inv(VAR(I));
 #define SHL(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::shl(VAR(I), M);
 #define SHR(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::shr(VAR(I), M);
+#define INOT(T, N, I) const wrapped_##T VAR(N) = wrapped_##T::inot(VAR(I));
 #define LOWEST_BITS(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::lowest_bits(VAR(I), M);
 #define MUL_LOW(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::mul_low(VAR(LHS), VAR(RHS));
 #define MUL_HIGH(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::mul_high(VAR(LHS), VAR(RHS));
@@ -372,6 +381,9 @@ template <class R> struct WitnessProxy {
 #define SIGNED_MUL_HIGH(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::signed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
 #define MIXED_MUL_LOW(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_low<wrapped_u32>(VAR(LHS), VAR(RHS));
 #define MIXED_MUL_HIGH(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
+#define IAND(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::iand(VAR(LHS), VAR(RHS));
+#define IOR(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::ior(VAR(LHS), VAR(RHS));
+#define IXOR(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::ixor(VAR(LHS), VAR(RHS));
 #define IF(S, T)                                                                                                                                               \
   if (VAR(S).inner) {                                                                                                                                          \
     T                                                                                                                                                          \

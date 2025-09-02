@@ -95,6 +95,7 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
                 &mut transcript_challenges,
             );
             let coeffs = transcript_challenges
+                .into_iter()
                 .array_chunks::<4>()
                 .next()
                 .unwrap()
@@ -195,6 +196,7 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
                 [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
             Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
             let alpha_coeffs = transcript_challenges
+                .into_iter()
                 .array_chunks::<4>()
                 .next()
                 .unwrap()
@@ -226,12 +228,8 @@ impl<'a, C: ProverContext> StageFourOutput<'a, C> {
         let h_challenges_times_evals_clone = h_challenges_times_evals.clone();
         let twiddles_omega_inv = twiddles.omega_inv;
         let get_challenges = move || {
-            let values_at_z_moved = values_at_z_clone;
             prepare_challenges_for_gpu_transfer(
-                // TODO: Ask Robert
-                // This used to be a &values_at_z_clone.
-                // But it's an Arc, so we should (or at least can) move by value.
-                &values_at_z_moved,
+                &values_at_z_clone,
                 *alpha_clone.lock().unwrap().deref(),
                 twiddles_omega_inv,
                 num_terms_at_z,

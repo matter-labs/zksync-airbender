@@ -7,6 +7,10 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
         start: 1usize,
         num_elements: 1usize,
     },
+    multiplicities_columns_for_decoder_in_executor_families: ColumnSet::<1usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     multiplicities_columns_for_generic_lookup: ColumnSet::<1usize> {
         start: 2usize,
         num_elements: 2usize,
@@ -434,7 +438,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
     total_width: 192usize,
 };
 const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySubtree {
-    shuffle_ram_inits_and_teardowns: Some(ShuffleRamInitAndTeardownLayout {
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout {
         lazy_init_addresses_columns: ColumnSet::<2usize> {
             start: 0usize,
             num_elements: 1usize,
@@ -447,7 +451,7 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
             start: 4usize,
             num_elements: 1usize,
         },
-    }),
+    }],
     delegation_request_layout: Some(DelegationRequestLayout {
         multiplicity: ColumnSet::<1usize> {
             start: 27usize,
@@ -529,6 +533,8 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
             },
         }),
     ],
+    machine_state_layout: None,
+    intermediate_state_layout: None,
     batched_ram_accesses: &[],
     register_and_indirect_accesses: &[],
     total_width: 30usize,
@@ -550,6 +556,10 @@ const COMPILED_SETUP_LAYOUT: SetupLayout = SetupLayout {
         start: 4usize,
         num_elements: 2usize,
     },
+    preprocessed_decoder_setup_columns: ColumnSet::<10usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     total_width: 12usize,
 };
 const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryArgumentLayout {
@@ -564,17 +574,6 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
             num_elements: 6usize,
         },
     },
-    intermediate_polys_for_timestamp_range_checks: OptimizedOraclesForLookupWidth1 {
-        num_pairs: 3usize,
-        base_field_oracles: AlignedColumnSet::<1usize> {
-            start: 7usize,
-            num_elements: 3usize,
-        },
-        ext_4_field_oracles: AlignedColumnSet::<4usize> {
-            start: 40usize,
-            num_elements: 3usize,
-        },
-    },
     remainder_for_range_check_16: None,
     lazy_init_address_range_check_16: Some(OptimizedOraclesForLookupWidth1 {
         num_pairs: 1usize,
@@ -587,30 +586,65 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
             num_elements: 1usize,
         },
     }),
+    intermediate_polys_for_timestamp_range_checks: OptimizedOraclesForLookupWidth1 {
+        num_pairs: 3usize,
+        base_field_oracles: AlignedColumnSet::<1usize> {
+            start: 7usize,
+            num_elements: 3usize,
+        },
+        ext_4_field_oracles: AlignedColumnSet::<4usize> {
+            start: 40usize,
+            num_elements: 3usize,
+        },
+    },
     intermediate_polys_for_generic_lookup: AlignedColumnSet::<4usize> {
         start: 52usize,
         num_elements: 17usize,
     },
+    intermediate_poly_for_decoder_accesses: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     intermediate_poly_for_range_check_16_multiplicity: AlignedColumnSet::<4usize> {
         start: 120usize,
+        num_elements: 1usize,
+    },
+    intermediate_poly_for_timestamp_range_check_multiplicity: AlignedColumnSet::<4usize> {
+        start: 124usize,
         num_elements: 1usize,
     },
     intermediate_polys_for_generic_multiplicities: AlignedColumnSet::<4usize> {
         start: 128usize,
         num_elements: 2usize,
     },
-    intermediate_poly_for_timestamp_range_check_multiplicity: AlignedColumnSet::<4usize> {
-        start: 124usize,
-        num_elements: 1usize,
-    },
-    intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
-        start: 140usize,
-        num_elements: 5usize,
+    intermediate_polys_for_decoder_multiplicities: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
     },
     delegation_processing_aux_poly: Some(AlignedColumnSet::<4usize> {
         start: 136usize,
         num_elements: 1usize,
     }),
+    intermediate_polys_for_memory_init_teardown: AlignedColumnSet::<4usize> {
+        start: 140usize,
+        num_elements: 1usize,
+    },
+    intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
+        start: 144usize,
+        num_elements: 3usize,
+    },
+    intermediate_polys_for_state_permutation: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
+    intermediate_polys_for_permutation_masking: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
+    intermediate_poly_for_grand_product: AlignedColumnSet::<4usize> {
+        start: 156usize,
+        num_elements: 1usize,
+    },
     ext4_polys_offset: 12usize,
     total_width: 160usize,
 };
@@ -5736,13 +5770,13 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 ColumnAddress::WitnessSubtree(191usize),
             ),
         ],
-        lazy_init_address_aux_vars: Some(ShuffleRamAuxComparisonSet {
+        lazy_init_address_aux_vars: &[ShuffleRamAuxComparisonSet {
             aux_low_high: [
                 ColumnAddress::WitnessSubtree(26usize),
                 ColumnAddress::WitnessSubtree(27usize),
             ],
             intermediate_borrow: ColumnAddress::WitnessSubtree(70usize),
             final_borrow: ColumnAddress::WitnessSubtree(71usize),
-        }),
+        }],
         trace_len_log2: 22usize,
     };

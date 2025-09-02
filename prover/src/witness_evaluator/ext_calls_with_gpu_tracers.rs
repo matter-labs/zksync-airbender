@@ -2,7 +2,7 @@ use super::ext_calls::*;
 use super::*;
 use crate::tracers::delegation::bigint_with_control_factory_fn;
 use crate::tracers::delegation::blake2_with_control_factory_fn;
-use crate::tracers::delegation::keccak_special5_with_control_factory_fn;
+use crate::tracers::delegation::keccak_special5_factory_fn;
 use crate::tracers::delegation::DelegationWitness;
 use crate::tracers::main_cycle_optimized::CycleData;
 use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
@@ -108,9 +108,8 @@ where
         } else if *delegation_type == KECCAK_SPECIAL5_ACCESS_ID {
             let num_requests_per_circuit = circuit.num_requests_per_circuit;
             let delegation_type = *delegation_type as u16;
-            let factory_fn = move || {
-                keccak_special5_with_control_factory_fn(delegation_type, num_requests_per_circuit)
-            };
+            let factory_fn =
+                move || keccak_special5_factory_fn(delegation_type, num_requests_per_circuit);
             factories.insert(
                 delegation_type,
                 Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,

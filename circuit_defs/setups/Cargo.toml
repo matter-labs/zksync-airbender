@@ -17,6 +17,7 @@ machine_without_signed_mul_div = { workspace = true }
 final_reduced_risc_v_machine = { workspace = true }
 blake2_with_compression = { workspace = true }
 bigint_with_control = { workspace = true }
+keccak_special5 = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 proc-macro2 = { version = "1" }

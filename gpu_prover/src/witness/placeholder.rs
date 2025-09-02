@@ -37,6 +37,8 @@ pub enum Placeholder {
     InvalidEncoding,
     FirstRegMem,
     SecondRegMem,
+    WriteRegMemReadWitness,
+    WriteRegMemWriteValue,
     MemoryLoadOp,
     WriteRdReadSetWitness,
     ShuffleRamLazyInitAddressThis,
@@ -70,6 +72,23 @@ pub enum Placeholder {
     },
     DelegationNondeterminismAccess(u32),
     DelegationNondeterminismAccessNoSplits(u32),
+    ExecuteOpcodeFamilyCycle,
+    OpcodeFamilyCycleInitialTimestamp,
+    OpcodeFamilyCycleFinalTimestamp,
+    RS1Index,
+    RS2Index,
+    MemLoadAddress,
+    RDIndex,
+    RDIsZero,
+    DecodedImm,
+    DecodedFunct3,
+    DecodedFunct7,
+    DecodedExecutorFamilyMask,
+    LoadStoreRamValue,
+    MemStoreAddress,
+    DelegationIndirectAccessVariableOffset {
+        variable_index: u32,
+    },
 }
 
 impl Default for Placeholder {
@@ -78,125 +97,136 @@ impl Default for Placeholder {
     }
 }
 
-impl From<cs::cs::placeholder::Placeholder> for Placeholder {
-    fn from(value: cs::cs::placeholder::Placeholder) -> Self {
+type CSPlaceholder = cs::cs::placeholder::Placeholder;
+
+impl From<CSPlaceholder> for Placeholder {
+    fn from(value: CSPlaceholder) -> Self {
         match value {
-            cs::cs::placeholder::Placeholder::XregsInit => Placeholder::XregsInit,
-            cs::cs::placeholder::Placeholder::XregsFin => Placeholder::XregsFin,
-            cs::cs::placeholder::Placeholder::XregInit(x) => Placeholder::XregInit(x as u32),
-            cs::cs::placeholder::Placeholder::XregFin(x) => Placeholder::XregFin(x as u32),
-            cs::cs::placeholder::Placeholder::Instruction => Placeholder::Instruction,
-            cs::cs::placeholder::Placeholder::MemSlot => Placeholder::MemSlot,
-            cs::cs::placeholder::Placeholder::PcInit => Placeholder::PcInit,
-            cs::cs::placeholder::Placeholder::PcFin => Placeholder::PcFin,
-            cs::cs::placeholder::Placeholder::StatusInit => Placeholder::StatusInit,
-            cs::cs::placeholder::Placeholder::StatusFin => Placeholder::StatusFin,
-            cs::cs::placeholder::Placeholder::IeInit => Placeholder::IeInit,
-            cs::cs::placeholder::Placeholder::IeFin => Placeholder::IeFin,
-            cs::cs::placeholder::Placeholder::IpInit => Placeholder::IpInit,
-            cs::cs::placeholder::Placeholder::IpFin => Placeholder::IpFin,
-            cs::cs::placeholder::Placeholder::TvecInit => Placeholder::TvecInit,
-            cs::cs::placeholder::Placeholder::TvecFin => Placeholder::TvecFin,
-            cs::cs::placeholder::Placeholder::ScratchInit => Placeholder::ScratchInit,
-            cs::cs::placeholder::Placeholder::ScratchFin => Placeholder::ScratchFin,
-            cs::cs::placeholder::Placeholder::EpcInit => Placeholder::EpcInit,
-            cs::cs::placeholder::Placeholder::EpcFin => Placeholder::EpcFin,
-            cs::cs::placeholder::Placeholder::CauseInit => Placeholder::CauseInit,
-            cs::cs::placeholder::Placeholder::CauseFin => Placeholder::CauseFin,
-            cs::cs::placeholder::Placeholder::TvalInit => Placeholder::TvalInit,
-            cs::cs::placeholder::Placeholder::TvalFin => Placeholder::TvalFin,
-            cs::cs::placeholder::Placeholder::ModeInit => Placeholder::ModeInit,
-            cs::cs::placeholder::Placeholder::ModeFin => Placeholder::ModeFin,
-            cs::cs::placeholder::Placeholder::MemorySaptInit => Placeholder::MemorySaptInit,
-            cs::cs::placeholder::Placeholder::MemorySaptFin => Placeholder::MemorySaptFin,
-            cs::cs::placeholder::Placeholder::ContinueExecutionInit => {
-                Placeholder::ContinueExecutionInit
-            }
-            cs::cs::placeholder::Placeholder::ContinueExecutionFin => {
-                Placeholder::ContinueExecutionFin
-            }
-            cs::cs::placeholder::Placeholder::ExternalOracle => Placeholder::ExternalOracle,
-            cs::cs::placeholder::Placeholder::Trapped => Placeholder::Trapped,
-            cs::cs::placeholder::Placeholder::InvalidEncoding => Placeholder::InvalidEncoding,
-            cs::cs::placeholder::Placeholder::FirstRegMem => Placeholder::FirstRegMem,
-            cs::cs::placeholder::Placeholder::SecondRegMem => Placeholder::SecondRegMem,
-            cs::cs::placeholder::Placeholder::MemoryLoadOp => Placeholder::MemoryLoadOp,
-            cs::cs::placeholder::Placeholder::WriteRdReadSetWitness => {
-                Placeholder::WriteRdReadSetWitness
-            }
-            cs::cs::placeholder::Placeholder::ShuffleRamLazyInitAddressThis => {
+            CSPlaceholder::XregsInit => Placeholder::XregsInit,
+            CSPlaceholder::XregsFin => Placeholder::XregsFin,
+            CSPlaceholder::XregInit(x) => Placeholder::XregInit(x as u32),
+            CSPlaceholder::XregFin(x) => Placeholder::XregFin(x as u32),
+            CSPlaceholder::Instruction => Placeholder::Instruction,
+            CSPlaceholder::MemSlot => Placeholder::MemSlot,
+            CSPlaceholder::PcInit => Placeholder::PcInit,
+            CSPlaceholder::PcFin => Placeholder::PcFin,
+            CSPlaceholder::StatusInit => Placeholder::StatusInit,
+            CSPlaceholder::StatusFin => Placeholder::StatusFin,
+            CSPlaceholder::IeInit => Placeholder::IeInit,
+            CSPlaceholder::IeFin => Placeholder::IeFin,
+            CSPlaceholder::IpInit => Placeholder::IpInit,
+            CSPlaceholder::IpFin => Placeholder::IpFin,
+            CSPlaceholder::TvecInit => Placeholder::TvecInit,
+            CSPlaceholder::TvecFin => Placeholder::TvecFin,
+            CSPlaceholder::ScratchInit => Placeholder::ScratchInit,
+            CSPlaceholder::ScratchFin => Placeholder::ScratchFin,
+            CSPlaceholder::EpcInit => Placeholder::EpcInit,
+            CSPlaceholder::EpcFin => Placeholder::EpcFin,
+            CSPlaceholder::CauseInit => Placeholder::CauseInit,
+            CSPlaceholder::CauseFin => Placeholder::CauseFin,
+            CSPlaceholder::TvalInit => Placeholder::TvalInit,
+            CSPlaceholder::TvalFin => Placeholder::TvalFin,
+            CSPlaceholder::ModeInit => Placeholder::ModeInit,
+            CSPlaceholder::ModeFin => Placeholder::ModeFin,
+            CSPlaceholder::MemorySaptInit => Placeholder::MemorySaptInit,
+            CSPlaceholder::MemorySaptFin => Placeholder::MemorySaptFin,
+            CSPlaceholder::ContinueExecutionInit => Placeholder::ContinueExecutionInit,
+            CSPlaceholder::ContinueExecutionFin => Placeholder::ContinueExecutionFin,
+            CSPlaceholder::ExternalOracle => Placeholder::ExternalOracle,
+            CSPlaceholder::Trapped => Placeholder::Trapped,
+            CSPlaceholder::InvalidEncoding => Placeholder::InvalidEncoding,
+            CSPlaceholder::FirstRegMem => Placeholder::FirstRegMem,
+            CSPlaceholder::SecondRegMem => Placeholder::SecondRegMem,
+            CSPlaceholder::WriteRegMemReadWitness => Placeholder::WriteRegMemReadWitness,
+            CSPlaceholder::WriteRegMemWriteValue => Placeholder::WriteRegMemWriteValue,
+            CSPlaceholder::MemoryLoadOp => Placeholder::MemoryLoadOp,
+            CSPlaceholder::WriteRdReadSetWitness => Placeholder::WriteRdReadSetWitness,
+            CSPlaceholder::ShuffleRamLazyInitAddressThis => {
                 Placeholder::ShuffleRamLazyInitAddressThis
             }
-            cs::cs::placeholder::Placeholder::ShuffleRamLazyInitAddressNext => {
+            CSPlaceholder::ShuffleRamLazyInitAddressNext => {
                 Placeholder::ShuffleRamLazyInitAddressNext
             }
-            cs::cs::placeholder::Placeholder::ShuffleRamAddress(x) => {
-                Placeholder::ShuffleRamAddress(x as u32)
-            }
-            cs::cs::placeholder::Placeholder::ShuffleRamReadTimestamp(x) => {
+            CSPlaceholder::ShuffleRamAddress(x) => Placeholder::ShuffleRamAddress(x as u32),
+            CSPlaceholder::ShuffleRamReadTimestamp(x) => {
                 Placeholder::ShuffleRamReadTimestamp(x as u32)
             }
-            cs::cs::placeholder::Placeholder::ShuffleRamReadValue(x) => {
-                Placeholder::ShuffleRamReadValue(x as u32)
-            }
-            cs::cs::placeholder::Placeholder::ShuffleRamIsRegisterAccess(x) => {
+            CSPlaceholder::ShuffleRamReadValue(x) => Placeholder::ShuffleRamReadValue(x as u32),
+            CSPlaceholder::ShuffleRamIsRegisterAccess(x) => {
                 Placeholder::ShuffleRamIsRegisterAccess(x as u32)
             }
-            cs::cs::placeholder::Placeholder::ShuffleRamWriteValue(x) => {
-                Placeholder::ShuffleRamWriteValue(x as u32)
-            }
-            cs::cs::placeholder::Placeholder::ExecuteDelegation => Placeholder::ExecuteDelegation,
-            cs::cs::placeholder::Placeholder::DelegationType => Placeholder::DelegationType,
-            cs::cs::placeholder::Placeholder::DegelationABIOffset => {
-                Placeholder::DelegationABIOffset
-            }
-            cs::cs::placeholder::Placeholder::DelegationWriteTimestamp => {
-                Placeholder::DelegationWriteTimestamp
-            }
-            cs::cs::placeholder::Placeholder::DelegationMemoryReadValue(x) => {
+            CSPlaceholder::ShuffleRamWriteValue(x) => Placeholder::ShuffleRamWriteValue(x as u32),
+            CSPlaceholder::ExecuteDelegation => Placeholder::ExecuteDelegation,
+            CSPlaceholder::DelegationType => Placeholder::DelegationType,
+            CSPlaceholder::DelegationABIOffset => Placeholder::DelegationABIOffset,
+            CSPlaceholder::DelegationWriteTimestamp => Placeholder::DelegationWriteTimestamp,
+            CSPlaceholder::DelegationMemoryReadValue(x) => {
                 Placeholder::DelegationMemoryReadValue(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationMemoryReadTimestamp(x) => {
+            CSPlaceholder::DelegationMemoryReadTimestamp(x) => {
                 Placeholder::DelegationMemoryReadTimestamp(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationMemoryWriteValue(x) => {
+            CSPlaceholder::DelegationMemoryWriteValue(x) => {
                 Placeholder::DelegationMemoryWriteValue(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationRegisterReadValue(x) => {
+            CSPlaceholder::DelegationRegisterReadValue(x) => {
                 Placeholder::DelegationRegisterReadValue(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationRegisterReadTimestamp(x) => {
+            CSPlaceholder::DelegationRegisterReadTimestamp(x) => {
                 Placeholder::DelegationRegisterReadTimestamp(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationRegisterWriteValue(x) => {
+            CSPlaceholder::DelegationRegisterWriteValue(x) => {
                 Placeholder::DelegationRegisterWriteValue(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationIndirectReadValue {
+            CSPlaceholder::DelegationIndirectReadValue {
                 register_index,
                 word_index,
             } => Placeholder::DelegationIndirectReadValue {
                 register_index: register_index as u32,
                 word_index: word_index as u32,
             },
-            cs::cs::placeholder::Placeholder::DelegationIndirectReadTimestamp {
+            CSPlaceholder::DelegationIndirectReadTimestamp {
                 register_index,
                 word_index,
             } => Placeholder::DelegationIndirectReadTimestamp {
                 register_index: register_index as u32,
                 word_index: word_index as u32,
             },
-            cs::cs::placeholder::Placeholder::DelegationIndirectWriteValue {
+            CSPlaceholder::DelegationIndirectWriteValue {
                 register_index,
                 word_index,
             } => Placeholder::DelegationIndirectWriteValue {
                 register_index: register_index as u32,
                 word_index: word_index as u32,
             },
-            cs::cs::placeholder::Placeholder::DelegationNondeterminismAccess(x) => {
+            CSPlaceholder::DelegationNondeterminismAccess(x) => {
                 Placeholder::DelegationNondeterminismAccess(x as u32)
             }
-            cs::cs::placeholder::Placeholder::DelegationNondeterminismAccessNoSplits(x) => {
+            CSPlaceholder::DelegationNondeterminismAccessNoSplits(x) => {
                 Placeholder::DelegationNondeterminismAccessNoSplits(x as u32)
+            }
+            CSPlaceholder::ExecuteOpcodeFamilyCycle => Placeholder::ExecuteOpcodeFamilyCycle,
+            CSPlaceholder::OpcodeFamilyCycleInitialTimestamp => {
+                Placeholder::OpcodeFamilyCycleInitialTimestamp
+            }
+            CSPlaceholder::OpcodeFamilyCycleFinalTimestamp => {
+                Placeholder::OpcodeFamilyCycleFinalTimestamp
+            }
+            CSPlaceholder::RS1Index => Placeholder::RS1Index,
+            CSPlaceholder::RS2Index => Placeholder::RS2Index,
+            CSPlaceholder::MemLoadAddress => Placeholder::MemLoadAddress,
+            CSPlaceholder::RDIndex => Placeholder::RDIndex,
+            CSPlaceholder::RDIsZero => Placeholder::RDIsZero,
+            CSPlaceholder::DecodedImm => Placeholder::DecodedImm,
+            CSPlaceholder::DecodedFunct3 => Placeholder::DecodedFunct3,
+            CSPlaceholder::DecodedFunct7 => Placeholder::DecodedFunct7,
+            CSPlaceholder::DecodedExecutorFamilyMask => Placeholder::DecodedExecutorFamilyMask,
+            CSPlaceholder::LoadStoreRamValue => Placeholder::LoadStoreRamValue,
+            CSPlaceholder::MemStoreAddress => Placeholder::MemStoreAddress,
+            CSPlaceholder::DelegationIndirectAccessVariableOffset { variable_index } => {
+                Placeholder::DelegationIndirectAccessVariableOffset {
+                    variable_index: variable_index as u32,
+                }
             }
         }
     }

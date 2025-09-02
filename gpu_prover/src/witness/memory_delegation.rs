@@ -28,10 +28,10 @@ struct DelegationMemorySubtree {
 
 impl From<&MemorySubtree> for DelegationMemorySubtree {
     fn from(value: &MemorySubtree) -> Self {
-        assert!(value.shuffle_ram_inits_and_teardowns.is_none());
+        assert!(value.shuffle_ram_inits_and_teardowns.is_empty());
         assert!(value.shuffle_ram_access_sets.is_empty());
         assert!(value.delegation_request_layout.is_none());
-        assert_eq!(value.batched_ram_accesses.len(), 0);
+        assert!(value.batched_ram_accesses.is_empty());
         let delegation_processor_layout = value.delegation_processor_layout.unwrap().into();
         let register_and_indirect_accesses_count =
             value.register_and_indirect_accesses.len() as u32;

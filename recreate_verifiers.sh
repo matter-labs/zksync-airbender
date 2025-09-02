@@ -8,6 +8,7 @@ circuit_names=(
     "machine_without_signed_mul_div"
     "blake2_with_compression"
     "bigint_with_control"
+    "keccak_special5"
 )
 
 # update the generated files

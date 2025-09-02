@@ -166,7 +166,7 @@ pub(crate) fn generate_range_check_multiplicities<C: ProverContext>(
 
     let (process_shuffle_ram_init, lazy_init_address_start) =
         if let Some(shuffle_ram_inits_and_teardowns) =
-            circuit.memory_layout.shuffle_ram_inits_and_teardowns
+            circuit.memory_layout.shuffle_ram_inits_and_teardowns.get(0)
         {
             let init_address_start = shuffle_ram_inits_and_teardowns
                 .lazy_init_addresses_columns

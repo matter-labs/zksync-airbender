@@ -7,6 +7,10 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
         start: 1usize,
         num_elements: 1usize,
     },
+    multiplicities_columns_for_decoder_in_executor_families: ColumnSet::<1usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     multiplicities_columns_for_generic_lookup: ColumnSet::<1usize> {
         start: 2usize,
         num_elements: 1usize,
@@ -1889,7 +1893,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
     total_width: 258usize,
 };
 const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySubtree {
-    shuffle_ram_inits_and_teardowns: None,
+    shuffle_ram_inits_and_teardowns: &[],
     delegation_request_layout: None,
     delegation_processor_layout: Some(DelegationProcessingLayout {
         multiplicity: ColumnSet::<1usize> {
@@ -1906,6 +1910,8 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
         },
     }),
     shuffle_ram_access_sets: &[],
+    machine_state_layout: None,
+    intermediate_state_layout: None,
     batched_ram_accesses: &[],
     register_and_indirect_accesses: &[
         CompiledRegisterAndIndirectAccessDescription::<'static> {
@@ -1934,11 +1940,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 12usize,
                         num_elements: 1usize,
                     },
-                    offset: 0u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 0u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -1953,11 +1960,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 18usize,
                         num_elements: 1usize,
                     },
-                    offset: 4u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 4u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -1972,11 +1980,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 24usize,
                         num_elements: 1usize,
                     },
-                    offset: 8u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 8u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -1991,11 +2000,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 30usize,
                         num_elements: 1usize,
                     },
-                    offset: 12u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 12u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2010,11 +2020,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 36usize,
                         num_elements: 1usize,
                     },
-                    offset: 16u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 16u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2029,11 +2040,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 42usize,
                         num_elements: 1usize,
                     },
-                    offset: 20u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 20u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2048,11 +2060,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 48usize,
                         num_elements: 1usize,
                     },
-                    offset: 24u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 24u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::WriteAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2067,11 +2080,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 54usize,
                         num_elements: 1usize,
                     },
-                    offset: 28u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 28u32,
+                    variable_dependent: None,
                 },
             ],
         },
@@ -2097,11 +2111,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 62usize,
                         num_elements: 1usize,
                     },
-                    offset: 0u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 0u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2112,11 +2127,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 66usize,
                         num_elements: 1usize,
                     },
-                    offset: 4u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 4u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2127,11 +2143,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 70usize,
                         num_elements: 1usize,
                     },
-                    offset: 8u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 8u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2142,11 +2159,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 74usize,
                         num_elements: 1usize,
                     },
-                    offset: 12u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 12u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2157,11 +2175,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 78usize,
                         num_elements: 1usize,
                     },
-                    offset: 16u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 16u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2172,11 +2191,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 82usize,
                         num_elements: 1usize,
                     },
-                    offset: 20u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 20u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2187,11 +2207,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 86usize,
                         num_elements: 1usize,
                     },
-                    offset: 24u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 24u32,
+                    variable_dependent: None,
                 },
                 IndirectAccessColumns::ReadAccess {
                     read_timestamp: ColumnSet::<2usize> {
@@ -2202,11 +2223,12 @@ const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySub
                         start: 90usize,
                         num_elements: 1usize,
                     },
-                    offset: 28u32,
                     address_derivation_carry_bit: ColumnSet::<1usize> {
                         start: 0usize,
                         num_elements: 0usize,
                     },
+                    offset_constant: 28u32,
+                    variable_dependent: None,
                 },
             ],
         },
@@ -2248,6 +2270,10 @@ const COMPILED_SETUP_LAYOUT: SetupLayout = SetupLayout {
         start: 2usize,
         num_elements: 1usize,
     },
+    preprocessed_decoder_setup_columns: ColumnSet::<10usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     total_width: 6usize,
 };
 const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryArgumentLayout {
@@ -2262,6 +2288,8 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
             num_elements: 17usize,
         },
     },
+    remainder_for_range_check_16: None,
+    lazy_init_address_range_check_16: None,
     intermediate_polys_for_timestamp_range_checks: OptimizedOraclesForLookupWidth1 {
         num_pairs: 19usize,
         base_field_oracles: AlignedColumnSet::<1usize> {
@@ -2273,32 +2301,54 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
             num_elements: 19usize,
         },
     },
-    remainder_for_range_check_16: None,
-    lazy_init_address_range_check_16: None,
     intermediate_polys_for_generic_lookup: AlignedColumnSet::<4usize> {
         start: 180usize,
         num_elements: 61usize,
     },
+    intermediate_poly_for_decoder_accesses: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
     intermediate_poly_for_range_check_16_multiplicity: AlignedColumnSet::<4usize> {
         start: 424usize,
-        num_elements: 1usize,
-    },
-    intermediate_polys_for_generic_multiplicities: AlignedColumnSet::<4usize> {
-        start: 432usize,
         num_elements: 1usize,
     },
     intermediate_poly_for_timestamp_range_check_multiplicity: AlignedColumnSet::<4usize> {
         start: 428usize,
         num_elements: 1usize,
     },
-    intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
-        start: 440usize,
-        num_elements: 20usize,
+    intermediate_polys_for_generic_multiplicities: AlignedColumnSet::<4usize> {
+        start: 432usize,
+        num_elements: 1usize,
+    },
+    intermediate_polys_for_decoder_multiplicities: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
     },
     delegation_processing_aux_poly: Some(AlignedColumnSet::<4usize> {
         start: 436usize,
         num_elements: 1usize,
     }),
+    intermediate_polys_for_memory_init_teardown: AlignedColumnSet::<4usize> {
+        start: 440usize,
+        num_elements: 0usize,
+    },
+    intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
+        start: 440usize,
+        num_elements: 19usize,
+    },
+    intermediate_polys_for_state_permutation: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
+    intermediate_polys_for_permutation_masking: AlignedColumnSet::<4usize> {
+        start: 0usize,
+        num_elements: 0usize,
+    },
+    intermediate_poly_for_grand_product: AlignedColumnSet::<4usize> {
+        start: 516usize,
+        num_elements: 1usize,
+    },
     ext4_polys_offset: 36usize,
     total_width: 520usize,
 };
@@ -12583,6 +12633,6 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
         ],
         state_linkage_constraints: &[],
         public_inputs: &[],
-        lazy_init_address_aux_vars: None,
+        lazy_init_address_aux_vars: &[],
         trace_len_log2: 21usize,
     };

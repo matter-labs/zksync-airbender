@@ -27,6 +27,7 @@ pub type ProofSkeletonInstance = ProofSkeleton<
     NUM_COSETS,
     NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
     NUM_DELEGATION_CHALLENGES,
+    NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
     NUM_AUX_BOUNDARY_VALUES,
     NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
     NUM_OPENINGS_AT_Z,
@@ -69,6 +70,9 @@ pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usiz
     assert!(offset_of!(ProofSkeletonInstance, delegation_argument_challenges) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::delegation_argument_challenges);
+    assert!(offset_of!(ProofSkeletonInstance, machine_state_permutation_challenges) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance::machine_state_permutation_challenges);
     assert!(offset_of!(ProofSkeletonInstance, aux_boundary_values) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::aux_boundary_values);
@@ -81,9 +85,9 @@ pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usiz
     assert!(offset_of!(ProofSkeletonInstance, stage_2_caps) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::stage_2_caps);
-    assert!(offset_of!(ProofSkeletonInstance, memory_grand_product_accumulator) == total_size,);
+    assert!(offset_of!(ProofSkeletonInstance, grand_product_accumulator) == total_size,);
 
-    total_size += field_size!(ProofSkeletonInstance::memory_grand_product_accumulator);
+    total_size += field_size!(ProofSkeletonInstance::grand_product_accumulator);
     assert!(offset_of!(ProofSkeletonInstance, delegation_argument_accumulator) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::delegation_argument_accumulator);
@@ -192,7 +196,7 @@ impl ProofSkeletonInstance {
             i += 1;
         }
         // witness, memory, stage 2 tree
-        while i < offset_of!(ProofSkeletonInstance, memory_grand_product_accumulator)
+        while i < offset_of!(ProofSkeletonInstance, grand_product_accumulator)
             / core::mem::size_of::<u32>()
         {
             // hashes are unstructured u32

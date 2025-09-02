@@ -33,7 +33,12 @@ impl From<&MemorySubtree> for MainMemorySubtree {
         assert!(value.delegation_processor_layout.is_none());
         assert!(value.batched_ram_accesses.is_empty());
         assert!(value.register_and_indirect_accesses.is_empty());
-        let shuffle_ram_inits_and_teardowns = value.shuffle_ram_inits_and_teardowns.unwrap().into();
+        let shuffle_ram_inits_and_teardowns = value
+            .shuffle_ram_inits_and_teardowns
+            .get(0)
+            .unwrap()
+            .clone()
+            .into();
         let shuffle_ram_access_sets_count = value.shuffle_ram_access_sets.len() as u32;
         assert!(shuffle_ram_access_sets_count <= MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT as u32);
         let mut shuffle_ram_access_sets =

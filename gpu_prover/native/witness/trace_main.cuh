@@ -52,9 +52,9 @@ template <> DEVICE_FORCEINLINE u32 MainTrace::get_witness_from_placeholder<u32>(
       return data->rd_or_mem_word_read_value;
     }
     return 0;
-  };
+  }
   case ShuffleRamAddress: {
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return data->rs1_reg_idx;
     case 1:
@@ -66,7 +66,7 @@ template <> DEVICE_FORCEINLINE u32 MainTrace::get_witness_from_placeholder<u32>(
     }
   }
   case ShuffleRamReadValue: {
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return data->rs1_read_value;
     case 1:
@@ -78,7 +78,7 @@ template <> DEVICE_FORCEINLINE u32 MainTrace::get_witness_from_placeholder<u32>(
     }
   }
   case ShuffleRamWriteValue: {
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return data->rs1_read_value;
     case 1:
@@ -104,7 +104,7 @@ template <> DEVICE_FORCEINLINE u16 MainTrace::get_witness_from_placeholder<u16>(
   case DelegationType:
     return data->delegation_request;
   case ShuffleRamAddress: {
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return data->rs1_reg_idx;
     case 1:
@@ -126,7 +126,7 @@ template <> DEVICE_FORCEINLINE bool MainTrace::get_witness_from_placeholder<bool
   const SingleCycleTracingData *data = &cycle_data[trace_step];
   switch (placeholder.tag) {
   case ShuffleRamIsRegisterAccess:
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return true;
     case 1:
@@ -148,7 +148,7 @@ DEVICE_FORCEINLINE TimestampData MainTrace::get_witness_from_placeholder<Timesta
   const SingleCycleTracingData *data = &cycle_data[trace_step];
   switch (placeholder.tag) {
   case ShuffleRamReadTimestamp:
-    switch (placeholder.payload.u32) {
+    switch (placeholder.payload[0]) {
     case 0:
       return data->rs1_read_timestamp;
     case 1:

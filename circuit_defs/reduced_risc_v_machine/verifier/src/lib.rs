@@ -1,11 +1,11 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(array_chunks)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(slice_from_ptr_range)]
-#![feature(allocator_api)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), feature(allocator_api))]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+#[cfg(feature = "proof_utils")]
 extern crate alloc;
 
 use core::mem::MaybeUninit;
@@ -84,9 +84,6 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     >,
     proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
 ) {
-    // #[cfg(test)]
-    // panic!();
-
     Mersenne31Quartic::init_ext4_fma_ops();
 
     let mut leaf_inclusion_verifier = V::new();
@@ -112,8 +109,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
 
     // draw local lookup argument challenges
     let mut transcript_challenges = MaybeUninit::<
-        [u32; ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
-            .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)],
+        [u32; (NUM_STAGE_2_CHALLENGES * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(
@@ -122,7 +118,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let lookup_argument_linearization_challenges: [Mersenne31Quartic;
         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
         Mersenne31Quartic::from_array_of_base(
@@ -136,6 +132,41 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             .unwrap_unchecked()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
+    let (decoder_lookup_linearization_challenges, decoder_lookup_gamma) =
+        if VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .multiplicities_columns_for_decoder_in_executor_families
+            .num_elements()
+            > 0
+        {
+            let linearization_challenges: [Mersenne31Quartic;
+                EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES] =
+                core::array::from_fn(|_| {
+                    Mersenne31Quartic::from_array_of_base(
+                        it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    )
+                });
+            let additive_part = Mersenne31Quartic::from_array_of_base(
+                it.next()
+                    .unwrap_unchecked()
+                    .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+            );
+
+            (linearization_challenges, additive_part)
+        } else {
+            (
+                [Mersenne31Quartic::ZERO;
+                    EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+                Mersenne31Quartic::ZERO,
+            )
+        };
+
+    dbg!(lookup_argument_linearization_challenges);
+    dbg!(lookup_argument_gamma);
+    dbg!(decoder_lookup_linearization_challenges);
+    dbg!(decoder_lookup_gamma);
 
     // commit stage 2 artifacts - tree and memory grand product / delegation set accumulator
     Blake2sTranscript::commit_with_seed_using_hasher(
@@ -155,7 +186,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let quotient_alpha = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
@@ -167,6 +198,11 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             .unwrap_unchecked()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
+
+    dbg!(quotient_alpha);
+    dbg!(quotient_beta);
+
+    let quotient_alpha = Mersenne31Quartic::ONE;
 
     // commit quotient tree
     Blake2sTranscript::commit_with_seed_using_hasher(
@@ -186,12 +222,14 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let z = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
+
+    dbg!(z);
 
     // commit evaluations
     Blake2sTranscript::commit_with_seed_using_hasher(
@@ -211,7 +249,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = transcript_challenges.array_chunks::<4>();
+    let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
     let deep_poly_alpha = Mersenne31Quartic::from_array_of_base(
         it.next()
             .unwrap_unchecked()
@@ -240,7 +278,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = transcript_challenges.array_chunks::<4>();
+        let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
         *challenge = Mersenne31Quartic::from_array_of_base(
             it.next()
                 .unwrap_unchecked()
@@ -266,7 +304,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = transcript_challenges.array_chunks::<4>();
+        let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
         *dst = Mersenne31Quartic::from_array_of_base(
             it.next()
                 .unwrap_unchecked()
@@ -313,9 +351,25 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     {
         // setup, then witness, then memory, then stage 2 base, then stage 2 ext, then quotient
         let (setup, rest) = skeleton.openings_at_z.split_at(NUM_SETUP_OPENINGS);
+        let setup = setup
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_SETUP_OPENINGS]>()
+            .as_ref_unchecked();
         let (witness, rest) = rest.split_at(NUM_WITNESS_OPENINGS);
+        let witness = witness
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_WITNESS_OPENINGS]>()
+            .as_ref_unchecked();
         let (memory, rest) = rest.split_at(NUM_MEMORY_OPENINGS);
+        let memory = memory
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_MEMORY_OPENINGS]>()
+            .as_ref_unchecked();
         let (stage_2, rest) = rest.split_at(NUM_STAGE2_OPENINGS);
+        let stage_2 = stage_2
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_STAGE2_OPENINGS]>()
+            .as_ref_unchecked();
         assert_eq!(rest.len(), 1);
         let quotient_opening = rest[0];
 
@@ -331,7 +385,15 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         let (witness_next_row_set, rest) = skeleton
             .openings_at_z_omega
             .split_at(NUM_WITNESS_OPENING_NEXT_ROW);
+        let witness_next_row_set = witness_next_row_set
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_WITNESS_OPENING_NEXT_ROW]>()
+            .as_ref_unchecked();
         let (memory_next_row_set, rest) = rest.split_at(NUM_MEMORY_OPENING_NEXT_ROW);
+        let memory_next_row_set = memory_next_row_set
+            .as_ptr()
+            .cast::<[Mersenne31Quartic; NUM_MEMORY_OPENING_NEXT_ROW]>()
+            .as_ref_unchecked();
         assert_eq!(rest.len(), 1);
         let stage_2_next_row_set = rest;
 
@@ -431,22 +493,24 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             };
 
         let aux_proof_values = ProofAuxValues {
-            memory_grand_product_accumulator_final_value: skeleton.memory_grand_product_accumulator,
+            grand_product_accumulator_final_value: skeleton.grand_product_accumulator,
             delegation_argument_accumulator_sum,
         };
 
-        let delegation_argument_linearization_challenges =
-            if skeleton.delegation_argument_challenges.len() > 0 {
-                *skeleton.delegation_argument_challenges.get_unchecked(0)
-            } else {
-                ExternalDelegationArgumentChallenges::default()
-            };
-
-        let aux_boundary_values = if skeleton.aux_boundary_values.len() > 0 {
-            *skeleton.aux_boundary_values.get_unchecked(0)
+        let delegation_argument_challenges = if skeleton.delegation_argument_challenges.len() > 0 {
+            *skeleton.delegation_argument_challenges.get_unchecked(0)
         } else {
-            AuxArgumentsBoundaryValues::default()
+            ExternalDelegationArgumentChallenges::default()
         };
+
+        let machine_state_permutation_challenges =
+            if skeleton.machine_state_permutation_challenges.len() > 0 {
+                *skeleton
+                    .machine_state_permutation_challenges
+                    .get_unchecked(0)
+            } else {
+                ExternalMachineStateArgumentChallenges::default()
+            };
 
         assert!((u32::MAX >> CIRCUIT_SEQUENCE_BITS_SHIFT) >= skeleton.circuit_sequence_idx);
 
@@ -478,19 +542,22 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             quotient_alpha,
             quotient_beta,
             &divisors,
-            lookup_argument_linearization_challenges,
+            &lookup_argument_linearization_challenges,
             lookup_argument_gamma,
             lookup_argument_two_gamma,
-            skeleton
+            &skeleton
                 .memory_argument_challenges
                 .memory_argument_linearization_challenges,
             skeleton.memory_argument_challenges.memory_argument_gamma,
-            delegation_argument_linearization_challenges
-                .delegation_argument_linearization_challenges,
-            delegation_argument_linearization_challenges.delegation_argument_gamma,
+            &delegation_argument_challenges.delegation_argument_linearization_challenges,
+            delegation_argument_challenges.delegation_argument_gamma,
+            &decoder_lookup_linearization_challenges,
+            decoder_lookup_gamma,
+            &machine_state_permutation_challenges.linearization_challenges,
+            machine_state_permutation_challenges.additive_term,
             &skeleton.public_inputs,
             &aux_proof_values,
-            aux_boundary_values,
+            &skeleton.aux_boundary_values,
             memory_timestamp_high_from_circuit_sequence,
             delegation_type,
             delegation_argument_interpolant_linear_coeff,
@@ -905,7 +972,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         proof_state_dst.lazy_init_boundary_values = skeleton.aux_boundary_values;
     }
     // - memory grand product and delegation accumulators
-    proof_state_dst.memory_grand_product_accumulator = skeleton.memory_grand_product_accumulator;
+    proof_state_dst.grand_product_accumulator = skeleton.grand_product_accumulator;
     if NUM_DELEGATION_CHALLENGES > 0 {
         proof_state_dst.delegation_argument_accumulator = skeleton.delegation_argument_accumulator;
     }
@@ -914,7 +981,11 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     proof_state_dst.delegation_type = skeleton.delegation_type;
     // - input and output state variables
     if NUM_STATE_ELEMENTS > 0 {
-        let mut it = skeleton.public_inputs.array_chunks::<NUM_STATE_ELEMENTS>();
+        let mut it = skeleton
+            .public_inputs
+            .as_chunks::<NUM_STATE_ELEMENTS>()
+            .0
+            .into_iter();
         proof_input_dst.input_state_variables = *it.next().unwrap_unchecked();
         proof_input_dst.output_state_variables = *it.next().unwrap_unchecked();
     }

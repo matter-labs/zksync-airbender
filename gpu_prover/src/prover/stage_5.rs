@@ -300,6 +300,7 @@ impl<'a, C: ProverContext> StageFiveOutput<'a, C> {
             [0u32; 4usize.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
         Transcript::draw_randomness(seed, &mut transcript_challenges);
         let coeffs = transcript_challenges
+            .into_iter()
             .array_chunks::<4>()
             .next()
             .unwrap()

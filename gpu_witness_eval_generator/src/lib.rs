@@ -359,6 +359,7 @@ mod tests {
         generate("bigint_delegation");
         generate("blake_delegation");
         generate("full_machine_with_delegation");
+        generate("keccak_delegation");
         generate("minimal_machine_with_delegation");
     }
 }

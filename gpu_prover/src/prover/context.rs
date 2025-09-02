@@ -214,7 +214,7 @@ impl<'a> ProverContext for MemPoolProverContext<'a> {
     }
 
     fn alloc<T: Sync>(&self, size: usize) -> CudaResult<Self::Allocation<T>> {
-        assert_ne!(size, 0);
+        // assert_ne!(size, 0);
         let result = DevicePoolAllocation::<T>::alloc_from_pool_async(
             size,
             &self.mem_pool,

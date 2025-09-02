@@ -99,12 +99,14 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
       ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp_columns = {};
       ColumnSet<REGISTER_SIZE> read_value_columns = {};
       ColumnSet<1> address_derivation_carry_bit_column = {};
+      Option<IndirectAccessVariableDependency> variable_dependent = {};
       switch (tag) {
       case IndirectReadAccess: {
         const auto access = payload.indirect_access_columns_read_access;
         read_timestamp_columns = access.read_timestamp;
         read_value_columns = access.read_value;
         address_derivation_carry_bit_column = access.address_derivation_carry_bit;
+        variable_dependent = access.variable_dependent;
         break;
       }
       case IndirectWriteAccess: {
@@ -112,28 +114,34 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
         read_timestamp_columns = access.read_timestamp;
         read_value_columns = access.read_value;
         address_derivation_carry_bit_column = access.address_derivation_carry_bit;
+        variable_dependent = access.variable_dependent;
         break;
       }
       }
-      PlaceholderPayload placeholder_payload{.delegation_payload = DelegationPayload{register_index, access_index}};
       const TimestampData read_timestamp_value =
-          trace.get_witness_from_placeholder<TimestampData>({DelegationIndirectReadTimestamp, placeholder_payload}, index);
+          trace.get_witness_from_placeholder<TimestampData>({DelegationIndirectReadTimestamp, {register_index, access_index}}, index);
       write_timestamp_value(read_timestamp_columns, read_timestamp_value, memory);
       PRINT_TS(M, read_timestamp_columns, read_timestamp_value);
-      const u32 read_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectReadValue, placeholder_payload}, index);
+      const u32 read_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectReadValue, {register_index, access_index}}, index);
       write_u32_value(read_value_columns, read_value_value, memory);
       PRINT_U32(M, read_value_columns, read_value_value);
       if (tag == IndirectWriteAccess) {
-        const u32 write_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectWriteValue, placeholder_payload}, index);
+        const u32 write_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectWriteValue, {register_index, access_index}}, index);
         const auto write_value_columns = payload.indirect_access_columns_write_access.write_value;
         write_u32_value(write_value_columns, write_value_value, memory);
         PRINT_U32(M, write_value_columns, write_value_value);
       }
-      if (access_index != 0 && address_derivation_carry_bit_column.num_elements != 0) {
+      if (address_derivation_carry_bit_column.num_elements != 0) {
         const u32 derived_address = base_address + access_index * sizeof(u32);
         const bool carry_bit = derived_address >> 16 != base_address >> 16;
         write_u16_value(address_derivation_carry_bit_column, carry_bit, memory);
         PRINT_U16(M, address_derivation_carry_bit_column, carry_bit);
+      }
+      if (variable_dependent.tag == Some) {
+        const auto dependency = variable_dependent.value;
+        const u16 offset = trace.get_witness_from_placeholder<u16>({DelegationIndirectAccessVariableOffset, dependency.index}, index);
+        write_u16_value(dependency.variable, offset, memory);
+        PRINT_U16(M, v, offset);
       }
       if (!COMPUTE_WITNESS)
         continue;

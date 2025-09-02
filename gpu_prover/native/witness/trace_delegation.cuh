@@ -15,6 +15,10 @@ struct RegisterOrIndirectReadWriteData {
   const TimestampData timestamp;
 };
 
+struct RegisterOrIndirectVariableOffsetData {
+  const u16 variable_offset_value;
+};
+
 #define MAX_INDIRECT_ACCESS_REGISTERS 2
 #define MAX_INDIRECT_ACCESS_WORDS 24
 #define USE_WRITES_MASK (1u << 31)
@@ -24,6 +28,7 @@ struct DelegationTrace {
   const u32 num_register_accesses_per_delegation;
   const u32 num_indirect_reads_per_delegation;
   const u32 num_indirect_writes_per_delegation;
+  const u32 num_indirect_access_variable_offsets_per_delegation;
   const u32 base_register_index;
   const u16 delegation_type;
   const u32 indirect_accesses_properties[MAX_INDIRECT_ACCESS_REGISTERS][MAX_INDIRECT_ACCESS_WORDS];
@@ -31,6 +36,7 @@ struct DelegationTrace {
   const RegisterOrIndirectReadWriteData *const register_accesses;
   const RegisterOrIndirectReadData *const indirect_reads;
   const RegisterOrIndirectReadWriteData *const indirect_writes;
+  const RegisterOrIndirectVariableOffsetData *const indirect_offset_variables;
 
   template <typename T> DEVICE_FORCEINLINE T get_witness_from_placeholder(Placeholder, unsigned) const;
 };
@@ -38,7 +44,7 @@ struct DelegationTrace {
 template <> DEVICE_FORCEINLINE u32 DelegationTrace::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_row) const {
   if (trace_row >= num_requests)
     return 0;
-  const auto [register_index, word_index] = placeholder.payload.delegation_payload;
+  const auto [register_index, word_index] = placeholder.payload;
   const unsigned register_offset = register_index - base_register_index;
   switch (placeholder.tag) {
   case DelegationRegisterReadValue: {
@@ -76,6 +82,11 @@ template <> DEVICE_FORCEINLINE u16 DelegationTrace::get_witness_from_placeholder
     return 0;
   case DelegationType:
     return delegation_type;
+  case DelegationIndirectAccessVariableOffset: {
+    const u32 variable_index = placeholder.payload[0];
+    const unsigned offset = trace_row * num_indirect_access_variable_offsets_per_delegation + variable_index;
+    return indirect_offset_variables[offset].variable_offset_value;
+  }
   default:
     __trap();
   }
@@ -96,7 +107,7 @@ template <>
 DEVICE_FORCEINLINE TimestampData DelegationTrace::get_witness_from_placeholder<TimestampData>(const Placeholder placeholder, const unsigned trace_row) const {
   if (trace_row >= num_requests)
     return {};
-  const auto [register_index, word_index] = placeholder.payload.delegation_payload;
+  const auto [register_index, word_index] = placeholder.payload;
   switch (placeholder.tag) {
   case DelegationWriteTimestamp:
     return write_timestamp[trace_row];

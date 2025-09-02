@@ -11,18 +11,22 @@ unsafe fn evaluate_every_row_except_last(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 4usize],
     aux_proof_values: &ProofAuxValues,
-    aux_boundary_values: AuxArgumentsBoundaryValues,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues; 1usize],
     memory_timestamp_high_from_sequence_idx: Mersenne31Field,
     delegation_type: Mersenne31Field,
     delegation_argument_interpolant_linear_coeff: Mersenne31Quartic,
@@ -4698,45 +4702,44 @@ unsafe fn evaluate_every_row_except_last(
             }
         }
         {
-            accumulated_contribution.mul_assign(&quotient_alpha);
-            let contribution = {
-                let individual_term = {
-                    let a = *(memory.get_unchecked(0usize));
-                    let b = *(memory.get_unchecked(1usize));
-                    let c = *(stage_2.get_unchecked(5usize));
-                    let mut individual_term = a;
-                    individual_term.mul_assign(&b);
-                    individual_term.sub_assign(&c);
+            let a = *(memory.get_unchecked(0usize));
+            let b = *(memory.get_unchecked(1usize));
+            let c = *(stage_2.get_unchecked(5usize));
+            {
+                accumulated_contribution.mul_assign(&quotient_alpha);
+                let contribution = {
+                    let individual_term = {
+                        let mut individual_term = a;
+                        individual_term.mul_assign(&b);
+                        individual_term.sub_assign(&c);
+                        individual_term
+                    };
                     individual_term
                 };
-                individual_term
-            };
-            accumulated_contribution.add_assign(&contribution);
-        }
-        {
-            accumulated_contribution.mul_assign(&quotient_alpha);
-            let contribution = {
-                let individual_term = {
-                    let a = *(memory.get_unchecked(0usize));
-                    let b = *(memory.get_unchecked(1usize));
-                    let c = *(stage_2.get_unchecked(5usize));
-                    let acc_value = *(stage_2.get_unchecked(14usize));
-                    let mut denom = lookup_argument_gamma;
-                    denom.add_assign(&a);
-                    denom.add_assign(&b);
-                    denom.mul_assign(&lookup_argument_gamma);
-                    denom.add_assign(&c);
-                    denom.mul_assign(&acc_value);
-                    let mut numerator = lookup_argument_two_gamma;
-                    numerator.add_assign(&a);
-                    numerator.add_assign(&b);
-                    let mut individual_term = denom;
-                    individual_term.sub_assign(&numerator);
+                accumulated_contribution.add_assign(&contribution);
+            }
+            {
+                accumulated_contribution.mul_assign(&quotient_alpha);
+                let contribution = {
+                    let individual_term = {
+                        let acc_value = *(stage_2.get_unchecked(14usize));
+                        let mut denom = lookup_argument_gamma;
+                        denom.add_assign(&a);
+                        denom.add_assign(&b);
+                        denom.mul_assign(&lookup_argument_gamma);
+                        denom.add_assign(&c);
+                        denom.mul_assign(&acc_value);
+                        let mut numerator = lookup_argument_two_gamma;
+                        numerator.add_assign(&a);
+                        numerator.add_assign(&b);
+                        let mut individual_term = denom;
+                        individual_term.sub_assign(&numerator);
+                        individual_term
+                    };
                     individual_term
                 };
-                individual_term
-            };
-            accumulated_contribution.add_assign(&contribution);
+                accumulated_contribution.add_assign(&contribution);
+            }
         }
         {
             let a = {
@@ -5944,18 +5947,22 @@ unsafe fn evaluate_every_row_except_two(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 4usize],
     aux_proof_values: &ProofAuxValues,
-    aux_boundary_values: AuxArgumentsBoundaryValues,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues; 1usize],
     memory_timestamp_high_from_sequence_idx: Mersenne31Field,
     delegation_type: Mersenne31Field,
     delegation_argument_interpolant_linear_coeff: Mersenne31Quartic,
@@ -6045,18 +6052,22 @@ unsafe fn evaluate_last_row_and_zero(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 4usize],
     aux_proof_values: &ProofAuxValues,
-    aux_boundary_values: AuxArgumentsBoundaryValues,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues; 1usize],
     memory_timestamp_high_from_sequence_idx: Mersenne31Field,
     delegation_type: Mersenne31Field,
     delegation_argument_interpolant_linear_coeff: Mersenne31Quartic,
@@ -6164,18 +6175,22 @@ pub unsafe fn evaluate_quotient(
     quotient_alpha: Mersenne31Quartic,
     quotient_beta: Mersenne31Quartic,
     divisors: &[Mersenne31Quartic; 6usize],
-    lookup_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+    lookup_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
-    memory_argument_linearization_challenges: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+    memory_argument_linearization_challenges: &[Mersenne31Quartic;
+         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
-    delegation_argument_linearization_challenges : [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+    delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
+    decoder_lookup_argument_linearization_challenges : & [Mersenne31Quartic ; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    decoder_lookup_argument_gamma: Mersenne31Quartic,
+    state_permutation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: Mersenne31Quartic,
     public_inputs: &[Mersenne31Field; 4usize],
     aux_proof_values: &ProofAuxValues,
-    aux_boundary_values: AuxArgumentsBoundaryValues,
+    aux_boundary_values: &[AuxArgumentsBoundaryValues; 1usize],
     memory_timestamp_high_from_sequence_idx: Mersenne31Field,
     delegation_type: Mersenne31Field,
     delegation_argument_interpolant_linear_coeff: Mersenne31Quartic,
@@ -6199,6 +6214,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -6225,6 +6244,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -6251,6 +6274,10 @@ pub unsafe fn evaluate_quotient(
         memory_argument_gamma,
         delegation_argument_linearization_challenges,
         delegation_argument_gamma,
+        decoder_lookup_argument_linearization_challenges,
+        decoder_lookup_argument_gamma,
+        state_permutation_argument_linearization_challenges,
+        state_permutation_argument_gamma,
         public_inputs,
         aux_proof_values,
         aux_boundary_values,
@@ -6262,7 +6289,7 @@ pub unsafe fn evaluate_quotient(
         let mut accumulated_contribution = {
             let individual_term = {
                 let mut individual_term = *(memory.get_unchecked(0usize));
-                let t = aux_boundary_values.lazy_init_first_row[0];
+                let t = aux_boundary_values[0usize].lazy_init_first_row[0];
                 individual_term.sub_assign_base(&t);
                 individual_term
             };
@@ -6273,7 +6300,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(1usize));
-                    let t = aux_boundary_values.lazy_init_first_row[1];
+                    let t = aux_boundary_values[0usize].lazy_init_first_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6286,7 +6313,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(2usize));
-                    let t = aux_boundary_values.teardown_value_first_row[0];
+                    let t = aux_boundary_values[0usize].teardown_value_first_row[0];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6299,7 +6326,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(3usize));
-                    let t = aux_boundary_values.teardown_value_first_row[1];
+                    let t = aux_boundary_values[0usize].teardown_value_first_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6312,7 +6339,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(4usize));
-                    let t = aux_boundary_values.teardown_timestamp_first_row[0];
+                    let t = aux_boundary_values[0usize].teardown_timestamp_first_row[0];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6325,7 +6352,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(5usize));
-                    let t = aux_boundary_values.teardown_timestamp_first_row[1];
+                    let t = aux_boundary_values[0usize].teardown_timestamp_first_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6379,7 +6406,7 @@ pub unsafe fn evaluate_quotient(
         let mut accumulated_contribution = {
             let individual_term = {
                 let mut individual_term = *(memory.get_unchecked(0usize));
-                let t = aux_boundary_values.lazy_init_one_before_last_row[0];
+                let t = aux_boundary_values[0usize].lazy_init_one_before_last_row[0];
                 individual_term.sub_assign_base(&t);
                 individual_term
             };
@@ -6390,7 +6417,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(1usize));
-                    let t = aux_boundary_values.lazy_init_one_before_last_row[1];
+                    let t = aux_boundary_values[0usize].lazy_init_one_before_last_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6403,7 +6430,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(2usize));
-                    let t = aux_boundary_values.teardown_value_one_before_last_row[0];
+                    let t = aux_boundary_values[0usize].teardown_value_one_before_last_row[0];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6416,7 +6443,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(3usize));
-                    let t = aux_boundary_values.teardown_value_one_before_last_row[1];
+                    let t = aux_boundary_values[0usize].teardown_value_one_before_last_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6429,7 +6456,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(4usize));
-                    let t = aux_boundary_values.teardown_timestamp_one_before_last_row[0];
+                    let t = aux_boundary_values[0usize].teardown_timestamp_one_before_last_row[0];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6442,7 +6469,7 @@ pub unsafe fn evaluate_quotient(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = *(memory.get_unchecked(5usize));
-                    let t = aux_boundary_values.teardown_timestamp_one_before_last_row[1];
+                    let t = aux_boundary_values[0usize].teardown_timestamp_one_before_last_row[1];
                     individual_term.sub_assign_base(&t);
                     individual_term
                 };
@@ -6484,7 +6511,7 @@ pub unsafe fn evaluate_quotient(
         let mut accumulated_contribution = {
             let individual_term = {
                 let mut individual_term = *(stage_2.get_unchecked(37usize));
-                let t = aux_proof_values.memory_grand_product_accumulator_final_value;
+                let t = aux_proof_values.grand_product_accumulator_final_value;
                 individual_term.sub_assign(&t);
                 individual_term
             };

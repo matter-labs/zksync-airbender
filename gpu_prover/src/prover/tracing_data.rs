@@ -63,12 +63,16 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
                 let d_register_accesses = context.alloc(trace.register_accesses.len())?;
                 let d_indirect_reads = context.alloc(trace.indirect_reads.len())?;
                 let d_indirect_writes = context.alloc(trace.indirect_writes.len())?;
+                let d_indirect_offset_variables =
+                    context.alloc(trace.indirect_offset_variables.len())?;
                 let trace = DelegationTraceDevice::<C> {
                     num_requests: trace.num_requests,
                     num_register_accesses_per_delegation: trace
                         .num_register_accesses_per_delegation,
                     num_indirect_reads_per_delegation: trace.num_indirect_reads_per_delegation,
                     num_indirect_writes_per_delegation: trace.num_indirect_writes_per_delegation,
+                    num_indirect_access_variable_offsets_per_delegation: trace
+                        .num_indirect_access_variable_offsets_per_delegation,
                     base_register_index: trace.base_register_index,
                     delegation_type: trace.delegation_type,
                     indirect_accesses_properties: trace.indirect_accesses_properties.clone(),
@@ -76,6 +80,7 @@ impl<'a, C: ProverContext> TracingDataTransfer<'a, C> {
                     register_accesses: d_register_accesses,
                     indirect_reads: d_indirect_reads,
                     indirect_writes: d_indirect_writes,
+                    indirect_offset_variables: d_indirect_offset_variables,
                 };
                 TracingDataDevice::Delegation(trace)
             }

@@ -8,6 +8,10 @@
       "start": 1,
       "num_elements": 1
     },
+    "multiplicities_columns_for_decoder_in_executor_families": {
+      "start": 0,
+      "num_elements": 0
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 2,
       "num_elements": 2
@@ -817,20 +821,22 @@
     "total_width": 192
   },
   "memory_layout": {
-    "shuffle_ram_inits_and_teardowns": {
-      "lazy_init_addresses_columns": {
-        "start": 0,
-        "num_elements": 1
-      },
-      "lazy_teardown_values_columns": {
-        "start": 2,
-        "num_elements": 1
-      },
-      "lazy_teardown_timestamps_columns": {
-        "start": 4,
-        "num_elements": 1
+    "shuffle_ram_inits_and_teardowns": [
+      {
+        "lazy_init_addresses_columns": {
+          "start": 0,
+          "num_elements": 1
+        },
+        "lazy_teardown_values_columns": {
+          "start": 2,
+          "num_elements": 1
+        },
+        "lazy_teardown_timestamps_columns": {
+          "start": 4,
+          "num_elements": 1
+        }
       }
-    },
+    ],
     "shuffle_ram_access_sets": [
       {
         "Readonly": {
@@ -924,6 +930,8 @@
       "in_cycle_write_index": 3
     },
     "delegation_processor_layout": null,
+    "machine_state_layout": null,
+    "intermediate_state_layout": null,
     "batched_ram_accesses": [],
     "register_and_indirect_accesses": [],
     "total_width": 30
@@ -944,6 +952,10 @@
     "generic_lookup_setup_columns": {
       "start": 4,
       "num_elements": 2
+    },
+    "preprocessed_decoder_setup_columns": {
+      "start": 0,
+      "num_elements": 0
     },
     "total_width": 12
   },
@@ -986,6 +998,10 @@
       "start": 52,
       "num_elements": 17
     },
+    "intermediate_poly_for_decoder_accesses": {
+      "start": 0,
+      "num_elements": 0
+    },
     "intermediate_poly_for_range_check_16_multiplicity": {
       "start": 120,
       "num_elements": 1
@@ -998,13 +1014,33 @@
       "start": 128,
       "num_elements": 2
     },
+    "intermediate_polys_for_decoder_multiplicities": {
+      "start": 0,
+      "num_elements": 0
+    },
     "delegation_processing_aux_poly": {
       "start": 136,
       "num_elements": 1
     },
-    "intermediate_polys_for_memory_argument": {
+    "intermediate_polys_for_memory_init_teardown": {
       "start": 140,
-      "num_elements": 5
+      "num_elements": 1
+    },
+    "intermediate_polys_for_memory_argument": {
+      "start": 144,
+      "num_elements": 3
+    },
+    "intermediate_polys_for_state_permutation": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_polys_for_permutation_masking": {
+      "start": 0,
+      "num_elements": 0
+    },
+    "intermediate_poly_for_grand_product": {
+      "start": 156,
+      "num_elements": 1
     },
     "ext4_polys_offset": 12,
     "total_width": 160
@@ -10239,22 +10275,24 @@
     }
   },
   "scratch_space_size_for_witness_gen": 7,
-  "lazy_init_address_aux_vars": {
-    "aux_low_high": [
-      {
-        "WitnessSubtree": 26
+  "lazy_init_address_aux_vars": [
+    {
+      "aux_low_high": [
+        {
+          "WitnessSubtree": 26
+        },
+        {
+          "WitnessSubtree": 27
+        }
+      ],
+      "intermediate_borrow": {
+        "WitnessSubtree": 70
       },
-      {
-        "WitnessSubtree": 27
+      "final_borrow": {
+        "WitnessSubtree": 71
       }
-    ],
-    "intermediate_borrow": {
-      "WitnessSubtree": 70
-    },
-    "final_borrow": {
-      "WitnessSubtree": 71
     }
-  },
+  ],
   "memory_queries_timestamp_comparison_aux_vars": [
     {
       "WitnessSubtree": 72
@@ -10302,6 +10340,8 @@
     ],
     "aux_borrow_sets": []
   },
+  "executor_family_circuit_next_timestamp_aux_var": null,
+  "executor_family_decoder_table_size": 0,
   "trace_len": 4194304,
   "table_offsets": [
     0,
@@ -10346,6 +10386,25 @@
     5447937,
     6496513,
     6627585,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
+    6758657,
     6758657
   ],
   "total_tables_size": 6758657

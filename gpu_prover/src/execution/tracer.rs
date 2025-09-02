@@ -4,7 +4,8 @@ use fft::GoodAllocator;
 use prover::definitions::LazyInitAndTeardown;
 use prover::risc_v_simulator::abstractions::memory::{AccessType, MemorySource};
 use prover::risc_v_simulator::abstractions::tracer::{
-    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData, Tracer,
+    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
+    RegisterOrIndirectVariableOffsetData, Tracer,
 };
 use prover::risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use prover::risc_v_simulator::cycle::status_registers::TrapReason;
@@ -550,6 +551,7 @@ impl<
         indirect_reads: &mut [RegisterOrIndirectReadData],
         indirect_write_addresses: &[u32],
         indirect_writes: &mut [RegisterOrIndirectReadWriteData],
+        indirect_offset_variables: &[RegisterOrIndirectVariableOffsetData],
     ) {
         debug_assert_eq!(self.current_timestamp % TIMESTAMP_STEP, 0);
         debug_assert_eq!(indirect_read_addresses.len(), indirect_reads.len());
@@ -632,6 +634,9 @@ impl<
                         .extend_from_slice(&*register_accesses);
                     witness.indirect_reads.extend_from_slice(&*indirect_reads);
                     witness.indirect_writes.extend_from_slice(&*indirect_writes);
+                    witness
+                        .indirect_offset_variables
+                        .extend_from_slice(indirect_offset_variables);
                     witness
                         .write_timestamp
                         .push_within_capacity(TimestampData::from_scalar(write_timestamp))

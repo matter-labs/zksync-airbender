@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 #[repr(C, align(16))]
 pub struct ProofSkeleton<
     const SKELETON_PADDING: usize,
@@ -8,6 +8,7 @@ pub struct ProofSkeleton<
     const NUM_COSETS: usize,
     const NUM_PUBLIC_INPUTS: usize,
     const NUM_DELEGATION_CHALLENGES: usize,
+    const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize,
     const NUM_AUX_BOUNDARY_VALUES: usize,
     const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
     const NUM_OPENINGS_AT_Z: usize,
@@ -16,7 +17,7 @@ pub struct ProofSkeleton<
     const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
     const FRI_FINAL_DEGREE: usize,
 > {
-    pub _padding: [u32; SKELETON_PADDING],
+    pub(crate) _padding: [MaybeUninit<u32>; SKELETON_PADDING],
     pub circuit_sequence_idx: u32,
     pub delegation_type: u32,
     pub public_inputs: [Mersenne31Field; NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS],
@@ -24,11 +25,13 @@ pub struct ProofSkeleton<
     pub memory_argument_challenges: ExternalMemoryArgumentChallenges,
     pub delegation_argument_challenges:
         [ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES],
+    pub machine_state_permutation_challenges:
+        [ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_PERMUTATION_CHALLENGES],
     pub aux_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
     pub witness_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub memory_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub stage_2_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    pub memory_grand_product_accumulator: Mersenne31Quartic,
+    pub grand_product_accumulator: Mersenne31Quartic,
     pub delegation_argument_accumulator: [Mersenne31Quartic; NUM_DELEGATION_CHALLENGES],
     pub quotient_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub openings_at_z: [Mersenne31Quartic; NUM_OPENINGS_AT_Z],
