@@ -5,14 +5,14 @@ use crate::unrolled::evaluate_witness_for_executor_family;
 use crate::unrolled::run_unrolled_machine_for_num_cycles;
 use crate::unrolled::MemoryCircuitOracle;
 use crate::unrolled::NonMemoryCircuitOracle;
+use common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
+use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 use cs::cs::circuit::Circuit;
 use cs::definitions::*;
 use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
-
-use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
-use risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
@@ -317,10 +317,10 @@ pub fn run_basic_unrolled_test_impl(
 
     let mut factories = HashMap::new();
     for delegation_type in [
-        BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-        U256_OPS_WITH_CONTROL_ACCESS_ID,
+        BLAKE2S_DELEGATION_CSR_REGISTER,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     ] {
-        if delegation_type == BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID {
+        if delegation_type == BLAKE2S_DELEGATION_CSR_REGISTER {
             let num_requests_per_circuit = (1 << 20) - 1;
             let delegation_type = delegation_type as u16;
             let factory_fn = move || {
@@ -328,9 +328,9 @@ pub fn run_basic_unrolled_test_impl(
             };
             factories.insert(
                 delegation_type,
-                Box::new(factory_fn) as Box<(dyn Fn() -> DelegationWitness)>,
+                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,
             );
-        } else if delegation_type == U256_OPS_WITH_CONTROL_ACCESS_ID {
+        } else if delegation_type == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
             let num_requests_per_circuit = (1 << 21) - 1;
             let delegation_type = delegation_type as u16;
             let factory_fn = move || {
@@ -497,8 +497,8 @@ pub fn run_basic_unrolled_test_impl(
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
-                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16,
-                U256_OPS_WITH_CONTROL_ACCESS_ID as u16,
+                BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+                BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             ],
         )
     } else {
@@ -508,8 +508,8 @@ pub fn run_basic_unrolled_test_impl(
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
-                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16,
-                U256_OPS_WITH_CONTROL_ACCESS_ID as u16,
+                BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+                BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             ],
         )
     };
@@ -722,7 +722,7 @@ pub fn run_basic_unrolled_test_impl(
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
         true,
-        &[BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID],
+        &[BLAKE2S_DELEGATION_CSR_REGISTER],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 

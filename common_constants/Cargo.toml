@@ -1,5 +1,5 @@
 [package]
-name = "bigint_with_control"
+name = "common_constants"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,8 +10,3 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-prover = { workspace = true, features = ["prover"] }
-verifier_generator = { workspace = true }
-common_constants = { workspace = true }
-serde = { workspace = true }
-serde_json = "*"

@@ -52,11 +52,12 @@ members = [
     "witness_eval_generator",
     "gpu_witness_eval_generator",
     "circuit_defs/machine_without_signed_mul_div",
-    "circuit_defs/keccak_special5",
+    "circuit_defs/keccak_special5", "common_constants",
 ]
 
 default-members = [
     "blake2s_u32",
+    "common_constants",
     "circuit_defs/bigint_with_control",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/circuit_common",
@@ -105,6 +106,7 @@ categories = ["cryptography"]
 [workspace.dependencies]
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
+common_constants = { path = "./common_constants" }
 trace_holder = { path = "./trace_holder" }
 worker = { path = "./worker" }
 fft = { path = "./fft" }

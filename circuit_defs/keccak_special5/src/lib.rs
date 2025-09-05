@@ -9,7 +9,7 @@ use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
-    risc_v_simulator::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
+    common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 pub const DOMAIN_SIZE: usize = 1 << 21;
 pub const NUM_DELEGATION_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;

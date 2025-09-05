@@ -7,7 +7,7 @@ use risc_v_simulator::{cycle::IMStandardIsaConfig, delegations::DelegationsCSRPr
 
 const SECOND_WORD_BITS: usize = 4;
 
-use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 
 pub fn run_basic_delegation_test_impl(
     maybe_delegator_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
@@ -48,7 +48,7 @@ pub fn run_basic_delegation_test_impl(
     );
     let csr_table = create_csr_table_for_delegation(
         true,
-        &[BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID],
+        &[BLAKE2S_DELEGATION_CSR_REGISTER],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
@@ -99,9 +99,9 @@ pub fn run_basic_delegation_test_impl(
 
         serialize_to_file(&circuit, "blake2s_delegation_circuit_layout.json");
 
-        let delegation_type = BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+        let delegation_type = BLAKE2S_DELEGATION_CSR_REGISTER;
         let description = DelegationProcessorDescription {
-            delegation_type: BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+            delegation_type: BLAKE2S_DELEGATION_CSR_REGISTER,
             num_requests_per_circuit: NUM_DELEGATION_CYCLES,
             trace_len: NUM_DELEGATION_CYCLES + 1,
             table_driver,

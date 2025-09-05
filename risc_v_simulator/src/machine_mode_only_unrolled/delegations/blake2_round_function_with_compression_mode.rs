@@ -1,22 +1,14 @@
 use super::*;
-use crate::cycle::{state::NON_DETERMINISM_CSR, status_registers::TrapReason};
+use super::*;
+use crate::cycle::status_registers::TrapReason;
 use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::{
     mixing_function, BLAKE2S_BLOCK_SIZE_BYTES, BLAKE2S_BLOCK_SIZE_U32_WORDS,
     BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS, BLAKE2S_STATE_WIDTH_IN_U32_WORDS, CONFIGURED_IV, IV,
     SIGMAS,
 };
+use common_constants::delegation_types::blake2s_with_control::*;
 use cs::definitions::{TimestampData, TimestampScalar};
-
-use super::*;
-
-pub const BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID: u32 = NON_DETERMINISM_CSR + 7;
-
-pub const X10_NUM_WRITES: usize = 8 + 16;
-pub const X11_NUM_READS: usize = 16;
-
-const TOTAL_RAM_ACCESSES: usize = X10_NUM_WRITES + X11_NUM_READS;
-const BASE_ABI_REGISTER: u32 = 10;
 
 pub fn blake2_round_function_with_extended_control_over_unrolled_state<
     M: MemorySource,
@@ -42,16 +34,19 @@ pub fn blake2_round_function_with_extended_control_over_unrolled_state<
 
     assert!(x10 != x11);
 
-    let mut state_accesses: [RegisterOrIndirectReadWriteData; X10_NUM_WRITES] =
-        register_indirect_read_write_continuous_noexcept::<_, X10_NUM_WRITES>(
+    let mut state_accesses: [RegisterOrIndirectReadWriteData; BLAKE2S_X10_NUM_WRITES] =
+        register_indirect_read_write_continuous_noexcept::<_, BLAKE2S_X10_NUM_WRITES>(
             x10 as usize,
             memory_source,
         );
-    let state_read_addresses: [u32; X10_NUM_WRITES] =
+    let state_read_addresses: [u32; BLAKE2S_X10_NUM_WRITES] =
         std::array::from_fn(|i| x10 + (core::mem::size_of::<u32>() * i) as u32);
-    let mut input_accesses: [RegisterOrIndirectReadData; X11_NUM_READS] =
-        register_indirect_read_continuous_noexcept::<_, X11_NUM_READS>(x11 as usize, memory_source);
-    let input_read_addresses: [u32; X11_NUM_READS] =
+    let mut input_accesses: [RegisterOrIndirectReadData; BLAKE2S_X11_NUM_READS] =
+        register_indirect_read_continuous_noexcept::<_, BLAKE2S_X11_NUM_READS>(
+            x11 as usize,
+            memory_source,
+        );
+    let input_read_addresses: [u32; BLAKE2S_X11_NUM_READS] =
         std::array::from_fn(|i| x11 + (core::mem::size_of::<u32>() * i) as u32);
 
     let mut state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS] = state_accesses
@@ -158,7 +153,7 @@ pub fn blake2_round_function_with_extended_control_over_unrolled_state<
     }
 
     // write down to RAM
-    write_indirect_accesses_noexcept::<_, X10_NUM_WRITES>(
+    write_indirect_accesses_noexcept::<_, BLAKE2S_X10_NUM_WRITES>(
         x10 as usize,
         &state_accesses,
         memory_source,
@@ -189,8 +184,8 @@ pub fn blake2_round_function_with_extended_control_over_unrolled_state<
     ];
 
     tracer.record_delegation(
-        BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-        10,
+        BLAKE2S_DELEGATION_CSR_REGISTER,
+        BLAKE2S_BASE_ABI_REGISTER,
         &mut register_accesses,
         &input_read_addresses,
         &mut input_accesses,

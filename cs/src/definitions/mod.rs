@@ -36,18 +36,6 @@ pub use self::table_type::*;
 pub use self::unrolled_families::*;
 pub use self::witness_tree::*;
 
-pub const NUM_TIMESTAMP_DATA_LIMBS: usize = 3;
-pub type TimestampScalar = u64;
-
-pub const INITIAL_TIMESTAMP: TimestampScalar = 4;
-
-pub const INITIAL_TIMESTAMP_AT_CHUNK_START: TimestampScalar = 4;
-pub const TIMESTAMP_STEP: TimestampScalar = 1 << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
-
-pub const TOTAL_TIMESTAMP_BITS: u32 =
-    TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM as u32;
-pub const MAX_INITIAL_TIMESTAMP: TimestampScalar = (1 << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
-
 #[inline]
 pub const fn timestamp_from_absolute_cycle_index(
     cycle_counter: usize,

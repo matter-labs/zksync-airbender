@@ -13,4 +13,5 @@ categories.workspace = true
 prover = { workspace = true, features = ["prover"] }
 verifier_generator = { workspace = true }
 serde = { workspace = true }
+common_constants = { workspace = true }
 serde_json = "*"

@@ -4,15 +4,16 @@ use crate::cs::witness_placer::WitnessComputationCore;
 use crate::cs::witness_placer::WitnessComputationalInteger;
 use crate::cs::witness_placer::WitnessComputationalU16;
 use crate::cs::witness_placer::WitnessComputationalU32;
+use crate::cs::witness_placer::WitnessMask;
 use crate::cs::witness_placer::WitnessPlacer;
+use crate::cs::witness_placer::WitnessTypeSet;
 use crate::one_row_compiler::LookupInput;
 use crate::types::Boolean;
 use crate::types::Num;
-
-use crate::cs::witness_placer::WitnessTypeSet;
+use common_constants::delegation_types::keccak_special5::*;
 use core::array::from_fn;
 
-const DEBUG: bool = false;
+static mut DEBUG: bool = false;
 #[allow(unused)]
 unsafe fn update_select(select: usize) {
     DEBUG_CONTROL = {
@@ -24,8 +25,15 @@ unsafe fn update_select(select: usize) {
     DEBUG_INDEXES = DEBUG_INFO[select].3;
     DEBUG_INPUT_STATE = DEBUG_INFO[select].4;
     DEBUG_OUTPUT_STATE = DEBUG_INFO[select].5;
+    DEBUG_CONTROL_NEXT = {
+        let precompile = DEBUG_INFO[select].6;
+        let iter = DEBUG_INFO[select].7;
+        let round = DEBUG_INFO[select].8;
+        1 << precompile | 1 << (5 + iter) | round << 10
+    };
 }
 static mut DEBUG_CONTROL: u16 = 0;
+static mut DEBUG_CONTROL_NEXT: u16 = 0;
 static mut DEBUG_INDEXES: [usize; 6] = [0; 6];
 static mut DEBUG_INPUT_STATE: [u64; 30] = [0; 30];
 static mut DEBUG_OUTPUT_STATE: [u64; 30] = [0; 30];
@@ -36,11 +44,13 @@ use debug_info::DEBUG_INFO;
 // - 5 "precompiles" (ops) packed into one circuit
 // - max of 5 u64 bitwise operations (+ optional rotations)
 // - max of 6 u64 R/W memory accesses (+ 2 u32 register accesses)
-// - repeatedly called (1 keccak = 1k+ such cycles)
+// - repeatedly called (1 keccak = 504 precompile cycles + 15 glue code cycles)
 
 // ABI:
 // - 1 register (x11) for state pointer (aligned s.t. state[29] does not overflow low 16 bits)
 // - 1 register (x10.high) for control info (precompile bitmask || i bitmask || round)
+//                         this register is bumped automatically by the circuit,
+//                         which saves 50% of total RV cycles during execution
 
 // TABLES:
 // - 3 tables for extraction of 6 5-bit indexes
@@ -51,9 +61,10 @@ use debug_info::DEBUG_INFO;
 
 // CIRCUIT:
 // - get state ptr + control param with 2 mem. accesses
+// - extract the 6 indices to fixed positions -> get 6 u64 R/W (word1..word6) inputs + create outputs
+// - bump control param back into register, for next precompile call
 // - extract precompile bitmask flags, to make u64 memory routing cheap
 // - extract i bitmask bits, to make rotations cheap (u16_boundary_flags become linear combination)
-// - extract the 6 indices to fixed positions -> get 6 u64 R/W (word1..word6) inputs + create outputs
 // - dynamic logic across precompiles is cheaply encoded using routing constraints of degree 2
 // - the precompile with round constant is managed through special xor table
 // - the precompiles with xor/andn feed into option rotation tables and then to output
@@ -177,7 +188,6 @@ pub fn keccak_special5_delegation_circuit_create_table_driver<F: PrimeField>() -
     for el in all_table_types() {
         table_driver.materialize_table(el);
     }
-
     table_driver
 }
 
@@ -199,43 +209,139 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     let execute = cs.process_delegation_request();
 
     // STEP1: process all memory accesses
-    let control = {
+    let (control, control_next) = {
         let x10_request = RegisterAccessRequest {
             register_index: 10,
-            register_write: false,
+            register_write: true,
             indirects_alignment_log2: 0, // no indirects, contains explicit control value
             indirect_accesses: vec![],
         };
         let x10_and_indirects = cs.create_register_and_indirect_memory_accesses(x10_request);
         assert!(x10_and_indirects.indirect_accesses.is_empty());
-        let RegisterAccessType::Read {
+        let RegisterAccessType::Write {
             read_value: control_reg,
+            write_value: control_reg_next,
         } = x10_and_indirects.register_access
         else {
             unreachable!()
         };
-        control_reg[1] // only the high 16 bits contain control info (to accomodate for LUI)
+
+        if unsafe { DEBUG } {
+            // set control using external stress test data
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let control_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        unsafe { DEBUG_CONTROL },
+                    );
+                placer.assign_u16(control_reg[1], &control_value);
+            };
+            cs.set_values(value_fn);
+        }
+
+        // set x10_next
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let control_val = placer.get_u16(control_reg[1]);
+            let zero_val =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let one_val =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(1);
+            let mask_val =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0b11111);
+            let precompile_val = control_val.and(&mask_val);
+            let [p0_v, p1_v, p2_v, p3_v, p4_v] = {
+                [
+                    precompile_val.and(&one_val),
+                    precompile_val.shr(1).and(&one_val),
+                    precompile_val.shr(2).and(&one_val),
+                    precompile_val.shr(3).and(&one_val),
+                    precompile_val.shr(4),
+                ]
+            };
+            let iter_val = control_val.shr(5).and(&mask_val);
+            let [i0_v, i1_v, i2_v, i3_v, i4_v] = {
+                [
+                    iter_val.and(&one_val),
+                    iter_val.shr(1).and(&one_val),
+                    iter_val.shr(2).and(&one_val),
+                    iter_val.shr(3).and(&one_val),
+                    iter_val.shr(4),
+                ]
+            };
+            let round_val = control_val.shr(10);
+            let control_next_val =
+                {
+                    let iter_next_val = {
+                        let iter_fwd_val = i4_v
+                            .overflowing_add(&i0_v.shl(1))
+                            .0
+                            .overflowing_add(&i1_v.shl(2))
+                            .0
+                            .overflowing_add(&i2_v.shl(3))
+                            .0
+                            .overflowing_add(&i3_v.shl(4))
+                            .0;
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                            &p1_v.clone().into_mask().or(&p3_v.clone().into_mask()),
+                            &iter_val,
+                            &iter_fwd_val,
+                        )
+                    };
+                    let precompile_next_val =
+                        {
+                            let precompile_fwd_val = p4_v
+                                .overflowing_add(&p0_v.shl(1))
+                                .0
+                                .overflowing_add(&p1_v.shl(2))
+                                .0
+                                .overflowing_add(&p2_v.shl(3))
+                                .0
+                                .overflowing_add(&p3_v.shl(4))
+                                .0;
+                            let precompile_rev_val = p1_v
+                                .overflowing_add(&p2_v.shl(1))
+                                .0
+                                .overflowing_add(&p3_v.shl(2))
+                                .0
+                                .overflowing_add(&p4_v.shl(3))
+                                .0
+                                .overflowing_add(&p0_v.shl(4))
+                                .0;
+                            <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                        &p1_v.into_mask().or(&p3_v.into_mask()).or(&i4_v.clone().into_mask()),
+                        &precompile_fwd_val,
+                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                            &p4_v.clone().into_mask(),
+                            &precompile_rev_val,
+                            &precompile_val)
+                        )
+                        };
+                    let round_next_val = {
+                        let round_fwd_val = round_val.overflowing_add(&one_val).0;
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                            &p4_v.into_mask().and(&i4_v.into_mask()),
+                            &round_fwd_val,
+                            &round_val,
+                        )
+                    };
+                    precompile_next_val
+                        .overflowing_add(&iter_next_val.shl(5))
+                        .0
+                        .overflowing_add(&round_next_val.shl(10))
+                        .0
+                };
+            placer.assign_u16(control_reg_next[0], &zero_val);
+            placer.assign_u16(control_reg_next[1], &control_next_val);
+        };
+        cs.set_values(value_fn);
+
+        cs.add_constraint_allow_explicit_linear(Constraint::from(control_reg[0])); // we expect low 16 bits to be empty
+        cs.add_constraint_allow_explicit_linear(Constraint::from(control_reg_next[0])); // we expect low 16 bits to be empty
+        (control_reg[1], control_reg_next[1]) // only the high 16 bits contain control info (to accomodate for LUI)
     };
     let state_indexes = {
-        // let [s1, s2] = cs.get_variables_from_lookup_constrained(
-        //     &[LookupInput::from(control)],
-        //     TableType::KeccakPermutationIndices12,
-        // );
-        // let [s3, s4] = cs.get_variables_from_lookup_constrained(
-        //     &[LookupInput::from(control)],
-        //     TableType::KeccakPermutationIndices34,
-        // );
-        // let [s5, s6] = cs.get_variables_from_lookup_constrained(
-        //     &[LookupInput::from(control)],
-        //     TableType::KeccakPermutationIndices56,
-        // );
-
-        // we can't assign to these variables by lookup
-        // since these variables belong to memory subtree
-        // they will be assigned through placeholder by
-        // cs.create_register_and_indirect_memory_accesses
+        // we can't assign to these variables by lookup since these variables belong to memory subtree
+        // they will be assigned through placeholder by cs.create_register_and_indirect_memory_accesses
         let [s1, s2, s3, s4, s5, s6] = from_fn(|_| cs.add_variable());
-        // dbg!([s1, s2, s3, s4, s5, s6]);
         cs.enforce_lookup_tuple_for_fixed_table(
             &[control, s1, s2].map(LookupInput::from),
             TableType::KeccakPermutationIndices12,
@@ -254,9 +360,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         [s1, s2, s3, s4, s5, s6]
     };
 
-    // Variables above count in notion of "state element", that is itself u64 word. So we should
-    // read two u32 words
-
+    // Variables above count in notion of "state element", that is itself u64 word. So we should read two u32 words
     let (state_inputs, state_outputs) = {
         let state_accesses = state_indexes
             .iter()
@@ -293,7 +397,7 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
             low32: Register([Num::Constant(F::ZERO); 2]),
             high32: Register([Num::Constant(F::ZERO); 2]),
         }; 6];
-        for i in 0..6 {
+        for i in 0..NUM_X10_INDIRECT_U64_WORDS {
             let IndirectAccessType::Write {
                 read_value: in_low,
                 write_value: out_low,
@@ -319,54 +423,43 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                 high32: Register(out_high.map(Num::Var)),
             };
         }
-        (state_inputs, state_outputs)
-    };
 
-    let (control, state_inputs) = if DEBUG {
-        unsafe {
-            let control = cs.add_variable();
-            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                let control_value =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                        DEBUG_CONTROL,
-                    );
-                placer.assign_u16(control, &control_value);
-            };
-            cs.set_values(value_fn);
-
-            // these are the REAL ones
-            let state_indexes_usize = {
-                let [s1, s2] = cs.get_variables_from_lookup_constrained(
-                    &[LookupInput::from(control)],
-                    TableType::KeccakPermutationIndices12,
-                );
-                let [s3, s4] = cs.get_variables_from_lookup_constrained(
-                    &[LookupInput::from(control)],
-                    TableType::KeccakPermutationIndices34,
-                );
-                let [s5, s6] = cs.get_variables_from_lookup_constrained(
-                    &[LookupInput::from(control)],
-                    TableType::KeccakPermutationIndices56,
-                );
-                [s1, s2, s3, s4, s5, s6]
-                    .map(|var| cs.get_value(var).unwrap().as_u64_reduced() as usize)
-            };
-            assert!(
-                state_indexes_usize == DEBUG_INDEXES,
-                "wanted indices {:?} but got {state_indexes_usize:?} with control {:032b}",
-                &DEBUG_INDEXES[..],
-                DEBUG_CONTROL as u32
+        if unsafe { DEBUG } {
+            // set state_inputs based off of stress test data
+            // first: set the index vars as they were overwritten by faulty simulator placeholder data
+            let truevar = Boolean::Is(cs.add_variable_from_constraint_allow_explicit_linear(
+                Constraint::from(execute.toggle()),
+            ));
+            assert!(truevar.get_value(cs).unwrap());
+            cs.peek_lookup_value_unconstrained_ext(
+                &[LookupInput::from(control)],
+                &[state_indexes[0], state_indexes[1]],
+                TableType::KeccakPermutationIndices12.to_num(),
+                truevar,
             );
-
-            let state_inputs = from_fn(|_| LongRegister::new(cs));
+            cs.peek_lookup_value_unconstrained_ext(
+                &[LookupInput::from(control)],
+                &[state_indexes[2], state_indexes[3]],
+                TableType::KeccakPermutationIndices34.to_num(),
+                truevar,
+            );
+            cs.peek_lookup_value_unconstrained_ext(
+                &[LookupInput::from(control)],
+                &[state_indexes[4], state_indexes[5]],
+                TableType::KeccakPermutationIndices56.to_num(),
+                truevar,
+            );
+            // then: go ahead and process state_inputs
+            let state_indexes_usize =
+                state_indexes.map(|var| cs.get_value(var).unwrap().as_u64_reduced() as usize);
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let state_inputs_values = state_indexes_usize.map(|i| {
                     [
                         <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                            DEBUG_INPUT_STATE[i] as u32,
+                            unsafe { DEBUG_INPUT_STATE[i] } as u32,
                         ),
                         <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                            (DEBUG_INPUT_STATE[i] >> 32) as u32,
+                            (unsafe { DEBUG_INPUT_STATE[i] } >> 32) as u32,
                         ),
                     ]
                 });
@@ -384,62 +477,35 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                 }
             };
             cs.set_values(value_fn);
-
-            (control, state_inputs)
         }
-    } else {
-        (control, state_inputs)
+
+        (state_inputs, state_outputs)
     };
 
-    // TODO: not 100% sure about this optim...
     let (precompile_bitmask, iter_bitmask, round) = {
-        // let bitmask: [Boolean; 10] = from_fn(|_| cs.add_boolean_variable());
-        // let round = {
-        //     let mut round = Constraint::from(control);
-        //     for i in 0..10 {
-        //         round = round - Term::from(1 << i) * Term::from(bitmask[i]);
-        //     }
-        //     round.scale(F::from_u64_unchecked(1 << 10).inverse().unwrap());
-        //     round
-        // };
-        // let out = cs.add_variable_with_range_check(16);
-
-        // let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        //     let control_value = placer.get_u16(control);
-        //     let bitmask_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask;
-        //         10] = from_fn(|i| control_value.get_bit(i as u32));
-        //     for i in 0..10 {
-        //         placer.assign_mask(bitmask[i].get_variable().unwrap(), &bitmask_values[i]);
-        //     }
-        //     let out_value = {
-        //         let two5_value =
-        //             <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(1 << 5);
-        //         let round_value = control_value.shr(10);
-        //         two5_value.overflowing_sub(&round_value).0
-        //     };
-        //     placer.assign_u16(out.get_variable(), &out_value);
-        // };
-        // cs.set_values(value_fn);
-
-        // cs.add_constraint_allow_explicit_linear(
-        //     (Constraint::from(1 << 5) - round.clone()) - Term::from(out),
-        // );
-
         // TMP FIX: we're removing this in order to have even number of u16 range checks in the witness subtree
-        let bitmask: [Boolean; 15] = Boolean::split_into_bitmask(cs, Num::Var(control));
-        let round = bitmask[10..15]
+        let bitmask: [Boolean; KECCAK5_TOTAL_NUM_CONTROL_BITS] =
+            Boolean::split_into_bitmask(cs, Num::Var(control));
+        let round = bitmask[(PRECOMPILE_MODE_NUM_CONTROL_BITS + ITERATION_NUM_CONTROL_BITS)
+            ..KECCAK5_TOTAL_NUM_CONTROL_BITS]
             .iter()
             .enumerate()
             .fold(Constraint::empty(), |acc, (i, &el)| {
                 acc + Term::from(1 << i) * Term::from(el)
             });
         (
-            bitmask[..5].try_into().unwrap(),
-            bitmask[5..10].try_into().unwrap(),
+            bitmask[..PRECOMPILE_MODE_NUM_CONTROL_BITS]
+                .try_into()
+                .unwrap(),
+            bitmask[PRECOMPILE_MODE_NUM_CONTROL_BITS
+                ..(PRECOMPILE_MODE_NUM_CONTROL_BITS + ITERATION_NUM_CONTROL_BITS)]
+                .try_into()
+                .unwrap(),
             round,
         )
     };
 
+    // we place bitmasks into individual Booleans for simplicity
     let [is_iota_columnxor, is_columnmix, is_theta_rho, is_chi1, is_chi2] = precompile_bitmask;
     let [is_iter0, is_iter1, is_iter2, is_iter3, is_iter4] = iter_bitmask;
     // NOT STRICTLY NECESSARY but it's free \_(o_O)_/
@@ -461,6 +527,55 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
                 + Term::from(is_iter4)
                 - Term::from(1)),
     );
+
+    // now we enforce the control_next bump
+    let iter_next: Constraint<F> = {
+        let cur = Constraint::from(is_iter0)
+            + Term::from(1 << 1) * Term::from(is_iter1)
+            + Term::from(1 << 2) * Term::from(is_iter2)
+            + Term::from(1 << 3) * Term::from(is_iter3)
+            + Term::from(1 << 4) * Term::from(is_iter4);
+        let fwd = Constraint::from(is_iter4)
+            + Term::from(1 << 1) * Term::from(is_iter0)
+            + Term::from(1 << 2) * Term::from(is_iter1)
+            + Term::from(1 << 3) * Term::from(is_iter2)
+            + Term::from(1 << 4) * Term::from(is_iter3);
+        (Constraint::from(is_iota_columnxor) + Term::from(is_theta_rho) + Term::from(is_chi2)) * fwd
+            + (Term::from(is_columnmix) + Term::from(is_chi1)) * cur
+    };
+    let precompile_next: Constraint<F> = {
+        // def: (p1 + p3)fwd + (p0 + p2)maybe_fwd + (p4)fwd_or_rev
+        //    = fwd + (p0 + p2) * !i4 * (cur - fwd) + p4 * !i4 * (rev - fwd)
+        //    = fwd + !i4 * ((p0 + p2)(cur - fwd) + p4(rev - fwd))
+        let cur = Constraint::from(is_iota_columnxor)
+            + Term::from(1 << 1) * Term::from(is_columnmix)
+            + Term::from(1 << 2) * Term::from(is_theta_rho)
+            + Term::from(1 << 3) * Term::from(is_chi1)
+            + Term::from(1 << 4) * Term::from(is_chi2);
+        let fwd = Constraint::from(is_chi2)
+            + Term::from(1 << 1) * Term::from(is_iota_columnxor)
+            + Term::from(1 << 2) * Term::from(is_columnmix)
+            + Term::from(1 << 3) * Term::from(is_theta_rho)
+            + Term::from(1 << 4) * Term::from(is_chi1);
+        let rev = Constraint::from(is_columnmix)
+            + Term::from(1 << 1) * Term::from(is_theta_rho)
+            + Term::from(1 << 2) * Term::from(is_chi1)
+            + Term::from(1 << 3) * Term::from(is_chi2)
+            + Term::from(1 << 4) * Term::from(is_iota_columnxor);
+        let not_iter4 = Constraint::from(is_iter4.toggle());
+        let special = cs.add_variable_from_constraint(
+            (Constraint::from(is_iota_columnxor) + Term::from(is_theta_rho)) * (cur - fwd.clone())
+                + Term::from(is_chi2) * (rev - fwd.clone()),
+        );
+        fwd + not_iter4 * Term::from(special)
+    };
+    let round_next: Constraint<F> = round.clone() + Term::from(is_chi2) * Term::from(is_iter4);
+    cs.add_constraint(
+        precompile_next + Term::from(1 << 5) * iter_next + Term::from(1 << 10) * round_next
+            - Term::from(control_next),
+    );
+
+    // derive flags needed to identify rotations for precompile 2
     let [is_theta_rho_iter0, is_theta_rho_iter1, is_theta_rho_iter2, is_theta_rho_iter3, is_theta_rho_iter4] = [
         Boolean::and(&is_theta_rho, &is_iter0, cs),
         Boolean::and(&is_theta_rho, &is_iter1, cs),
@@ -864,7 +979,11 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     //     println!("precompile_flags: {:?}", precompile_flags.map(|b| b.get_value(cs)));
     //     println!("precompile_rotation_flags: {:?}", precompile_rotation_flags.map(|b| b.get_value(cs)));
     // }
+
     // 1
+    if unsafe { DEBUG } {
+        println!("\tbinop 1..");
+    }
     enforce_binop(
         cs,
         precompile_flags,
@@ -886,6 +1005,9 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         ],
     );
     // 2
+    if unsafe { DEBUG } {
+        println!("\tbinop 2..");
+    }
     enforce_binop(
         cs,
         precompile_flags,
@@ -907,6 +1029,9 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         ],
     );
     // 3
+    if unsafe { DEBUG } {
+        println!("\tbinop 3..");
+    }
     enforce_binop(
         cs,
         precompile_flags,
@@ -928,6 +1053,9 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         ],
     );
     // 4
+    if unsafe { DEBUG } {
+        println!("\tbinop 4..");
+    }
     enforce_binop(
         cs,
         precompile_flags,
@@ -949,6 +1077,9 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
         ],
     );
     // 5
+    if unsafe { DEBUG } {
+        println!("\tbinop 5..");
+    }
     enforce_binop(
         cs,
         precompile_flags,
@@ -991,12 +1122,29 @@ pub fn define_keccak_special5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     // WE ALSO CANNOT FORGET TO COPY OVER UNTOUCHED VALUES BACK TO THEIR RAM ARGUMENT WRITE-SET
     enforce_copies(cs, precompile_flags, [&*s0, &*s1, &*s2, &*s3, &*s4]);
 
-    if DEBUG {
+    if unsafe { DEBUG } {
         unsafe {
+            let expected_control = DEBUG_CONTROL;
+            let begotten_control = cs.get_value(control).unwrap().as_u64_reduced() as u16;
+            let expected_state_indexes = DEBUG_INDEXES;
+            let expected_state_inputs = DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i]);
+            let begotten_state_indexes =
+                state_indexes.map(|x| cs.get_value(x).unwrap().as_u64_reduced() as usize);
+            let begotten_state_inputs = state_inputs.map(|x| x.get_value_unsigned(cs).unwrap());
+            assert!(expected_control == begotten_control);
+            assert!(expected_state_indexes == begotten_state_indexes);
+            assert!(expected_state_inputs == begotten_state_inputs);
+
             let expected_state_outputs = DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i]);
             let begotten_state_outputs = state_outputs.map(|x| x.get_value_unsigned(cs).unwrap());
+            assert!(expected_state_outputs == begotten_state_outputs, "wanted state updates {expected_state_outputs:?} but got {begotten_state_outputs:?}");
 
-            assert!(expected_state_outputs == begotten_state_outputs, "wanted state updates {expected_state_outputs:?} but got {begotten_state_outputs:?}")
+            let expected_control_next = DEBUG_CONTROL_NEXT;
+            let begotten_control_next = cs.get_value(control_next).unwrap().as_u64_reduced() as u16;
+            assert!(
+                expected_control_next == begotten_control_next,
+                "wanted control update {expected_control_next} but got {begotten_control_next}"
+            );
         }
     }
 }
@@ -1120,7 +1268,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(
             }
             rot_const_mod16
         };
-        if DEBUG {
+        if unsafe { DEBUG } {
             println!("\t\trot_const_mod16: {:?}", rot_const_mod16.get_value(cs));
         }
         let [is_rot_lt16, is_rot_lt32, is_rot_lt48, is_rot_lt64] = {
@@ -1233,7 +1381,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>>(
         }
         (in1_candidate, in2_candidate, out_candidate)
     };
-    if DEBUG {
+    if unsafe { DEBUG } {
         println!(
             "\t\tprecompile_flags: {:?}",
             precompile_flags.map(|b| b.get_value(cs).unwrap())
@@ -1329,7 +1477,6 @@ mod test {
         let (circuit_output, _) = cs.finalize();
         let compiler = OneRowCompiler::default();
         let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-
         serialize_to_file(&compiled, "keccak_delegation_layout.json");
     }
 
@@ -1341,33 +1488,9 @@ mod test {
         serialize_to_file(&ssa_forms, "keccak_delegation_ssa.json");
     }
 
-    // #[test]
-    // fn compile_keccak_special5() {
-    //     let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    //     // NEED TO ADD ORACLE
-    //     // let oracle = Some(DelegationCircuitOracle{ });
-    //     // witness_placer.oracle = Some();
-    //     // NEED TO ADD TABLE DRIVER
-    //     // witness_placer.table_driver = keccak_special5_delegation_circuit_create_table_driver();
-
-    //     if DEBUG {
-    //         let witness_placer =
-    //             crate::cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator::new();
-    //         cs.witness_placer = Some(witness_placer); // necessary to debug witnessgen
-    //     }
-    //     define_keccak_special5_delegation_circuit(&mut cs);
-    //     let (circuit_output, _) = cs.finalize();
-    //     // dbg!(&circuit_output.register_and_indirect_memory_accesses);
-    //     let compiler = OneRowCompiler::default();
-    //     let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-
-    //     if DEBUG == false {
-    //         serialize_to_file(&compiled, "keccak_delegation_layout.json");
-    //     }
-    // }
-
     #[test]
-    fn stress_compile_keccak_special5() {
+    fn stress_test_compile_keccak_special5() {
+        use crate::cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
         fn to_u16_chunks(x: u64) -> [u16; 4] {
             [
                 x as u16,
@@ -1376,30 +1499,39 @@ mod test {
                 (x >> 48) as u16,
             ]
         }
-        if DEBUG {
-            for i in 0..DEBUG_INFO.len() {
-                println!("trying out debug info {i}/{}..", DEBUG_INFO.len());
-                unsafe {
-                    update_select(i);
-                    println!(
-                        "\tgiven_inputs: {:?}",
-                        DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i])
-                    );
-                    println!(
-                        "\t.           : {:?}",
-                        DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_INPUT_STATE[i]))
-                    );
-                    println!(
-                        "\texpected_outputs: {:?}",
-                        DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i])
-                    );
-                    println!(
-                        "\t.               : {:?}",
-                        DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_OUTPUT_STATE[i]))
-                    );
-                }
-                compile_keccak_special5();
+        unsafe {
+            DEBUG = true;
+        }
+        for i in 0..DEBUG_INFO.len() {
+            println!("trying out debug info {i}/{}..", DEBUG_INFO.len());
+            unsafe {
+                update_select(i);
+                println!(
+                    "\tgiven_inputs: {:?}",
+                    DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i])
+                );
+                println!(
+                    "\t.           : {:?}",
+                    DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_INPUT_STATE[i]))
+                );
+                println!(
+                    "\texpected_outputs: {:?}",
+                    DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i])
+                );
+                println!(
+                    "\t.               : {:?}",
+                    DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_OUTPUT_STATE[i]))
+                );
             }
+            let mut cs = BasicAssembly::<Mersenne31Field>::new();
+            cs.witness_placer = Some(CSDebugWitnessEvaluator::new()); // necessary to debug witnessgen
+            define_keccak_special5_delegation_circuit(&mut cs);
+            let (circuit_output, _) = cs.finalize();
+            let _compiled =
+                OneRowCompiler::default().compile_to_evaluate_delegations(circuit_output, 20);
+        }
+        unsafe {
+            DEBUG = false;
         }
     }
 }

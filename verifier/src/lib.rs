@@ -194,8 +194,6 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
 
-    let quotient_alpha = Mersenne31Quartic::ONE;
-
     // commit quotient tree
     Blake2sTranscript::commit_with_seed_using_hasher(
         &mut transcript_hasher,

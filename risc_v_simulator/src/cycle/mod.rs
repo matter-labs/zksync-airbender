@@ -59,9 +59,9 @@ impl MachineConfig for IMStandardIsaConfig {
     #[cfg(feature = "delegation")]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] =
         &[
-            crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-            crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
-            crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
+            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
         ];
 }
 
@@ -88,9 +88,9 @@ impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
     #[cfg(feature = "delegation")]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] =
         &[
-            crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-            crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
-            crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
+            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
         ];
 }
 
@@ -117,9 +117,9 @@ impl MachineConfig for IMWithoutSignedMulDivIsaConfig {
     #[cfg(feature = "delegation")]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] =
         &[
-            crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-            crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
-            crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
+            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
         ];
 }
 
@@ -145,7 +145,7 @@ impl MachineConfig for IWithoutByteAccessIsaConfigWithDelegation {
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
-        crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     ];
 }
 
@@ -192,8 +192,8 @@ impl MachineConfig for IMIsaConfigWithAllDelegations {
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
-        crate::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-        crate::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID,
-        crate::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID,
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
     ];
 }

@@ -14,9 +14,7 @@ use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 use blake2s_u32::CONFIGURED_IV;
 use blake2s_u32::EXNTENDED_CONFIGURED_IV;
 use blake2s_u32::SIGMAS;
-
-const MAX_ROUNDS: usize = 10;
-const NUM_CONTROL_BITS: usize = 3;
+use common_constants::delegation_types::blake2s_with_control::*;
 
 // ABI:
 // - registers x10-x13 are used to pass the parameters
@@ -212,9 +210,11 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // we can immediately boolean decompose round bitmask's low, and ignore high, and same for control
 
     let round_bitmask =
-        Boolean::split_into_bitmask::<F, CS, MAX_ROUNDS>(cs, Num::Var(round_bitmask[0]));
-    let control_bitmask =
-        Boolean::split_into_bitmask::<F, CS, NUM_CONTROL_BITS>(cs, Num::Var(control_mask[0]));
+        Boolean::split_into_bitmask::<F, CS, BLAKE2S_MAX_ROUNDS>(cs, Num::Var(round_bitmask[0]));
+    let control_bitmask = Boolean::split_into_bitmask::<F, CS, BLAKE2S_NUM_CONTROL_BITS>(
+        cs,
+        Num::Var(control_mask[0]),
+    );
 
     {
         for (i, el) in round_bitmask.iter().enumerate() {
@@ -432,7 +432,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         // our permutation is fixed, so we just need to make a constraint
         let mut constraint_0 = Constraint::empty();
         let mut constraint_1 = Constraint::empty();
-        for round_index in 0..MAX_ROUNDS {
+        for round_index in 0..BLAKE2S_MAX_ROUNDS {
             let selector = round_bitmask[round_index];
             let inputs = input_words[SIGMAS[round_index][message_word]];
             constraint_0 = mask_by_boolean_into_accumulator_constraint(

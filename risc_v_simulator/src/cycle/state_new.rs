@@ -15,9 +15,9 @@ use crate::abstractions::csr_processor::NoExtraCSRs;
 use crate::abstractions::memory::{AccessType, MemorySource};
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::tracer::Tracer;
+use crate::cycle::opcode_formats::*;
 use crate::cycle::state::report_opcode;
 use crate::cycle::state::MARKER_CSR;
-use crate::cycle::state::NON_DETERMINISM_CSR;
 use crate::cycle::state::NUM_REGISTERS;
 #[cfg(feature = "opcode_stats")]
 use crate::cycle::state::OPCODES_COUNTER;
@@ -27,8 +27,7 @@ use crate::cycle::status_registers::TrapReason;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::MMUImplementation;
-
-use crate::cycle::opcode_formats::*;
+use common_constants::NON_DETERMINISM_CSR;
 
 pub trait DelegationCSRProcessor: 'static + Clone + std::fmt::Debug {
     fn process_write<
@@ -84,18 +83,22 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
         use crate::delegations::unrolled::keccak_special5::*;
         use crate::delegations::unrolled::u256_ops_with_control::*;
 
+        use common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+        use common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
+        use common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
+
         match csr_index as u32 {
-            BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
+            BLAKE2S_DELEGATION_CSR_REGISTER => {
                 blake2_round_function_with_extended_control_over_unrolled_state(
                     state,
                     memory_source,
                     tracer,
                 );
             }
-            U256_OPS_WITH_CONTROL_ACCESS_ID => {
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => {
                 u256_ops_with_control_impl_over_unrolled_state(state, memory_source, tracer);
             }
-            KECCAK_SPECIAL5_ACCESS_ID => {
+            KECCAK_SPECIAL5_CSR_REGISTER => {
                 keccak_special5_over_unrolled_state(state, memory_source, tracer);
             }
             csr => {

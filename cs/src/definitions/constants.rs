@@ -1,20 +1,12 @@
-use super::TimestampScalar;
+pub use common_constants::*;
 
 pub const NUM_REGISTERS: usize = 32;
 pub const REGISTER_SIZE: usize = 2;
 pub const REGISTER_BYTE_SIZE: usize = 4;
 
-pub const NUM_TIMESTAMP_COLUMNS_FOR_RAM: usize = 2;
-
-pub const TIMESTAMP_COLUMNS_NUM_BITS: u32 = 19;
-
-pub const NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP: u32 = 2; // we need 3 accesses for the cycle if bytecode is in ROM
-
 pub const MAX_NUMBER_OF_CYCLES: u64 = 1
     << ((NUM_TIMESTAMP_COLUMNS_FOR_RAM as u32) * TIMESTAMP_COLUMNS_NUM_BITS
         - NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP);
-
-pub const NUM_TIMESTAMP_COLUMNS_FOR_RAM_IN_SETUP: usize = NUM_TIMESTAMP_COLUMNS_FOR_RAM;
 
 pub const NUM_MEM_ARGUMENT_KEY_PARTS: usize =
     1 + REGISTER_SIZE + NUM_TIMESTAMP_COLUMNS_FOR_RAM + REGISTER_SIZE;

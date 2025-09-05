@@ -9,11 +9,11 @@ use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use crate::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use crate::witness_evaluator::new::evaluate_witness;
 use crate::witness_evaluator::new::SimpleWitnessProxy;
+use common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
+use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 use risc_v_simulator::cycle::state_new::DelegationCSRProcessor;
 use risc_v_simulator::cycle::MachineConfig;
-use risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
-use risc_v_simulator::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
-use risc_v_simulator::delegations::u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
 
 #[allow(unused_assignments)]
 /// Runs a given binary for that many steps, to generate witness and delegation work.
@@ -87,7 +87,7 @@ where
 
     let mut factories = HashMap::new();
     for (delegation_type, circuit) in delegation_compiled_machines.iter() {
-        if *delegation_type == BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID {
+        if *delegation_type == BLAKE2S_DELEGATION_CSR_REGISTER {
             let num_requests_per_circuit = circuit.num_requests_per_circuit;
             let delegation_type = *delegation_type as u16;
             let factory_fn = move || {
@@ -97,7 +97,7 @@ where
                 delegation_type,
                 Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,
             );
-        } else if *delegation_type == U256_OPS_WITH_CONTROL_ACCESS_ID {
+        } else if *delegation_type == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
             let num_requests_per_circuit = circuit.num_requests_per_circuit;
             let delegation_type = *delegation_type as u16;
             let factory_fn = move || {
@@ -107,12 +107,11 @@ where
                 delegation_type,
                 Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,
             );
-        } else if *delegation_type == KECCAK_SPECIAL5_ACCESS_ID {
+        } else if *delegation_type == KECCAK_SPECIAL5_CSR_REGISTER {
             let num_requests_per_circuit = circuit.num_requests_per_circuit;
             let delegation_type = *delegation_type as u16;
-            let factory_fn = move || {
-                keccak_special5_factory_fn(delegation_type, num_requests_per_circuit, Global)
-            };
+            let factory_fn =
+                move || keccak_special5_factory_fn(delegation_type, num_requests_per_circuit, Global);
             factories.insert(
                 delegation_type,
                 Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,

@@ -13,6 +13,7 @@ categories.workspace = true
 field = { workspace = true, default-features = false }
 trace_holder = { workspace = true, optional = true }
 worker = { workspace = true, optional = true }
+common_constants = { workspace = true }
 unroll = { workspace = true}
 seq-macro = { workspace = true, optional = true }
 fft = { workspace = true, optional = true }

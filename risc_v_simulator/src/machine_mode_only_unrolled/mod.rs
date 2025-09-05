@@ -16,12 +16,15 @@ use crate::abstractions::memory::{AccessType, MemorySource};
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::cycle::state::report_opcode;
 use crate::cycle::state::MARKER_CSR;
-use crate::cycle::state::NON_DETERMINISM_CSR;
 use crate::cycle::state::NUM_REGISTERS;
 use crate::cycle::status_registers::TrapReason;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::MMUImplementation;
+use common_constants::NON_DETERMINISM_CSR;
+
+#[cfg(feature = "cycle_marker")]
+use crate::cycle::state::{CycleMarker, Mark, CYCLE_MARKER};
 
 mod delegations;
 
@@ -320,7 +323,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
     #[inline(always)]
     fn add_marker(&self) {
         #[cfg(feature = "cycle_marker")]
-        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker(self.cycle_counter as u64))
+        CYCLE_MARKER.with_borrow_mut(|cm| cm.add_marker())
     }
 
     #[inline(always)]
@@ -1147,7 +1150,9 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             }
                         }
 
-                        if delegation_type != NON_DETERMINISM_CSR as u16 {
+                        if delegation_type
+                            != common_constants::delegation_types::NON_DETERMINISM_CSR as u16
+                        {
                             assert_eq!(rd_value, 0);
                         }
 

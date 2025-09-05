@@ -7,7 +7,8 @@ use super::*;
 // Here we try different approach to Blake round function, but placing extra burden
 // into "precompile" in terms of control flow
 
-pub const CSR_REGISTER_TO_TRIGGER: u32 = 0x7c7;
+#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
+use common_constants::delegation_types::blake2s_with_control::*;
 
 // we will pass
 // - mutable ptr to state + extended state (basically - to self),
@@ -15,37 +16,6 @@ pub const CSR_REGISTER_TO_TRIGGER: u32 = 0x7c7;
 // - const ptr to input (that may be treated differently)
 // - round mask
 // - control register: output_flag || is_right flag for compression || compression mode flag
-
-#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
-#[inline(always)]
-fn csr_trigger_delegation(
-    states_ptr: *mut u32,
-    input_ptr: *const u32,
-    round_mask: u32,
-    control_mask: u32,
-) {
-    unsafe {
-        core::arch::asm!(
-            "csrrw x0, 0x7c7, x0",
-            in("x10") states_ptr.addr(),
-            in("x11") input_ptr.addr(),
-            in("x12") round_mask,
-            in("x13") control_mask,
-            options(nostack, preserves_flags)
-        )
-    }
-}
-
-#[cfg(target_arch = "riscv32")]
-const NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER: u32 = 0b000;
-#[cfg(target_arch = "riscv32")]
-const NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER: u32 = 0b001;
-#[cfg(target_arch = "riscv32")]
-const COMPRESSION_MODE_FIRST_ROUNDS_BASE_CONTROL_REGISTER: u32 = 0b100;
-#[cfg(target_arch = "riscv32")]
-const COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS: u32 = 0b001;
-#[cfg(target_arch = "riscv32")]
-const COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS: u32 = 0b010;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C, align(128))]
@@ -159,37 +129,45 @@ impl Blake2RoundFunctionEvaluator {
             if REDUCED_ROUNDS {
                 for round_idx in 0..6 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            input_buffer.as_ptr(),
+                            round_bitmask,
+                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                        )
+                    };
+                }
+                let round_bitmask = 1 << 6;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         input_buffer.as_ptr(),
                         round_bitmask,
-                        NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
-                    );
-                }
-                let round_bitmask = 1 << 6;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    input_buffer.as_ptr(),
-                    round_bitmask,
-                    NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                );
+                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
+                    )
+                };
             } else {
                 for round_idx in 0..9 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            input_buffer.as_ptr(),
+                            round_bitmask,
+                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                        )
+                    };
+                }
+                let round_bitmask = 1 << 9;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         input_buffer.as_ptr(),
                         round_bitmask,
-                        NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
-                    );
-                }
-                let round_bitmask = 1 << 9;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    input_buffer.as_ptr(),
-                    round_bitmask,
-                    NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                );
+                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
+                    )
+                };
             }
         }
 
@@ -259,37 +237,45 @@ impl Blake2RoundFunctionEvaluator {
             if REDUCED_ROUNDS {
                 for round_idx in 0..6 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            self.input_buffer.as_ptr(),
+                            round_bitmask,
+                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                        )
+                    };
+                }
+                let round_bitmask = 1 << 6;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                         round_bitmask,
-                        NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
-                    );
-                }
-                let round_bitmask = 1 << 6;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    self.input_buffer.as_ptr(),
-                    round_bitmask,
-                    NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                );
+                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
+                    )
+                };
             } else {
                 for round_idx in 0..9 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            self.input_buffer.as_ptr(),
+                            round_bitmask,
+                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                        )
+                    };
+                }
+                let round_bitmask = 1 << 9;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                         round_bitmask,
-                        NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
-                    );
-                }
-                let round_bitmask = 1 << 9;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    self.input_buffer.as_ptr(),
-                    round_bitmask,
-                    NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                );
+                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
+                    )
+                };
             }
         }
 
@@ -343,45 +329,53 @@ impl Blake2RoundFunctionEvaluator {
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
-            let mut mask = COMPRESSION_MODE_FIRST_ROUNDS_BASE_CONTROL_REGISTER
-                | (COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
+            let mut mask = BLAKE2S_COMPRESSION_MODE_FIRST_ROUNDS_BASE_CONTROL_REGISTER
+                | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
 
             if REDUCED_ROUNDS {
                 for round_idx in 0..6 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            self.input_buffer.as_ptr(),
+                            round_bitmask,
+                            mask,
+                        )
+                    };
+                }
+                mask |= BLAKE2S_COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
+                let round_bitmask = 1 << 6;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                         round_bitmask,
                         mask,
-                    );
-                }
-                mask |= COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
-                let round_bitmask = 1 << 6;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    self.input_buffer.as_ptr(),
-                    round_bitmask,
-                    mask,
-                );
+                    )
+                };
             } else {
                 for round_idx in 0..9 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = csr_trigger_delegation(
+                    let _ = unsafe {
+                        blake2s_csr_trigger_delegation(
+                            self.state.as_mut_ptr(),
+                            self.input_buffer.as_ptr(),
+                            round_bitmask,
+                            mask,
+                        )
+                    };
+                }
+                mask |= BLAKE2S_COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
+                let round_bitmask = 1 << 9;
+                let _ = unsafe {
+                    blake2s_csr_trigger_delegation(
                         self.state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                         round_bitmask,
                         mask,
-                    );
-                }
-                mask |= COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
-                let round_bitmask = 1 << 9;
-                let _ = csr_trigger_delegation(
-                    self.state.as_mut_ptr(),
-                    self.input_buffer.as_ptr(),
-                    round_bitmask,
-                    mask,
-                );
+                    )
+                };
             }
         }
 

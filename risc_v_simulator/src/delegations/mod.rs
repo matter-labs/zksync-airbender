@@ -1,8 +1,10 @@
-use u256_ops_with_control::u256_ops_with_control_impl;
-use u256_ops_with_control::U256_OPS_WITH_CONTROL_ACCESS_ID;
-
 use blake2_round_function_with_compression_mode::blake2_round_function_with_extended_control;
-use blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+use keccak_special5::keccak_special5;
+use u256_ops_with_control::u256_ops_with_control_impl;
+
+use common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+use common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
+use common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 
 use crate::abstractions::csr_processor::CustomCSRProcessor;
 use crate::abstractions::memory::*;
@@ -291,8 +293,9 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
     ) {
         *ret_val = 0;
         match csr_index {
-            BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {}
-            U256_OPS_WITH_CONTROL_ACCESS_ID => {}
+            BLAKE2S_DELEGATION_CSR_REGISTER => {}
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => {}
+            KECCAK_SPECIAL5_CSR_REGISTER => {}
             _ => {
                 *trap = TrapReason::IllegalInstruction;
             }
@@ -319,7 +322,7 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
         trap: &mut TrapReason,
     ) {
         match csr_index {
-            BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID => {
+            BLAKE2S_DELEGATION_CSR_REGISTER => {
                 blake2_round_function_with_extended_control(
                     state,
                     memory_source,
@@ -329,8 +332,11 @@ impl CustomCSRProcessor for DelegationsCSRProcessor {
                     trap,
                 );
             }
-            U256_OPS_WITH_CONTROL_ACCESS_ID => {
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => {
                 u256_ops_with_control_impl(state, memory_source, tracer, mmu, rs1_value, trap);
+            }
+            KECCAK_SPECIAL5_CSR_REGISTER => {
+                keccak_special5(state, memory_source, tracer, mmu, rs1_value, trap);
             }
             _ => {
                 *trap = TrapReason::IllegalInstruction;

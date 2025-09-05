@@ -58,16 +58,11 @@ pub fn prover_stage_3_for_unrolled_circuit<
             .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
     );
 
-    dbg!(quotient_alpha);
-    dbg!(quotient_beta);
-
     #[cfg(feature = "debug_logs")]
     {
         dbg!(quotient_alpha);
         dbg!(quotient_beta);
     }
-
-    let quotient_alpha = Mersenne31Quartic::ONE;
 
     let ProverCachedData {
         trace_len,

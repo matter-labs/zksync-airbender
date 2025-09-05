@@ -123,7 +123,7 @@ pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
     let mut bytecode = binary
         .as_chunks::<4>()
         .0
-        .iter()
+        .into_iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     trace_and_split::setups::pad_bytecode_for_proving(&mut bytecode);
@@ -235,7 +235,7 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
     let binary: Vec<u32> = binary
         .as_chunks::<4>()
         .0
-        .iter()
+        .into_iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 

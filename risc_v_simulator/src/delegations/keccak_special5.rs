@@ -1,11 +1,7 @@
 use super::*;
-use crate::cycle::{state::NON_DETERMINISM_CSR, status_registers::TrapReason};
+use crate::cycle::status_registers::TrapReason;
+use common_constants::delegation_types::keccak_special5::*;
 use cs::definitions::{TimestampData, TimestampScalar};
-
-pub const KECCAK_SPECIAL5_ACCESS_ID: u32 = 1001;
-pub const X11_NUM_WRITES: usize = 6 * 2; // 6 u64 r/w
-const TOTAL_RAM_ACCESSES: usize = X11_NUM_WRITES;
-pub const NUM_VARIABLE_OFFSETS: usize = 6;
 
 pub fn keccak_special5<
     M: MemorySource,
@@ -57,13 +53,67 @@ pub fn keccak_special5<
         "the control parameters are invalid"
     );
 
-    // extract state indexes (for address r/w)
     const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
     const PRECOMPILE_COLUMNMIX: u32 = 1;
     const PRECOMPILE_THETA_RHO: u32 = 2;
     const PRECOMPILE_CHI1: u32 = 3;
     const PRECOMPILE_CHI2: u32 = 4;
-    let sparse_access_state_indexes: [usize; NUM_VARIABLE_OFFSETS] = {
+
+    // update the control register
+    let control_next = match precompile {
+        PRECOMPILE_IOTA_COLUMNXOR => {
+            let iteration_next = (iteration + 1) % 5;
+            let precompile_next = if iteration == 4 {
+                PRECOMPILE_COLUMNMIX
+            } else {
+                precompile
+            };
+            let round_next = round as u32;
+            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
+        }
+        PRECOMPILE_COLUMNMIX => {
+            let iteration_next = iteration;
+            let precompile_next = PRECOMPILE_THETA_RHO;
+            let round_next = round as u32;
+            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
+        }
+        PRECOMPILE_THETA_RHO => {
+            let iteration_next = (iteration + 1) % 5;
+            let precompile_next = if iteration == 4 {
+                PRECOMPILE_CHI1
+            } else {
+                precompile
+            };
+            let round_next = round as u32;
+            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
+        }
+        PRECOMPILE_CHI1 => {
+            let iteration_next = iteration;
+            let precompile_next = PRECOMPILE_CHI2;
+            let round_next = round as u32;
+            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
+        }
+        PRECOMPILE_CHI2 => {
+            let iteration_next = (iteration + 1) % 5;
+            let precompile_next = if iteration == 4 {
+                PRECOMPILE_IOTA_COLUMNXOR
+            } else {
+                PRECOMPILE_CHI1
+            };
+            let round_next = if iteration == 4 {
+                round as u32 + 1
+            } else {
+                round as u32
+            };
+            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
+        }
+        _ => unreachable!(),
+    };
+    let x10_next = control_next << 16;
+    state.registers[10] = x10_next;
+
+    // extract state indexes (for address r/w)
+    let sparse_access_state_indexes: [usize; KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS] = {
         const PERMUTATIONS_ADJUSTED: [usize; 25 * 25] = {
             let perms = [
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
@@ -151,21 +201,21 @@ pub fn keccak_special5<
 
     // read u64 state words
     let state_access_u32_word_offsets = {
-        let mut result = [0; 12];
+        let mut result = [0; KECCAK_SPECIAL5_X11_NUM_WRITES];
         for i in 0..6 {
             result[i * 2] = sparse_access_state_indexes[i] * 2;
             result[i * 2 + 1] = sparse_access_state_indexes[i] * 2 + 1;
         }
         result
     };
-    let mut state_accesses: [RegisterOrIndirectReadWriteData; X11_NUM_WRITES] =
-        register_indirect_read_write_sparse::<_, X11_NUM_WRITES>(
+    let mut state_accesses: [RegisterOrIndirectReadWriteData; KECCAK_SPECIAL5_X11_NUM_WRITES] =
+        register_indirect_read_write_sparse::<_, KECCAK_SPECIAL5_X11_NUM_WRITES>(
             x11 as usize,
             state_access_u32_word_offsets,
             memory_source,
         );
 
-    let state_read_addresses: [u32; X11_NUM_WRITES] = std::array::from_fn(|i| {
+    let state_read_addresses: [u32; KECCAK_SPECIAL5_X11_NUM_WRITES] = std::array::from_fn(|i| {
         x11 + (core::mem::size_of::<u32>() * state_access_u32_word_offsets[i]) as u32
     });
 
@@ -279,7 +329,7 @@ pub fn keccak_special5<
     }
 
     // write down to RAM
-    write_indirect_accesses_sparse::<_, X11_NUM_WRITES>(
+    write_indirect_accesses_sparse::<_, KECCAK_SPECIAL5_X11_NUM_WRITES>(
         x11 as usize,
         state_access_u32_word_offsets,
         &state_accesses,
@@ -290,7 +340,7 @@ pub fn keccak_special5<
     let mut register_accesses = [
         RegisterOrIndirectReadWriteData {
             read_value: x10,
-            write_value: x10,
+            write_value: x10_next,
             timestamp: TimestampData::EMPTY,
         },
         RegisterOrIndirectReadWriteData {
@@ -301,8 +351,8 @@ pub fn keccak_special5<
     ];
 
     tracer.record_delegation(
-        KECCAK_SPECIAL5_ACCESS_ID,
-        10,
+        KECCAK_SPECIAL5_CSR_REGISTER,
+        KECCAK_SPECIAL5_BASE_ABI_REGISTER,
         &mut register_accesses,
         &[],
         &mut [],

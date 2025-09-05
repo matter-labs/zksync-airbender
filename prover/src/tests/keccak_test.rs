@@ -7,7 +7,7 @@ use risc_v_simulator::{cycle::IMStandardIsaConfig, delegations::DelegationsCSRPr
 
 const SECOND_WORD_BITS: usize = 4;
 
-use risc_v_simulator::delegations::keccak_special5::KECCAK_SPECIAL5_ACCESS_ID;
+use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 
 // use --features debug_satisfiable ?
 pub fn run_keccak_test_impl(
@@ -52,7 +52,7 @@ pub fn run_keccak_test_impl(
 
     let csr_table = create_csr_table_for_delegation(
         true,
-        &[KECCAK_SPECIAL5_ACCESS_ID],
+        &[KECCAK_SPECIAL5_CSR_REGISTER],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
@@ -107,9 +107,9 @@ pub fn run_keccak_test_impl(
             serialize_to_file(&circuit, "keccak_delegation_circuit_layout.json");
         }
 
-        let delegation_type = KECCAK_SPECIAL5_ACCESS_ID;
+        let delegation_type = KECCAK_SPECIAL5_CSR_REGISTER;
         let description = DelegationProcessorDescription {
-            delegation_type: KECCAK_SPECIAL5_ACCESS_ID,
+            delegation_type: KECCAK_SPECIAL5_CSR_REGISTER,
             num_requests_per_circuit: NUM_DELEGATION_CYCLES,
             trace_len: NUM_DELEGATION_CYCLES + 1,
             table_driver,

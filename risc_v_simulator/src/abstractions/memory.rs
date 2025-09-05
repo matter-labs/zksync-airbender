@@ -85,6 +85,7 @@ pub trait MemorySource {
     }
 }
 
+#[derive(Clone)]
 pub struct VectorMemoryImpl {
     pub inner: Vec<u32>,
 }

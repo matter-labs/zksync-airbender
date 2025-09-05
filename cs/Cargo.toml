@@ -14,6 +14,7 @@ field.workspace = true
 serde.workspace = true
 arrayvec.workspace = true
 blake2s_u32 = { workspace = true, optional = true}
+common_constants = { workspace = true }
 poseidon2 = { workspace = true, optional = true}
 itertools = { workspace = true, optional = true }
 derivative = { version = "2", optional = true }

@@ -10,17 +10,7 @@ use crate::one_row_compiler::LookupInput;
 use crate::one_row_compiler::Variable;
 use crate::types::Boolean;
 use crate::types::Num;
-
-const NUM_CONTROL_BITS: usize = 8;
-
-pub const ADD_OP_BIT_IDX: usize = 0;
-pub const SUB_OP_BIT_IDX: usize = 1;
-pub const SUB_AND_NEGATE_OP_BIT_IDX: usize = 2;
-pub const MUL_LOW_OP_BIT_IDX: usize = 3;
-pub const MUL_HIGH_OP_BIT_IDX: usize = 4;
-pub const EQ_OP_BIT_IDX: usize = 5;
-pub const CARRY_BIT_IDX: usize = 6;
-pub const MEMCOPY_BIT_IDX: usize = 7;
+use common_constants::delegation_types::bigint_with_control::*;
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
@@ -169,8 +159,10 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     // we can immediately boolean decompose control register into bitmask and ignore high
 
-    let control_bitmask =
-        Boolean::split_into_bitmask::<F, CS, NUM_CONTROL_BITS>(cs, Num::Var(control_mask[0]));
+    let control_bitmask = Boolean::split_into_bitmask::<F, CS, BIGINT_NUM_CONTROL_BITS>(
+        cs,
+        Num::Var(control_mask[0]),
+    );
 
     {
         for (i, el) in control_bitmask.iter().enumerate() {

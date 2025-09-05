@@ -19,6 +19,8 @@ mod slt;
 mod sltu;
 mod sra;
 
+mod keccak;
+
 const INITIAL_PC: u32 = 0;
 
 fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {

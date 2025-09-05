@@ -239,10 +239,10 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
     let mut factories = HashMap::new();
     for delegation_type in [
-        BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID,
-        U256_OPS_WITH_CONTROL_ACCESS_ID,
+        BLAKE2S_DELEGATION_CSR_REGISTER,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     ] {
-        if delegation_type == BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID {
+        if delegation_type == BLAKE2S_DELEGATION_CSR_REGISTER {
             let num_requests_per_circuit = (1 << 20) - 1;
             let delegation_type = delegation_type as u16;
             let factory_fn = move || {
@@ -250,9 +250,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             };
             factories.insert(
                 delegation_type,
-                Box::new(factory_fn) as Box<(dyn Fn() -> DelegationWitness)>,
+                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,
             );
-        } else if delegation_type == U256_OPS_WITH_CONTROL_ACCESS_ID {
+        } else if delegation_type == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
             let num_requests_per_circuit = (1 << 21) - 1;
             let delegation_type = delegation_type as u16;
             let factory_fn = move || {
@@ -260,7 +260,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             };
             factories.insert(
                 delegation_type,
-                Box::new(factory_fn) as Box<(dyn Fn() -> DelegationWitness)>,
+                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness>,
             );
         } else {
             panic!(
@@ -458,8 +458,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
-                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16,
-                U256_OPS_WITH_CONTROL_ACCESS_ID as u16,
+                BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+                BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             ],
         )
     } else {
@@ -469,8 +469,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             1 << 20,
             &[
                 NON_DETERMINISM_CSR,
-                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16,
-                U256_OPS_WITH_CONTROL_ACCESS_ID as u16,
+                BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+                BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             ],
         )
     };
@@ -792,7 +792,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
         true,
-        &[BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID],
+        &[BLAKE2S_DELEGATION_CSR_REGISTER],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
@@ -1539,14 +1539,14 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         };
 
         let delegation_circuits = delegation_circuits
-            .remove(&(BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID as u16))
+            .remove(&(BLAKE2S_DELEGATION_CSR_REGISTER as u16))
             .unwrap();
         for delegation_witness in delegation_circuits.into_iter() {
             println!("Will try to prove Blake delegation");
 
             assert_eq!(
                 delegation_witness.delegation_type as u32,
-                BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID
+                BLAKE2S_DELEGATION_CSR_REGISTER
             );
 
             // evaluate a witness and memory-only witness for each

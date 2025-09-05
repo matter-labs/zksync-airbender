@@ -1,22 +1,8 @@
 use super::*;
-use crate::cycle::state::NON_DETERMINISM_CSR;
 use crate::cycle::state_new::RiscV32StateForUnrolledProver;
+use common_constants::delegation_types::bigint_with_control::*;
 use cs::definitions::{TimestampData, TimestampScalar};
 use ruint::aliases::{U256, U512};
-
-pub const U256_OPS_WITH_CONTROL_ACCESS_ID: u32 = NON_DETERMINISM_CSR + 10;
-const TOTAL_RAM_ACCESSES: usize = 8 * 2;
-const BASE_ABI_REGISTER: u32 = 10;
-
-pub const NUM_CONTROL_BITS: usize = 8;
-pub const ADD_OP_BIT_IDX: usize = 0;
-pub const SUB_OP_BIT_IDX: usize = 1;
-pub const SUB_AND_NEGATE_OP_BIT_IDX: usize = 2;
-pub const MUL_LOW_OP_BIT_IDX: usize = 3;
-pub const MUL_HIGH_OP_BIT_IDX: usize = 4;
-pub const EQ_OP_BIT_IDX: usize = 5;
-pub const CARRY_BIT_IDX: usize = 6;
-pub const MEMCOPY_BIT_IDX: usize = 7;
 
 pub fn u256_ops_with_control_impl_over_unrolled_state<
     M: MemorySource,
@@ -86,7 +72,7 @@ pub fn u256_ops_with_control_impl_over_unrolled_state<
     let result;
     let control_mask = x12;
     assert!(
-        control_mask < (1 << NUM_CONTROL_BITS),
+        control_mask < (1 << BIGINT_NUM_CONTROL_BITS),
         "control bits mask is too large"
     );
     assert_eq!(
@@ -179,8 +165,8 @@ pub fn u256_ops_with_control_impl_over_unrolled_state<
     ];
 
     tracer.record_delegation(
-        U256_OPS_WITH_CONTROL_ACCESS_ID,
-        10,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        BIGINT_BASE_ABI_REGISTER,
         &mut register_accesses,
         &b_read_addresses,
         &mut b_accesses,
