@@ -43,8 +43,8 @@ fn test_keccak() {
     // let mut tracer = GPUFriendlyTracer;
 
     // run SIMULATOR
-    state_oldisa.registers[10] = state_addr; // this is where binary expects state addr
-    state_newunrolled.registers[10] = state_addr; // this is where binary expects state addr
+    state_oldisa.observable.registers[10] = state_addr; // this is where binary expects state addr
+    state_newunrolled.observable.registers[10] = state_addr; // this is where binary expects state addr
     let mut memory_oldisa = memory_original.clone();
     let mut memory_newunrolled = memory_original;
     for i in 0..binary.len() {

@@ -110,7 +110,7 @@ pub fn keccak_special5<
         _ => unreachable!(),
     };
     let x10_next = control_next << 16;
-    state.registers[10] = x10_next;
+    state.observable.registers[10] = x10_next;
 
     // extract state indexes (for address r/w)
     let sparse_access_state_indexes: [usize; KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS] = {
