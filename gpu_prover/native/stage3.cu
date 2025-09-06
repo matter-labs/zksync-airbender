@@ -351,7 +351,7 @@ extern "C" struct BoundaryConstraints {
 extern "C" struct ConstantsTimesChallenges {
   const e4 first_row;
   const e4 one_before_last_row;
-  const e4 sum;
+  const e4 every_row_except_last;
 };
 
 // TODO once constraints are done
@@ -863,7 +863,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void hardcoded_constraints_kernel(
   e4 acc = e4::add(acc_quadratic, acc_linear);
   const e4 current_quotient = quotient.get();
   acc = e4::add(acc, current_quotient);
-  acc = e4::add(acc, constants_times_challenges->sum);
+  acc = e4::add(acc, constants_times_challenges->every_row_except_last);
   const unsigned shift = 1 << (field::CIRCLE_GROUP_LOG_ORDER - log_n - 1);
   const e2 x = get_power_of_w(shift * (2 * gid + 1), false);
   const e2 num = e2::sub(x, omega_inv);

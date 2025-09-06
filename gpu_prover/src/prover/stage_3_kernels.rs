@@ -101,11 +101,9 @@ impl FlattenedGenericConstraintsMetadata {
 
     pub fn new(
         circuit: &CompiledCircuitArtifact<BF>,
-        alpha_powers: &[E4],
         tau: E2,
         omega_inv: E2,
         domain_size: usize,
-        constants_times_challenges: &mut ConstantsTimesChallenges,
     ) -> Self {
         let d1cs = &circuit.degree_1_constraints;
         let d2cs = &circuit.degree_2_constraints;
@@ -187,12 +185,6 @@ impl FlattenedGenericConstraintsMetadata {
             let num_linear_terms = u8::try_from(num_linear_terms).unwrap();
             num_linear_and_quadratic_terms_per_constraint[constraint_idx] =
                 [num_quadratic_terms, num_linear_terms];
-            let mut constant_times_challenge =
-                alpha_powers[constraint_idx + num_boolean_constraints];
-            constant_times_challenge.mul_assign_by_base(&constraint.constant_term);
-            constants_times_challenges
-                .sum
-                .add_assign(&constant_times_challenge);
             constraint_idx += 1;
         }
         assert_eq!(d2cs_iter.next(), None);
@@ -213,12 +205,6 @@ impl FlattenedGenericConstraintsMetadata {
             let num_linear_terms = u8::try_from(num_linear_terms).unwrap();
             num_linear_and_quadratic_terms_per_constraint[constraint_idx] =
                 [0 as u8, num_linear_terms];
-            let mut constant_times_challenge =
-                alpha_powers[constraint_idx + num_boolean_constraints];
-            constant_times_challenge.mul_assign_by_base(&constraint.constant_term);
-            constants_times_challenges
-                .sum
-                .add_assign(&constant_times_challenge);
             constraint_idx += 1;
         }
 
@@ -261,6 +247,35 @@ impl FlattenedGenericConstraintsMetadata {
                 as u32,
             num_non_boolean_constraints: (num_degree_2_constraints + num_degree_1_constraints
                 - num_boolean_constraints) as u32,
+        }
+    }
+
+    pub fn prepare_async_challenge_data(
+        &self,
+        circuit: &CompiledCircuitArtifact<BF>,
+        alpha_powers: &[E4],
+        constants_times_challenges: &mut ConstantsTimesChallenges,
+    ) {
+        let mut constraint_idx = 0;
+        let num_boolean_constraints = self.num_boolean_constraints as usize;
+        let d2cs = &circuit.degree_2_constraints[num_boolean_constraints..];
+        for constraint in d2cs.iter() {
+            let mut constant_times_challenge =
+                alpha_powers[constraint_idx + num_boolean_constraints];
+            constant_times_challenge.mul_assign_by_base(&constraint.constant_term);
+            constants_times_challenges
+                .every_row_except_last
+                .add_assign(&constant_times_challenge);
+            constraint_idx += 1;
+        }
+        for constraint in circuit.degree_1_constraints.iter() {
+            let mut constant_times_challenge =
+                alpha_powers[constraint_idx + num_boolean_constraints];
+            constant_times_challenge.mul_assign_by_base(&constraint.constant_term);
+            constants_times_challenges
+                .every_row_except_last
+                .add_assign(&constant_times_challenge);
+            constraint_idx += 1;
         }
     }
 }
@@ -323,13 +338,7 @@ impl<
 {
     pub fn new<F: Fn(usize) -> usize>(
         circuit: &CompiledCircuitArtifact<BF>,
-        lookup_challenges: &[E4],
-        lookup_gamma: E4,
-        alphas: &[E4],
-        alphas_offset: &mut usize,
-        helpers: &mut Vec<E4, impl Allocator>,
-        decompression_factor_inv: E2,
-        constants_times_challenges: &mut ConstantsTimesChallenges,
+        helpers_offset: usize,
         translate_e4_offset: &F,
     ) -> Self {
         assert_eq!(COMMON_TABLE_WIDTH, 3);
@@ -341,11 +350,7 @@ impl<
         let mut val_idx: usize = 0;
         let mut col_idx: usize = 0;
         let mut coeff_idx: usize = 0;
-        let table_id_challenge = lookup_challenges[NUM_LOOKUP_ARGUMENT_KEY_PARTS - 2];
-        let mut val_challenges = Vec::with_capacity(NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1);
-        val_challenges.push(E4::ONE);
-        val_challenges
-            .append(&mut (&lookup_challenges[0..(NUM_LOOKUP_ARGUMENT_KEY_PARTS - 2)]).to_vec());
+        let mut num_helpers_used = 0;
         let num_lookups = circuit.witness_layout.width_3_lookups.len();
         assert!(num_lookups > 0);
         assert_eq!(
@@ -355,7 +360,6 @@ impl<
                 .intermediate_polys_for_generic_lookup
                 .num_elements()
         );
-        let helpers_offset = helpers.len();
         for (term_idx, lookup_set) in circuit.witness_layout.width_3_lookups.iter().enumerate() {
             let e4_arg_col = translate_e4_offset(
                 circuit
@@ -365,20 +369,8 @@ impl<
                     .start,
             );
             e4_arg_cols[term_idx] = u16::try_from(e4_arg_col).unwrap();
-            let alpha = alphas[*alphas_offset];
-            *alphas_offset += 1;
             match lookup_set.table_index {
-                TableIndex::Constant(table_type) => {
-                    let id = BF::from_u64_unchecked(table_type.to_table_id() as u64);
-                    helpers.push(
-                        *table_id_challenge
-                            .clone()
-                            .mul_assign_by_base(&id)
-                            .add_assign(&lookup_gamma)
-                            .mul_assign_by_base(&decompression_factor_inv)
-                            .mul_assign(&alpha),
-                    );
-                }
+                TableIndex::Constant(_table_type) => num_helpers_used += 1,
                 TableIndex::Variable(place) => {
                     table_id_is_col[term_idx] = true;
                     col_idxs[col_idx] = match place {
@@ -386,21 +378,15 @@ impl<
                         _ => panic!("unexpected ColumnAddress variant"),
                     };
                     col_idx += 1;
-                    helpers.push(
-                        *alpha
-                            .clone()
-                            .mul_assign(&lookup_gamma)
-                            .mul_assign_by_base(&decompression_factor_inv),
-                    );
-                    helpers.push(*alpha.clone().mul_assign(&table_id_challenge));
+                    num_helpers_used += 2;
                 }
             }
             let mut lookup_is_empty = true;
-            for (val, val_challenge) in lookup_set.input_columns.iter().zip(val_challenges.iter()) {
+            for val in lookup_set.input_columns.iter() {
                 match val {
                     LookupExpression::Variable(place) => {
                         lookup_is_empty = false;
-                        helpers.push(*alpha.clone().mul_assign(&val_challenge));
+                        num_helpers_used += 1;
                         col_idxs[col_idx] = match place {
                             ColumnAddress::WitnessSubtree(col) => *col as u16,
                             ColumnAddress::MemorySubtree(col) => {
@@ -416,7 +402,7 @@ impl<
                         let num_terms = a.linear_terms.len();
                         if num_terms > 0 {
                             lookup_is_empty = false;
-                            helpers.push(*alpha.clone().mul_assign(&val_challenge));
+                            num_helpers_used += 1;
                         }
                         assert_eq!(a.constant_term, BF::ZERO);
                         assert!(num_terms <= MAX_TERMS_PER_EXPRESSION);
@@ -438,7 +424,6 @@ impl<
                 };
             }
             assert!(!lookup_is_empty);
-            constants_times_challenges.sum.sub_assign(&alpha);
         }
         let e4_arg_cols_start = translate_e4_offset(
             circuit
@@ -447,7 +432,6 @@ impl<
                 .start(),
         );
         assert_eq!(e4_arg_cols_start, e4_arg_cols[0] as usize);
-        let num_helpers_used = helpers.len() - helpers_offset;
         Self {
             coeffs,
             col_idxs,
@@ -459,6 +443,71 @@ impl<
             num_lookups: num_lookups as u32,
             e4_arg_cols_start: e4_arg_cols_start as u32,
         }
+    }
+
+    pub fn prepare_async_challenge_data(
+        &self,
+        circuit: &CompiledCircuitArtifact<BF>,
+        lookup_challenges: &[E4],
+        lookup_gamma: E4,
+        alphas: &[E4],
+        alphas_offset: &mut usize,
+        helpers: &mut Vec<E4, impl Allocator>,
+        decompression_factor_inv: E2,
+        constants_times_challenges: &mut ConstantsTimesChallenges,
+    ) {
+        let table_id_challenge = lookup_challenges[NUM_LOOKUP_ARGUMENT_KEY_PARTS - 2];
+        let mut val_challenges = Vec::with_capacity(NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1);
+        val_challenges.push(E4::ONE);
+        val_challenges
+            .append(&mut (&lookup_challenges[0..(NUM_LOOKUP_ARGUMENT_KEY_PARTS - 2)]).to_vec());
+        assert_eq!(self.helpers_offset as usize, helpers.len());
+        for lookup_set in circuit.witness_layout.width_3_lookups.iter() {
+            let alpha = alphas[*alphas_offset];
+            *alphas_offset += 1;
+            match lookup_set.table_index {
+                TableIndex::Constant(table_type) => {
+                    let id = BF::from_u64_unchecked(table_type.to_table_id() as u64);
+                    helpers.push(
+                        *table_id_challenge
+                            .clone()
+                            .mul_assign_by_base(&id)
+                            .add_assign(&lookup_gamma)
+                            .mul_assign_by_base(&decompression_factor_inv)
+                            .mul_assign(&alpha),
+                    );
+                }
+                TableIndex::Variable(_place) => {
+                    helpers.push(
+                        *alpha
+                            .clone()
+                            .mul_assign(&lookup_gamma)
+                            .mul_assign_by_base(&decompression_factor_inv),
+                    );
+                    helpers.push(*alpha.clone().mul_assign(&table_id_challenge));
+                }
+            }
+            for (val, val_challenge) in lookup_set.input_columns.iter().zip(val_challenges.iter()) {
+                match val {
+                    LookupExpression::Variable(_place) => {
+                        helpers.push(*alpha.clone().mul_assign(val_challenge));
+                    }
+                    LookupExpression::Expression(a) => {
+                        let num_terms = a.linear_terms.len();
+                        if num_terms > 0 {
+                            helpers.push(*alpha.clone().mul_assign(&val_challenge));
+                        }
+                    }
+                };
+            }
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&alpha);
+        }
+        assert_eq!(
+            self.num_helpers_used as usize,
+            helpers.len() - self.helpers_offset as usize
+        );
     }
 }
 
@@ -624,7 +673,7 @@ struct BoundaryConstraints {
 pub(super) struct ConstantsTimesChallenges {
     first_row: E4,
     one_before_last_row: E4,
-    sum: E4,
+    every_row_except_last: E4,
 }
 
 impl BoundaryConstraints {
@@ -784,8 +833,10 @@ impl BoundaryConstraints {
 //    - each expression may or may not have a constant term
 //  - Each term may or may not have an E4 coeff.
 //  - Constant terms * challenges are folded into a global sum.
-//  - Per-constraint challenges are folded into E4 coeffs and stashed in the helper array.
-// Even with this format, we'd need substantial hardcoded CPU logic to pack each constraint.
+//  - Per-constraint challenges are folded into E4 coeffs and stashed in the
+//  helper array.
+// Even with this format, we'd need substantial hardcoded CPU logic to pack each
+// constraint.
 cuda_kernel!(
     HardcodedConstraints,
     hardcoded_constraints,
@@ -825,7 +876,7 @@ cuda_kernel!(
     memory_timestamp_high_from_circuit_idx: BF,
     decompression_factor: E2,
     decompression_factor_squared: E2,
-    every_row_zerofier: E2,
+    every_row_zerofier : E2,
     omega_inv: E2,
     omega_inv_squared: E2,
     log_n: u32,
@@ -946,14 +997,16 @@ impl Metadata {
             &h_alpha_powers[(precomputation_size - num_quotient_terms_every_row_except_last_two)..];
         let h_alphas_for_first_row =
             &h_alpha_powers[(precomputation_size - num_quotient_terms_first_row)..];
-        // let d_alphas_for_first_row = &d_alphas[(precomputation_size - num_quotient_terms_first_row)..];
+        // let d_alphas_for_first_row =
+        //     &d_alphas[(precomputation_size - num_quotient_terms_first_row)..];
         let h_alphas_for_one_before_last_row =
             &h_alpha_powers[(precomputation_size - num_quotient_terms_one_before_last_row)..];
         // let d_alphas_for_one_before_last_row =
         //     &d_alphas[(precomputation_size - num_quotient_terms_one_before_last_row)..];
         let h_alphas_for_last_row =
             &h_alpha_powers[(precomputation_size - num_quotient_terms_last_row)..];
-        // let d_alphas_for_last_row = &d_alphas[(precomputation_size - num_quotient_terms_last_row)..];
+        // let d_alphas_for_last_row =
+        //     &d_alphas[(precomputation_size - num_quotient_terms_last_row)..];
         let h_alphas_for_last_row_and_at_zero =
             &h_alpha_powers[(precomputation_size - num_quotient_terms_last_row_and_at_zero)..];
         // let d_alphas_for_last_row_and_at_zero =
@@ -963,18 +1016,18 @@ impl Metadata {
             circuit.degree_2_constraints.len() + circuit.degree_1_constraints.len();
         let (h_alphas_for_generic_constraints, h_alphas_for_hardcoded_every_row_except_last) =
             h_alphas_for_every_row_except_last.split_at(num_generic_constraints);
-        constants_times_challenges.sum = E4::ZERO;
-        let flat_generic_constraints_metadata = FlattenedGenericConstraintsMetadata::new(
+        constants_times_challenges.every_row_except_last = E4::ZERO;
+        let flat_generic_constraints_metadata =
+            FlattenedGenericConstraintsMetadata::new(circuit, tau, omega_inv, n);
+        flat_generic_constraints_metadata.prepare_async_challenge_data(
             circuit,
             h_alphas_for_generic_constraints,
-            tau,
-            omega_inv,
-            n,
             constants_times_challenges,
         );
         // Hardcoded constraints
-        // TODO: Many metadata structs shared with stage2.rs have been deduplicated and placed in arg_utils,
-        // but there's still a substantial amount of partially-duplicated code surrounding their construction.
+        // TODO: Many metadata structs shared with stage2.rs have been deduplicated
+        // and placed in arg_utils, but there's still a substantial amount of
+        // partially-duplicated code surrounding their construction.
         // Once everything is working, figure out how much more can be deduplicated.
         let translate_e4_offset = |raw_col: usize| -> usize {
             assert_eq!(raw_col % 4, 0);
@@ -1113,8 +1166,8 @@ impl Metadata {
             assert_eq!(circuit.lazy_init_address_aux_vars.len(), 0);
             LazyInitTeardownLayouts::default()
         };
-        // Host work to precompute constants_times_challenges_sum and some helpers that
-        // streamline device computation
+        // Host work to precompute constants_times_challenges sums and some helpers
+        // that streamline device computation
         assert_eq!(helpers.len(), 0);
         assert_eq!(helpers.capacity(), MAX_HELPER_VALUES);
         let decompression_factor = flat_generic_constraints_metadata.decompression_factor;
@@ -1174,13 +1227,14 @@ impl Metadata {
                     .mul_assign_by_base(&decompression_factor_inv),
             );
             constants_times_challenges
-                .sum
+                .every_row_except_last
                 .sub_assign(alpha.clone().mul_assign(&lookup_two_gamma));
             alpha_offset += 1;
         }
-        // Expressions may contain constant terms that need special handling. Pain.
-        // need to pass alpha_offset rather than borrow it, because it's also used by
-        // non-closure invocations during the lifetime of the closure
+        // Expressions may contain constant terms that need special handling.
+        // Pain. need to pass alpha_offset rather than borrow it, because it's
+        // also used by non-closure invocations during the lifetime of the
+        // closure
         let stash_helpers_for_expressions_with_constant_terms =
             |num_expression_pairs: usize,
              constant_terms: &[BF],
@@ -1193,7 +1247,7 @@ impl Metadata {
                     let b_constant_term = constant_terms[2 * i + 1];
                     let constants_prod = *a_constant_term.clone().mul_assign(&b_constant_term);
                     constants_times_challenges
-                        .sum
+                        .every_row_except_last
                         .add_assign(alpha.mul_assign_by_base(&constants_prod));
                     *alpha_offset += 1;
                     let alpha = h_alphas_for_hardcoded_every_row_except_last[*alpha_offset];
@@ -1209,10 +1263,10 @@ impl Metadata {
                             .mul_assign_by_base(&decompression_factor_inv),
                     );
                     constants_times_challenges
-                        .sum
+                        .every_row_except_last
                         .sub_assign(alpha.clone().mul_assign_by_base(&constants_sum));
                     constants_times_challenges
-                        .sum
+                        .every_row_except_last
                         .sub_assign(alpha.clone().mul_assign(&lookup_two_gamma));
                     *alpha_offset += 1;
                 }
@@ -1240,7 +1294,7 @@ impl Metadata {
                     .mul_assign_by_base(&decompression_factor_inv),
             );
             constants_times_challenges
-                .sum
+                .every_row_except_last
                 .sub_assign(alpha.clone().mul_assign(&lookup_two_gamma));
             alpha_offset += 1;
         }
@@ -1257,7 +1311,7 @@ impl Metadata {
                         .mul_assign_by_base(&decompression_factor_inv),
                 );
                 constants_times_challenges
-                    .sum
+                    .every_row_except_last
                     .sub_assign(alpha.clone().mul_assign(&lookup_two_gamma));
                 alpha_offset += 1;
             }
@@ -1319,7 +1373,14 @@ impl Metadata {
         );
         let (delegated_width_3_lookups_layout, non_delegated_width_3_lookups_layout) =
             if process_delegations {
-                let delegated_layout = DelegatedWidth3LookupsLayout::new(
+                let delegated_layout =
+                    DelegatedWidth3LookupsLayout::new(circuit, helpers.len(), &translate_e4_offset);
+                let non_delegated_placeholder = NonDelegatedWidth3LookupsLayout::new_placeholder(
+                    delegated_layout.num_helpers_used,
+                    delegated_layout.num_lookups,
+                    delegated_layout.e4_arg_cols_start,
+                );
+                delegated_layout.prepare_async_challenge_data(
                     circuit,
                     lookup_linearization_challenges,
                     lookup_gamma,
@@ -1328,29 +1389,26 @@ impl Metadata {
                     helpers,
                     decompression_factor_inv,
                     constants_times_challenges,
-                    &translate_e4_offset,
-                );
-                let non_delegated_placeholder = NonDelegatedWidth3LookupsLayout::new_placeholder(
-                    delegated_layout.num_helpers_used,
-                    delegated_layout.num_lookups,
-                    delegated_layout.e4_arg_cols_start,
                 );
                 (delegated_layout, non_delegated_placeholder)
             } else {
-                (
-                    DelegatedWidth3LookupsLayout::default(),
-                    NonDelegatedWidth3LookupsLayout::new(
-                        circuit,
-                        lookup_linearization_challenges,
-                        lookup_gamma,
-                        &h_alphas_for_hardcoded_every_row_except_last,
-                        &mut alpha_offset,
-                        helpers,
-                        decompression_factor_inv,
-                        constants_times_challenges,
-                        &translate_e4_offset,
-                    ),
-                )
+                let delegated_layout = DelegatedWidth3LookupsLayout::default();
+                let non_delegated_layout = NonDelegatedWidth3LookupsLayout::new(
+                    circuit,
+                    helpers.len(),
+                    &translate_e4_offset,
+                );
+                non_delegated_layout.prepare_async_challenge_data(
+                    circuit,
+                    lookup_linearization_challenges,
+                    lookup_gamma,
+                    &h_alphas_for_hardcoded_every_row_except_last,
+                    &mut alpha_offset,
+                    helpers,
+                    decompression_factor_inv,
+                    constants_times_challenges,
+                );
+                (delegated_layout, non_delegated_layout)
             };
         let range_check_16_multiplicities_layout = MultiplicitiesLayout::new(
             range_check_16_multiplicities_src,
@@ -1446,7 +1504,8 @@ impl Metadata {
             .intermediate_polys_for_memory_init_teardown
             .start();
         let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
-        // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
+        // for lazy init padding constraints (limbs are zero if "final borrow"
+        // is zero)
         for _ in 0..lazy_init_teardown_layouts.num_lazy_init_teardown_sets {
             alpha_offset += 6;
         }
@@ -1457,7 +1516,7 @@ impl Metadata {
             let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
             if i == 0 {
                 constants_times_challenges
-                    .sum
+                    .every_row_except_last
                     .sub_assign(&alpha_times_gamma);
             }
             let mc = &memory_challenges;
@@ -1531,7 +1590,9 @@ impl Metadata {
             let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
             constant.mul_assign(&alpha);
             if i == 0 {
-                constants_times_challenges.sum.sub_assign(&constant);
+                constants_times_challenges
+                    .every_row_except_last
+                    .sub_assign(&constant);
             }
             helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
             helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
@@ -1616,8 +1677,7 @@ impl Metadata {
         assert_eq!(1, h_alphas_for_last_row.len());
         // Constraints at last row and zero
         // range check 16 e4 arg sums
-        // first make sure we can reconstruct e4 arg locations from
-        // layout data the kernel already has
+        // double-check we can reconstruct e4 arg locations from metadata
         let args_metadata = &circuit.stage_2_layout.intermediate_polys_for_range_check_16;
         let num_range_check_16_e4_args = args_metadata.ext_4_field_oracles.num_elements();
         assert_eq!(num_range_check_16_e4_args, args_metadata.num_pairs);
@@ -1643,8 +1703,7 @@ impl Metadata {
         helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
         // timestamp range check e4 arg sums
         if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
-            // first make sure we can reconstruct e4 arg locations from
-            // layout data the kernel already has
+            // double-check we can reconstruct e4 arg locations from metadata
             let args_metadata = &circuit
                 .stage_2_layout
                 .intermediate_polys_for_timestamp_range_checks;
@@ -1730,6 +1789,27 @@ impl Metadata {
         }
     }
 }
+
+// pub(super) fn prepare_async_challenge_data(
+//         h_alpha_powers: &[E4],
+//         h_beta_powers: &[E4],
+//         tau: E2,
+//         omega: E2,
+//         omega_inv: E2,
+//         lookup_challenges: &LookupChallenges,
+//         cached_data: &ProverCachedData,
+//         circuit: &CompiledCircuitArtifact<BF>,
+//         external_values: &ExternalValues,
+//         public_inputs: &[BF],
+//         grand_product_accumulator: E4,
+//         sum_over_delegation_poly: E4,
+//         log_n: u32,
+//         helpers: &mut Vec<E4, impl Allocator>,
+//         constants_times_challenges: &mut ConstantsTimesChallenges,
+//
+// ) {
+//
+// }
 
 pub fn compute_stage_3_composition_quotient_on_coset(
     cached_data: &ProverCachedData,
@@ -1990,7 +2070,7 @@ mod tests {
         let num_trace_cols = num_witness_cols + num_memory_cols;
         let num_stage_2_cols = circuit.stage_2_layout.total_width;
 
-        // Internally, AlphaPowersLayout::new calls circuit.as_verifier_compiled_artifact
+        // Internally, AlphaPowersLayout::new calls circuit.as_verifier_compiled_artifact.
         // We expect this to be negligible, but it doesn't hurt to sanity check.
         let now = std::time::Instant::now();
         let alpha_powers_layout =
