@@ -46,7 +46,7 @@ runs are responsible "verifying & re-proving" - resulting in a single proof in t
 
 The output of the cli is a single FRI proof.
 
-You can verify the proof in muliple ways:
+You can verify the proof in multiple ways:
 * via cli (see "verify-all" command)
 * in your server - include the same library as verify-all command
 * in web browser - see TODO (this is verifier library compiled to wasm)
