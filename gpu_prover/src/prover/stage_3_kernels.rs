@@ -617,20 +617,16 @@ struct MultiplicitiesLayout {
 }
 
 impl MultiplicitiesLayout {
-    pub fn new<F: Fn(usize) -> usize>(
-        src_cols_start: usize,
-        dst_cols_start: usize,
-        setup_cols_start: usize,
-        num_dst_cols: usize,
+    pub fn prepare_async_challenge_data(
+        &self,
         entry_width: usize,
         lookup_challenges: &LookupChallenges,
         alphas: &[E4],
         alpha_offset: &mut usize,
         helpers: &mut Vec<E4, impl Allocator>,
         decompression_factor_inv: E2,
-        translate_e4_offset: &F,
-    ) -> Self {
-        for _ in 0..num_dst_cols {
+    ) {
+        for _ in 0..self.num_dst_cols as usize {
             let alpha = alphas[*alpha_offset];
             *alpha_offset = *alpha_offset + 1;
             helpers.push(
@@ -646,12 +642,6 @@ impl MultiplicitiesLayout {
                         .mul_assign(&lookup_challenges.linearization_challenges[j]),
                 );
             }
-        }
-        Self {
-            src_cols_start: src_cols_start as u32,
-            dst_cols_start: translate_e4_offset(dst_cols_start) as u32,
-            setup_cols_start: setup_cols_start as u32,
-            num_dst_cols: num_dst_cols as u32,
         }
     }
 }
@@ -1410,44 +1400,47 @@ impl Metadata {
                 );
                 (delegated_layout, non_delegated_layout)
             };
-        let range_check_16_multiplicities_layout = MultiplicitiesLayout::new(
-            range_check_16_multiplicities_src,
-            range_check_16_multiplicities_dst,
-            range_check_16_setup_column,
-            num_range_check_16_multiplicities_cols,
+        let range_check_16_multiplicities_layout = MultiplicitiesLayout {
+            src_cols_start: range_check_16_multiplicities_src as u32,
+            dst_cols_start: translate_e4_offset(range_check_16_multiplicities_dst) as u32,
+            setup_cols_start: range_check_16_setup_column as u32,
+            num_dst_cols: num_range_check_16_multiplicities_cols as u32,
+        };
+        range_check_16_multiplicities_layout.prepare_async_challenge_data(
             1,
             &lookup_challenges,
             &h_alphas_for_hardcoded_every_row_except_last,
             &mut alpha_offset,
             helpers,
             decompression_factor_inv,
-            &translate_e4_offset,
         );
-        let timestamp_range_check_multiplicities_layout = MultiplicitiesLayout::new(
-            timestamp_range_check_multiplicities_src,
-            timestamp_range_check_multiplicities_dst,
-            timestamp_range_check_setup_column,
-            num_timestamp_range_check_multiplicities_cols,
+        let timestamp_range_check_multiplicities_layout = MultiplicitiesLayout {
+            src_cols_start: timestamp_range_check_multiplicities_src as u32,
+            dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
+            setup_cols_start: timestamp_range_check_setup_column as u32,
+            num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
+        };
+        timestamp_range_check_multiplicities_layout.prepare_async_challenge_data(
             1,
             &lookup_challenges,
             &h_alphas_for_hardcoded_every_row_except_last,
             &mut alpha_offset,
             helpers,
             decompression_factor_inv,
-            &translate_e4_offset,
         );
-        let generic_lookup_multiplicities_layout = MultiplicitiesLayout::new(
-            generic_lookup_multiplicities_src_start,
-            generic_lookup_multiplicities_dst_start,
-            generic_lookup_setup_columns_start,
-            num_generic_multiplicities_cols,
+        let generic_lookup_multiplicities_layout = MultiplicitiesLayout {
+            src_cols_start: generic_lookup_multiplicities_src_start as u32,
+            dst_cols_start: translate_e4_offset(generic_lookup_multiplicities_dst_start) as u32,
+            setup_cols_start: generic_lookup_setup_columns_start as u32,
+            num_dst_cols: num_generic_multiplicities_cols as u32,
+        };
+        generic_lookup_multiplicities_layout.prepare_async_challenge_data(
             NUM_LOOKUP_ARGUMENT_KEY_PARTS,
             &lookup_challenges,
             &h_alphas_for_hardcoded_every_row_except_last,
             &mut alpha_offset,
             helpers,
             decompression_factor_inv,
-            &translate_e4_offset,
         );
         if handle_delegation_requests {
             let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
