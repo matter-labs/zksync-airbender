@@ -11,5 +11,7 @@ cargo run -p cli --release --no-default-features --features gpu prove --bin prov
 
 You must compile with 'gpu' feature flag (so that gpu libraries are linked), and you must pass '--gpu' parameter.
 
+Your GPU must support at least 24GB of VRAM.
+
 Current issues:
-* It works only on basic & recursion level - final proofs are still done on CPU (as they require 150GB of RAM).
+* It works only on basic & recursion level - final proofs are still done on CPU (we're working on adding them on GPU, but it will require one with 32GB of VRAM).

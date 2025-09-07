@@ -7,7 +7,7 @@ TL;DR:
 The command below, will run basic proving + recursion + final proofs, until a single FRI (warning: it requires 128GB of RAM).
 
 ```
-cargo run --release --no-default-features -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output --until final-proof
+cargo run --release -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output --until final-proof
 ```
 
 ## Other options
@@ -24,7 +24,7 @@ You can also:
 You can run the riscV binary on the emulator, to see the expected outputs and number of used cycles.
 
 ```
-cargo run --profile cli  run  --bin ../../examples/basic_fibonacci/app.bin 
+cargo run  run  --bin ../../examples/basic_fibonacci/app.bin 
 ```
 
 By default it will run for up to 1_000_000 cycles, but you can specify `--cycles` to set number of cycles manually.
@@ -39,7 +39,7 @@ To generate the proof, simply run the command below. It will run your binary, an
 
 
 ```
-cargo run --profile cli  prove  --bin ../../examples/basic_fibonacci/app.bin --output_dir output/
+cargo run --release prove  --bin ../../examples/basic_fibonacci/app.bin --output_dir output/
 ```
 
 where the .bin file is the riscV compiled file. You can see more instructions on how to create such file in the basic_fibonacci dir.
@@ -54,13 +54,13 @@ You will get one or more proofs as the result - depending on the length of your 
 You can verify a single FRI proof, by running:
 
 ```
-cargo run --profile cli verify --proof output/proof_0.json
+cargo run verify --proof output/proof_0.json
 ```
 
 You can verify all the proofs that your program generated, by running:
 
 ```
-cargo run --profile cli verify-all --metadata output/metadata.json
+cargo run verify-all --metadata output/metadata.json
 ```
 
 This will verify all the basic proofs, and also verify that the final results (data stored in the registers) is valid.
@@ -82,13 +82,13 @@ The CLI handles it via `--input-file` flag, where you can pass the location of t
 For example, you can use it with `dynamic fibonacci` to compute (and later prove) the n-th fibonacci number.
 
 ```
-cargo run --profile cli run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
+cargo run run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
 ```
 
 You can also fetch the data directly from the sequencer (for example anvil-zksync), by passing the RPC url and batch number:
 
 ```
-cargo run --no-default-features -- run --bin /home/cyfra/matter/zksync-os/zksync_os/app.bin --input-rpc http://localhost:8011 --input-batch 1
+cargo run  -- run --bin /home/cyfra/matter/zksync-os/zksync_os/app.bin --input-rpc http://localhost:8011 --input-batch 1
 ```
 
 ## Verification keys
@@ -98,7 +98,7 @@ When you receive the proof, you should also check that it is proving the executi
 You can run:
 
 ```
-cargo run --profile cli generate-vk --bin ../../examples/dynamic_fibonacci/app.bin
+cargo run generate-vk --bin ../../examples/dynamic_fibonacci/app.bin
 ```
 
 To see the verification key for your binary, and then you can compare it with the one that is printed during proof verification.

@@ -1,9 +1,8 @@
 # Running prover end to end
 
-You can either run the proof for some ethereum transaction (using anvil-zksync) or prove execution of a custom binary.
+You can either run the proof for some ethereum transaction (using zksync-os-server) or prove execution of a custom binary.
 
-To run prover end to end (from riscV binary to a SNARK), you will need 4 pieces:
-* anvil-zksync (if you want to prove some transactions)
+To run prover end to end (from riscV binary to a SNARK), you will need 3 pieces:
 * cli from this repo (tools/cli)
 * cli from the zkos_wrapper repo
 * cli from era-boojum-validator-cli repo
@@ -21,73 +20,37 @@ cargo run --release -p cli run --bin examples/hashed_fibonacci/app.bin --input-f
 Remember the final register outputs, as you should compare them with the ones from step 3.
 
 
-### Anvil-zksync
-
-If you want to prove some ethereum transaction:
-
-* you can either use the precompiled binary from `examples/zksync_os/app.bin`
-* OR checkout zksync-os repo, and compile the zksync_os binary
-
-```shell
-cd zksync-os/zksync_os && ./dump_bin.sh
-```
-
-* checkout anvil-zksync repo **with boojumos-dev** branch
-
-```shell
-cargo run -- --use-boojum --boojum-bin-path ../zksync-os/zksync_os/app.bin
-```
-
-This will start anvil-zksync with boojum  on port 8011. Then you can use `cast` to create some transactions:
-
-```shell
-cast send -r http://localhost:8011 0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65 --value 100ether --private-key   0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --gas-limit 10000000
-```
-
 ## Proving 
 
-There are 4 options:
+There are 3 options:
 
-* if you do/don't have GPU
-* if you do/don't have 150GB of RAM.
+* if you don't have GPU
+* if you have GPU with 24GB VRAM
+* if you have GPU with 32GB VRAM
 
 
-### Cheap option (no GPU, no RAM).
-
-If you don't have RAM, you'll have to stop on 'final-recursion' step.
+### CPU only
 
 If you run your custom code:
 
 ```shell
-cargo run --release -p cli prove --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt  --until final-recursion --tmp-dir /tmp
+cargo run --release -p cli prove --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt  --until final-proof --tmp-dir /tmp
 ```
 
-If you run anvil-zksync (and want to prove first batch):
-
-```shell
-cargo run --release -p cli  prove --bin ../zksync-os/zksync_os/app.bin  --input-rpc http://localhost:8011 --input-batch 1 --output-dir /tmp  --until final-recursion
-```
-
-### GPU
+### GPU (24)
 
 If you have gpu, you can compile with `--features gpu` flag, and then pass `--gpu` - to make proving go a lot faster:
 
-
 ```shell
-cargo run --release -p cli --features gpu prove --bin ../zksync-os/zksync_os/app.bin  --input-rpc http://localhost:8011 --input-batch 1 --output-dir /tmp --gpu --until final-recursion
-```
-
-
-### If you have more than 150GB of RAM
-
-In such case, you can pass `--until final-proof` - to compute the single proof.
-
-
-```shell
-cargo run --release -p cli prove --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt --output-dir /tmp --until final-proof --tmp-dir /tmp
+cargo run --release -p cli --features gpu prove --bin ../zksync-os/zksync_os/app.bin  --input-rpc http://localhost:8011 --input-batch 1 --output-dir /tmp --gpu --until final-proof
 ```
 
 Where 'bin' is your riscV binary, and input-file (optional) is any input data that your binary consumes.
+
+### GPU (32GB VRAM)
+
+Having 32GB VRAM allows you to also run the final-proof on GPU. (TODO: Add instructions)
+
 
 After a while, you'll end up with a single 'final' file in the output dir, called `final_program_proof.json`
 
