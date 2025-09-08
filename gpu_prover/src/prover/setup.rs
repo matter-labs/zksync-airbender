@@ -18,6 +18,7 @@ impl<'a> SetupPrecomputations<'a> {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
+        use_recomputations: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -31,6 +32,7 @@ impl<'a> SetupPrecomputations<'a> {
             log_tree_cap_size,
             columns_count,
             true,
+            use_recomputations,
             context,
         )?;
         let transfer = Transfer::new()?;

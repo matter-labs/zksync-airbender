@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use super::context::{
     DeviceAllocation, DeviceProperties, HostAllocation, ProverContext, UnsafeAccessor,
 };
@@ -26,6 +27,16 @@ use prover::transcript::Seed;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 
+enum CosetsHolder<T> {
+    Full {
+        evaluations: Vec<DeviceAllocation<T>>,
+    },
+    WithRecomputations {
+        current_coset_index: usize,
+        evaluations: DeviceAllocation<T>,
+    },
+}
+
 pub struct TraceHolder<T> {
     pub(crate) log_domain_size: u32,
     pub(crate) log_lde_factor: u32,
@@ -33,15 +44,27 @@ pub struct TraceHolder<T> {
     pub(crate) log_tree_cap_size: u32,
     pub(crate) columns_count: usize,
     pub(crate) padded_to_even: bool,
-    pub(crate) ldes: Vec<DeviceAllocation<T>>,
-    pub(crate) trees: Vec<DeviceAllocation<Digest>>,
+    pub(crate) use_recomputations: bool,
+    cosets: Cell<CosetsHolder<T>> ,
+    trees: Vec<DeviceAllocation<Digest>>,
     pub(crate) tree_caps: Option<Vec<HostAllocation<[Digest]>>>,
 }
 
 impl TraceHolder<BF> {
     pub fn make_evaluations_sum_to_zero(&mut self, context: &ProverContext) -> CudaResult<()> {
+        let cosets = self.cosets.get_mut();
+        let evaluations = match cosets {
+            CosetsHolder::Full { evaluations } => &mut evaluations[0],
+            CosetsHolder::WithRecomputations {
+                current_coset_index,
+                evaluations,
+            } => {
+                assert_eq!(*current_coset_index, 0);
+                evaluations
+            }
+        };
         make_evaluations_sum_to_zero(
-            &mut self.ldes[0],
+            evaluations,
             self.log_domain_size,
             self.columns_count,
             self.padded_to_even,
@@ -63,16 +86,30 @@ impl TraceHolder<BF> {
             context.get_aux_stream(),
             context.get_device_properties(),
         )?;
-        populate_trees_from_trace_ldes(
-            &self.ldes,
-            &mut self.trees,
-            self.log_domain_size,
-            self.log_lde_factor,
-            self.log_rows_per_leaf,
-            self.log_tree_cap_size,
-            self.columns_count,
-            context.get_exec_stream(),
-        )
+        let ldes = &self.ldes;
+        let trees = &mut self.trees;
+        let log_domain_size = self.log_domain_size;
+        let log_lde_factor = self.log_lde_factor;
+        let log_rows_per_leaf = self.log_rows_per_leaf;
+        let log_tree_cap_size = self.log_tree_cap_size;
+        let columns_count = self.columns_count;
+        let stream = context.get_exec_stream();
+        let lde_factor = 1 << log_lde_factor;
+        assert_eq!(ldes.len(), lde_factor);
+        assert_eq!(trees.len(), lde_factor);
+        for (lde, tree) in ldes.iter().zip_eq(trees.iter_mut()) {
+            commit_trace(
+                lde,
+                tree,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                columns_count,
+                stream,
+            )?;
+        }
+        Ok(())
     }
 
     pub fn make_evaluations_sum_to_zero_extend_and_commit(
@@ -91,6 +128,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         pad_to_even: bool,
+        use_recomputations: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
@@ -110,6 +148,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             padded_to_even,
+            use_recomputations,
             ldes,
             trees,
             tree_caps: None,
@@ -269,7 +308,7 @@ pub(crate) fn allocate_tree_caps(
     result
 }
 
-pub(crate) fn make_evaluations_sum_to_zero(
+fn make_evaluations_sum_to_zero(
     evaluations: &mut DeviceSlice<BF>,
     log_domain_size: u32,
     columns_count: usize,
@@ -424,34 +463,6 @@ pub(crate) fn commit_trace(
         layers_count,
         true,
     )
-}
-
-pub(crate) fn populate_trees_from_trace_ldes(
-    ldes: &[DeviceAllocation<BF>],
-    trees: &mut [DeviceAllocation<Digest>],
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let lde_factor = 1 << log_lde_factor;
-    assert_eq!(ldes.len(), lde_factor);
-    assert_eq!(trees.len(), lde_factor);
-    for (lde, tree) in ldes.iter().zip_eq(trees.iter_mut()) {
-        commit_trace(
-            lde,
-            tree,
-            log_domain_size,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            columns_count,
-            stream,
-        )?;
-    }
-    Ok(())
 }
 
 pub(crate) fn transfer_tree_caps<T: DerefMut<Target = DeviceSlice<Digest>>>(

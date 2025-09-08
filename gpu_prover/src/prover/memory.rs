@@ -59,6 +59,7 @@ pub fn commit_memory<'a>(
         log_tree_cap_size,
         memory_columns_count,
         true,
+        false,
         context,
     )?;
     let TracingDataTransfer {
