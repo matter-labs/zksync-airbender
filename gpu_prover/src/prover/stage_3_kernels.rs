@@ -29,27 +29,16 @@ type E4 = Ext4Field;
 
 pub const BETA_POWERS_COUNT: usize = 6;
 
-fn stash_coeff(
-    coeff: BF,
-    coeffs_info: &mut [u8],
-    explicit_coeffs: &mut [BF],
-    flat_term_idx: &mut usize,
-    explicit_coeff_idx: &mut usize,
-) {
-    if coeff == BF::ONE {
-        coeffs_info[*flat_term_idx] = COEFF_IS_ONE;
-    } else if coeff == BF::MINUS_ONE {
-        coeffs_info[*flat_term_idx] = COEFF_IS_MINUS_ONE;
-    } else {
-        coeffs_info[*flat_term_idx] = COEFF_IS_EXPLICIT;
-        explicit_coeffs[*explicit_coeff_idx] = coeff;
-        *explicit_coeff_idx += 1;
-    }
-    *flat_term_idx += 1;
+#[derive(Clone, Default)]
+#[repr(C)]
+pub(super) struct ConstantsTimesChallenges {
+    first_row: E4,
+    one_before_last_row: E4,
+    every_row_except_last: E4,
 }
 
-/// These values are hand-picked, so that the biggest circuit (bigint) fits.
-/// What is here must match values from stage_3.cu
+// These values are hand-picked, so that the biggest circuit (bigint) fits.
+// What is here must match values from stage_3.cu
 const MAX_NON_BOOLEAN_CONSTRAINTS: usize = 192;
 const MAX_TERMS: usize = 1824;
 const MAX_EXPLICIT_COEFFS: usize = 632;
@@ -84,6 +73,25 @@ struct FlattenedGenericConstraintsMetadata {
 }
 
 impl FlattenedGenericConstraintsMetadata {
+    fn stash_coeff(
+        coeff: BF,
+        coeffs_info: &mut [u8],
+        explicit_coeffs: &mut [BF],
+        flat_term_idx: &mut usize,
+        explicit_coeff_idx: &mut usize,
+    ) {
+        if coeff == BF::ONE {
+            coeffs_info[*flat_term_idx] = COEFF_IS_ONE;
+        } else if coeff == BF::MINUS_ONE {
+            coeffs_info[*flat_term_idx] = COEFF_IS_MINUS_ONE;
+        } else {
+            coeffs_info[*flat_term_idx] = COEFF_IS_EXPLICIT;
+            explicit_coeffs[*explicit_coeff_idx] = coeff;
+            *explicit_coeff_idx += 1;
+        }
+        *flat_term_idx += 1;
+    }
+
     fn stash_column_address(address: &ColumnAddress) -> u16 {
         match address {
             ColumnAddress::WitnessSubtree(col) => *col as u16,
@@ -156,7 +164,7 @@ impl FlattenedGenericConstraintsMetadata {
             let num_quadratic_terms = constraint.quadratic_terms.len();
             assert!(num_quadratic_terms < MAX_QUADRATIC_TERMS_PER_CONSTRAINT);
             for (coeff, a, b) in constraint.quadratic_terms.iter() {
-                stash_coeff(
+                Self::stash_coeff(
                     *coeff,
                     &mut coeffs_info,
                     &mut explicit_coeffs,
@@ -172,7 +180,7 @@ impl FlattenedGenericConstraintsMetadata {
             let num_linear_terms = constraint.linear_terms.len();
             assert!(num_linear_terms < MAX_LINEAR_TERMS_PER_CONSTRAINT);
             for (coeff, a) in constraint.linear_terms.iter() {
-                stash_coeff(
+                Self::stash_coeff(
                     *coeff,
                     &mut coeffs_info,
                     &mut explicit_coeffs,
@@ -192,7 +200,7 @@ impl FlattenedGenericConstraintsMetadata {
             let num_linear_terms = constraint.linear_terms.len();
             assert!(num_linear_terms < MAX_LINEAR_TERMS_PER_CONSTRAINT);
             for (coeff, a) in constraint.linear_terms.iter() {
-                stash_coeff(
+                Self::stash_coeff(
                     *coeff,
                     &mut coeffs_info,
                     &mut explicit_coeffs,
@@ -500,9 +508,7 @@ impl<
                     }
                 };
             }
-            constants_times_challenges
-                .every_row_except_last
-                .sub_assign(&alpha);
+            constants_times_challenges.every_row_except_last.sub_assign(&alpha);
         }
         assert_eq!(
             self.num_helpers_used as usize,
@@ -658,14 +664,6 @@ struct BoundaryConstraints {
     num_one_before_last_row: u32,
 }
 
-#[derive(Clone, Default)]
-#[repr(C)]
-pub(super) struct ConstantsTimesChallenges {
-    first_row: E4,
-    one_before_last_row: E4,
-    every_row_except_last: E4,
-}
-
 impl BoundaryConstraints {
     fn unpack_public_input_column_address(column_address: ColumnAddress) -> u32 {
         if let ColumnAddress::WitnessSubtree(col) = column_address {
@@ -677,7 +675,7 @@ impl BoundaryConstraints {
 
     pub fn new(
         circuit: &CompiledCircuitArtifact<BF>,
-        external_values: &ExternalValues,
+        aux_boundary_values: &AuxArgumentsBoundaryValues,
         public_inputs: &[BF],
         process_shuffle_ram_init: bool,
         lazy_init_address_start: usize, // in memory cols. The kernel knows.
@@ -699,34 +697,156 @@ impl BoundaryConstraints {
         let mut helpers_first_row = Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW);
         let mut helpers_one_before_last_row =
             Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW);
-        if process_shuffle_ram_init {
-            let beta_power = beta_powers[3];
-            let mut stash_limb_pair = |start_col: usize, vals: &[BF]| {
-                for i in 0..=1 {
+        assert_eq!(process_shuffle_ram_init, aux_boundary_values.len() > 0);
+        assert_eq!(
+            lazy_init_teardown_layouts.num_lazy_init_teardown_sets,
+            aux_boundary_values.len(),
+        )
+
+        for i in 0..aux_boundary_values.len() {
+            first_row_cols[num_first_row] = lazy_init_address_start as u32;
+            num_first_row += 1;
+            first_row_cols[num_first_row] = (lazy_init_address_start + 1) as u32;
+            num_first_row += 1;
+
+            first_row_cols[num_first_row] = lazy_teardown_value_start as u32;
+            num_first_row += 1;
+            first_row_cols[num_first_row] = (lazy_teardown_value_start + 1) as u32;
+            num_first_row += 1;
+
+            first_row_cols[num_first_row] = lazy_teardown_timestamp_start as u32;
+            num_first_row += 1;
+            first_row_cols[num_first_row] = (lazy_teardown_timestamp_start + 1) as u32;
+            num_first_row += 1;
+
+            one_before_last_row_cols[num_one_before_last_row] = lazy_init_address_start as u32;
+            num_one_before_last_row += 1;
+            one_before_last_row_cols[num_one_before_last_row] = (lazy_init_address_start + 1) as u32;
+            num_one_before_last_row += 1;
+
+            one_before_last_row_cols[num_one_before_last_row] = lazy_teardown_value_start as u32;
+            num_one_before_last_row += 1;
+            one_before_last_row_cols[num_one_before_last_row] = (lazy_teardown_value_start + 1) as u32;
+            num_one_before_last_row += 1;
+
+            one_before_last_row_cols[num_one_before_last_row] = lazy_teardown_timestamp_start as u32;
+            num_one_before_last_row += 1;
+            one_before_last_row_cols[num_one_before_last_row] = (lazy_teardown_timestamp_start + 1) as u32;
+            num_one_before_last_row += 1;
+
+        }
+        for ((location, column_address), val) in
+            circuit.public_inputs.iter().zip(public_inputs.iter())
+        {
+            match location {
+                BoundaryConstraintLocation::FirstRow => {
+                    first_row_cols[num_first_row] =
+                        Self::unpack_public_input_column_address(*column_address);
+                    let beta_power = beta_powers[3];
                     let mut alpha = alphas_first_row[num_first_row];
                     alpha.mul_assign(&beta_power);
                     helpers_first_row
                         .push(*alpha.clone().mul_assign_by_base(&decompression_factor));
-                    first_row_cols[num_first_row] = (start_col + i) as u32;
                     constants_times_challenges
                         .first_row
-                        .sub_assign(alpha.mul_assign_by_base(&vals[i]));
+                        .sub_assign(alpha.clone().mul_assign_by_base(val));
                     num_first_row += 1;
                 }
-            };
+                BoundaryConstraintLocation::OneBeforeLastRow => {
+                    one_before_last_row_cols[num_one_before_last_row] =
+                        Self::unpack_public_input_column_address(*column_address);
+                    let beta_power = beta_powers[2];
+                    let mut alpha = alphas_one_before_last_row[num_one_before_last_row];
+                    alpha.mul_assign(&beta_power);
+                    helpers_one_before_last_row
+                        .push(*alpha.clone().mul_assign_by_base(&decompression_factor));
+                    constants_times_challenges
+                        .one_before_last_row
+                        .sub_assign(alpha.mul_assign_by_base(val));
+                    num_one_before_last_row += 1;
+                }
+                BoundaryConstraintLocation::LastRow => {
+                    panic!("public inputs on the last row are not supported");
+                }
+            }
+        }
+        // account for memory accumulator, which requires a first row constraint
+        let mut alpha = alphas_first_row[num_first_row];
+        alpha.mul_assign(&beta_powers[3]);
+        let grand_product_helper = *alpha.clone().mul_assign_by_base(&decompression_factor);
+        constants_times_challenges.first_row.sub_assign(&alpha);
+        // pushing grand product helper first is a bit more convenient for the kernel
+        helpers.push(grand_product_helper);
+        helpers.extend_from_slice(&helpers_first_row);
+        helpers.extend_from_slice(&helpers_one_before_last_row);
+        assert!(num_first_row <= MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW);
+        assert!(num_one_before_last_row <= MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW);
+        Self {
+            first_row_cols,
+            one_before_last_row_cols,
+            num_first_row: num_first_row as u32,
+            num_one_before_last_row: num_first_row as u32,
+        }
+    }
+
+    pub fn prepare_async_challenge_data(
+        circuit: &CompiledCircuitArtifact<BF>,
+        aux_boundary_values: &AuxArgumentsBoundaryValues,
+        public_inputs: &[BF],
+        process_shuffle_ram_init: bool,
+        lazy_init_address_start: usize, // in memory cols. The kernel knows.
+        lazy_teardown_value_start: usize, // in memory cols
+        lazy_teardown_timestamp_start: usize, // in memory cols
+        alphas_first_row: &[E4],
+        alphas_one_before_last_row: &[E4],
+        helpers: &mut Vec<E4, impl Allocator>,
+        beta_powers: &[E4],
+        decompression_factor: E2,
+        constants_times_challenges: &mut ConstantsTimesChallenges,
+    ) -> Self {
+        let mut first_row_cols = [0; MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW];
+        let mut one_before_last_row_cols = [0; MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW];
+        constants_times_challenges.first_row = E4::ZERO;
+        constants_times_challenges.one_before_last_row = E4::ZERO;
+        let mut num_first_row = 0;
+        let mut num_one_before_last_row = 0;
+        let mut helpers_first_row = Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW);
+        let mut helpers_one_before_last_row =
+            Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW);
+        assert_eq!(process_shuffle_ram_init, aux_boundary_values.len() > 0);
+        assert_eq!(
+            lazy_init_teardown_layouts.num_lazy_init_teardown_sets,
+            aux_boundary_values.len(),
+        )
+        let mut stash_limb_pair = |
+            start_col: usize,
+            vals: &[BF],
+            alphas: &| {
+            for j in 0..=1 {
+                let mut alpha = alphas_first_row[num_first_row];
+                alpha.mul_assign(&beta_power);
+                helpers_first_row
+                    .push(*alpha.clone().mul_assign_by_base(&decompression_factor));
+                first_row_cols[num_first_row] = (start_col + j) as u32;
+                constants_times_challenges
+                    .first_row
+                    .sub_assign(alpha.mul_assign_by_base(&vals[i]));
+                num_first_row += 1;
+            }
+        };
+        for i in 0..aux_boundary_values.len() {
+            let beta_power = beta_powers[3];
             stash_limb_pair(
                 lazy_init_address_start,
-                &external_values.aux_boundary_values.lazy_init_first_row[..],
+                &aux_boundary_values.lazy_init_first_row[..],
             );
             stash_limb_pair(
                 lazy_teardown_value_start,
-                &external_values.aux_boundary_values.teardown_value_first_row[..],
+                &aux_boundary_values.teardown_value_first_row[..],
             );
             stash_limb_pair(
                 lazy_teardown_timestamp_start,
-                &external_values
-                    .aux_boundary_values
-                    .teardown_timestamp_first_row[..],
+                &aux_boundary_values.teardown_timestamp_first_row[..],
             );
             let beta_power = beta_powers[2];
             let mut stash_limb_pair = |start_col: usize, vals: &[BF]| {
@@ -744,21 +864,15 @@ impl BoundaryConstraints {
             };
             stash_limb_pair(
                 lazy_init_address_start,
-                &external_values
-                    .aux_boundary_values
-                    .lazy_init_one_before_last_row[..],
+                &aux_boundary_values.lazy_init_one_before_last_row[..],
             );
             stash_limb_pair(
                 lazy_teardown_value_start,
-                &external_values
-                    .aux_boundary_values
-                    .teardown_value_one_before_last_row[..],
+                &aux_boundary_values.teardown_value_one_before_last_row[..],
             );
             stash_limb_pair(
                 lazy_teardown_timestamp_start,
-                &external_values
-                    .aux_boundary_values
-                    .teardown_timestamp_one_before_last_row[..],
+                &aux_boundary_values.teardown_timestamp_one_before_last_row[..],
             );
         }
         for ((location, column_address), val) in
@@ -898,6 +1012,7 @@ pub struct Metadata {
     delegation_processing_metadata: DelegationProcessingMetadata,
     delegation_request_metadata: DelegationRequestMetadata,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
+    num_helpers_expected: usize,
 }
 
 impl Metadata {
@@ -1640,7 +1755,7 @@ impl Metadata {
         // Args and helpers for boundary constraints (first row and second-to-last row)
         let boundary_constraints = BoundaryConstraints::new(
             circuit,
-            external_values,
+            &[external_values.aux_boundary_values],
             public_inputs,
             process_shuffle_ram_init,
             lazy_init_teardown_layouts.layouts[0].init_address_start as usize,
@@ -1779,6 +1894,7 @@ impl Metadata {
             delegation_processing_metadata,
             delegation_request_metadata,
             register_and_indirect_accesses,
+            num_helpers_expected,
         }
     }
 }
@@ -1871,6 +1987,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_processing_metadata,
         delegation_request_metadata,
         register_and_indirect_accesses,
+        num_helpers_expected: _
     } = metadata;
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
