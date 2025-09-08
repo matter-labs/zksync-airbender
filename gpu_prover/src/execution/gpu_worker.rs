@@ -1,7 +1,7 @@
 use super::messages::WorkerResult;
 use super::precomputations::CircuitPrecomputations;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
-use crate::circuit_type::CircuitType;
+use crate::circuit_type::{CircuitType, MainCircuitType};
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
 use crate::prover::context::{ProverContext, ProverContextConfig};
@@ -121,6 +121,16 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
     OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32
 }
 
+fn get_recompute_trees(circuit_type: CircuitType, context: &ProverContext) -> bool {
+    match circuit_type {
+        CircuitType::Main(main) => match main {
+            MainCircuitType::ReducedRiscVLog23Machine => (context.get_mem_size() >> 30) < 28, // less than 28GB
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 #[derive(Clone)]
 struct SetupHolder<'a> {
     pub setup: Rc<RefCell<SetupPrecomputations<'a>>>,
@@ -164,10 +174,13 @@ fn gpu_worker(
         assert!(domain_size.is_power_of_two());
         let log_domain_size = domain_size.trailing_zeros();
         let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+        let recompute_trees = get_recompute_trees(circuit_type, &context);
         let mut setup = SetupPrecomputations::new(
             &precomputations.compiled_circuit,
             log_lde_factor,
             log_tree_cap_size,
+            false,
+            recompute_trees,
             &context,
         )?;
         match circuit_type {
@@ -185,7 +198,6 @@ fn gpu_worker(
             ),
         }
         setup.ensure_commitment_produced(&context)?;
-        setup.trace_holder.produce_tree_caps(&context)?;
         context.get_exec_stream().synchronize()?;
         if matches!(circuit_type, CircuitType::Main(_)) {
             let accessors = setup.trace_holder.get_tree_caps_accessors();
@@ -275,7 +287,8 @@ fn gpu_worker(
                 }
                 GpuWorkRequest::Proof(request) => {
                     let batch_id = request.batch_id;
-                    match request.circuit_type {
+                    let circuit_type = request.circuit_type;
+                    match circuit_type {
                         CircuitType::Main(main) => trace!(
                             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for main circuit {:?} chunk {}",
                             main,
@@ -309,14 +322,15 @@ fn gpu_worker(
                         aux_boundary_values,
                     };
                     let setup = setup.unwrap();
-                    let circuit_sequence = match request.circuit_type {
+                    let circuit_sequence = match circuit_type {
                         CircuitType::Main(_) => request.circuit_sequence,
                         CircuitType::Delegation(_) => 0,
                     };
-                    let delegation_processing_type = match request.circuit_type {
+                    let delegation_processing_type = match circuit_type {
                         CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
                     };
+                    let recompute_trees = get_recompute_trees(circuit_type, &context);
                     let job = prove(
                         precomputations.compiled_circuit.clone(),
                         external_values,
@@ -329,6 +343,8 @@ fn gpu_worker(
                         NUM_QUERIES,
                         POW_BITS,
                         None,
+                        false,
+                        recompute_trees,
                         &context,
                     )?;
                     JobType::Proof(job)

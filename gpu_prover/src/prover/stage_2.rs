@@ -16,7 +16,6 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
-use itertools::Itertools;
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::transcript::Seed;
@@ -35,6 +34,8 @@ impl StageTwoOutput {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
+        recompute_cosets: bool,
+        recompute_trees: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -49,6 +50,9 @@ impl StageTwoOutput {
             log_tree_cap_size,
             num_stage_2_cols,
             true,
+            true,
+            recompute_cosets,
+            recompute_trees,
             context,
         )?;
         Ok(Self {
@@ -65,7 +69,7 @@ impl StageTwoOutput {
         seed: &mut HostAllocation<Seed>,
         circuit: &CompiledCircuitArtifact<BF>,
         cached_data: &ProverCachedData,
-        setup: &SetupPrecomputations,
+        setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
         callbacks: &mut Callbacks,
         context: &ProverContext,
@@ -98,13 +102,14 @@ impl StageTwoOutput {
             num_stage_2_cols,
             4 * (((num_stage_2_bf_cols + 3) / 4) + num_stage_2_e4_cols)
         );
-        let setup_cols = DeviceMatrix::new(&setup.trace_holder.get_evaluations(), trace_len);
+        let setup_evaluations = setup.trace_holder.get_evaluations(context)?;
+        let setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
         let generic_lookup_mappings = stage_1_output.generic_lookup_mapping.take().unwrap();
         let d_generic_lookups_args_to_table_entries_map =
             DeviceMatrix::new(&generic_lookup_mappings, trace_len);
         let trace_holder = &mut self.trace_holder;
-        let trace = trace_holder.get_evaluations_mut();
-        let mut d_stage_2_cols = DeviceMatrixMut::new(trace, trace_len);
+        let evaluations = trace_holder.get_uninit_evaluations_mut();
+        let mut d_stage_2_cols = DeviceMatrixMut::new(evaluations, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
         let mut d_alloc_e4_scratch =
             context.alloc(num_e4_scratch_elems, AllocationPlacement::BestFit)?;
@@ -144,10 +149,10 @@ impl StageTwoOutput {
             stream,
         )?;
         self.lookup_challenges = Some(lookup_challenges);
-        let d_witness_cols =
-            DeviceMatrix::new(&stage_1_output.witness_holder.get_evaluations(), trace_len);
-        let d_memory_cols =
-            DeviceMatrix::new(&stage_1_output.memory_holder.get_evaluations(), trace_len);
+        let witness_evaluations = stage_1_output.witness_holder.get_evaluations(context)?;
+        let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
+        let memory_evaluations = stage_1_output.memory_holder.get_evaluations(context)?;
+        let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
         compute_stage_2_args_on_main_domain(
             &setup_cols,
             &d_witness_cols,
@@ -176,10 +181,9 @@ impl StageTwoOutput {
         d_lookup_challenges.free();
         trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;
-        trace_holder.produce_tree_caps(context)?;
         let mut d_last_row = context.alloc(num_stage_2_cols, AllocationPlacement::BestFit)?;
-        let last_row_src =
-            DeviceMatrixChunk::new(trace_holder.get_evaluations(), trace_len, trace_len - 1, 1);
+        let evaluations = trace_holder.get_evaluations(context)?;
+        let last_row_src = DeviceMatrixChunk::new(evaluations, trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
         let mut last_row = unsafe { context.alloc_host_uninit_slice(num_stage_2_cols) };
@@ -206,11 +210,7 @@ impl StageTwoOutput {
         let update_seed_fn = move || unsafe {
             let mut transcript_input = vec![];
             let last_row = last_row_accessor.get();
-            let tree_caps = tree_caps_accessors
-                .iter()
-                .map(|cap| cap.get())
-                .collect_vec();
-            transcript_input.extend(flatten_tree_caps(&tree_caps));
+            transcript_input.extend(flatten_tree_caps(&tree_caps_accessors));
             transcript_input.extend(
                 Self::get_grand_product_accumulator(offset_for_grand_product_poly, last_row)
                     .into_coeffs_in_base()

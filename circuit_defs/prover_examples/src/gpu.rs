@@ -256,8 +256,14 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
         let log_domain_size = trace_len.trailing_zeros();
         let log_tree_cap_size =
             OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-        let mut setup =
-            SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, prover_context)?;
+        let mut setup = SetupPrecomputations::new(
+            circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            false,
+            false,
+            prover_context,
+        )?;
         setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
         setup
     };
@@ -302,6 +308,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 NUM_QUERIES,
                 POW_BITS,
                 None,
+                false,
+                false,
                 prover_context,
             )?;
             job.finish()?
@@ -372,6 +380,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 circuit,
                 log_lde_factor,
                 log_tree_cap_size,
+                false,
+                false,
                 prover_context,
             )?;
             setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
@@ -407,6 +417,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                     NUM_QUERIES,
                     POW_BITS,
                     None,
+                    false,
+                    false,
                     prover_context,
                 )?;
                 job.finish()?

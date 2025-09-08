@@ -1,5 +1,5 @@
 use super::context::{ProverContext, UnsafeMutAccessor};
-use super::trace_holder::{transform_tree_caps, TraceHolder};
+use super::trace_holder::{get_tree_caps, TraceHolder};
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::{device_tracing, BF};
 use crate::device_structures::DeviceMatrixMut;
@@ -10,7 +10,6 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
-use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
 pub struct MemoryCommitmentJob<'a> {
@@ -59,6 +58,9 @@ pub fn commit_memory<'a>(
         log_tree_cap_size,
         memory_columns_count,
         true,
+        true,
+        false,
+        false,
         context,
     )?;
     let TracingDataTransfer {
@@ -71,6 +73,8 @@ pub fn commit_memory<'a>(
     let range = device_tracing::Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
+    let mut evaluations = memory_holder.get_uninit_evaluations_mut();
+    let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
     match data_device {
         TracingDataDevice::Main {
             setup_and_teardown,
@@ -80,30 +84,20 @@ pub fn commit_memory<'a>(
                 memory_subtree,
                 &setup_and_teardown,
                 &trace,
-                &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
+                memory,
                 stream,
             )?;
         }
         TracingDataDevice::Delegation(trace) => {
-            generate_memory_values_delegation(
-                memory_subtree,
-                &trace,
-                &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
-                stream,
-            )?;
+            generate_memory_values_delegation(memory_subtree, &trace, memory, stream)?;
         }
     };
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
-    memory_holder.produce_tree_caps(context)?;
     let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
     let transform_tree_caps_fn = move || unsafe {
-        let tree_caps = src_tree_cap_accessors
-            .iter()
-            .map(|accessor| accessor.get())
-            .collect_vec();
-        let tree_caps = transform_tree_caps(&tree_caps);
+        let tree_caps = get_tree_caps(&src_tree_cap_accessors);
         assert!(dst_tree_caps_accessor
             .get_mut()
             .replace(tree_caps)

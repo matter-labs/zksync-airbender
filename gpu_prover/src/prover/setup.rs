@@ -18,6 +18,8 @@ impl<'a> SetupPrecomputations<'a> {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
+        recompute_cosets: bool,
+        recompute_trees: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -31,6 +33,9 @@ impl<'a> SetupPrecomputations<'a> {
             log_tree_cap_size,
             columns_count,
             true,
+            true,
+            recompute_cosets,
+            recompute_trees,
             context,
         )?;
         let transfer = Transfer::new()?;
@@ -47,7 +52,7 @@ impl<'a> SetupPrecomputations<'a> {
         trace: Arc<Vec<BF, impl GoodAllocator + 'a>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let dst = self.trace_holder.get_evaluations_mut();
+        let dst = self.trace_holder.get_uninit_evaluations_mut();
         self.transfer.schedule(trace, dst, context)?;
         self.transfer.record_transferred(context)
     }

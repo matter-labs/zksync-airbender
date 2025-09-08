@@ -151,20 +151,22 @@ DEVICE_FORCEINLINE void load_noninitial_twiddles_warp(e2f *twiddle_cache, const 
 }
 
 // Assumes coset_idx > 0
+template <bool inverse = false>
 DEVICE_FORCEINLINE e2f get_lde_scale_and_shift_factor(const unsigned k, const unsigned log_extension_degree, const unsigned coset_idx, const unsigned log_n) {
   // following the notation of https://eprint.iacr.org/2023/824.pdf Section 4
   const unsigned tau_power_of_w = coset_idx << (CIRCLE_GROUP_LOG_ORDER - log_n - log_extension_degree);
   const unsigned H_over_two = 1u << (log_n - 1);
   const unsigned power_of_w = k >= H_over_two ? tau_power_of_w * (k - H_over_two) : (1u << CIRCLE_GROUP_LOG_ORDER) - tau_power_of_w * (H_over_two - k);
-  return get_power_of_w(power_of_w, false);
+  return get_power_of_w(power_of_w, inverse);
 }
 
+template <bool inverse = false>
 DEVICE_FORCEINLINE e2f lde_scale_and_shift(const e2f Zk, const unsigned k, const unsigned log_extension_degree, const unsigned coset_idx,
                                            const unsigned log_n) {
   // Assumes the 0th coset is the main domain, as in zksync_airbender
   if (coset_idx == 0)
     return Zk;
-  const auto gauged_shift_factor = get_lde_scale_and_shift_factor(k, log_extension_degree, coset_idx, log_n);
+  const auto gauged_shift_factor = get_lde_scale_and_shift_factor<inverse>(k, log_extension_degree, coset_idx, log_n);
   return e2f::mul(Zk, gauged_shift_factor);
 }
 

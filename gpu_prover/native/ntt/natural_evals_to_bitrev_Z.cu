@@ -8,7 +8,7 @@ namespace airbender::ntt {
 // register array accesses dynamic and cause spilling. But, bizarrely, it doesn't: it has the opposite effect and
 // prevents spilling.
 
-template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset>
+template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset, bool evals_are_compressed = false>
 DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                      vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                      const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
@@ -100,8 +100,13 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(vectorized_e2_matrix_getter
         const unsigned mem_idx = gmem_offset + 64 * i + 2 * lane_id;
         const unsigned idx0 = bitrev(mem_idx, log_n);
         const unsigned idx1 = bitrev(mem_idx + 1, log_n);
-        vals[2 * i] = lde_scale<true>(vals[2 * i], idx0, 1, 1, log_n);
-        vals[2 * i + 1] = lde_scale<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        if (evals_are_compressed) {
+          vals[2 * i] = lde_scale_and_shift<true>(vals[2 * i], idx0, 1, 1, log_n);
+          vals[2 * i + 1] = lde_scale_and_shift<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        } else {
+          vals[2 * i] = lde_scale<true>(vals[2 * i], idx0, 1, 1, log_n);
+          vals[2 * i + 1] = lde_scale<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        }
       }
     }
 
@@ -144,7 +149,23 @@ EXTERN __launch_bounds__(128, 8) __global__
   evals_to_Z_final_stages_warp<2, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
-template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset>
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_compressed_coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                            vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                            const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                            const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<3, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
+}
+
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_compressed_coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                            vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                            const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                            const unsigned grid_offset) {
+  evals_to_Z_final_stages_warp<2, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
+}
+
+template <unsigned LOG_VALS_PER_THREAD, bool evals_are_coset, bool evals_are_compressed = false>
 DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
                                                       vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
                                                       const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
@@ -326,8 +347,13 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_block(vectorized_e2_matrix_gette
         const unsigned mem_idx = gmem_offset + 64 * i + 2 * lane_id;
         const unsigned idx0 = bitrev(mem_idx, log_n);
         const unsigned idx1 = bitrev(mem_idx + 1, log_n);
-        vals[2 * i] = lde_scale<true>(vals[2 * i], idx0, 1, 1, log_n);
-        vals[2 * i + 1] = lde_scale<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        if (evals_are_compressed) {
+          vals[2 * i] = lde_scale_and_shift<true>(vals[2 * i], idx0, 1, 1, log_n);
+          vals[2 * i + 1] = lde_scale_and_shift<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        } else {
+          vals[2 * i] = lde_scale<true>(vals[2 * i], idx0, 1, 1, log_n);
+          vals[2 * i + 1] = lde_scale<true>(vals[2 * i + 1], idx1, 1, 1, log_n);
+        }
       }
     }
 
@@ -354,6 +380,14 @@ EXTERN __launch_bounds__(512, 2) __global__
                                                         const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
                                                         const unsigned grid_offset) {
   evals_to_Z_final_stages_block<3, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
+}
+
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_compressed_coset_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                   vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                                   const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                                   const unsigned grid_offset) {
+  evals_to_Z_final_stages_block<3, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 // This kernel basically reverses the pattern of the b2n_noninitial_stages_block kernel.
@@ -559,7 +593,8 @@ EXTERN __launch_bounds__(512, 2) __global__
 // Simple, non-optimized kernel used for log_n < 16, to unblock debugging small proofs.
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_evals_to_Z_one_stage(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                 const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt, const bool evals_are_coset) {
+                                 const unsigned start_stage, const unsigned log_n, const unsigned blocks_per_ntt, const bool evals_are_coset,
+                                 const bool evals_are_compressed) {
   const unsigned col_pair = blockIdx.x / blocks_per_ntt;
   const unsigned bid_in_ntt = blockIdx.x % blocks_per_ntt;
   const unsigned tid_in_ntt = threadIdx.x + bid_in_ntt * blockDim.x;
@@ -585,8 +620,13 @@ EXTERN __launch_bounds__(512, 2) __global__
     a = e2f::mul(a, ab_inv_sizes[log_n]);
     b = e2f::mul(b, ab_inv_sizes[log_n]);
     if (evals_are_coset) {
-      a = lde_scale<true>(a, bitrev(a_idx, log_n), 1, 1, log_n);
-      b = lde_scale<true>(b, bitrev(b_idx, log_n), 1, 1, log_n);
+      if (evals_are_compressed) {
+        a = lde_scale_and_shift<true>(a, bitrev(a_idx, log_n), 1, 1, log_n);
+        b = lde_scale_and_shift<true>(b, bitrev(b_idx, log_n), 1, 1, log_n);
+      } else {
+        a = lde_scale<true>(a, bitrev(a_idx, log_n), 1, 1, log_n);
+        b = lde_scale<true>(b, bitrev(b_idx, log_n), 1, 1, log_n);
+      }
     }
   }
 

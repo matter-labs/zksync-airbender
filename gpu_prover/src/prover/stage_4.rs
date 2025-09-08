@@ -9,7 +9,10 @@ use super::stage_4_kernels::{
     get_e4_scratch_count_for_deep_quotiening, get_metadata, ChallengesTimesEvals,
     NonWitnessChallengesAtZOmega,
 };
-use super::trace_holder::{extend_trace, TraceHolder};
+use super::trace_holder::{
+    allocate_tree_caps, compute_coset_evaluations, split_evaluations_pair, transfer_tree_cap,
+    CosetsHolder, TraceHolder, TreesHolder,
+};
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::barycentric::{
@@ -43,10 +46,10 @@ impl StageFourOutput {
         seed: &mut HostAllocation<Seed>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
-        setup: &SetupPrecomputations,
-        stage_1_output: &StageOneOutput,
-        stage_2_output: &StageTwoOutput,
-        stage_3_output: &StageThreeOutput,
+        setup: &mut SetupPrecomputations,
+        stage_1_output: &mut StageOneOutput,
+        stage_2_output: &mut StageTwoOutput,
+        stage_3_output: &mut StageThreeOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
         folding_description: &FoldingDescription,
@@ -64,6 +67,9 @@ impl StageFourOutput {
             log_fold_by,
             log_tree_cap_size,
             1,
+            false,
+            true,
+            false,
             false,
             context,
         )?;
@@ -117,31 +123,33 @@ impl StageFourOutput {
         let mut d_common_factor_storage = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut d_lagrange_coeffs = context.alloc(trace_len, AllocationPlacement::BestFit)?;
         let d_setup_cols = DeviceMatrix::new(
-            setup.trace_holder.get_coset_evaluations(COSET_INDEX),
+            setup
+                .trace_holder
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_witness_cols = DeviceMatrix::new(
             stage_1_output
                 .witness_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_memory_cols = DeviceMatrix::new(
             stage_1_output
                 .memory_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_stage_2_cols = DeviceMatrix::new(
             stage_2_output
                 .trace_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_composition_col = DeviceMatrix::new(
             stage_3_output
                 .trace_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let stream = context.get_exec_stream();
@@ -282,23 +290,33 @@ impl StageFourOutput {
             false,
             &stream,
         )?;
-        extend_trace(
-            &mut vectorized_ldes,
+        assert_eq!(log_lde_factor, 1);
+        let (src, dst) = split_evaluations_pair(&mut vectorized_ldes, COSET_INDEX);
+        compute_coset_evaluations(
+            src,
+            dst,
             COSET_INDEX,
             log_domain_size,
             log_lde_factor,
-            context.get_exec_stream(),
-            context.get_aux_stream(),
-            context.get_device_properties(),
+            true,
+            context,
         )?;
         assert!(log_tree_cap_size >= log_lde_factor);
         let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
         let log_fold_by = folding_description.folding_sequence[0] as u32;
         let layers_count = log_domain_size + 1 - log_fold_by - log_coset_tree_cap_size;
-        for ((vectorized_lde, lde), tree) in vectorized_ldes
+        let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size, context);
+        for (((vectorized_lde, lde), tree), caps) in vectorized_ldes
             .iter()
-            .zip(trace_holder.ldes.iter_mut())
-            .zip(trace_holder.trees.iter_mut())
+            .zip_eq(match &mut trace_holder.cosets {
+                CosetsHolder::Full { evaluations } => evaluations.iter_mut(),
+                CosetsHolder::Single { .. } => unreachable!(),
+            })
+            .zip_eq(match &mut trace_holder.trees {
+                TreesHolder::Device { trees } => trees.iter_mut(),
+                TreesHolder::None => unreachable!(),
+            })
+            .zip_eq(tree_caps.iter_mut())
         {
             transpose(
                 &DeviceMatrix::new(vectorized_lde, trace_len),
@@ -307,15 +325,16 @@ impl StageFourOutput {
             )?;
             bit_reverse_in_place(lde.deref_mut(), stream)?;
             build_merkle_tree(
-                unsafe { lde.transmute_mut() },
+                unsafe { lde.transmute() },
                 tree,
                 log_fold_by + 2,
                 stream,
                 layers_count,
                 false,
             )?;
+            transfer_tree_cap(tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
         }
-        trace_holder.produce_tree_caps(context)?;
+        trace_holder.tree_caps = Some(tree_caps);
         let update_seed_fn = trace_holder.get_update_seed_fn(seed);
         callbacks.schedule(update_seed_fn, stream)?;
         let result = Self {

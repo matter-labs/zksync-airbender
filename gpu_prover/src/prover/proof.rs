@@ -75,6 +75,8 @@ pub fn prove<'a>(
     num_queries: usize,
     pow_bits: u32,
     external_pow_nonce: Option<u64>,
+    recompute_cosets: bool,
+    recompute_trees: bool,
     context: &ProverContext,
 ) -> CudaResult<ProofJob<'a>> {
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -112,6 +114,8 @@ pub fn prove<'a>(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
+        recompute_cosets,
+        recompute_trees,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -121,6 +125,8 @@ pub fn prove<'a>(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
+        recompute_cosets,
+        recompute_trees,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -148,8 +154,6 @@ pub fn prove<'a>(
     stage_1_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
     context.log_gpu_mem_usage("after stage_1");
-
-    setup.trace_holder.produce_tree_caps(context)?;
 
     // seed
     let mut seed = initialize_seed(
@@ -182,17 +186,18 @@ pub fn prove<'a>(
     // stage 3
     let stage_3_range = device_tracing::Range::new("stage_3")?;
     stage_3_range.start(stream)?;
-    let stage_3_output = StageThreeOutput::new(
+    let mut stage_3_output = StageThreeOutput::new(
         &mut seed,
         &circuit,
         &cached_data_values,
         &lde_precomputations,
         external_values.clone(),
         setup,
-        &stage_1_output,
-        &stage_2_output,
+        &mut stage_1_output,
+        &mut stage_2_output,
         log_lde_factor,
         log_tree_cap_size,
+        recompute_trees,
         &mut callbacks,
         context,
     )?;
@@ -203,14 +208,14 @@ pub fn prove<'a>(
     // stage 4
     let stage_4_range = device_tracing::Range::new("stage_4")?;
     stage_4_range.start(stream)?;
-    let stage_4_output = StageFourOutput::new(
+    let mut stage_4_output = StageFourOutput::new(
         &mut seed,
         &circuit,
         &cached_data_values,
-        &setup,
-        &stage_1_output,
-        &stage_2_output,
-        &stage_3_output,
+        setup,
+        &mut stage_1_output,
+        &mut stage_2_output,
+        &mut stage_3_output,
         log_lde_factor,
         log_tree_cap_size,
         &optimal_folding,
@@ -226,7 +231,7 @@ pub fn prove<'a>(
     stage_5_range.start(stream)?;
     let stage_5_output = StageFiveOutput::new(
         &mut seed,
-        &stage_4_output,
+        &mut stage_4_output,
         log_domain_size,
         log_lde_factor,
         &optimal_folding,
@@ -258,11 +263,11 @@ pub fn prove<'a>(
     queries_range.start(stream)?;
     let queries_output = QueriesOutput::new(
         seed,
-        &setup,
-        &stage_1_output,
-        &stage_2_output,
-        &stage_3_output,
-        &stage_4_output,
+        setup,
+        &mut stage_1_output,
+        &mut stage_2_output,
+        &mut stage_3_output,
+        &mut stage_4_output,
         &stage_5_output,
         log_domain_size,
         log_lde_factor,
@@ -368,24 +373,12 @@ fn initialize_seed<'a>(
         .get_accessor();
     let circuit_clone = circuit.clone();
     let seed_fn = move || unsafe {
-        let setup_tree_caps = setup_tree_caps_accessors
-            .iter()
-            .map(|a| a.get())
-            .collect_vec();
-        let witness_tree_caps = witness_tree_cap_accessors
-            .iter()
-            .map(|a| a.get())
-            .collect_vec();
-        let memory_tree_caps = memory_tree_cap_accessors
-            .iter()
-            .map(|a| a.get())
-            .collect_vec();
         let public_inputs = public_inputs_accessor.get();
         let mut input = vec![];
         input.push(circuit_sequence as u32);
         input.push(delegation_processing_type as u32);
         input.extend(public_inputs.iter().map(BF::to_reduced_u32));
-        input.extend(flatten_tree_caps(&setup_tree_caps));
+        input.extend(flatten_tree_caps(&setup_tree_caps_accessors));
         input.extend_from_slice(&external_values.challenges.memory_argument.flatten());
         if let Some(delegation_argument_challenges) =
             external_values.challenges.delegation_argument.as_ref()
@@ -399,8 +392,8 @@ fn initialize_seed<'a>(
         {
             input.extend_from_slice(&external_values.aux_boundary_values.flatten());
         }
-        input.extend(flatten_tree_caps(&witness_tree_caps));
-        input.extend(flatten_tree_caps(&memory_tree_caps));
+        input.extend(flatten_tree_caps(&witness_tree_cap_accessors));
+        input.extend(flatten_tree_caps(&memory_tree_cap_accessors));
         seed_accessor.set(Transcript::commit_initial(&input));
     };
     callbacks.schedule(seed_fn, context.get_exec_stream())?;
@@ -470,7 +463,7 @@ fn create_proof(
         let deep_poly_caps = get_tree_caps(&deep_poly_caps);
         let intermediate_fri_oracle_caps = intermediate_fri_oracle_caps
             .iter()
-            .map(get_tree_caps)
+            .map(|a| get_tree_caps(a))
             .collect_vec();
         let last_fri_step_plain_leaf_values = last_fri_step_plain_leaf_values
             .iter()

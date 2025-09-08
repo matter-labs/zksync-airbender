@@ -1,7 +1,7 @@
 use super::callbacks::Callbacks;
 use super::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use super::stage_4::StageFourOutput;
-use super::trace_holder::{allocate_tree_caps, flatten_tree_caps, transfer_tree_caps};
+use super::trace_holder::{allocate_tree_caps, flatten_tree_caps, transfer_tree_cap, CosetsHolder};
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
@@ -45,7 +45,7 @@ pub(crate) struct StageFiveOutput {
 impl StageFiveOutput {
     pub fn new<'a>(
         seed: &mut HostAllocation<Seed>,
-        stage_4_output: &StageFourOutput,
+        stage_4_output: &mut StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         folding_description: &FoldingDescription,
@@ -89,7 +89,10 @@ impl StageFiveOutput {
                 ldes.push(context.alloc(1 << log_folded_domain_size, AllocationPlacement::Bottom)?);
             }
             let folding_inputs = if i == 0 {
-                &stage_4_output.trace_holder.ldes
+                match &stage_4_output.trace_holder.cosets {
+                    CosetsHolder::Full { evaluations } => evaluations,
+                    CosetsHolder::Single { .. } => unreachable!(),
+                }
             } else {
                 &fri_oracles[i - 1].ldes
             };
@@ -171,10 +174,13 @@ impl StageFiveOutput {
                 let mut tree_caps = allocate_tree_caps(log_lde_factor, log_tree_cap_size, context);
                 let next_log_fold = folding_description.folding_sequence[i + 1] as u32;
                 let log_num_leafs = log_folded_domain_size - next_log_fold;
-                let log_cap_size = folding_description.total_caps_size_log2 as u32;
-                assert!(log_cap_size >= log_lde_factor);
-                let log_coset_cap_size = log_cap_size - log_lde_factor;
-                for (lde, tree) in ldes.iter().zip(trees.iter_mut()) {
+                assert!(log_tree_cap_size >= log_lde_factor);
+                let log_coset_cap_size = log_tree_cap_size - log_lde_factor;
+                for ((lde, tree), caps) in ldes
+                    .iter()
+                    .zip_eq(trees.iter_mut())
+                    .zip_eq(tree_caps.iter_mut())
+                {
                     let log_tree_len = log_num_leafs + 1;
                     let layers_count = log_num_leafs + 1 - log_coset_cap_size;
                     assert_eq!(tree.len(), 1 << log_tree_len);
@@ -187,24 +193,14 @@ impl StageFiveOutput {
                         layers_count,
                         false,
                     )?;
+                    transfer_tree_cap(tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
                 }
-                transfer_tree_caps(
-                    &trees,
-                    &mut tree_caps,
-                    log_lde_factor,
-                    log_tree_cap_size,
-                    stream,
-                )?;
                 let tree_caps_accessors = tree_caps
                     .iter()
                     .map(HostAllocation::get_accessor)
                     .collect_vec();
                 let update_seed_fn = move || unsafe {
-                    let tree_caps = tree_caps_accessors
-                        .iter()
-                        .map(|cap| cap.get())
-                        .collect_vec();
-                    let input = flatten_tree_caps(&tree_caps).collect_vec();
+                    let input = flatten_tree_caps(&tree_caps_accessors).collect_vec();
                     Transcript::commit_with_seed(seed_accessor.get_mut(), &input);
                 };
                 callbacks.schedule(update_seed_fn, stream)?;

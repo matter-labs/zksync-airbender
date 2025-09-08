@@ -60,6 +60,10 @@ use worker::Worker;
 
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
+const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = true;
+const RECOMPUTE_TREES_FOR_CORRECTNESS: bool = true;
+const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
+const RECOMPUTE_TREES_FOR_BENCHMARKS: bool = false;
 
 fn init_logger() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -475,6 +479,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 circuit,
                 log_lde_factor,
                 log_tree_cap_size,
+                RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                RECOMPUTE_TREES_FOR_CORRECTNESS,
                 prover_context,
             )?;
             setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
@@ -513,6 +519,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 NUM_QUERIES,
                 POW_BITS,
                 Some(cpu_proof.pow_nonce),
+                RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                RECOMPUTE_TREES_FOR_CORRECTNESS,
                 prover_context,
             )?;
             job.finish()?
@@ -627,6 +635,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     &gpu_circuit,
                     log_lde_factor,
                     log_tree_cap_size,
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    RECOMPUTE_TREES_FOR_CORRECTNESS,
                     prover_context,
                 )?;
                 setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
@@ -647,6 +657,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     NUM_QUERIES,
                     POW_BITS,
                     Some(cpu_proof.pow_nonce),
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    RECOMPUTE_TREES_FOR_CORRECTNESS,
                     prover_context,
                 )?;
                 job.finish()?
@@ -753,8 +765,14 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     let mut setups = Vec::with_capacity(contexts.len());
     for context in contexts.iter() {
         context.switch_to_device()?;
-        let mut setup =
-            SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, context)?;
+        let mut setup = SetupPrecomputations::new(
+            circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            RECOMPUTE_COSETS_FOR_BENCHMARKS,
+            RECOMPUTE_TREES_FOR_BENCHMARKS,
+            context,
+        )?;
         setup.schedule_transfer(setup_evaluations.clone(), context)?;
         setups.push(setup);
     }
@@ -781,6 +799,8 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 NUM_QUERIES,
                 POW_BITS,
                 None,
+                RECOMPUTE_COSETS_FOR_BENCHMARKS,
+                RECOMPUTE_TREES_FOR_BENCHMARKS,
                 context,
             )?;
             job.finish()?;
@@ -840,6 +860,8 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 NUM_QUERIES,
                 POW_BITS,
                 None,
+                RECOMPUTE_COSETS_FOR_BENCHMARKS,
+                RECOMPUTE_TREES_FOR_BENCHMARKS,
                 context,
             )?;
             let mut job = Some(job);
