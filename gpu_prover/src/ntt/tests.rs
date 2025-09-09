@@ -883,14 +883,14 @@ fn run_natural_main_evals_to_natural_coset_evals_and_back(
             dst_device_matrix.slice(),
             &exec_stream,
         )
-            .unwrap();
+        .unwrap();
 
         memory_copy_async(
             &mut dst_host[0..memory_size],
             dst_device_matrix.slice(),
             &exec_stream,
         )
-            .unwrap();
+        .unwrap();
         exec_stream.synchronize().unwrap();
         dbg!(&dst_host[0..memory_size]);
 

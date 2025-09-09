@@ -150,16 +150,18 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_compressed_coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                 const unsigned grid_offset) {
+    void ab_compressed_coset_evals_to_Z_final_8_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                            vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                            const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                            const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<3, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_compressed_coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in, vectorized_e2_matrix_setter<st_modifier::cg> gmem_out,
-                                                 const unsigned start_stage, const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                 const unsigned grid_offset) {
+    void ab_compressed_coset_evals_to_Z_final_7_stages_warp(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
+                                                            vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                            const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                            const unsigned grid_offset) {
   evals_to_Z_final_stages_warp<2, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
@@ -382,9 +384,9 @@ EXTERN __launch_bounds__(512, 2) __global__
 
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_compressed_coset_evals_to_Z_final_9_to_12_stages_block(vectorized_e2_matrix_getter<ld_modifier::cg> gmem_in,
-                                                        vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
-                                                        const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
-                                                        const unsigned grid_offset) {
+                                                                   vectorized_e2_matrix_setter<st_modifier::cg> gmem_out, const unsigned start_stage,
+                                                                   const unsigned stages_this_launch, const unsigned log_n, const unsigned num_Z_cols,
+                                                                   const unsigned grid_offset) {
   evals_to_Z_final_stages_block<3, true, true>(gmem_in, gmem_out, start_stage, stages_this_launch, log_n, num_Z_cols, grid_offset);
 }
 
