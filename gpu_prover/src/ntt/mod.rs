@@ -240,6 +240,7 @@ cuda_kernel!(
     log_n: u32,
     blocks_per_ntt: u32,
     evals_are_coset: bool,
+    evals_are_compressed: bool,
 );
 
 one_stage_kernel!(ab_evals_to_Z_one_stage);
@@ -263,6 +264,9 @@ n2b_multi_stage_kernel!(ab_main_domain_evals_to_Z_final_9_to_12_stages_block);
 n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_7_stages_warp);
 n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_8_stages_warp);
 n2b_multi_stage_kernel!(ab_coset_evals_to_Z_final_9_to_12_stages_block);
+n2b_multi_stage_kernel!(ab_compressed_coset_evals_to_Z_final_7_stages_warp);
+n2b_multi_stage_kernel!(ab_compressed_coset_evals_to_Z_final_8_stages_warp);
+n2b_multi_stage_kernel!(ab_compressed_coset_evals_to_Z_final_9_to_12_stages_block);
 
 #[allow(clippy::too_many_arguments)]
 fn natural_evals_to_bitrev_Z(
@@ -271,6 +275,7 @@ fn natural_evals_to_bitrev_Z(
     log_n: usize,
     num_bf_cols: usize,
     evals_are_coset: bool,
+    evals_are_compressed: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(log_n >= 1);
@@ -282,6 +287,9 @@ fn natural_evals_to_bitrev_Z(
     assert_eq!(inputs_matrix.cols(), num_bf_cols);
     assert_eq!(outputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.cols(), num_bf_cols);
+    if !evals_are_coset {
+        assert!(!evals_are_compressed);
+    }
 
     let inputs_matrix = inputs_matrix.as_ptr_and_stride();
     let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
@@ -302,6 +310,7 @@ fn natural_evals_to_bitrev_Z(
             log_n as u32,
             blocks_per_ntt as u32,
             evals_are_coset,
+            evals_are_compressed,
         );
         kernel_function.launch(&config, &args)?;
         for stage in 1..log_n {
@@ -312,6 +321,7 @@ fn natural_evals_to_bitrev_Z(
                 log_n as u32,
                 blocks_per_ntt as u32,
                 evals_are_coset,
+                evals_are_compressed,
             );
             kernel_function.launch(&config, &args)?;
         }
@@ -330,7 +340,11 @@ fn natural_evals_to_bitrev_Z(
                 match kern {
                     FINAL_7_WARP => (
                         if evals_are_coset {
-                            ab_coset_evals_to_Z_final_7_stages_warp
+                            if evals_are_compressed {
+                                ab_compressed_coset_evals_to_Z_final_7_stages_warp
+                            } else {
+                                ab_coset_evals_to_Z_final_7_stages_warp
+                            }
                         } else {
                             ab_main_domain_evals_to_Z_final_7_stages_warp
                         },
@@ -339,7 +353,11 @@ fn natural_evals_to_bitrev_Z(
                     ),
                     FINAL_8_WARP => (
                         if evals_are_coset {
-                            ab_coset_evals_to_Z_final_8_stages_warp
+                            if evals_are_compressed {
+                                ab_compressed_coset_evals_to_Z_final_8_stages_warp
+                            } else {
+                                ab_coset_evals_to_Z_final_8_stages_warp
+                            }
                         } else {
                             ab_main_domain_evals_to_Z_final_8_stages_warp
                         },
@@ -348,7 +366,11 @@ fn natural_evals_to_bitrev_Z(
                     ),
                     FINAL_9_TO_12_BLOCK => (
                         if evals_are_coset {
-                            ab_coset_evals_to_Z_final_9_to_12_stages_block
+                            if evals_are_compressed {
+                                ab_compressed_coset_evals_to_Z_final_9_to_12_stages_block
+                            } else {
+                                ab_coset_evals_to_Z_final_9_to_12_stages_block
+                            }
                         } else {
                             ab_main_domain_evals_to_Z_final_9_to_12_stages_block
                         },
@@ -403,6 +425,7 @@ pub fn natural_trace_main_evals_to_bitrev_Z(
         log_n,
         num_bf_cols,
         false,
+        false,
         stream,
     )
 }
@@ -420,6 +443,26 @@ pub fn natural_composition_coset_evals_to_bitrev_Z(
         outputs_matrix,
         log_n,
         num_bf_cols,
+        true,
+        false,
+        stream,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn natural_compressed_coset_evals_to_bitrev_Z(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    num_bf_cols: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    natural_evals_to_bitrev_Z(
+        inputs_matrix,
+        outputs_matrix,
+        log_n,
+        num_bf_cols,
+        true,
         true,
         stream,
     )
