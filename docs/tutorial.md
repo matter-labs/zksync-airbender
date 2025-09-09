@@ -6,7 +6,7 @@
 To run the Airbender, you need three things:
 * a cli tool (tools/cli)
 * your compiled program (app.bin)
-* opitonally - file with inputs to your program.
+* optionally - file with inputs to your program.
 
 The TL;DR of creating a proof is (run this from tools/cli directory):
 
@@ -83,7 +83,7 @@ Most programs require reading external data. This is done via a special CSR regi
 Example: `examples/dynamic_fibonacci` demonstrates reading input (n) and computing the n-th Fibonacci number.
 
 ### Delegations (Custom Circuits)
-Custom circuits are triggered using dedicated CSR IDs. Currently, we have 2 delegation circtuits - one for blake and one for big integer.
+Custom circuits are triggered using dedicated CSR IDs. Currently, we have 2 delegation circuits - one for blake and one for big integer.
 
 
 **How It Works:**
