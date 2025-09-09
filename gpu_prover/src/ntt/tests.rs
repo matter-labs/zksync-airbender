@@ -781,13 +781,14 @@ fn run_natural_main_evals_to_natural_coset_evals_and_back(
     // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
     let mut src_orig_host =
         HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
-    // src_orig_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
-    let mut seed = 0;
-    src_orig_host.fill_with(|| {
-        let result = BF::from_nonreduced_u32(seed);
-        seed += 1;
-        result
-    });
+    src_orig_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
+    // Manual fill for debugging, if needed:
+    // let mut seed = 0;
+    // src_orig_host.fill_with(|| {
+    //     let result = BF::from_nonreduced_u32(seed);
+    //     seed += 1;
+    //     result
+    // });
     let mut src_host =
         HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
     let mut dst_host =
@@ -824,33 +825,15 @@ fn run_natural_main_evals_to_natural_coset_evals_and_back(
             DeviceMatrixChunkMut::new(&mut src_device[0..memory_size], stride, OFFSET, n);
         let mut dst_device_matrix =
             DeviceMatrixChunkMut::new(&mut dst_device[0..memory_size], stride, OFFSET, n);
-        // natural_main_evals_to_natural_coset_evals(
-        //     &src_device_matrix,
-        //     &mut dst_device_matrix,
-        //     log_n,
-        //     num_bf_cols,
-        //     &exec_stream,
-        //     &aux_stream,
-        //     &device_properties,
-        // )
-        //     .unwrap();
-        // memory_copy_async(src_device_matrix.slice_mut(), dst_device_matrix.slice(), &exec_stream).unwrap();
-        //
-        //     memory_copy_async(
-        //     &mut dst_host[0..memory_size],
-        //     dst_device_matrix.slice(),
-        //     &exec_stream,
-        // )
-        //     .unwrap();
-        // exec_stream.synchronize().unwrap();
-        // dbg!(&dst_host[0..memory_size]);
 
-        natural_trace_main_evals_to_bitrev_Z(
+        natural_main_evals_to_natural_coset_evals(
             &src_device_matrix,
             &mut dst_device_matrix,
             log_n,
             num_bf_cols,
             &exec_stream,
+            &aux_stream,
+            &device_properties,
         )
         .unwrap();
         memory_copy_async(
@@ -869,21 +852,45 @@ fn run_natural_main_evals_to_natural_coset_evals_and_back(
         exec_stream.synchronize().unwrap();
         dbg!(&dst_host[0..memory_size]);
 
-        bitrev_Z_to_natural_trace_coset_evals(
-            &src_device_matrix,
-            &mut dst_device_matrix,
-            log_n,
-            num_bf_cols,
-            &exec_stream,
-        )
-        .unwrap();
+        // natural_trace_main_evals_to_bitrev_Z(
+        //     &src_device_matrix,
+        //     &mut dst_device_matrix,
+        //     log_n,
+        //     num_bf_cols,
+        //     &exec_stream,
+        // )
+        // .unwrap();
+        // memory_copy_async(
+        //     src_device_matrix.slice_mut(),
+        //     dst_device_matrix.slice(),
+        //     &exec_stream,
+        // )
+        // .unwrap();
 
-        memory_copy_async(
-            src_device_matrix.slice_mut(),
-            dst_device_matrix.slice(),
-            &exec_stream,
-        )
-        .unwrap();
+        // memory_copy_async(
+        //     &mut dst_host[0..memory_size],
+        //     dst_device_matrix.slice(),
+        //     &exec_stream,
+        // )
+        // .unwrap();
+        // exec_stream.synchronize().unwrap();
+        // dbg!(&dst_host[0..memory_size]);
+
+        // bitrev_Z_to_natural_trace_coset_evals(
+        //     &src_device_matrix,
+        //     &mut dst_device_matrix,
+        //     log_n,
+        //     num_bf_cols,
+        //     &exec_stream,
+        // )
+        // .unwrap();
+
+        // memory_copy_async(
+        //     src_device_matrix.slice_mut(),
+        //     dst_device_matrix.slice(),
+        //     &exec_stream,
+        // )
+        // .unwrap();
 
         memory_copy_async(
             &mut dst_host[0..memory_size],
@@ -1032,11 +1039,10 @@ fn test_natural_main_evals_to_natural_coset_evals_large_odd_num_Z_cols() {
 #[test]
 #[serial]
 fn test_natural_main_evals_to_natural_coset_evals_and_back() {
-    // run_natural_main_evals_to_natural_coset_evals_and_back(
-    //     1..17,
-    //     2 * REAL_COLS_PER_BLOCK as usize + 4,
-    // );
-    run_natural_main_evals_to_natural_coset_evals_and_back(1..2, 2);
+    run_natural_main_evals_to_natural_coset_evals_and_back(
+        1..17,
+        2 * REAL_COLS_PER_BLOCK as usize + 4,
+    );
 }
 
 #[test]
