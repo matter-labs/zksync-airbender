@@ -61,6 +61,8 @@ use worker::Worker;
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
 
+const USE_RECOMPUTATIONS: bool = true;
+
 fn init_logger() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .target(env_logger::Target::Stdout)
@@ -475,6 +477,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 circuit,
                 log_lde_factor,
                 log_tree_cap_size,
+                USE_RECOMPUTATIONS,
                 prover_context,
             )?;
             setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
@@ -513,6 +516,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 NUM_QUERIES,
                 POW_BITS,
                 Some(cpu_proof.pow_nonce),
+                USE_RECOMPUTATIONS,
                 prover_context,
             )?;
             job.finish()?
@@ -627,6 +631,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     &gpu_circuit,
                     log_lde_factor,
                     log_tree_cap_size,
+                    USE_RECOMPUTATIONS,
                     prover_context,
                 )?;
                 setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
@@ -647,6 +652,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     NUM_QUERIES,
                     POW_BITS,
                     Some(cpu_proof.pow_nonce),
+                    USE_RECOMPUTATIONS,
                     prover_context,
                 )?;
                 job.finish()?
@@ -753,8 +759,13 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     let mut setups = Vec::with_capacity(contexts.len());
     for context in contexts.iter() {
         context.switch_to_device()?;
-        let mut setup =
-            SetupPrecomputations::new(circuit, log_lde_factor, log_tree_cap_size, context)?;
+        let mut setup = SetupPrecomputations::new(
+            circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            USE_RECOMPUTATIONS,
+            context,
+        )?;
         setup.schedule_transfer(setup_evaluations.clone(), context)?;
         setups.push(setup);
     }
@@ -781,6 +792,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 NUM_QUERIES,
                 POW_BITS,
                 None,
+                USE_RECOMPUTATIONS,
                 context,
             )?;
             job.finish()?;
@@ -840,6 +852,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 NUM_QUERIES,
                 POW_BITS,
                 None,
+                USE_RECOMPUTATIONS,
                 context,
             )?;
             let mut job = Some(job);

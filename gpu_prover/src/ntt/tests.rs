@@ -15,7 +15,9 @@ use serial_test::serial;
 use worker::Worker;
 
 use crate::device_context::DeviceContext;
-use crate::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut};
+use crate::device_structures::{
+    DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
+};
 use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::REAL_COLS_PER_BLOCK;
 use crate::ntt::{
@@ -759,6 +761,194 @@ fn run_natural_main_evals_to_natural_coset_evals(log_n_range: Range<usize>, num_
     ctx.destroy().unwrap();
 }
 
+fn run_natural_main_evals_to_natural_coset_evals_and_back(
+    log_n_range: Range<usize>,
+    num_bf_cols: usize,
+) {
+    let ctx = DeviceContext::create(12).unwrap();
+    let device_properties = DeviceProperties::new().unwrap();
+    let n_max = 1 << (log_n_range.end - 1);
+    assert_eq!(num_bf_cols % 2, 0);
+    let worker = Worker::new();
+    let fwd_twiddles = precompute_twiddles_for_fft::<E2, Global, false>(n_max, &worker);
+    let inv_twiddles = precompute_twiddles_for_fft::<E2, Global, true>(n_max, &worker);
+    dbg!(fwd_twiddles);
+    dbg!(inv_twiddles);
+    let mut rng = rand::rng();
+    const OFFSET: usize = 0;
+    let max_stride: usize = n_max + OFFSET;
+    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
+    let mut src_orig_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    // src_orig_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
+    let mut seed = 0;
+    src_orig_host.fill_with(|| {
+        let result = BF::from_nonreduced_u32(seed);
+        seed += 1;
+        result
+    });
+    let mut src_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    let mut dst_host =
+        HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
+    let mut src_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();
+    let mut dst_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();
+    let exec_stream = CudaStream::create().unwrap();
+    let aux_stream = CudaStream::create().unwrap();
+    for log_n in log_n_range {
+        let n = (1 << log_n) as usize;
+        let stride = n + OFFSET;
+        let memory_size = stride * num_bf_cols;
+
+        // Imitate what we'll see in practice for trace evals
+        (&mut src_host[0..memory_size]).copy_from_slice(&src_orig_host[0..memory_size]);
+
+        for col in 0..num_bf_cols {
+            let start = (col * stride + OFFSET) as usize;
+            let range = start..start + n;
+            let sum: BF = (&src_host[range])
+                .iter()
+                .fold(BF::ZERO, |sum, val| *sum.clone().add_assign(val));
+            src_host[start + n - 1].sub_assign(&sum);
+        }
+
+        // Nonbitrev to bitrev, out of place
+        memory_copy_async(
+            &mut src_device[0..memory_size],
+            &src_host[0..memory_size],
+            &exec_stream,
+        )
+        .unwrap();
+        let mut src_device_matrix =
+            DeviceMatrixChunkMut::new(&mut src_device[0..memory_size], stride, OFFSET, n);
+        let mut dst_device_matrix =
+            DeviceMatrixChunkMut::new(&mut dst_device[0..memory_size], stride, OFFSET, n);
+        // natural_main_evals_to_natural_coset_evals(
+        //     &src_device_matrix,
+        //     &mut dst_device_matrix,
+        //     log_n,
+        //     num_bf_cols,
+        //     &exec_stream,
+        //     &aux_stream,
+        //     &device_properties,
+        // )
+        //     .unwrap();
+        // memory_copy_async(src_device_matrix.slice_mut(), dst_device_matrix.slice(), &exec_stream).unwrap();
+        //
+        //     memory_copy_async(
+        //     &mut dst_host[0..memory_size],
+        //     dst_device_matrix.slice(),
+        //     &exec_stream,
+        // )
+        //     .unwrap();
+        // exec_stream.synchronize().unwrap();
+        // dbg!(&dst_host[0..memory_size]);
+
+        natural_trace_main_evals_to_bitrev_Z(
+            &src_device_matrix,
+            &mut dst_device_matrix,
+            log_n,
+            num_bf_cols,
+            &exec_stream,
+        )
+        .unwrap();
+        memory_copy_async(
+            src_device_matrix.slice_mut(),
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            &mut dst_host[0..memory_size],
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+        exec_stream.synchronize().unwrap();
+        dbg!(&dst_host[0..memory_size]);
+
+        bitrev_Z_to_natural_trace_coset_evals(
+            &src_device_matrix,
+            &mut dst_device_matrix,
+            log_n,
+            num_bf_cols,
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            src_device_matrix.slice_mut(),
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+            .unwrap();
+
+        memory_copy_async(
+            &mut dst_host[0..memory_size],
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+            .unwrap();
+        exec_stream.synchronize().unwrap();
+        dbg!(&dst_host[0..memory_size]);
+
+        natural_composition_coset_evals_to_bitrev_Z(
+            &src_device_matrix,
+            &mut dst_device_matrix,
+            log_n,
+            num_bf_cols,
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            src_device_matrix.slice_mut(),
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            &mut dst_host[0..memory_size],
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+        exec_stream.synchronize().unwrap();
+        dbg!(&dst_host[0..memory_size]);
+
+        bitrev_Z_to_natural_composition_main_evals(
+            &src_device_matrix,
+            &mut dst_device_matrix,
+            log_n,
+            num_bf_cols,
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            src_device_matrix.slice_mut(),
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+
+        memory_copy_async(
+            &mut dst_host[0..memory_size],
+            dst_device_matrix.slice(),
+            &exec_stream,
+        )
+        .unwrap();
+        exec_stream.synchronize().unwrap();
+        dbg!(&dst_host[0..memory_size]);
+
+        assert_eq!(&src_host[0..memory_size], &dst_host[0..memory_size]);
+    }
+    ctx.destroy().unwrap();
+}
+
 #[test]
 #[serial]
 fn test_natural_trace_main_evals_to_bitrev_Z() {
@@ -837,4 +1027,28 @@ fn test_natural_main_evals_to_natural_coset_evals_large_even_num_Z_cols() {
 #[ignore]
 fn test_natural_main_evals_to_natural_coset_evals_large_odd_num_Z_cols() {
     run_natural_main_evals_to_natural_coset_evals(16..23, 10);
+}
+
+#[test]
+#[serial]
+fn test_natural_main_evals_to_natural_coset_evals_and_back() {
+    // run_natural_main_evals_to_natural_coset_evals_and_back(
+    //     1..17,
+    //     2 * REAL_COLS_PER_BLOCK as usize + 4,
+    // );
+    run_natural_main_evals_to_natural_coset_evals_and_back(1..2, 2);
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn test_natural_main_evals_to_natural_coset_evals_and_back_large_even_num_Z_cols() {
+    run_natural_main_evals_to_natural_coset_evals_and_back(16..23, 8);
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn test_natural_main_evals_to_natural_coset_evals_and_back_large_odd_num_Z_cols() {
+    run_natural_main_evals_to_natural_coset_evals_and_back(16..23, 10);
 }

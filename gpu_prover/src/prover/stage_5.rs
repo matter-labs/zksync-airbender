@@ -1,7 +1,9 @@
 use super::callbacks::Callbacks;
 use super::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use super::stage_4::StageFourOutput;
-use super::trace_holder::{allocate_tree_caps, flatten_tree_caps, transfer_tree_caps};
+use super::trace_holder::{
+    allocate_tree_caps, flatten_tree_caps, transfer_tree_caps, CosetsHolder,
+};
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
@@ -45,7 +47,7 @@ pub(crate) struct StageFiveOutput {
 impl StageFiveOutput {
     pub fn new<'a>(
         seed: &mut HostAllocation<Seed>,
-        stage_4_output: &StageFourOutput,
+        stage_4_output: &mut StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         folding_description: &FoldingDescription,
@@ -89,7 +91,10 @@ impl StageFiveOutput {
                 ldes.push(context.alloc(1 << log_folded_domain_size, AllocationPlacement::Bottom)?);
             }
             let folding_inputs = if i == 0 {
-                &stage_4_output.trace_holder.ldes
+                match &stage_4_output.trace_holder.cosets {
+                    CosetsHolder::Full { evaluations } => evaluations,
+                    CosetsHolder::WithRecomputations { .. } => unreachable!(),
+                }
             } else {
                 &fri_oracles[i - 1].ldes
             };

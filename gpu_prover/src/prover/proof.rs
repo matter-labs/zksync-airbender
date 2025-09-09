@@ -75,6 +75,7 @@ pub fn prove<'a>(
     num_queries: usize,
     pow_bits: u32,
     external_pow_nonce: Option<u64>,
+    use_precomputations: bool,
     context: &ProverContext,
 ) -> CudaResult<ProofJob<'a>> {
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -112,6 +113,7 @@ pub fn prove<'a>(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
+        use_precomputations,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -121,6 +123,7 @@ pub fn prove<'a>(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
+        use_precomputations,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -182,17 +185,18 @@ pub fn prove<'a>(
     // stage 3
     let stage_3_range = device_tracing::Range::new("stage_3")?;
     stage_3_range.start(stream)?;
-    let stage_3_output = StageThreeOutput::new(
+    let mut stage_3_output = StageThreeOutput::new(
         &mut seed,
         &circuit,
         &cached_data_values,
         &lde_precomputations,
         external_values.clone(),
         setup,
-        &stage_1_output,
-        &stage_2_output,
+        &mut stage_1_output,
+        &mut stage_2_output,
         log_lde_factor,
         log_tree_cap_size,
+        use_precomputations,
         &mut callbacks,
         context,
     )?;
@@ -203,14 +207,14 @@ pub fn prove<'a>(
     // stage 4
     let stage_4_range = device_tracing::Range::new("stage_4")?;
     stage_4_range.start(stream)?;
-    let stage_4_output = StageFourOutput::new(
+    let mut stage_4_output = StageFourOutput::new(
         &mut seed,
         &circuit,
         &cached_data_values,
-        &setup,
-        &stage_1_output,
-        &stage_2_output,
-        &stage_3_output,
+        setup,
+        &mut stage_1_output,
+        &mut stage_2_output,
+        &mut stage_3_output,
         log_lde_factor,
         log_tree_cap_size,
         &optimal_folding,
@@ -226,7 +230,7 @@ pub fn prove<'a>(
     stage_5_range.start(stream)?;
     let stage_5_output = StageFiveOutput::new(
         &mut seed,
-        &stage_4_output,
+        &mut stage_4_output,
         log_domain_size,
         log_lde_factor,
         &optimal_folding,
@@ -258,11 +262,11 @@ pub fn prove<'a>(
     queries_range.start(stream)?;
     let queries_output = QueriesOutput::new(
         seed,
-        &setup,
-        &stage_1_output,
-        &stage_2_output,
-        &stage_3_output,
-        &stage_4_output,
+        setup,
+        &mut stage_1_output,
+        &mut stage_2_output,
+        &mut stage_3_output,
+        &mut stage_4_output,
         &stage_5_output,
         log_domain_size,
         log_lde_factor,

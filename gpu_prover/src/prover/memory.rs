@@ -72,6 +72,8 @@ pub fn commit_memory<'a>(
     let range = device_tracing::Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
+    let mut evaluations = memory_holder.get_uninit_evaluations_mut();
+    let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
     match data_device {
         TracingDataDevice::Main {
             setup_and_teardown,
@@ -81,17 +83,12 @@ pub fn commit_memory<'a>(
                 memory_subtree,
                 &setup_and_teardown,
                 &trace,
-                &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
+                memory,
                 stream,
             )?;
         }
         TracingDataDevice::Delegation(trace) => {
-            generate_memory_values_delegation(
-                memory_subtree,
-                &trace,
-                &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
-                stream,
-            )?;
+            generate_memory_values_delegation(memory_subtree, &trace, memory, stream)?;
         }
     };
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;

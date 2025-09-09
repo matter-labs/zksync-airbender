@@ -9,7 +9,7 @@ use super::stage_4_kernels::{
     get_e4_scratch_count_for_deep_quotiening, get_metadata, ChallengesTimesEvals,
     NonWitnessChallengesAtZOmega,
 };
-use super::trace_holder::{extend_trace, TraceHolder};
+use super::trace_holder::{extend_trace, CosetsHolder, TraceHolder};
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::barycentric::{
@@ -43,10 +43,10 @@ impl StageFourOutput {
         seed: &mut HostAllocation<Seed>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
-        setup: &SetupPrecomputations,
-        stage_1_output: &StageOneOutput,
-        stage_2_output: &StageTwoOutput,
-        stage_3_output: &StageThreeOutput,
+        setup: &mut SetupPrecomputations,
+        stage_1_output: &mut StageOneOutput,
+        stage_2_output: &mut StageTwoOutput,
+        stage_3_output: &mut StageThreeOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
         folding_description: &FoldingDescription,
@@ -64,6 +64,7 @@ impl StageFourOutput {
             log_fold_by,
             log_tree_cap_size,
             1,
+            false,
             false,
             context,
         )?;
@@ -117,31 +118,31 @@ impl StageFourOutput {
         let mut d_common_factor_storage = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut d_lagrange_coeffs = context.alloc(trace_len, AllocationPlacement::BestFit)?;
         let d_setup_cols = DeviceMatrix::new(
-            setup.trace_holder.get_coset_evaluations(COSET_INDEX),
+            setup.trace_holder.get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_witness_cols = DeviceMatrix::new(
             stage_1_output
                 .witness_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_memory_cols = DeviceMatrix::new(
             stage_1_output
                 .memory_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_stage_2_cols = DeviceMatrix::new(
             stage_2_output
                 .trace_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_composition_col = DeviceMatrix::new(
             stage_3_output
                 .trace_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let stream = context.get_exec_stream();
@@ -297,8 +298,11 @@ impl StageFourOutput {
         let layers_count = log_domain_size + 1 - log_fold_by - log_coset_tree_cap_size;
         for ((vectorized_lde, lde), tree) in vectorized_ldes
             .iter()
-            .zip(trace_holder.ldes.iter_mut())
-            .zip(trace_holder.trees.iter_mut())
+            .zip_eq(match &mut trace_holder.cosets {
+                CosetsHolder::Full { evaluations } => evaluations.iter_mut(),
+                CosetsHolder::WithRecomputations { .. } => unreachable!()
+            })
+            .zip_eq(trace_holder.trees.iter_mut())
         {
             transpose(
                 &DeviceMatrix::new(vectorized_lde, trace_len),

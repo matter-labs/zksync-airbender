@@ -104,11 +104,11 @@ pub(crate) struct QueriesOutputAccessors {
 impl QueriesOutput {
     pub fn new(
         mut seed: HostAllocation<Seed>,
-        setup: &SetupPrecomputations,
-        stage_1_output: &StageOneOutput,
-        stage_2_output: &StageTwoOutput,
-        stage_3_output: &StageThreeOutput,
-        stage_4_output: &StageFourOutput,
+        setup: &mut SetupPrecomputations,
+        stage_1_output: &mut StageOneOutput,
+        stage_2_output: &mut StageTwoOutput,
+        stage_3_output: &mut StageThreeOutput,
+        stage_4_output: &mut StageFourOutput,
         stage_5_output: &StageFiveOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -167,56 +167,66 @@ impl QueriesOutput {
             )?;
             let mut log_domain_size = log_domain_size;
             let mut layers_count = log_domain_size - log_coset_tree_cap_size;
-            let witness_holder = &stage_1_output.witness_holder;
+            let (witness_evaluations, witness_tree) = stage_1_output
+                .witness_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let witness = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 true,
-                witness_holder.get_coset_evaluations(coset_idx),
-                &witness_holder.trees[coset_idx],
+                witness_evaluations,
+                witness_tree,
                 log_domain_size,
                 0,
                 layers_count,
                 context,
             )?;
-            let memory_holder = &stage_1_output.memory_holder;
+            let (memory_evaluations, memory_tree) = stage_1_output
+                .memory_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let memory = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 true,
-                memory_holder.get_coset_evaluations(coset_idx),
-                &memory_holder.trees[coset_idx],
+                memory_evaluations,
+                memory_tree,
                 log_domain_size,
                 0,
                 layers_count,
                 context,
             )?;
-            let setup_holder = &setup.trace_holder;
+            let (setup_evaluations, setup_tree) = setup
+                .trace_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let setup = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 true,
-                setup_holder.get_coset_evaluations(coset_idx),
-                &setup_holder.trees[coset_idx],
+                setup_evaluations,
+                setup_tree,
                 log_domain_size,
                 0,
                 layers_count,
                 context,
             )?;
-            let stage_2_holder = &stage_2_output.trace_holder;
+            let (stage_2_evaluations, stage_2_tree) = stage_2_output
+                .trace_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let stage_2 = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 true,
-                &stage_2_holder.get_coset_evaluations(coset_idx),
-                &stage_2_holder.trees[coset_idx],
+                stage_2_evaluations,
+                stage_2_tree,
                 log_domain_size,
                 0,
                 layers_count,
                 context,
             )?;
-            let stage_3_holder = &stage_3_output.trace_holder;
+            let (stage_3_evaluations, stage_3_tree) = stage_3_output
+                .trace_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let quotient = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 true,
-                &stage_3_holder.get_coset_evaluations(coset_idx),
-                &stage_3_holder.trees[coset_idx],
+                stage_3_evaluations,
+                stage_3_tree,
                 log_domain_size,
                 0,
                 layers_count,
@@ -237,12 +247,14 @@ impl QueriesOutput {
                 stream,
             )?;
             layers_count -= initial_log_fold;
-            let stage_4_holder = &stage_4_output.trace_holder;
+            let (stage_4_evaluations, stage_4_tree) = stage_4_output
+                .trace_holder
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
             let initial_fri = Self::get_leafs_and_digests(
                 &d_tree_indexes,
                 false,
-                unsafe { stage_4_holder.get_coset_evaluations(coset_idx).transmute() },
-                &stage_4_holder.trees[coset_idx],
+                unsafe { stage_4_evaluations.transmute() },
+                stage_4_tree,
                 log_domain_size + 2,
                 initial_log_fold + 2,
                 layers_count,

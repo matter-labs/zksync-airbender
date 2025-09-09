@@ -49,7 +49,7 @@ impl<'a> SetupPrecomputations<'a> {
         trace: Arc<Vec<BF, impl GoodAllocator + 'a>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let dst = self.trace_holder.get_evaluations_mut();
+        let dst = self.trace_holder.get_uninit_evaluations_mut();
         self.transfer.schedule(trace, dst, context)?;
         self.transfer.record_transferred(context)
     }

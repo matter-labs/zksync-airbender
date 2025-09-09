@@ -37,6 +37,7 @@ impl StageOneOutput {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
+        use_recomputations: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -50,6 +51,7 @@ impl StageOneOutput {
             log_tree_cap_size,
             witness_columns_count,
             true,
+            use_recomputations,
             context,
         )?;
         let memory_columns_count = circuit.memory_layout.total_width;
@@ -60,6 +62,7 @@ impl StageOneOutput {
             log_tree_cap_size,
             memory_columns_count,
             true,
+            use_recomputations,
             context,
         )?;
         Ok(Self {
@@ -73,7 +76,7 @@ impl StageOneOutput {
     pub fn generate_witness<'a>(
         &mut self,
         circuit: &CompiledCircuitArtifact<BF>,
-        setup: &SetupPrecomputations,
+        setup: &mut SetupPrecomputations,
         tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
         circuit_sequence: usize,
         callbacks: &mut Callbacks<'a>,
@@ -81,6 +84,7 @@ impl StageOneOutput {
     ) -> CudaResult<()> {
         let trace_len = circuit.trace_len;
         assert!(trace_len.is_power_of_two());
+        dbg!(trace_len);
         let log_domain_size = trace_len.trailing_zeros();
         let witness_subtree = &circuit.witness_layout;
         let memory_subtree = &circuit.memory_layout;
@@ -96,11 +100,12 @@ impl StageOneOutput {
         transfer.ensure_transferred(context)?;
         callbacks.extend(transfer.callbacks);
         let stream = context.get_exec_stream();
+        dbg!(stream.synchronize()).unwrap();
         assert_eq!(COMMON_TABLE_WIDTH, 3);
         assert_eq!(NUM_COLUMNS_FOR_COMMON_TABLE_WIDTH_SETUP, 4);
         let lookup_start = circuit.setup_layout.generic_lookup_setup_columns.start * trace_len;
         let lookup_len = NUM_COLUMNS_FOR_COMMON_TABLE_WIDTH_SETUP * trace_len;
-        let setup_evaluations = &setup.trace_holder.get_evaluations();
+        let setup_evaluations = setup.trace_holder.get_evaluations(context)?;
         let generic_lookup_tables = &setup_evaluations[lookup_start..][..lookup_len];
         let timestamp_high_from_circuit_sequence =
             timestamp_high_contribution_from_circuit_sequence(circuit_sequence, trace_len);
@@ -120,14 +125,15 @@ impl StageOneOutput {
                 + timestamp_range_check_multiplicities_columns.num_elements,
             generic_multiplicities_columns.start
         );
-        let witness_holder = &mut self.witness_holder;
-        let memory_holder = &mut self.memory_holder;
+        let mut memory_evaluations = self.memory_holder.get_uninit_evaluations_mut();
+        let mut witness_evaluations = self.witness_holder.get_uninit_evaluations_mut();
         match data_device {
             TracingDataDevice::Main {
                 setup_and_teardown,
                 trace,
             } => {
-                set_to_zero(witness_holder.get_evaluations_mut(), stream)?;
+                set_to_zero(&mut witness_evaluations, stream)?;
+                dbg!(stream.synchronize()).unwrap();
                 generate_memory_and_witness_values_main(
                     memory_subtree,
                     &circuit.memory_queries_timestamp_comparison_aux_vars,
@@ -135,49 +141,54 @@ impl StageOneOutput {
                     circuit.lazy_init_address_aux_vars.as_ref().unwrap(),
                     &trace,
                     timestamp_high_from_circuit_sequence,
-                    &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
-                    &mut DeviceMatrixMut::new(witness_holder.get_evaluations_mut(), trace_len),
+                    &mut DeviceMatrixMut::new(&mut memory_evaluations, trace_len),
+                    &mut DeviceMatrixMut::new(&mut witness_evaluations, trace_len),
                     stream,
                 )?;
+                dbg!(stream.synchronize()).unwrap();
                 generate_witness_values_main(
                     circuit_type.as_main().unwrap(),
                     &trace,
                     &DeviceMatrix::new(&generic_lookup_tables, trace_len),
-                    &DeviceMatrix::new(memory_holder.get_evaluations(), trace_len),
-                    &mut DeviceMatrixMut::new(witness_holder.get_evaluations_mut(), trace_len),
+                    &DeviceMatrix::new(&memory_evaluations, trace_len),
+                    &mut DeviceMatrixMut::new(&mut witness_evaluations, trace_len),
                     &mut DeviceMatrixMut::new(&mut generic_lookup_mapping, trace_len),
                     stream,
                 )?;
+                dbg!(stream.synchronize()).unwrap();
             }
             TracingDataDevice::Delegation(trace) => {
                 let all_multiplicities_columns_count = range_check_16_multiplicities_columns
                     .num_elements
                     + timestamp_range_check_multiplicities_columns.num_elements
                     + generic_multiplicities_columns.num_elements;
-                let all_multiplicities = &mut witness_holder.get_evaluations_mut()
+                let all_multiplicities = &mut witness_evaluations
                     [range_check_16_multiplicities_columns.start * trace_len..]
                     [..all_multiplicities_columns_count * trace_len];
                 set_to_zero(all_multiplicities, stream)?;
+                dbg!(stream.synchronize()).unwrap();
                 generate_memory_and_witness_values_delegation(
                     memory_subtree,
                     &circuit.register_and_indirect_access_timestamp_comparison_aux_vars,
                     &trace,
-                    &mut DeviceMatrixMut::new(memory_holder.get_evaluations_mut(), trace_len),
-                    &mut DeviceMatrixMut::new(witness_holder.get_evaluations_mut(), trace_len),
+                    &mut DeviceMatrixMut::new(&mut memory_evaluations, trace_len),
+                    &mut DeviceMatrixMut::new(&mut witness_evaluations, trace_len),
                     stream,
                 )?;
+                dbg!(stream.synchronize()).unwrap();
                 generate_witness_values_delegation(
                     circuit_type.as_delegation().unwrap(),
                     &trace,
                     &DeviceMatrix::new(&generic_lookup_tables, trace_len),
-                    &DeviceMatrix::new(memory_holder.get_evaluations(), trace_len),
-                    &mut DeviceMatrixMut::new(witness_holder.get_evaluations_mut(), trace_len),
+                    &DeviceMatrix::new(&memory_evaluations, trace_len),
+                    &mut DeviceMatrixMut::new(&mut witness_evaluations, trace_len),
                     &mut DeviceMatrixMut::new(&mut generic_lookup_mapping, trace_len),
                     stream,
                 )?;
+                dbg!(stream.synchronize()).unwrap();
             }
         };
-        let generic_lookup_multiplicities = &mut witness_holder.get_evaluations_mut()
+        let generic_lookup_multiplicities = &mut witness_evaluations
             [generic_multiplicities_columns.start * trace_len..]
             [..generic_multiplicities_columns.num_elements * trace_len];
         generate_generic_lookup_multiplicities(
@@ -185,15 +196,17 @@ impl StageOneOutput {
             &mut DeviceMatrixMut::new(generic_lookup_multiplicities, trace_len),
             context,
         )?;
+        dbg!(stream.synchronize()).unwrap();
         generate_range_check_multiplicities(
             circuit,
-            &DeviceMatrix::new(setup.trace_holder.get_evaluations(), trace_len),
-            &mut DeviceMatrixMut::new(witness_holder.get_evaluations_mut(), trace_len),
-            &DeviceMatrix::new(memory_holder.get_evaluations(), trace_len),
+            &DeviceMatrix::new(&setup.trace_holder.get_evaluations(context)?, trace_len),
+            &mut DeviceMatrixMut::new(&mut witness_evaluations, trace_len),
+            &DeviceMatrix::new(&memory_evaluations, trace_len),
             timestamp_high_from_circuit_sequence,
             trace_len,
             context,
         )?;
+        dbg!(stream.synchronize()).unwrap();
         self.generic_lookup_mapping = Some(generic_lookup_mapping);
         Ok(())
     }
@@ -227,7 +240,7 @@ impl StageOneOutput {
             self.public_inputs = Some(unsafe { context.alloc_host_uninit_slice(0) });
             return Ok(());
         }
-        let holder = &self.witness_holder;
+        let holder = &mut self.witness_holder;
         let columns_count = holder.columns_count;
         let trace_len = 1 << holder.log_domain_size;
         let stream = context.get_exec_stream();
@@ -240,9 +253,10 @@ impl StageOneOutput {
             unsafe { context.alloc_host_uninit_slice(columns_count) };
         let h_witness_one_before_last_row_accessor =
             h_witness_one_before_last_row.get_mut_accessor();
-        let first_row_src = DeviceMatrixChunk::new(holder.get_evaluations(), trace_len, 0, 1);
+        let evaluations = holder.get_evaluations(context)?;
+        let first_row_src = DeviceMatrixChunk::new(evaluations, trace_len, 0, 1);
         let one_before_last_row_src =
-            DeviceMatrixChunk::new(holder.get_evaluations(), trace_len, trace_len - 2, 1);
+            DeviceMatrixChunk::new(evaluations, trace_len, trace_len - 2, 1);
         let mut first_row_dst = DeviceMatrixMut::new(&mut d_witness_first_row, 1);
         let mut one_before_last_row_dst =
             DeviceMatrixMut::new(&mut d_witness_one_before_last_row, 1);

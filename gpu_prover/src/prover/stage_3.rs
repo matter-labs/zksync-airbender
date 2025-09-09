@@ -36,11 +36,12 @@ impl StageThreeOutput {
         cached_data: &ProverCachedData,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         external_values: ExternalValues,
-        setup: &SetupPrecomputations,
-        stage_1_output: &StageOneOutput,
-        stage_2_output: &StageTwoOutput,
+        setup: &mut SetupPrecomputations,
+        stage_1_output: &mut StageOneOutput,
+        stage_2_output: &mut StageTwoOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
+        use_recomputations: bool,
         callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -55,6 +56,7 @@ impl StageThreeOutput {
             log_tree_cap_size,
             4,
             true,
+            use_recomputations,
             context,
         )?;
         let stream = context.get_exec_stream();
@@ -185,29 +187,31 @@ impl StageThreeOutput {
             &mut ConstantsTimesChallenges::default(),
         );
         let d_setup_cols = DeviceMatrix::new(
-            &setup.trace_holder.get_coset_evaluations(COSET_INDEX),
+            setup
+                .trace_holder
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_witness_cols = DeviceMatrix::new(
-            &stage_1_output
+            stage_1_output
                 .witness_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_memory_cols = DeviceMatrix::new(
-            &stage_1_output
+            stage_1_output
                 .memory_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let d_stage_2_cols = DeviceMatrix::new(
-            &stage_2_output
+            stage_2_output
                 .trace_holder
-                .get_coset_evaluations(COSET_INDEX),
+                .get_coset_evaluations(COSET_INDEX, context)?,
             trace_len,
         );
         let mut d_quotient = DeviceMatrixMut::new(
-            trace_holder.get_coset_evaluations_mut(COSET_INDEX),
+            trace_holder.get_uninit_coset_evaluations_mut(COSET_INDEX),
             trace_len,
         );
         compute_stage_3_composition_quotient_on_coset(

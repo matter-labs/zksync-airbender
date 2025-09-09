@@ -168,6 +168,7 @@ fn gpu_worker(
             &precomputations.compiled_circuit,
             log_lde_factor,
             log_tree_cap_size,
+            true,
             &context,
         )?;
         match circuit_type {
@@ -329,6 +330,7 @@ fn gpu_worker(
                         NUM_QUERIES,
                         POW_BITS,
                         None,
+                        true,
                         &context,
                     )?;
                     JobType::Proof(job)
