@@ -22,8 +22,8 @@ use crate::field::{BaseField, Ext2Field};
 use crate::ntt::utils::REAL_COLS_PER_BLOCK;
 use crate::ntt::{
     bitrev_Z_to_natural_composition_main_evals, bitrev_Z_to_natural_trace_coset_evals,
-    natural_composition_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
-    natural_trace_main_evals_to_bitrev_Z,
+    natural_composition_coset_evals_to_bitrev_Z, natural_compressed_coset_evals_to_bitrev_Z,
+    natural_main_evals_to_natural_coset_evals, natural_trace_main_evals_to_bitrev_Z,
 };
 use crate::prover::context::DeviceProperties;
 
@@ -894,7 +894,7 @@ fn run_natural_main_evals_to_natural_coset_evals_and_back(
         exec_stream.synchronize().unwrap();
         dbg!(&dst_host[0..memory_size]);
 
-        natural_composition_coset_evals_to_bitrev_Z(
+        natural_compressed_coset_evals_to_bitrev_Z(
             &src_device_matrix,
             &mut dst_device_matrix,
             log_n,
