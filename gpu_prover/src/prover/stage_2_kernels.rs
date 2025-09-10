@@ -238,7 +238,7 @@ pub fn compute_stage_2_args_on_main_domain(
         .stage_2_layout
         .intermediate_polys_for_memory_argument
         .num_elements();
-    let num_lazy_init_teardown_sets = circuit
+    let num_init_teardown_sets = circuit
         .stage_2_layout
         .intermediate_polys_for_memory_init_teardown
         .num_elements();
@@ -370,19 +370,19 @@ pub fn compute_stage_2_args_on_main_domain(
         generic_lookup_setup_columns_start,
         circuit.setup_layout.generic_lookup_setup_columns.start()
     );
-    assert_eq!(process_shuffle_ram_init, num_lazy_init_teardown_sets > 0);
+    assert_eq!(process_shuffle_ram_init, num_init_teardown_sets > 0);
     assert_eq!(
-        num_lazy_init_teardown_sets,
+        num_init_teardown_sets,
         shuffle_ram_inits_and_teardowns.len()
     );
     assert_eq!(
-        num_lazy_init_teardown_sets,
+        num_init_teardown_sets,
         lazy_init_address_range_check_16
             .base_field_oracles
             .num_elements()
     );
     assert_eq!(
-        num_lazy_init_teardown_sets,
+        num_init_teardown_sets,
         lazy_init_address_range_check_16
             .ext_4_field_oracles
             .num_elements()
@@ -1068,7 +1068,7 @@ mod tests {
             lazy_init_lookup_set.base_field_oracles.num_elements(),
             lazy_init_lookup_set.ext_4_field_oracles.num_elements(),
         );
-        let (lazy_init_bf_args_start, lazy_init_e4_args_start, num_lazy_init_teardown_sets) =
+        let (lazy_init_bf_args_start, lazy_init_e4_args_start, num_init_teardown_sets) =
             if cached_data.process_shuffle_ram_init {
                 (
                     lazy_init_lookup_set.base_field_oracles.start(),
@@ -1114,7 +1114,7 @@ mod tests {
             .intermediate_polys_for_memory_init_teardown
             .start();
         assert_eq!(
-            num_lazy_init_teardown_sets,
+            num_init_teardown_sets,
             circuit
                 .stage_2_layout
                 .intermediate_polys_for_memory_init_teardown
@@ -1201,7 +1201,7 @@ mod tests {
                 // Comparisons for 32-bit lazy init address args,
                 // (treated as an extra pair of range check 16 args)
                 let start = lazy_init_bf_args_start;
-                let end = lazy_init_bf_args_start + num_lazy_init_teardown_sets;
+                let end = lazy_init_bf_args_start + num_init_teardown_sets;
                 for j in start..end {
                     assert_eq!(
                         h_stage_2_bf_cols[i + j * domain_size],
@@ -1211,7 +1211,7 @@ mod tests {
                     );
                 }
                 let start = lazy_init_e4_args_start;
-                let end = lazy_init_e4_args_start + num_lazy_init_teardown_sets;
+                let end = lazy_init_e4_args_start + num_init_teardown_sets;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
@@ -1256,7 +1256,7 @@ mod tests {
                 }
                 // shuffle ram init/teardown comparison
                 let start = lazy_init_teardown_args_start;
-                let end = lazy_init_teardown_args_start + num_lazy_init_teardown_sets;
+                let end = lazy_init_teardown_args_start + num_init_teardown_sets;
                 if i == 0 {
                     println!("start {} end {}", start, end);
                 }
