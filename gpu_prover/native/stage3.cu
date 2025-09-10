@@ -338,8 +338,10 @@ enforce_lookup_multiplicities(const MultiplicitiesLayout &layout, const matrix_g
 
 constexpr bf SHIFT_16 = bf{1 << 16};
 
-constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 8;
-constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW = 8;
+constexpr unsigned MAX_PUBLIC_INPUTS_FIRST_ROW = 2;
+constexpr unsigned MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW = 2;
+constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 6 * MAX_LAZY_INIT_TEARDOWN_SETS + MAX_PUBLIC_INPUTS_FIRST_ROW;
+constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW = 6 * MAX_LAZY_INIT_TEARDOWN_SETS + MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW;
 
 extern "C" struct BoundaryConstraints {
   const unsigned first_row_cols[MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW];

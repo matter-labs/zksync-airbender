@@ -773,72 +773,76 @@ impl BoundaryConstraints {
         let mut helpers_first_row = Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW);
         let mut helpers_one_before_last_row =
             Vec::with_capacity(MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW);
-        assert_eq!(process_shuffle_ram_init, aux_boundary_values.len() > 0);
-        assert_eq!(self.num_init_teardown as usize, aux_boundary_values.len());
-        let helpers_for_limb_pair =
-            |counter: &mut usize,
-             vals: &[BF],
-             alphas: &[E4],
-             beta_power: &E4,
-             helpers: &mut Vec<E4, _>,
-             constants_times_challenges: &mut E4| {
-                for j in 0..=1 {
-                    let mut alpha = alphas[*counter];
-                    alpha.mul_assign(beta_power);
-                    helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
-                    constants_times_challenges.sub_assign(alpha.mul_assign_by_base(&vals[j]));
-                    *counter = *counter + 1;
-                }
-            };
-        for values in aux_boundary_values.iter() {
-            helpers_for_limb_pair(
-                &mut num_first_row,
-                &values.lazy_init_first_row[..],
-                alphas_first_row,
-                &beta_powers[3],
-                &mut helpers_first_row,
-                &mut constants_times_challenges.first_row,
+        if process_shuffle_ram_init {
+            assert_eq!(
+                self.num_init_teardown as usize,
+                6 * aux_boundary_values.len()
             );
-            helpers_for_limb_pair(
-                &mut num_first_row,
-                &values.teardown_value_first_row[..],
-                alphas_first_row,
-                &beta_powers[3],
-                &mut helpers_first_row,
-                &mut constants_times_challenges.first_row,
-            );
-            helpers_for_limb_pair(
-                &mut num_first_row,
-                &values.teardown_timestamp_first_row[..],
-                alphas_first_row,
-                &beta_powers[3],
-                &mut helpers_first_row,
-                &mut constants_times_challenges.first_row,
-            );
-            helpers_for_limb_pair(
-                &mut num_one_before_last_row,
-                &values.lazy_init_one_before_last_row[..],
-                alphas_one_before_last_row,
-                &beta_powers[2],
-                &mut helpers_one_before_last_row,
-                &mut constants_times_challenges.one_before_last_row,
-            );
-            helpers_for_limb_pair(
-                &mut num_one_before_last_row,
-                &values.teardown_value_one_before_last_row[..],
-                alphas_one_before_last_row,
-                &beta_powers[2],
-                &mut helpers_one_before_last_row,
-                &mut constants_times_challenges.one_before_last_row,
-            );
-            helpers_for_limb_pair(
-                &mut num_one_before_last_row,
-                &values.teardown_timestamp_one_before_last_row[..],
-                alphas_one_before_last_row,
-                &beta_powers[2],
-                &mut helpers_one_before_last_row,
-                &mut constants_times_challenges.one_before_last_row,
-            );
+            let helpers_for_limb_pair =
+                |counter: &mut usize,
+                 vals: &[BF],
+                 alphas: &[E4],
+                 beta_power: &E4,
+                 helpers: &mut Vec<E4, _>,
+                 constants_times_challenges: &mut E4| {
+                    for j in 0..=1 {
+                        let mut alpha = alphas[*counter];
+                        alpha.mul_assign(beta_power);
+                        helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
+                        constants_times_challenges.sub_assign(alpha.mul_assign_by_base(&vals[j]));
+                        *counter = *counter + 1;
+                    }
+                };
+            for values in aux_boundary_values.iter() {
+                helpers_for_limb_pair(
+                    &mut num_first_row,
+                    &values.lazy_init_first_row[..],
+                    alphas_first_row,
+                    &beta_powers[3],
+                    &mut helpers_first_row,
+                    &mut constants_times_challenges.first_row,
+                );
+                helpers_for_limb_pair(
+                    &mut num_first_row,
+                    &values.teardown_value_first_row[..],
+                    alphas_first_row,
+                    &beta_powers[3],
+                    &mut helpers_first_row,
+                    &mut constants_times_challenges.first_row,
+                );
+                helpers_for_limb_pair(
+                    &mut num_first_row,
+                    &values.teardown_timestamp_first_row[..],
+                    alphas_first_row,
+                    &beta_powers[3],
+                    &mut helpers_first_row,
+                    &mut constants_times_challenges.first_row,
+                );
+                helpers_for_limb_pair(
+                    &mut num_one_before_last_row,
+                    &values.lazy_init_one_before_last_row[..],
+                    alphas_one_before_last_row,
+                    &beta_powers[2],
+                    &mut helpers_one_before_last_row,
+                    &mut constants_times_challenges.one_before_last_row,
+                );
+                helpers_for_limb_pair(
+                    &mut num_one_before_last_row,
+                    &values.teardown_value_one_before_last_row[..],
+                    alphas_one_before_last_row,
+                    &beta_powers[2],
+                    &mut helpers_one_before_last_row,
+                    &mut constants_times_challenges.one_before_last_row,
+                );
+                helpers_for_limb_pair(
+                    &mut num_one_before_last_row,
+                    &values.teardown_timestamp_one_before_last_row[..],
+                    alphas_one_before_last_row,
+                    &beta_powers[2],
+                    &mut helpers_one_before_last_row,
+                    &mut constants_times_challenges.one_before_last_row,
+                );
+            }
         }
         assert_eq!(num_first_row, self.num_init_teardown as usize);
         assert_eq!(num_one_before_last_row, self.num_init_teardown as usize);
