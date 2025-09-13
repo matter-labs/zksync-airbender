@@ -1416,12 +1416,13 @@ impl Metadata {
             delegation_processing_metadata,
             delegation_request_metadata,
             register_and_indirect_accesses,
-            num_helpers_expected: 0,
+            num_helpers_expected,
         }
     }
 }
 
 pub(super) fn prepare_async_challenge_data(
+        metadata: Metadata,
         h_alpha_powers: &[E4],
         h_beta_powers: &[E4],
         tau: E2,
@@ -1446,8 +1447,34 @@ pub(super) fn prepare_async_challenge_data(
     assert_eq!(e4_cols_offset % 4, 0);
     assert!(num_stage_2_bf_cols <= e4_cols_offset);
     assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
-    let alpha_powers_layout =
-        AlphaPowersLayout::new(circuit, cached_data.num_stage_3_quotient_terms);
+
+    let Metadata {
+        alpha_powers_layout: AlphaPowersLayout,
+        flat_generic_constraints_metadata: FlattenedGenericConstraintsMetadata,
+        delegated_width_3_lookups_layout: DelegatedWidth3LookupsLayout,
+        non_delegated_width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
+        range_check_16_layout: RangeCheck16ArgsLayout,
+        expressions_layout: FlattenedLookupExpressionsLayout,
+        expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
+        generic_lookup_multiplicities_layout: MultiplicitiesLayout,
+        state_linkage_constraints: StateLinkageConstraints,
+        boundary_constraints: BoundaryConstraints,
+        lazy_init_teardown_args_start: usize,
+        memory_args_start: usize,
+        memory_grand_product_col: usize,
+        lazy_init_teardown_layouts: LazyInitTeardownLayouts,
+        shuffle_ram_accesses: ShuffleRamAccesses,
+        range_check_16_multiplicities_layout: MultiplicitiesLayout,
+        timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
+        delegation_aux_poly_col: usize,
+        num_generic_constraints: usize,
+        delegation_challenges: DelegationChallenges,
+        delegation_processing_metadata: DelegationProcessingMetadata,
+        delegation_request_metadata: DelegationRequestMetadata,
+        register_and_indirect_accesses: RegisterAndIndirectAccesses,
+        num_helpers_expected: usize,
+    } = metadata;
+
     let ProverCachedData {
         trace_len,
         memory_timestamp_high_from_circuit_idx,
@@ -1476,8 +1503,10 @@ pub(super) fn prepare_async_challenge_data(
         range_check_16_width_1_lookups_access_via_expressions,
         timestamp_range_check_width_1_lookups_access_via_expressions,
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
+        num_stage_3_quotient_terms,
         ..
     } = cached_data.clone();
+
     if process_batch_ram_access {
         panic!("deprecated");
     }
@@ -1487,6 +1516,8 @@ pub(super) fn prepare_async_challenge_data(
     // We keep references to host AND device copies of challenge powers,
     // because host copies come in handy to precompute challenges_times_powers_sum
     // and other helper values.
+    let alpha_powers_layout =
+        AlphaPowersLayout::new(circuit, num_stage_3_quotient_terms);
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
         num_quotient_terms_every_row_except_last_two,
