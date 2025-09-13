@@ -1034,8 +1034,7 @@ impl StaticMetadata {
 
         // Technically won't be needed until prepare_async_challenge_data,
         // but imo better to construct on the main thread
-        let alpha_powers_layout =
-            AlphaPowersLayout::new(circuit, num_stage_3_quotient_terms);
+        let alpha_powers_layout = AlphaPowersLayout::new(circuit, num_stage_3_quotient_terms);
 
         let flat_generic_constraints_metadata =
             FlattenedGenericConstraintsMetadata::new(circuit, tau, omega_inv, n);
@@ -1220,8 +1219,11 @@ impl StaticMetadata {
         }
         let (delegated_width_3_lookups_layout, non_delegated_width_3_lookups_layout) =
             if process_delegations {
-                let delegated_layout =
-                    DelegatedWidth3LookupsLayout::new(circuit, num_helpers_expected, &translate_e4_offset);
+                let delegated_layout = DelegatedWidth3LookupsLayout::new(
+                    circuit,
+                    num_helpers_expected,
+                    &translate_e4_offset,
+                );
                 let non_delegated_placeholder = NonDelegatedWidth3LookupsLayout::new_placeholder(
                     delegated_layout.num_helpers_used,
                     delegated_layout.num_lookups,
@@ -1418,19 +1420,19 @@ impl StaticMetadata {
 }
 
 pub(super) fn prepare_async_challenge_data(
-        static_metadata: &StaticMetadata,
-        h_alpha_powers: &[E4],
-        h_beta_powers: &[E4],
-        omega: E2,
-        lookup_challenges: &LookupChallenges,
-        cached_data: &ProverCachedData,
-        circuit: &CompiledCircuitArtifact<BF>,
-        external_values: &ExternalValues,
-        public_inputs: &[BF],
-        grand_product_accumulator: E4,
-        sum_over_delegation_poly: E4,
-        helpers: &mut Vec<E4, impl Allocator>,
-        constants_times_challenges: &mut ConstantsTimesChallenges,
+    static_metadata: &StaticMetadata,
+    h_alpha_powers: &[E4],
+    h_beta_powers: &[E4],
+    omega: E2,
+    lookup_challenges: &LookupChallenges,
+    cached_data: &ProverCachedData,
+    circuit: &CompiledCircuitArtifact<BF>,
+    external_values: &ExternalValues,
+    public_inputs: &[BF],
+    grand_product_accumulator: E4,
+    sum_over_delegation_poly: E4,
+    helpers: &mut Vec<E4, impl Allocator>,
+    constants_times_challenges: &mut ConstantsTimesChallenges,
 ) {
     let StaticMetadata {
         alpha_powers_layout,
@@ -1539,8 +1541,7 @@ pub(super) fn prepare_async_challenge_data(
             } else {
                 alpha_offset += 4;
             }
-            for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i]
-            {
+            for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
                 let indirect_access =
                     &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
                 if indirect_access.has_write {
@@ -1751,8 +1752,7 @@ pub(super) fn prepare_async_challenge_data(
         alpha_offset += 1;
         let mut timestamp_low_constant = delegation_challenges.linearization_challenges
             [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW];
-        timestamp_low_constant
-            .mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
+        timestamp_low_constant.mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
         let mut timestamp_high_constant = delegation_challenges.linearization_challenges
             [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH];
         timestamp_high_constant.mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
