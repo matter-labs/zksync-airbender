@@ -5,7 +5,6 @@ use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
 use super::{BF, E2, E4};
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
-use crate::prover::arg_utils::LookupChallenges;
 use crate::prover::callbacks::Callbacks;
 use crate::prover::trace_holder::{flatten_tree_caps, TraceHolder};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
@@ -101,7 +100,16 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         let external_values_clone = external_values.clone();
         let circuit_clone = circuit.clone();
         let twiddles_omega = twiddles.omega;
-        let twiddles_omega_inv = twiddles.omega_inv;
+
+        let static_metadata = StaticMetadata::new(
+            tau,
+            twiddles.omega_inv,
+            cached_data,
+            &circuit,
+            log_domain_size,
+        );
+        let static_metadata_clone = static_metadata.clone();
+
         let get_challenges_and_helpers_fn = move || {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -137,12 +145,11 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
             )
             .unwrap_or_default();
             let mut helpers = Vec::with_capacity(MAX_HELPER_VALUES);
-            let _ = Metadata::new(
+            prepare_async_challenge_data(
+                &static_metadata_clone,
                 &alpha_powers,
                 &beta_powers,
-                tau,
                 twiddles_omega,
-                twiddles_omega_inv,
                 &lookup_challenges_clone.as_ref().unwrap().lock().unwrap(),
                 &cached_data_clone,
                 &circuit_clone,
@@ -150,7 +157,6 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
                 &public_inputs.lock().unwrap(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,
-                log_domain_size,
                 &mut helpers,
                 &mut h_constants_times_challenges_clone.lock().unwrap(),
             );
@@ -181,23 +187,6 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
             slice::from_ref(h_constants_times_challenges.lock().unwrap().deref().deref()),
             stream,
         )?;
-        let metadata = Metadata::new(
-            &vec![E4::ZERO; alpha_powers_count],
-            &[E4::ZERO; BETA_POWERS_COUNT],
-            tau,
-            twiddles.omega,
-            twiddles.omega_inv,
-            &LookupChallenges::default(),
-            cached_data,
-            &circuit,
-            &external_values,
-            &vec![BF::ZERO; circuit.public_inputs.len()],
-            E4::ZERO,
-            E4::ZERO,
-            log_domain_size,
-            &mut Vec::with_capacity(MAX_HELPER_VALUES),
-            &mut ConstantsTimesChallenges::default(),
-        );
         let d_setup_cols = DeviceMatrix::new(
             &setup.trace_holder.get_coset_evaluations(COSET_INDEX),
             trace_len,
@@ -227,7 +216,7 @@ impl<'a, C: ProverContext> StageThreeOutput<'a, C> {
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
             &circuit,
-            metadata,
+            static_metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,

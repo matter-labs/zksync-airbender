@@ -952,7 +952,8 @@ cuda_kernel!(
 
 hardcoded_constraints!(hardcoded_constraints_kernel);
 
-pub struct Metadata {
+#[derive(Clone)]
+pub struct StaticMetadata {
     alpha_powers_layout: AlphaPowersLayout,
     flat_generic_constraints_metadata: FlattenedGenericConstraintsMetadata,
     delegated_width_3_lookups_layout: DelegatedWidth3LookupsLayout,
@@ -978,15 +979,14 @@ pub struct Metadata {
     num_helpers_expected: usize,
 }
 
-impl Metadata {
+impl StaticMetadata {
     pub(crate) fn new(
         tau: E2,
         omega_inv: E2,
         cached_data: &ProverCachedData,
         circuit: &CompiledCircuitArtifact<BF>,
         log_n: u32,
-        helpers: &mut Vec<E4, impl Allocator>,
-    ) -> Metadata {
+    ) -> Self {
         let n = 1 << log_n;
         let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
         let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
@@ -1221,7 +1221,7 @@ impl Metadata {
         let (delegated_width_3_lookups_layout, non_delegated_width_3_lookups_layout) =
             if process_delegations {
                 let delegated_layout =
-                    DelegatedWidth3LookupsLayout::new(circuit, helpers.len(), &translate_e4_offset);
+                    DelegatedWidth3LookupsLayout::new(circuit, num_helpers_expected, &translate_e4_offset);
                 let non_delegated_placeholder = NonDelegatedWidth3LookupsLayout::new_placeholder(
                     delegated_layout.num_helpers_used,
                     delegated_layout.num_lookups,
@@ -1233,7 +1233,7 @@ impl Metadata {
                 let delegated_layout = DelegatedWidth3LookupsLayout::default();
                 let non_delegated_layout = NonDelegatedWidth3LookupsLayout::new(
                     circuit,
-                    helpers.len(),
+                    num_helpers_expected,
                     &translate_e4_offset,
                 );
                 num_helpers_expected += non_delegated_layout.num_helpers_used as usize;
@@ -1312,9 +1312,9 @@ impl Metadata {
             }
         }
         let memory_grand_product_col = get_grand_product_col(circuit);
-        // Prepare args and helpers for constraints on all rows except the last two
+        // Prepare static layout data for constraints on all rows except the last two
         let state_linkage_constraints = StateLinkageConstraints::new(circuit);
-        // Args and helpers for boundary constraints (first row and second-to-last row)
+        // Layout data for boundary constraints (first row and second-to-last row)
         let boundary_constraints = BoundaryConstraints::new(
             circuit,
             process_shuffle_ram_init,
@@ -1389,8 +1389,7 @@ impl Metadata {
         if handle_delegation_requests || process_delegations {
             num_helpers_expected += 2;
         }
-        // print_sizes();
-        Metadata {
+        Self {
             alpha_powers_layout,
             flat_generic_constraints_metadata,
             delegated_width_3_lookups_layout,
@@ -1419,7 +1418,7 @@ impl Metadata {
 }
 
 pub(super) fn prepare_async_challenge_data(
-        metadata: Metadata,
+        static_metadata: &StaticMetadata,
         h_alpha_powers: &[E4],
         h_beta_powers: &[E4],
         omega: E2,
@@ -1433,7 +1432,7 @@ pub(super) fn prepare_async_challenge_data(
         helpers: &mut Vec<E4, impl Allocator>,
         constants_times_challenges: &mut ConstantsTimesChallenges,
 ) {
-    let Metadata {
+    let StaticMetadata {
         alpha_powers_layout,
         flat_generic_constraints_metadata,
         delegated_width_3_lookups_layout,
@@ -1457,7 +1456,7 @@ pub(super) fn prepare_async_challenge_data(
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected,
-    } = metadata;
+    } = static_metadata;
 
     let ProverCachedData {
         memory_timestamp_high_from_circuit_idx,
@@ -1483,7 +1482,7 @@ pub(super) fn prepare_async_challenge_data(
         num_quotient_terms_last_row_and_at_zero,
         precomputation_size,
     } = alpha_powers_layout;
-    assert_eq!(h_alpha_powers.len(), precomputation_size);
+    assert_eq!(h_alpha_powers.len(), *precomputation_size);
     let h_alphas_for_every_row_except_last =
         &h_alpha_powers[(precomputation_size - num_quotient_terms_every_row_except_last)..];
     let h_alphas_for_every_row_except_last_two =
@@ -1973,7 +1972,7 @@ pub(super) fn prepare_async_challenge_data(
         helpers.push(*alpha.mul_assign_by_base(&decompression_factor));
     }
     assert_eq!(alpha_offset, h_alphas_for_last_row_and_at_zero.len());
-    assert_eq!(helpers.len(), num_helpers_expected);
+    assert_eq!(helpers.len(), *num_helpers_expected);
     helpers
         .spare_capacity_mut()
         .fill(MaybeUninit::new(E4::ZERO));
@@ -1985,7 +1984,7 @@ pub(super) fn prepare_async_challenge_data(
 pub fn compute_stage_3_composition_quotient_on_coset(
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
-    metadata: Metadata,
+    static_metadata: StaticMetadata,
     setup_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     memory_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -2025,7 +2024,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         ..
     } = cached_data.clone();
     assert_eq!(trace_len, n);
-    let Metadata {
+    let StaticMetadata {
         alpha_powers_layout,
         flat_generic_constraints_metadata,
         delegated_width_3_lookups_layout,
@@ -2049,7 +2048,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected: _,
-    } = metadata;
+    } = static_metadata;
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
         num_quotient_terms_every_row_except_last_two,
@@ -2313,7 +2312,7 @@ mod tests {
                 .lookup_argument_linearization_challenges,
             prover_data.stage_2_result.lookup_argument_gamma,
         );
-        let metadata = Metadata::new(
+        let static_metadata = StaticMetadata::new(
             &h_alpha_powers,
             &h_beta_powers,
             tau,
@@ -2378,7 +2377,7 @@ mod tests {
         compute_stage_3_composition_quotient_on_coset(
             &cached_data,
             &circuit,
-            metadata,
+            static_metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,

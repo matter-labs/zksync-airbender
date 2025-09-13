@@ -55,7 +55,7 @@ impl DelegationChallenges {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationRequestMetadata {
     pub multiplicity_col: u32,
@@ -66,7 +66,7 @@ pub struct DelegationRequestMetadata {
     pub in_cycle_write_idx: BF,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationProcessingMetadata {
     pub multiplicity_col: u32,
