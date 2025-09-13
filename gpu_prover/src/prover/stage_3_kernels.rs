@@ -971,7 +971,6 @@ pub struct Metadata {
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
     timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
     delegation_aux_poly_col: usize,
-    num_generic_constraints: usize,
     delegation_challenges: DelegationChallenges,
     delegation_processing_metadata: DelegationProcessingMetadata,
     delegation_request_metadata: DelegationRequestMetadata,
@@ -982,11 +981,9 @@ pub struct Metadata {
 impl Metadata {
     pub(crate) fn new(
         tau: E2,
-        omega: E2,
         omega_inv: E2,
         cached_data: &ProverCachedData,
         circuit: &CompiledCircuitArtifact<BF>,
-        external_values: &ExternalValues,
         log_n: u32,
         helpers: &mut Vec<E4, impl Allocator>,
     ) -> Metadata {
@@ -997,9 +994,9 @@ impl Metadata {
         assert_eq!(e4_cols_offset % 4, 0);
         assert!(num_stage_2_bf_cols <= e4_cols_offset);
         assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
+
         let ProverCachedData {
             trace_len,
-            memory_timestamp_high_from_circuit_idx,
             memory_argument_challenges,
             delegation_challenges,
             process_shuffle_ram_init,
@@ -1025,13 +1022,20 @@ impl Metadata {
             range_check_16_width_1_lookups_access_via_expressions,
             timestamp_range_check_width_1_lookups_access_via_expressions,
             timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
+            num_stage_3_quotient_terms,
             ..
         } = cached_data.clone();
+
         if process_batch_ram_access {
             panic!("deprecated");
         }
 
         assert_eq!(trace_len, n);
+
+        // Technically won't be needed until prepare_async_challenge_data,
+        // but imo better to construct on the main thread
+        let alpha_powers_layout =
+            AlphaPowersLayout::new(circuit, num_stage_3_quotient_terms);
 
         let flat_generic_constraints_metadata =
             FlattenedGenericConstraintsMetadata::new(circuit, tau, omega_inv, n);
@@ -1192,7 +1196,7 @@ impl Metadata {
         }
         // range check 16 expressions, if constant terms are present
         if !expressions_layout.range_check_16_constant_terms_are_zero {
-            for _ in expressions_layout.num_range_check_16_expression_pairs {
+            for _ in 0..expressions_layout.num_range_check_16_expression_pairs {
                 num_helpers_expected += 2;
             }
         }
@@ -1223,7 +1227,7 @@ impl Metadata {
                     delegated_layout.num_lookups,
                     delegated_layout.e4_arg_cols_start,
                 );
-                num_helpers_expected += delegated_layout.num_helpers_used;
+                num_helpers_expected += delegated_layout.num_helpers_used as usize;
                 (delegated_layout, non_delegated_placeholder)
             } else {
                 let delegated_layout = DelegatedWidth3LookupsLayout::default();
@@ -1232,7 +1236,7 @@ impl Metadata {
                     helpers.len(),
                     &translate_e4_offset,
                 );
-                num_helpers_expected += non_delegated_layout.num_helpers_used;
+                num_helpers_expected += non_delegated_layout.num_helpers_used as usize;
                 (delegated_layout, non_delegated_layout)
             };
         let range_check_16_multiplicities_layout = MultiplicitiesLayout {
@@ -1257,16 +1261,10 @@ impl Metadata {
         };
         num_helpers_expected += num_generic_multiplicities_cols * NUM_LOOKUP_ARGUMENT_KEY_PARTS;
         if handle_delegation_requests {
-            num_helpers_expected += 1;
-            for challenge in delegation_challenges.linearization_challenges.iter() {
-                num_helpers_expected += 1;
-            }
+            num_helpers_expected += 1 + delegation_challenges.linearization_challenges.len();
         }
         if process_delegations {
-            num_helpers_expected += 1;
-            for challenge in delegation_challenges.linearization_challenges.iter() {
-                num_helpers_expected += 1;
-            }
+            num_helpers_expected += 1 + delegation_challenges.linearization_challenges.len();
         }
         let raw_memory_args_start = circuit
             .stage_2_layout
@@ -1287,7 +1285,7 @@ impl Metadata {
         let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
         // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
         // for lazy init memory accumulator contributions
-        for i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
+        for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
             num_helpers_expected += 7;
         }
 
@@ -1309,7 +1307,7 @@ impl Metadata {
         }
         for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
             num_helpers_expected += 5;
-            for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
+            for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
                 num_helpers_expected += 7;
             }
         }
@@ -1411,7 +1409,6 @@ impl Metadata {
             range_check_16_multiplicities_layout,
             timestamp_range_check_multiplicities_layout,
             delegation_aux_poly_col,
-            num_generic_constraints,
             delegation_challenges,
             delegation_processing_metadata,
             delegation_request_metadata,
@@ -1425,9 +1422,7 @@ pub(super) fn prepare_async_challenge_data(
         metadata: Metadata,
         h_alpha_powers: &[E4],
         h_beta_powers: &[E4],
-        tau: E2,
         omega: E2,
-        omega_inv: E2,
         lookup_challenges: &LookupChallenges,
         cached_data: &ProverCachedData,
         circuit: &CompiledCircuitArtifact<BF>,
@@ -1435,89 +1430,50 @@ pub(super) fn prepare_async_challenge_data(
         public_inputs: &[BF],
         grand_product_accumulator: E4,
         sum_over_delegation_poly: E4,
-        log_n: u32,
         helpers: &mut Vec<E4, impl Allocator>,
         constants_times_challenges: &mut ConstantsTimesChallenges,
-
 ) {
-    let n = 1 << log_n;
-    let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
-    let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
-    let e4_cols_offset = circuit.stage_2_layout.ext4_polys_offset;
-    assert_eq!(e4_cols_offset % 4, 0);
-    assert!(num_stage_2_bf_cols <= e4_cols_offset);
-    assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
-
     let Metadata {
-        alpha_powers_layout: AlphaPowersLayout,
-        flat_generic_constraints_metadata: FlattenedGenericConstraintsMetadata,
-        delegated_width_3_lookups_layout: DelegatedWidth3LookupsLayout,
-        non_delegated_width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
-        range_check_16_layout: RangeCheck16ArgsLayout,
-        expressions_layout: FlattenedLookupExpressionsLayout,
-        expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
-        generic_lookup_multiplicities_layout: MultiplicitiesLayout,
-        state_linkage_constraints: StateLinkageConstraints,
-        boundary_constraints: BoundaryConstraints,
-        lazy_init_teardown_args_start: usize,
-        memory_args_start: usize,
-        memory_grand_product_col: usize,
-        lazy_init_teardown_layouts: LazyInitTeardownLayouts,
-        shuffle_ram_accesses: ShuffleRamAccesses,
-        range_check_16_multiplicities_layout: MultiplicitiesLayout,
-        timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
-        delegation_aux_poly_col: usize,
-        num_generic_constraints: usize,
-        delegation_challenges: DelegationChallenges,
-        delegation_processing_metadata: DelegationProcessingMetadata,
-        delegation_request_metadata: DelegationRequestMetadata,
-        register_and_indirect_accesses: RegisterAndIndirectAccesses,
-        num_helpers_expected: usize,
+        alpha_powers_layout,
+        flat_generic_constraints_metadata,
+        delegated_width_3_lookups_layout,
+        non_delegated_width_3_lookups_layout,
+        range_check_16_layout,
+        expressions_layout,
+        expressions_for_shuffle_ram_layout,
+        generic_lookup_multiplicities_layout,
+        state_linkage_constraints,
+        boundary_constraints,
+        lazy_init_teardown_args_start,
+        memory_args_start,
+        memory_grand_product_col,
+        lazy_init_teardown_layouts,
+        shuffle_ram_accesses,
+        range_check_16_multiplicities_layout,
+        timestamp_range_check_multiplicities_layout,
+        delegation_aux_poly_col,
+        delegation_challenges,
+        delegation_processing_metadata,
+        delegation_request_metadata,
+        register_and_indirect_accesses,
+        num_helpers_expected,
     } = metadata;
 
     let ProverCachedData {
-        trace_len,
         memory_timestamp_high_from_circuit_idx,
         memory_argument_challenges,
-        delegation_challenges,
         process_shuffle_ram_init,
-        shuffle_ram_inits_and_teardowns,
-        lazy_init_address_range_check_16,
         handle_delegation_requests,
-        process_batch_ram_access,
         process_registers_and_indirect_access,
-        delegation_processor_layout,
         process_delegations,
-        delegation_processing_aux_poly,
-        num_set_polys_for_memory_shuffle,
-        range_check_16_multiplicities_src,
-        range_check_16_multiplicities_dst,
-        range_check_16_setup_column,
-        timestamp_range_check_multiplicities_src,
-        timestamp_range_check_multiplicities_dst,
-        timestamp_range_check_setup_column,
-        generic_lookup_multiplicities_src_start,
-        generic_lookup_multiplicities_dst_start,
-        generic_lookup_setup_columns_start,
         range_check_16_width_1_lookups_access,
         range_check_16_width_1_lookups_access_via_expressions,
-        timestamp_range_check_width_1_lookups_access_via_expressions,
-        timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
-        num_stage_3_quotient_terms,
         ..
     } = cached_data.clone();
-
-    if process_batch_ram_access {
-        panic!("deprecated");
-    }
-
-    assert_eq!(trace_len, n);
 
     // We keep references to host AND device copies of challenge powers,
     // because host copies come in handy to precompute challenges_times_powers_sum
     // and other helper values.
-    let alpha_powers_layout =
-        AlphaPowersLayout::new(circuit, num_stage_3_quotient_terms);
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
         num_quotient_terms_every_row_except_last_two,
@@ -1559,12 +1515,7 @@ pub(super) fn prepare_async_challenge_data(
         h_alphas_for_generic_constraints,
         constants_times_challenges,
     );
-    // Hardcoded constraints
     let memory_challenges = MemoryChallenges::new(&memory_argument_challenges);
-    let num_memory_args = circuit
-        .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .num_elements();
     // Host work to precompute constants_times_challenges sums and some helpers
     // that streamline device computation
     assert_eq!(helpers.len(), 0);
@@ -1750,7 +1701,7 @@ pub(super) fn prepare_async_challenge_data(
         constants_times_challenges,
     );
     if process_delegations {
-        delegated_layout.prepare_async_challenge_data(
+        delegated_width_3_lookups_layout.prepare_async_challenge_data(
             circuit,
             lookup_linearization_challenges,
             lookup_gamma,
@@ -1761,7 +1712,7 @@ pub(super) fn prepare_async_challenge_data(
             constants_times_challenges,
         );
     } else {
-        non_delegated_layout.prepare_async_challenge_data(
+        non_delegated_width_3_lookups_layout.prepare_async_challenge_data(
             circuit,
             lookup_linearization_challenges,
             lookup_gamma,
@@ -2093,7 +2044,6 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
         delegation_aux_poly_col,
-        num_generic_constraints,
         delegation_challenges,
         delegation_processing_metadata,
         delegation_request_metadata,
@@ -2113,6 +2063,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         &d_alpha_powers[(precomputation_size - num_quotient_terms_every_row_except_last)..];
     let d_alphas_for_every_row_except_last_two =
         &d_alpha_powers[(precomputation_size - num_quotient_terms_every_row_except_last_two)..];
+    let num_generic_constraints =
+        circuit.degree_2_constraints.len() + circuit.degree_1_constraints.len();
     let (d_alphas_for_generic_constraints, d_alphas_for_hardcoded_every_row_except_last) =
         d_alphas_for_every_row_except_last.split_at(num_generic_constraints);
     // it's handy to keep a copy
