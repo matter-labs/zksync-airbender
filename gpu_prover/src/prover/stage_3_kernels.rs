@@ -997,8 +997,6 @@ impl Metadata {
         assert_eq!(e4_cols_offset % 4, 0);
         assert!(num_stage_2_bf_cols <= e4_cols_offset);
         assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
-        let alpha_powers_layout =
-            AlphaPowersLayout::new(circuit, cached_data.num_stage_3_quotient_terms);
         let ProverCachedData {
             trace_len,
             memory_timestamp_high_from_circuit_idx,
@@ -1038,10 +1036,6 @@ impl Metadata {
         let flat_generic_constraints_metadata =
             FlattenedGenericConstraintsMetadata::new(circuit, tau, omega_inv, n);
         // Hardcoded constraints
-        // TODO: Many metadata structs shared with stage2.rs have been deduplicated
-        // and placed in arg_utils, but there's still a substantial amount of
-        // partially-duplicated code surrounding their construction.
-        // Once everything is working, figure out how much more can be deduplicated.
         let translate_e4_offset = |raw_col: usize| -> usize {
             assert_eq!(raw_col % 4, 0);
             assert!(raw_col >= e4_cols_offset);
@@ -1183,37 +1177,6 @@ impl Metadata {
         // the later (async) call to prepare_async_challenge_data must create.
         // prepare_async_challenge data will use this value as a double-check.
         let mut num_helpers_expected: usize = 0;
-        let decompression_factor = flat_generic_constraints_metadata.decompression_factor;
-        let decompression_factor_inv = decompression_factor.inverse().expect("must exist");
-        let mut alpha_offset = 0;
-        if process_delegations {
-            alpha_offset += 4;
-        }
-        if process_registers_and_indirect_access {
-            let mut flat_indirect_idx = 0;
-            for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
-                let register_access = &register_and_indirect_accesses.register_accesses[i];
-                if register_access.is_write {
-                    alpha_offset += 6;
-                } else {
-                    alpha_offset += 4;
-                }
-                for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i]
-                {
-                    let indirect_access =
-                        &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-                    if indirect_access.has_write {
-                        alpha_offset += 6;
-                    } else {
-                        alpha_offset += 4;
-                    }
-                    if indirect_access.has_address_derivation_carry_bit {
-                        alpha_offset += 1; // address_derivation_carry_bit constraint
-                    }
-                    flat_indirect_idx += 1;
-                }
-            }
-        }
         // We must assign challenges for bare range check 16s,
         // range check 16 expressions, timestamp range check expressions,
         // and timestamp range check expressions for shuffle ram
@@ -1260,6 +1223,7 @@ impl Metadata {
                     delegated_layout.num_lookups,
                     delegated_layout.e4_arg_cols_start,
                 );
+                num_helpers_expected += delegated_layout.num_helpers_used;
                 (delegated_layout, non_delegated_placeholder)
             } else {
                 let delegated_layout = DelegatedWidth3LookupsLayout::default();
@@ -1268,6 +1232,7 @@ impl Metadata {
                     helpers.len(),
                     &translate_e4_offset,
                 );
+                num_helpers_expected += non_delegated_layout.num_helpers_used;
                 (delegated_layout, non_delegated_layout)
             };
         let range_check_16_multiplicities_layout = MultiplicitiesLayout {
@@ -1276,19 +1241,23 @@ impl Metadata {
             setup_cols_start: range_check_16_setup_column as u32,
             num_dst_cols: num_range_check_16_multiplicities_cols as u32,
         };
+        num_helpers_expected += num_range_check_16_multiplicities_cols;
         let timestamp_range_check_multiplicities_layout = MultiplicitiesLayout {
             src_cols_start: timestamp_range_check_multiplicities_src as u32,
             dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
             setup_cols_start: timestamp_range_check_setup_column as u32,
             num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
         };
+        num_helpers_expected += num_timestamp_range_check_multiplicities_cols;
         let generic_lookup_multiplicities_layout = MultiplicitiesLayout {
             src_cols_start: generic_lookup_multiplicities_src_start as u32,
             dst_cols_start: translate_e4_offset(generic_lookup_multiplicities_dst_start) as u32,
             setup_cols_start: generic_lookup_setup_columns_start as u32,
             num_dst_cols: num_generic_multiplicities_cols as u32,
         };
+        num_helpers_expected += num_generic_multiplicities_cols * NUM_LOOKUP_ARGUMENT_KEY_PARTS;
         if handle_delegation_requests {
+            num_helpers_expected += 1;
             for challenge in delegation_challenges.linearization_challenges.iter() {
                 num_helpers_expected += 1;
             }
@@ -1332,85 +1301,33 @@ impl Metadata {
         };
         for i in 0..shuffle_ram_accesses.num_accesses as usize {
             let access = &shuffle_ram_accesses.accesses[i];
-            let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-            alpha_offset += 1;
-            let mc = &memory_challenges;
-            let mut numerator_constant = mc.gamma;
-            if access.is_register_only {
-                numerator_constant.add_assign_base(&BF::ONE);
-            }
-            let mut denom_constant = numerator_constant;
-            let write_timestamp_low_constant = *mc
-                .timestamp_low_challenge
-                .clone()
-                .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
-            let write_timestamp_high_constant = *mc
-                .timestamp_high_challenge
-                .clone()
-                .mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
-            numerator_constant
-                .add_assign(&write_timestamp_low_constant)
-                .add_assign(&write_timestamp_high_constant);
+            num_helpers_expected += 1;
             if !access.is_register_only {
                 num_helpers_expected += 1;
             }
             num_helpers_expected += 6;
         }
-        let mut flat_indirect_idx = 0;
         for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
-            let register_access = &register_and_indirect_accesses.register_accesses[i];
-            let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-            alpha_offset += 1;
-            let mc = &memory_challenges;
-            let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
-            constant.mul_assign(&alpha);
-            if i == 0 {
-                constants_times_challenges
-                    .every_row_except_last
-                    .sub_assign(&constant);
-            }
             num_helpers_expected += 5;
             for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
                 num_helpers_expected += 7;
             }
         }
         let memory_grand_product_col = get_grand_product_col(circuit);
-        alpha_offset += 1;
-        assert_eq!(
-            alpha_offset,
-            h_alphas_for_hardcoded_every_row_except_last.len()
-        );
         // Prepare args and helpers for constraints on all rows except the last two
-        alpha_offset = 0;
         let state_linkage_constraints = StateLinkageConstraints::new(circuit);
-        alpha_offset += state_linkage_constraints.num_constraints as usize;
-        for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-            // alphas for "next lazy init timestamp > current lazy init timestamp"
-            alpha_offset += 2;
-        }
-        assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
         // Args and helpers for boundary constraints (first row and second-to-last row)
         let boundary_constraints = BoundaryConstraints::new(
             circuit,
             process_shuffle_ram_init,
             &lazy_init_teardown_layouts,
         );
-        // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
-        assert_eq!(
-            (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
-                as usize
-                + 1,
-            h_alphas_for_first_row.len()
-        );
-        assert_eq!(
-            (boundary_constraints.num_init_teardown
-                + boundary_constraints.num_public_one_before_last_row) as usize,
-            h_alphas_for_one_before_last_row.len()
-        );
+        num_helpers_expected += 1; // grand product accumulator
+        num_helpers_expected += 2 * boundary_constraints.num_init_teardown as usize;
+        num_helpers_expected += boundary_constraints.num_public_first_row as usize;
+        num_helpers_expected += boundary_constraints.num_public_one_before_last_row as usize;
         // Just one constraint at last row (grand product accumulator)
-        let mut alpha = h_alphas_for_last_row[0];
         num_helpers_expected += 2;
-        assert_eq!(1, h_alphas_for_last_row.len());
         // Constraints at last row and zero
         // range check 16 e4 arg sums
         // double-check we can reconstruct e4 arg locations from metadata
@@ -1433,9 +1350,6 @@ impl Metadata {
             translate_e4_offset(args_metadata.ext_4_field_oracles.start()),
             range_check_16_layout.e4_args_start as usize
         );
-        let mut alpha_offset = 0;
-        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-        alpha_offset += 1;
         num_helpers_expected += 1;
         // timestamp range check e4 arg sums
         if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
@@ -1615,15 +1529,6 @@ pub(super) fn prepare_async_challenge_data(
         constants_times_challenges,
     );
     // Hardcoded constraints
-    // TODO: Many metadata structs shared with stage2.rs have been deduplicated
-    // and placed in arg_utils, but there's still a substantial amount of
-    // partially-duplicated code surrounding their construction.
-    // Once everything is working, figure out how much more can be deduplicated.
-    let translate_e4_offset = |raw_col: usize| -> usize {
-        assert_eq!(raw_col % 4, 0);
-        assert!(raw_col >= e4_cols_offset);
-        (raw_col - e4_cols_offset) / 4
-    };
     let memory_challenges = MemoryChallenges::new(&memory_argument_challenges);
     let num_memory_args = circuit
         .stage_2_layout
@@ -1898,25 +1803,7 @@ pub(super) fn prepare_async_challenge_data(
             helpers.push(*alpha.clone().mul_assign(&challenge));
         }
     }
-    let raw_memory_args_start = circuit
-        .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .start();
-    let memory_args_start = translate_e4_offset(raw_memory_args_start);
-    assert_eq!(
-        circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_init_teardown
-            .num_elements(),
-        lazy_init_teardown_layouts.num_init_teardown_sets as usize,
-    );
-    let raw_lazy_init_teardown_args_start = circuit
-        .stage_2_layout
-        .intermediate_polys_for_memory_init_teardown
-        .start();
-    let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
-    // for lazy init padding constraints (limbs are zero if "final borrow"
-    // is zero)
+    // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
     for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
         alpha_offset += 6;
     }
@@ -1944,14 +1831,6 @@ pub(super) fn prepare_async_challenge_data(
         );
     }
 
-    let shuffle_ram_accesses = if process_shuffle_ram_init {
-        let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-        let write_timestamp_in_setup_start =
-            circuit.setup_layout.timestamp_setup_columns.start();
-        ShuffleRamAccesses::new(shuffle_ram_access_sets, write_timestamp_in_setup_start)
-    } else {
-        ShuffleRamAccesses::default()
-    };
     for i in 0..shuffle_ram_accesses.num_accesses as usize {
         let access = &shuffle_ram_accesses.accesses[i];
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
@@ -2040,7 +1919,6 @@ pub(super) fn prepare_async_challenge_data(
             helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
         }
     }
-    let memory_grand_product_col = get_grand_product_col(circuit);
     alpha_offset += 1;
     assert_eq!(
         alpha_offset,
@@ -2048,7 +1926,6 @@ pub(super) fn prepare_async_challenge_data(
     );
     // Prepare args and helpers for constraints on all rows except the last two
     alpha_offset = 0;
-    let state_linkage_constraints = StateLinkageConstraints::new(circuit);
     alpha_offset += state_linkage_constraints.num_constraints as usize;
     for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
         // alphas for "next lazy init timestamp > current lazy init timestamp"
@@ -2056,10 +1933,17 @@ pub(super) fn prepare_async_challenge_data(
     }
     assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
     // Args and helpers for boundary constraints (first row and second-to-last row)
-    let boundary_constraints = BoundaryConstraints::new(
-        circuit,
-        process_shuffle_ram_init,
-        &lazy_init_teardown_layouts,
+    // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
+    assert_eq!(
+        (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
+            as usize
+            + 1,
+        h_alphas_for_first_row.len()
+    );
+    assert_eq!(
+        (boundary_constraints.num_init_teardown
+            + boundary_constraints.num_public_one_before_last_row) as usize,
+        h_alphas_for_one_before_last_row.len()
     );
     boundary_constraints.prepare_async_challenge_data(
         circuit,
@@ -2073,18 +1957,6 @@ pub(super) fn prepare_async_challenge_data(
         decompression_factor,
         constants_times_challenges,
     );
-    // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
-    assert_eq!(
-        (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
-            as usize
-            + 1,
-        h_alphas_for_first_row.len()
-    );
-    assert_eq!(
-        (boundary_constraints.num_init_teardown
-            + boundary_constraints.num_public_one_before_last_row) as usize,
-        h_alphas_for_one_before_last_row.len()
-    );
     // Just one constraint at last row (grand product accumulator)
     let mut alpha = h_alphas_for_last_row[0];
     alpha.mul_assign(&h_beta_powers[1]);
@@ -2093,7 +1965,6 @@ pub(super) fn prepare_async_challenge_data(
     assert_eq!(1, h_alphas_for_last_row.len());
     // Constraints at last row and zero
     // range check 16 e4 arg sums
-    // double-check we can reconstruct e4 arg locations from metadata
     let mut alpha_offset = 0;
     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
     alpha_offset += 1;
