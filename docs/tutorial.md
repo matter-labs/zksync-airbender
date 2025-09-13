@@ -6,7 +6,7 @@
 To run the Airbender, you need three things:
 * a cli tool (tools/cli)
 * your compiled program (app.bin)
-* opitonally - file with inputs to your program.
+* optionally - file with inputs to your program.
 
 The TL;DR of creating a proof is (run this from tools/cli directory):
 
