@@ -1201,12 +1201,12 @@ impl StaticMetadata {
         }
         // lazy init addresses range checks
         for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-            num_helpers_expected += 1;
+            num_helpers_expected += 2;
         }
         // timestamp range check expressions
         if expressions_layout.timestamp_constant_terms_are_zero {
             for _ in 0..expressions_layout.num_timestamp_expression_pairs {
-                num_helpers_expected += 1;
+                num_helpers_expected += 2;
             }
         } else {
             for _ in 0..expressions_layout.num_timestamp_expression_pairs {
@@ -2313,21 +2313,11 @@ mod tests {
             prover_data.stage_2_result.lookup_argument_gamma,
         );
         let static_metadata = StaticMetadata::new(
-            &h_alpha_powers,
-            &h_beta_powers,
             tau,
-            twiddles.omega,
             twiddles.omega_inv,
-            &lookup_challenges,
             &cached_data,
             &circuit,
-            &external_values,
-            &public_inputs,
-            stage_2_output.grand_product_accumulator,
-            stage_2_output.sum_over_delegation_poly,
             log_n as u32,
-            &mut h_helpers,
-            &mut h_constants_times_challenges,
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
@@ -2343,6 +2333,21 @@ mod tests {
         let mut d_helpers = DeviceAllocation::<E4>::alloc(MAX_HELPER_VALUES).unwrap();
         let mut d_constants_times_challenges = DeviceAllocation::alloc(1).unwrap();
         let mut d_alloc_quotient = DeviceAllocation::<BF>::alloc(4 * domain_size).unwrap();
+        prepare_async_challenge_data(
+            &static_metadata,
+            &h_alpha_powers,
+            &h_beta_powers,
+            twiddles.omega,
+            &lookup_challenges,
+            &cached_data,
+            &circuit,
+            &external_values,
+            &public_inputs,
+            stage_2_output.grand_product_accumulator,
+            stage_2_output.sum_over_delegation_poly,
+            &mut h_helpers,
+            &mut h_constants_times_challenges,
+        );
         memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
         memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
         memory_copy_async(&mut d_alloc_stage_2_cols, &h_stage_2_cols, &stream).unwrap();
