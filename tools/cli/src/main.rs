@@ -2,6 +2,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+use base64::Engine;
 use blake2s_u32::Blake2sState;
 use clap::{Parser, Subcommand};
 use cli_lib::prover_utils::{
@@ -45,11 +46,26 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Clone, Debug, clap::ValueEnum, Parser)]
+enum InputType {
+    Hex,
+    ProverInputJson,
+}
+impl Default for InputType {
+    fn default() -> Self {
+        InputType::Hex
+    }
+}
+
 #[derive(Clone, Debug, Parser, Default)]
 struct InputConfig {
     // Either load data from the input file
     #[arg(long)]
     input_file: Option<String>,
+
+    /// Type of input - hex string or prover_input json (only for input_file).
+    #[arg(long, value_enum, default_value = "hex")]
+    input_type: InputType,
 
     // Loads data from the RPC - if set, you also have to set input_batch
     #[arg(long)]
@@ -189,24 +205,10 @@ enum Commands {
     },
 }
 
-fn fetch_data_from_json_rpc(
-    url: &str,
-    batch_number: u64,
-) -> Result<Option<String>, reqwest::Error> {
+fn fetch_data_from_json_rpc(url: &str) -> Result<Option<String>, reqwest::Error> {
     let client = Client::new();
-    let request_body = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "anvil_zks_getBoojumWitness",
-        "params": [batch_number],
-        "id": 1,
-    });
 
-    let response = client
-        .post(url)
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()?
-        .json::<Value>()?;
+    let response = client.post(url).send()?.json::<Value>()?;
 
     match &response["result"] {
         Value::String(data) => {
@@ -223,18 +225,39 @@ fn fetch_data_from_url(url: &str) -> Result<Option<String>, reqwest::Error> {
     Ok(Some(response))
 }
 
-fn fetch_input_hex_string(input: &InputConfig) -> Result<Option<String>, reqwest::Error> {
-    if let Some(input_file) = &input.input_file {
-        Ok(Some(
-            fs::read_to_string(input_file).unwrap().trim().to_string(),
-        ))
+fn fetch_input_data(input: &InputConfig) -> Result<Option<Vec<u32>>, reqwest::Error> {
+    let (data, input_type) = if let Some(input_file) = &input.input_file {
+        (
+            Some(fs::read_to_string(input_file).unwrap().trim().to_string()),
+            input.input_type.clone(),
+        )
     } else if let Some(url) = &input.input_rpc {
-        let batch = input
-            .input_batch
-            .expect("input_batch must be set if input_rpc is set");
-        fetch_data_from_json_rpc(&url, batch)
+        (fetch_data_from_json_rpc(&url)?, InputType::ProverInputJson)
     } else {
-        Ok(None)
+        return Ok(None);
+    };
+
+    match input_type {
+        InputType::Hex => Ok(data.map(|d| u32_from_hex_string(&d))),
+        InputType::ProverInputJson => {
+            if let Some(data) = data {
+                // decode data as Json and then get the 'prover_input' field
+                let json: Value = serde_json::from_str(&data).expect("Failed to parse JSON");
+                let prover_input = json["prover_input"].as_str().unwrap_or_default();
+
+                let decoded = base64::engine::general_purpose::STANDARD
+                    .decode(&prover_input)
+                    .expect("Failed to decode base64 input");
+
+                let prover_input: Vec<u32> = decoded
+                    .chunks_exact(4)
+                    .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+                    .collect();
+                Ok(Some(prover_input))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -273,11 +296,11 @@ fn main() {
             tmp_dir,
             gpu,
         } => {
-            let input_hex = fetch_input_hex_string(input).expect("Failed to fetch");
+            let input_data = fetch_input_data(input).expect("Failed to fetch");
             create_proofs(
                 bin,
                 output_dir,
-                &input_hex,
+                input_data,
                 prev_metadata,
                 machine,
                 cycles,
@@ -343,9 +366,9 @@ fn main() {
             expected_results,
             machine,
         } => {
-            let input_hex = fetch_input_hex_string(input).expect("Failed to fetch");
+            let input_data = fetch_input_data(input).expect("Failed to fetch");
 
-            run_binary(bin, cycles, &input_hex, expected_results, machine);
+            run_binary(bin, cycles, input_data, expected_results, machine);
         }
         Commands::GenerateVk {
             bin,
@@ -633,7 +656,7 @@ fn u32_to_file(output_file: &String, numbers: &[u32]) {
 fn run_binary(
     bin_path: &String,
     cycles: &Option<usize>,
-    input_hex: &Option<String>,
+    input_data: Option<Vec<u32>>,
     expected_results: &Option<Vec<u32>>,
     machine: &Machine,
 ) {
@@ -644,9 +667,8 @@ fn run_binary(
         diagnostics: None,
     };
     let mut non_determinism_source = QuasiUARTSource::default();
-    if let Some(input_hex) = input_hex {
-        let data = u32_from_hex_string(input_hex);
-        for entry in data {
+    if let Some(input_data) = input_data {
+        for entry in input_data {
             non_determinism_source.oracle.push_back(entry);
         }
     }
