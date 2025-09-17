@@ -2126,7 +2126,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
             flat_generic_constraints_metadata.decompression_factor_squared,
             log_n,
         );
-        DelegatedWidth3LookupsFunction(ab_delegated_width_3_lookups_kernel).launch(&config, &args)?;
+        DelegatedWidth3LookupsFunction(ab_delegated_width_3_lookups_kernel)
+            .launch(&config, &args)?;
     }
     let omega_inv = flat_generic_constraints_metadata.omega_inv;
     let omega_inv_squared = *omega_inv.clone().square();
