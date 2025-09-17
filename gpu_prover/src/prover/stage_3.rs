@@ -1,4 +1,3 @@
-use super::arg_utils::LookupChallenges;
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
@@ -15,7 +14,7 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations};
-use field::{Field, FieldExtension};
+use field::FieldExtension;
 use prover::definitions::ExternalValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
@@ -99,17 +98,9 @@ impl StageThreeOutput {
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
-
-        let static_metadata = StaticMetadata::new(
-            tau,
-            omega_inv,
-            cached_data,
-            &circuit,
-            log_domain_size,
-        );
+        let static_metadata =
+            StaticMetadata::new(tau, omega_inv, cached_data, &circuit, log_domain_size);
         let static_metadata_clone = static_metadata.clone();
-
-
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -145,16 +136,16 @@ impl StageThreeOutput {
                 &static_metadata_clone,
                 &alpha_powers,
                 &beta_powers,
-                twiddles_omega,
-                &lookup_challenges_clone.as_ref().unwrap().lock().unwrap(),
+                omega,
+                stage_2_lookup_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
                 &external_values_clone,
-                &public_inputs.lock().unwrap(),
+                public_inputs_accessor.get(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,
                 &mut helpers,
-                &mut h_constants_times_challenges_clone.lock().unwrap(),
+                h_constants_times_challenges_accessor.get_mut(),
             );
             h_helpers_accessor.get_mut().copy_from_slice(&helpers);
         };

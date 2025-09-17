@@ -1439,25 +1439,21 @@ pub(super) fn prepare_async_challenge_data(
         flat_generic_constraints_metadata,
         delegated_width_3_lookups_layout,
         non_delegated_width_3_lookups_layout,
-        range_check_16_layout,
         expressions_layout,
         expressions_for_shuffle_ram_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
         boundary_constraints,
-        lazy_init_teardown_args_start,
-        memory_args_start,
-        memory_grand_product_col,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
-        delegation_aux_poly_col,
         delegation_challenges,
         delegation_processing_metadata,
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected,
+        ..
     } = static_metadata;
 
     let ProverCachedData {
