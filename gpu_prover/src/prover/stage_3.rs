@@ -99,6 +99,17 @@ impl StageThreeOutput {
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
+
+        let static_metadata = StaticMetadata::new(
+            tau,
+            omega_inv,
+            cached_data,
+            &circuit,
+            log_domain_size,
+        );
+        let static_metadata_clone = static_metadata.clone();
+
+
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -130,22 +141,20 @@ impl StageThreeOutput {
             )
             .unwrap_or_default();
             let mut helpers = Vec::with_capacity(MAX_HELPER_VALUES);
-            let _ = Metadata::new(
+            prepare_async_challenge_data(
+                &static_metadata_clone,
                 &alpha_powers,
                 &beta_powers,
-                tau,
-                omega,
-                omega_inv,
-                stage_2_lookup_challenges_accessor.get(),
+                twiddles_omega,
+                &lookup_challenges_clone.as_ref().unwrap().lock().unwrap(),
                 &cached_data_clone,
                 &circuit_clone,
                 &external_values_clone,
-                public_inputs_accessor.get(),
+                &public_inputs.lock().unwrap(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,
-                log_domain_size,
                 &mut helpers,
-                h_constants_times_challenges_accessor.get_mut(),
+                &mut h_constants_times_challenges_clone.lock().unwrap(),
             );
             h_helpers_accessor.get_mut().copy_from_slice(&helpers);
         };
@@ -171,23 +180,6 @@ impl StageThreeOutput {
             slice::from_ref(unsafe { h_constants_times_challenges_accessor.get() }),
             stream,
         )?;
-        let metadata = Metadata::new(
-            &vec![E4::ZERO; alpha_powers_count],
-            &[E4::ZERO; BETA_POWERS_COUNT],
-            tau,
-            omega,
-            omega_inv,
-            &LookupChallenges::default(),
-            cached_data,
-            &circuit,
-            &external_values,
-            &vec![BF::ZERO; circuit.public_inputs.len()],
-            E4::ZERO,
-            E4::ZERO,
-            log_domain_size,
-            &mut Vec::with_capacity(MAX_HELPER_VALUES),
-            &mut ConstantsTimesChallenges::default(),
-        );
         let d_setup_cols = DeviceMatrix::new(
             setup
                 .trace_holder
@@ -219,7 +211,7 @@ impl StageThreeOutput {
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
             &circuit,
-            metadata,
+            static_metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,
