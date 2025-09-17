@@ -55,7 +55,7 @@ impl DelegationChallenges {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationRequestMetadata {
     pub multiplicity_col: u32,
@@ -66,7 +66,7 @@ pub struct DelegationRequestMetadata {
     pub in_cycle_write_idx: BF,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationProcessingMetadata {
     pub multiplicity_col: u32,
@@ -553,13 +553,13 @@ pub struct LazyInitTeardownLayout {
     pub e4_arg_col: u32,
 }
 
-const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
+pub const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
 
 #[derive(Clone)]
 #[repr(C)]
 pub struct LazyInitTeardownLayouts {
     pub layouts: [LazyInitTeardownLayout; MAX_LAZY_INIT_TEARDOWN_SETS],
-    pub num_lazy_init_teardown_sets: u32,
+    pub num_init_teardown_sets: u32,
     pub process_shuffle_ram_init: bool,
 }
 
@@ -579,22 +579,19 @@ impl LazyInitTeardownLayouts {
         translate_e4_offset: &F,
     ) -> Self {
         let lazy_init_address_aux_vars = &circuit.lazy_init_address_aux_vars;
-        let num_lazy_init_teardown_sets = shuffle_ram_inits_and_teardowns.len();
-        assert!(num_lazy_init_teardown_sets <= MAX_LAZY_INIT_TEARDOWN_SETS);
+        let num_init_teardown_sets = shuffle_ram_inits_and_teardowns.len();
+        assert!(num_init_teardown_sets <= MAX_LAZY_INIT_TEARDOWN_SETS);
+        assert_eq!(num_init_teardown_sets, lazy_init_address_aux_vars.len());
         assert_eq!(
-            num_lazy_init_teardown_sets,
-            lazy_init_address_aux_vars.len()
-        );
-        assert_eq!(
-            num_lazy_init_teardown_sets,
+            num_init_teardown_sets,
             lookup_set.base_field_oracles.num_elements()
         );
         assert_eq!(
-            num_lazy_init_teardown_sets,
+            num_init_teardown_sets,
             lookup_set.ext_4_field_oracles.num_elements()
         );
         assert_eq!(
-            num_lazy_init_teardown_sets,
+            num_init_teardown_sets,
             circuit
                 .stage_2_layout
                 .intermediate_polys_for_memory_init_teardown
@@ -634,7 +631,7 @@ impl LazyInitTeardownLayouts {
         }
         Self {
             layouts,
-            num_lazy_init_teardown_sets: num_lazy_init_teardown_sets as u32,
+            num_init_teardown_sets: num_init_teardown_sets as u32,
             process_shuffle_ram_init: true,
         }
     }
@@ -644,7 +641,7 @@ impl Default for LazyInitTeardownLayouts {
     fn default() -> Self {
         Self {
             layouts: [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS],
-            num_lazy_init_teardown_sets: 0,
+            num_init_teardown_sets: 0,
             process_shuffle_ram_init: false,
         }
     }

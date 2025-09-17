@@ -255,7 +255,7 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 
   // 32-bit lazy init address cols, treated as an extra pair of range check 16 cols
-  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
     const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
     const bf val0 = bf::into_canonical(memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start));
     const bf val1 = bf::into_canonical(memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1));
@@ -300,7 +300,7 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 num_over_denom_acc{};
 
   // Shuffle ram init
-  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
     const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
     e4 numerator{challenges.gamma};

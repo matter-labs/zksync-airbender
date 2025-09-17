@@ -342,20 +342,23 @@ enforce_lookup_multiplicities(const MultiplicitiesLayout &layout, const matrix_g
 
 constexpr bf SHIFT_16 = bf{1 << 16};
 
-constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 8;
-constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW = 8;
+constexpr unsigned MAX_PUBLIC_INPUTS_FIRST_ROW = 2;
+constexpr unsigned MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW = 2;
+constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 6 * MAX_LAZY_INIT_TEARDOWN_SETS + MAX_PUBLIC_INPUTS_FIRST_ROW;
+constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW = 6 * MAX_LAZY_INIT_TEARDOWN_SETS + MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW;
 
 struct BoundaryConstraints {
   const unsigned first_row_cols[MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW];
   const unsigned one_before_last_row_cols[MAX_BOUNDARY_CONSTRAINTS_ONE_BEFORE_LAST_ROW];
-  const unsigned num_first_row;
-  const unsigned num_one_before_last_row;
+  const unsigned num_init_teardown;
+  const unsigned num_public_first_row;
+  const unsigned num_public_one_before_last_row;
 };
 
 struct ConstantsTimesChallenges {
   const e4 first_row;
   const e4 one_before_last_row;
-  const e4 sum;
+  const e4 every_row_except_last;
 };
 
 // TODO once constraints are done
@@ -477,7 +480,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
                                                           acc_quadratic);
     }
 
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
       const bf a = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
       const bf b = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
@@ -570,7 +573,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
     // First enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
@@ -592,7 +595,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     // Now enforce lazy init contributions to global memory accumulator
     // TODO: try interleaving this with the above to avoid redundant loads
     e4 e4_arg_prev{};
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
@@ -626,7 +629,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       }
     }
 
-    alphas += lazy_init_teardown_layouts.num_lazy_init_teardown_sets;
+    alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
 
     // Now enforce access contributions to global memory accumulator
     // Some write timestamp limb contributions are common across accesses:
@@ -867,7 +870,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   e4 acc = e4::add(acc_quadratic, acc_linear);
   const e4 current_quotient = quotient.get();
   acc = e4::add(acc, current_quotient);
-  acc = e4::add(acc, constants_times_challenges->sum);
+  acc = e4::add(acc, constants_times_challenges->every_row_except_last);
   const unsigned shift = 1 << (CIRCLE_GROUP_LOG_ORDER - log_n - 1);
   const e2 x = get_power_of_w(shift * (2 * gid + 1), false);
   const e2 num = e2::sub(x, omega_inv);
@@ -903,7 +906,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
         memory_cols_next_row.sub_row(gid);
 
       // TODO: Investigate how this is applied for unrolled circuits
-      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
         const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
         const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
         {
@@ -948,32 +951,33 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   {
     e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
     unsigned i = 0;
-    // TODO: Fix for unrolled circuits
     if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-      for (; i < 6; i++)
+      for (; i < boundary_constraints.num_init_teardown; i++)
         acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
-    for (; i < boundary_constraints.num_first_row; i++)
+    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row;
+    for (; i < lim; i++)
       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.first_row_cols[i])));
     acc_linear = e4::add(acc_linear, constants_times_challenges->first_row);
     acc_linear = e4::mul(acc_linear, denom_invs[1]);
     acc = e4::add(acc, acc_linear);
   }
 
-  // Boundary constraints at one before last row
-  if (boundary_constraints.num_one_before_last_row > 0) {
+  // Boundary constraints at one before last row (at least some should always be present in practice)
+  if (boundary_constraints.num_init_teardown > 0 || boundary_constraints.num_public_one_before_last_row > 0) {
     e4 acc_linear{};
     unsigned i = 0;
     // TODO: Fix for unrolled circuits
     if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
       acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
       i++;
-      for (; i < 6; i++)
+      for (; i < boundary_constraints.num_init_teardown; i++)
         acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
     } else {
       acc_linear = e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
       i++;
     }
-    for (; i < boundary_constraints.num_one_before_last_row; i++)
+    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_one_before_last_row;
+    for (; i < lim; i++)
       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
     acc_linear = e4::add(acc_linear, constants_times_challenges->one_before_last_row);
     acc_linear = e4::mul(acc_linear, denom_invs[2]);
@@ -997,7 +1001,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
         acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
       // TODO: Fix for unrolled circuits
-      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_lazy_init_teardown_sets; i++) {
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
         const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
         acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
       }
