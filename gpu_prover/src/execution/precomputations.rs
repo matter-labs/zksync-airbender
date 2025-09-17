@@ -1,10 +1,11 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::circuit_type::{DelegationCircuitType, MainCircuitType};
+use crate::prover::setup::SetupTreesAndCaps;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use fft::LdePrecomputations;
 use field::Mersenne31Field;
-use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+use prover::merkle_trees::DefaultTreeConstructor;
 use prover::prover_stages::SetupPrecomputations;
 use prover::risc_v_simulator::cycle::{
     IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
@@ -27,11 +28,11 @@ type BF = Mersenne31Field;
 pub struct CircuitPrecomputations {
     pub compiled_circuit: Arc<CompiledCircuitArtifact<BF>>,
     pub lde_precomputations: Arc<LdePrecomputations<Global>>,
-    pub setup: Arc<Vec<BF, ConcurrentStaticHostAllocator>>,
-    pub tree_caps: Arc<OnceLock<Vec<MerkleTreeCapVarLength>>>,
+    pub setup_trace: Arc<Vec<BF, ConcurrentStaticHostAllocator>>,
+    pub setup_trees_and_caps: Arc<OnceLock<SetupTreesAndCaps>>,
 }
 
-fn get_setup_from_row_major_trace<const N: usize>(
+fn get_setup_trace_from_row_major_trace<const N: usize>(
     trace: &RowMajorTrace<BF, N, Global>,
 ) -> Arc<Vec<BF, ConcurrentStaticHostAllocator>> {
     let trace_total_size = trace.as_slice().len();
@@ -117,8 +118,8 @@ pub fn get_main_circuit_precomputations(
     CircuitPrecomputations {
         compiled_circuit: Arc::new(compiled_circuit),
         lde_precomputations: Arc::new(lde_precomputations),
-        setup: get_setup_from_row_major_trace(&setup),
-        tree_caps: Arc::new(OnceLock::new()),
+        setup_trace: get_setup_trace_from_row_major_trace(&setup),
+        setup_trees_and_caps: Arc::new(OnceLock::new()),
     }
 }
 
@@ -156,7 +157,7 @@ pub fn get_delegation_circuit_precomputations(
     CircuitPrecomputations {
         compiled_circuit: Arc::new(compiled_circuit),
         lde_precomputations: Arc::new(lde_precomputations),
-        setup: get_setup_from_row_major_trace(&setup),
-        tree_caps: Arc::new(OnceLock::new()),
+        setup_trace: get_setup_trace_from_row_major_trace(&setup),
+        setup_trees_and_caps: Arc::new(OnceLock::new()),
     }
 }

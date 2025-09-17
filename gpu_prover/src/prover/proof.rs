@@ -8,7 +8,7 @@ use super::stage_2::StageTwoOutput;
 use super::stage_3::StageThreeOutput;
 use super::stage_4::StageFourOutput;
 use super::stage_5::StageFiveOutput;
-use super::trace_holder::{flatten_tree_caps, get_tree_caps};
+use super::trace_holder::{flatten_tree_caps, get_tree_caps, TreesCacheMode};
 use super::tracing_data::TracingDataTransfer;
 use super::{device_tracing, BF};
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -76,7 +76,7 @@ pub fn prove<'a>(
     pow_bits: u32,
     external_pow_nonce: Option<u64>,
     recompute_cosets: bool,
-    recompute_trees: bool,
+    trees_cache_mode: TreesCacheMode,
     context: &ProverContext,
 ) -> CudaResult<ProofJob<'a>> {
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -107,7 +107,7 @@ pub fn prove<'a>(
     // setup
     let setup_range = device_tracing::Range::new("setup")?;
     setup_range.start(stream)?;
-    setup.ensure_commitment_produced(context)?;
+    setup.ensure_is_extended(context)?;
     setup_range.end(stream)?;
 
     let mut stage_1_output = StageOneOutput::allocate_trace_holders(
@@ -115,7 +115,7 @@ pub fn prove<'a>(
         log_lde_factor,
         log_tree_cap_size,
         recompute_cosets,
-        recompute_trees,
+        trees_cache_mode,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -126,7 +126,7 @@ pub fn prove<'a>(
         log_lde_factor,
         log_tree_cap_size,
         recompute_cosets,
-        recompute_trees,
+        trees_cache_mode,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -197,7 +197,7 @@ pub fn prove<'a>(
         &mut stage_2_output,
         log_lde_factor,
         log_tree_cap_size,
-        recompute_trees,
+        trees_cache_mode,
         &mut callbacks,
         context,
     )?;
@@ -342,14 +342,7 @@ fn initialize_seed<'a>(
 ) -> CudaResult<HostAllocation<Seed>> {
     let mut seed = unsafe { context.alloc_host_uninit::<Seed>() };
     let seed_accessor = seed.get_mut_accessor();
-    let setup_tree_caps_accessors = setup
-        .trace_holder
-        .tree_caps
-        .as_ref()
-        .unwrap()
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect_vec();
+    let setup_tree_caps = setup.trees_and_caps.caps.clone();
     let witness_tree_cap_accessors = stage_1_output
         .witness_holder
         .tree_caps
@@ -374,11 +367,17 @@ fn initialize_seed<'a>(
     let circuit_clone = circuit.clone();
     let seed_fn = move || unsafe {
         let public_inputs = public_inputs_accessor.get();
+        let setup_tree_caps = setup_tree_caps
+            .iter()
+            .flat_map(|c| &c.cap)
+            .copied()
+            .flatten()
+            .collect_vec();
         let mut input = vec![];
         input.push(circuit_sequence as u32);
         input.push(delegation_processing_type as u32);
         input.extend(public_inputs.iter().map(BF::to_reduced_u32));
-        input.extend(flatten_tree_caps(&setup_tree_caps_accessors));
+        input.extend(setup_tree_caps);
         input.extend_from_slice(&external_values.challenges.memory_argument.flatten());
         if let Some(delegation_argument_challenges) =
             external_values.challenges.delegation_argument.as_ref()
@@ -414,11 +413,11 @@ fn create_proof(
     queries_output: QueriesOutput,
     callbacks: &mut Callbacks,
     context: &ProverContext,
-) -> Result<Box<Option<Proof>>, era_cudart_sys::CudaError> {
+) -> CudaResult<Box<Option<Proof>>> {
     let public_inputs = stage_1_output.public_inputs.unwrap().get_accessor();
     let witness_tree_caps = stage_1_output.witness_holder.get_tree_caps_accessors();
     let memory_tree_caps = stage_1_output.memory_holder.get_tree_caps_accessors();
-    let setup_tree_caps = setup.trace_holder.get_tree_caps_accessors();
+    let setup_tree_caps = setup.trees_and_caps.caps.clone();
     let stage_2_tree_caps = stage_2_output.trace_holder.get_tree_caps_accessors();
     let stage_2_last_row = stage_2_output.last_row.unwrap().get_accessor();
     let stage_2_offset_for_memory_grand_product_poly = stage_2_output.offset_for_grand_product_poly;
@@ -447,7 +446,7 @@ fn create_proof(
         let public_inputs = public_inputs.get().to_vec();
         let witness_tree_caps = get_tree_caps(&witness_tree_caps);
         let memory_tree_caps = get_tree_caps(&memory_tree_caps);
-        let setup_tree_caps = get_tree_caps(&setup_tree_caps);
+        let setup_tree_caps = setup_tree_caps.as_ref().clone();
         let stage_2_tree_caps = get_tree_caps(&stage_2_tree_caps);
         let stage_2_last_row = stage_2_last_row.get();
         let memory_grand_product_accumulator = StageTwoOutput::get_grand_product_accumulator(

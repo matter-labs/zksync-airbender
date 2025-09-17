@@ -4,6 +4,7 @@ use cs::utils::split_timestamp;
 pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use gpu_prover::cudart::result::CudaResult;
+use gpu_prover::prover::trace_holder::TreesCacheMode;
 use gpu_prover::witness::trace_delegation::DelegationTraceHost;
 use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
 use gpu_prover::{
@@ -256,15 +257,23 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
         let log_domain_size = trace_len.trailing_zeros();
         let log_tree_cap_size =
             OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+        let setup_evaluations = Arc::new(setup_evaluations);
+        let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+            circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            setup_evaluations.clone(),
+            prover_context,
+        )?;
         let mut setup = SetupPrecomputations::new(
             circuit,
             log_lde_factor,
             log_tree_cap_size,
             false,
-            false,
+            setup_trees_and_caps,
             prover_context,
         )?;
-        setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+        setup.schedule_transfer(setup_evaluations, prover_context)?;
         setup
     };
 
@@ -309,7 +318,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 POW_BITS,
                 None,
                 false,
-                false,
+                TreesCacheMode::CacheFull,
                 prover_context,
             )?;
             job.finish()?
@@ -376,15 +385,23 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 setup_row_major.len(),
             );
             setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+            let setup_evaluations = Arc::new(setup_evaluations);
+            let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                setup_evaluations.clone(),
+                prover_context,
+            )?;
             let mut setup = SetupPrecomputations::new(
                 circuit,
                 log_lde_factor,
                 log_tree_cap_size,
                 false,
-                false,
+                setup_trees_and_caps,
                 prover_context,
             )?;
-            setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+            setup.schedule_transfer(setup_evaluations, prover_context)?;
             setup
         };
 
@@ -418,7 +435,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                     POW_BITS,
                     None,
                     false,
-                    false,
+                    TreesCacheMode::CacheFull,
                     prover_context,
                 )?;
                 job.finish()?

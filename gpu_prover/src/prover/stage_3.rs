@@ -5,7 +5,7 @@ use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
-use super::trace_holder::TraceHolder;
+use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -41,7 +41,7 @@ impl StageThreeOutput {
         stage_2_output: &mut StageTwoOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -58,7 +58,7 @@ impl StageThreeOutput {
             true,
             false,
             false,
-            recompute_trees,
+            trees_cache_mode,
             context,
         )?;
         let stream = context.get_exec_stream();

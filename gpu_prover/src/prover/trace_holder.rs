@@ -24,24 +24,29 @@ use prover::transcript::Seed;
 use std::mem::size_of;
 use std::ops::Deref;
 
-pub enum CosetsHolder<T> {
-    Full {
-        evaluations: Vec<DeviceAllocation<T>>,
-    },
+#[derive(Copy, Clone)]
+pub enum TreesCacheMode {
+    CacheNone,
+    CachePatrial,
+    CacheFull,
+}
+
+pub(crate) enum CosetsHolder<T> {
+    Full(Vec<DeviceAllocation<T>>),
     Single {
         current_coset_index: usize,
         evaluations: DeviceAllocation<T>,
     },
 }
 
-pub enum TreesHolder {
-    Device {
-        trees: Vec<DeviceAllocation<Digest>>,
-    },
+#[allow(unused)]
+pub(crate) enum TreesHolder {
+    Full(Vec<DeviceAllocation<Digest>>),
+    Partial(Vec<DeviceAllocation<Digest>>),
     None,
 }
 
-pub enum TreeReference<'a> {
+pub(crate) enum TreeReference<'a> {
     Borrowed(&'a DeviceAllocation<Digest>),
     Owned(DeviceAllocation<Digest>),
 }
@@ -57,7 +62,7 @@ impl Deref for TreeReference<'_> {
     }
 }
 
-pub trait TraceHolderImpl {
+pub(crate) trait TraceHolderImpl {
     fn ensure_coset_computed(
         &mut self,
         coset_index: usize,
@@ -65,7 +70,7 @@ pub trait TraceHolderImpl {
     ) -> CudaResult<()>;
 }
 
-pub struct TraceHolder<T> {
+pub(crate) struct TraceHolder<T> {
     pub(crate) log_domain_size: u32,
     pub(crate) log_lde_factor: u32,
     pub(crate) log_rows_per_leaf: u32,
@@ -79,9 +84,12 @@ pub struct TraceHolder<T> {
 }
 
 impl TraceHolder<BF> {
-    pub fn make_evaluations_sum_to_zero(&mut self, context: &ProverContext) -> CudaResult<()> {
+    pub(crate) fn make_evaluations_sum_to_zero(
+        &mut self,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let evaluations = match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => &mut evaluations[0],
+            CosetsHolder::Full(evaluations) => &mut evaluations[0],
             CosetsHolder::Single {
                 current_coset_index,
                 evaluations,
@@ -99,42 +107,7 @@ impl TraceHolder<BF> {
         )
     }
 
-    fn commit_and_transfer_tree_caps(
-        &mut self,
-        coset_index: usize,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        let log_domain_size = self.log_domain_size;
-        let log_lde_factor = self.log_lde_factor;
-        let log_rows_per_leaf = self.log_rows_per_leaf;
-        let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
-        let stream = context.get_exec_stream();
-        let mut tree = match &mut self.trees {
-            TreesHolder::Device { trees } => trees.remove(coset_index),
-            TreesHolder::None => allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
-        };
-        let evaluations = self.get_coset_evaluations(coset_index, context)?;
-        commit_trace(
-            evaluations,
-            &mut tree,
-            log_domain_size,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            columns_count,
-            stream,
-        )?;
-        let caps = &mut self.tree_caps.as_mut().unwrap()[coset_index];
-        transfer_tree_cap(&mut tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
-        match &mut self.trees {
-            TreesHolder::Device { trees } => trees.insert(coset_index, tree),
-            TreesHolder::None => drop(tree),
-        };
-        Ok(())
-    }
-
-    pub fn extend_and_commit(
+    pub(crate) fn extend(
         &mut self,
         source_coset_index: usize,
         context: &ProverContext,
@@ -143,11 +116,8 @@ impl TraceHolder<BF> {
         let log_lde_factor = self.log_lde_factor;
         let compressed_coset = self.compressed_coset;
         assert_eq!(log_lde_factor, 1);
-        let tree_caps = allocate_tree_caps(log_lde_factor, self.log_tree_cap_size, context);
-        assert!(self.tree_caps.replace(tree_caps).is_none());
-        self.commit_and_transfer_tree_caps(source_coset_index, context)?;
         match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => {
+            CosetsHolder::Full(evaluations) => {
                 let (src, dst) = split_evaluations_pair(evaluations, source_coset_index);
                 compute_coset_evaluations(
                     src,
@@ -175,11 +145,68 @@ impl TraceHolder<BF> {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    pub(crate) fn make_evaluations_sum_to_zero_and_extend(
+        &mut self,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        self.make_evaluations_sum_to_zero(context)?;
+        self.extend(0, context)
+    }
+
+    fn commit_and_transfer_tree_caps(
+        &mut self,
+        coset_index: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let log_domain_size = self.log_domain_size;
+        let log_lde_factor = self.log_lde_factor;
+        let log_rows_per_leaf = self.log_rows_per_leaf;
+        let log_tree_cap_size = self.log_tree_cap_size;
+        let columns_count = self.columns_count;
+        let stream = context.get_exec_stream();
+        let mut tree = match &mut self.trees {
+            TreesHolder::Full(trees) => trees.remove(coset_index),
+            TreesHolder::Partial(_) => unimplemented!(),
+            TreesHolder::None => allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
+        };
+        let evaluations = self.get_coset_evaluations(coset_index, context)?;
+        commit_trace(
+            evaluations,
+            &mut tree,
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            stream,
+        )?;
+        let caps = &mut self.tree_caps.as_mut().unwrap()[coset_index];
+        transfer_tree_cap(&mut tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
+        match &mut self.trees {
+            TreesHolder::Full(trees) => trees.insert(coset_index, tree),
+            TreesHolder::Partial(_) => unimplemented!(),
+            TreesHolder::None => drop(tree),
+        };
+        Ok(())
+    }
+
+    pub(crate) fn extend_and_commit(
+        &mut self,
+        source_coset_index: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let tree_caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
+        assert!(self.tree_caps.replace(tree_caps).is_none());
+        self.commit_and_transfer_tree_caps(source_coset_index, context)?;
+        self.extend(source_coset_index, context)?;
         self.commit_and_transfer_tree_caps(1 - source_coset_index, context)?;
         Ok(())
     }
 
-    pub fn make_evaluations_sum_to_zero_extend_and_commit(
+    pub(crate) fn make_evaluations_sum_to_zero_extend_and_commit(
         &mut self,
         context: &ProverContext,
     ) -> CudaResult<()> {
@@ -187,14 +214,14 @@ impl TraceHolder<BF> {
         self.extend_and_commit(0, context)
     }
 
-    pub fn get_coset_evaluations_and_tree(
+    pub(crate) fn get_coset_evaluations_and_tree(
         &mut self,
         coset_index: usize,
         context: &ProverContext,
     ) -> CudaResult<(&DeviceSlice<BF>, TreeReference<'_>)> {
         self.ensure_coset_computed(coset_index, context)?;
         let evaluations = match &self.cosets {
-            CosetsHolder::Full { evaluations } => &evaluations[coset_index],
+            CosetsHolder::Full(evaluations) => &evaluations[coset_index],
             CosetsHolder::Single {
                 evaluations,
                 current_coset_index,
@@ -205,7 +232,8 @@ impl TraceHolder<BF> {
         };
         let evaluations = &evaluations[..self.columns_count << self.log_domain_size];
         let tree = match &self.trees {
-            TreesHolder::Device { trees } => TreeReference::Borrowed(&trees[coset_index]),
+            TreesHolder::Full(trees) => TreeReference::Borrowed(&trees[coset_index]),
+            TreesHolder::Partial(_) => unimplemented!(),
             TreesHolder::None => {
                 let mut tree =
                     allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
@@ -234,7 +262,7 @@ impl TraceHolderImpl for TraceHolder<BF> {
     ) -> CudaResult<()> {
         assert!(coset_index < (1 << self.log_lde_factor));
         match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => {
+            CosetsHolder::Full(evaluations) => {
                 assert!(evaluations.len() > coset_index);
                 Ok(())
             }
@@ -261,7 +289,7 @@ impl TraceHolderImpl for TraceHolder<BF> {
 }
 
 impl<T> TraceHolder<T> {
-    pub fn new(
+    pub(crate) fn new(
         log_domain_size: u32,
         log_lde_factor: u32,
         log_rows_per_leaf: u32,
@@ -270,7 +298,7 @@ impl<T> TraceHolder<T> {
         pad_to_even: bool,
         compressed_coset: bool,
         recompute_cosets: bool,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert_eq!(log_lde_factor, 1);
@@ -281,26 +309,23 @@ impl<T> TraceHolder<T> {
                 current_coset_index: 0,
                 evaluations: allocate_coset(log_domain_size, columns_count, pad_to_even, context)?,
             },
-            false => CosetsHolder::Full {
-                evaluations: allocate_cosets(
-                    instances_count,
-                    log_domain_size,
-                    columns_count,
-                    pad_to_even,
-                    context,
-                )?,
-            },
+            false => CosetsHolder::Full(allocate_cosets(
+                instances_count,
+                log_domain_size,
+                columns_count,
+                pad_to_even,
+                context,
+            )?),
         };
-        let trees = match recompute_trees {
-            true => TreesHolder::None,
-            false => TreesHolder::Device {
-                trees: allocate_trees(
-                    instances_count,
-                    log_domain_size,
-                    log_rows_per_leaf,
-                    context,
-                )?,
-            },
+        let trees = match trees_cache_mode {
+            TreesCacheMode::CacheNone => TreesHolder::None,
+            TreesCacheMode::CachePatrial => unimplemented!(),
+            TreesCacheMode::CacheFull => TreesHolder::Full(allocate_trees(
+                instances_count,
+                log_domain_size,
+                log_rows_per_leaf,
+                context,
+            )?),
         };
         Ok(Self {
             log_domain_size,
@@ -316,7 +341,7 @@ impl<T> TraceHolder<T> {
         })
     }
 
-    pub fn allocate_only_evaluation(
+    pub(crate) fn allocate_only_evaluation(
         log_domain_size: u32,
         log_lde_factor: u32,
         log_rows_per_leaf: u32,
@@ -325,7 +350,7 @@ impl<T> TraceHolder<T> {
         pad_to_even: bool,
         compressed_coset: bool,
         recompute_cosets: bool,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
@@ -335,13 +360,12 @@ impl<T> TraceHolder<T> {
                 current_coset_index: 0,
                 evaluations,
             },
-            false => CosetsHolder::Full {
-                evaluations: vec![evaluations],
-            },
+            false => CosetsHolder::Full(vec![evaluations]),
         };
-        let trees = match recompute_trees {
-            true => TreesHolder::None,
-            false => TreesHolder::Device { trees: vec![] },
+        let trees = match trees_cache_mode {
+            TreesCacheMode::CacheNone => TreesHolder::Full(vec![]),
+            TreesCacheMode::CachePatrial => unimplemented!(),
+            TreesCacheMode::CacheFull => TreesHolder::None,
         };
         Ok(Self {
             log_domain_size,
@@ -357,10 +381,10 @@ impl<T> TraceHolder<T> {
         })
     }
 
-    pub fn allocate_to_full(&mut self, context: &ProverContext) -> CudaResult<()> {
+    pub(crate) fn allocate_to_full(&mut self, context: &ProverContext) -> CudaResult<()> {
         let instances_count = 1 << self.log_lde_factor;
         match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => {
+            CosetsHolder::Full(evaluations) => {
                 assert_eq!(evaluations.len(), 1);
                 let additional_evaluations = allocate_cosets(
                     instances_count - 1,
@@ -374,7 +398,7 @@ impl<T> TraceHolder<T> {
             CosetsHolder::Single { .. } => {}
         }
         match &mut self.trees {
-            TreesHolder::Device { trees } => {
+            TreesHolder::Full(trees) => {
                 assert!(trees.is_empty());
                 let new_trees = allocate_trees(
                     instances_count,
@@ -384,12 +408,13 @@ impl<T> TraceHolder<T> {
                 )?;
                 trees.extend(new_trees);
             }
+            TreesHolder::Partial(_) => unimplemented!(),
             TreesHolder::None => {}
         }
         Ok(())
     }
 
-    pub fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
+    pub(crate) fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
         self.tree_caps
             .as_ref()
             .unwrap()
@@ -398,7 +423,7 @@ impl<T> TraceHolder<T> {
             .collect_vec()
     }
 
-    pub fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
+    pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
         let tree_caps_accessors = self.get_tree_caps_accessors();
         let seed_accessor = seed.get_mut_accessor();
         move || unsafe {
@@ -416,7 +441,7 @@ impl TraceHolderImpl for TraceHolder<E4> {
     ) -> CudaResult<()> {
         assert!(coset_index < (1 << self.log_lde_factor));
         match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => {
+            CosetsHolder::Full(evaluations) => {
                 assert!(evaluations.len() > coset_index);
                 Ok(())
             }
@@ -431,14 +456,14 @@ impl<T> TraceHolder<T>
 where
     TraceHolder<T>: TraceHolderImpl,
 {
-    pub fn get_coset_evaluations(
+    pub(crate) fn get_coset_evaluations(
         &mut self,
         coset_index: usize,
         context: &ProverContext,
     ) -> CudaResult<&DeviceSlice<T>> {
         self.ensure_coset_computed(coset_index, context)?;
         let evaluations = match &self.cosets {
-            CosetsHolder::Full { evaluations } => &evaluations[coset_index],
+            CosetsHolder::Full(evaluations) => &evaluations[coset_index],
             CosetsHolder::Single {
                 evaluations,
                 current_coset_index,
@@ -450,9 +475,12 @@ where
         Ok(&evaluations[..self.columns_count << self.log_domain_size])
     }
 
-    pub fn get_uninit_coset_evaluations_mut(&mut self, coset_index: usize) -> &mut DeviceSlice<T> {
+    pub(crate) fn get_uninit_coset_evaluations_mut(
+        &mut self,
+        coset_index: usize,
+    ) -> &mut DeviceSlice<T> {
         let evaluations = match &mut self.cosets {
-            CosetsHolder::Full { evaluations } => &mut evaluations[coset_index],
+            CosetsHolder::Full(evaluations) => &mut evaluations[coset_index],
             CosetsHolder::Single {
                 evaluations,
                 current_coset_index,
@@ -464,16 +492,19 @@ where
         &mut evaluations[..self.columns_count << self.log_domain_size]
     }
 
-    pub fn get_evaluations(&mut self, context: &ProverContext) -> CudaResult<&DeviceSlice<T>> {
+    pub(crate) fn get_evaluations(
+        &mut self,
+        context: &ProverContext,
+    ) -> CudaResult<&DeviceSlice<T>> {
         self.get_coset_evaluations(0, context)
     }
 
-    pub fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
+    pub(crate) fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
         self.get_uninit_coset_evaluations_mut(0)
     }
 }
 
-fn allocate_coset<T>(
+pub(crate) fn allocate_coset<T>(
     log_domain_size: u32,
     columns_count: usize,
     pad_to_even: bool,

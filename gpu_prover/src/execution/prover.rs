@@ -257,7 +257,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let gpu_manager = GpuManager::new(setups_to_cache, gpu_wait_group.clone());
         gpu_wait_group.wait();
         for value in binaries.values() {
-            assert!(value.precomputations.tree_caps.get().is_some());
+            assert!(value.precomputations.setup_trees_and_caps.get().is_some());
         }
         Self {
             device_count,
@@ -975,12 +975,14 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
             chunks_cache.as_ref().unwrap().len(),
             min(cache_capacity, maximum_cached_count)
         );
+        let caps = &self.binaries[&binary_key]
+            .precomputations
+            .setup_trees_and_caps
+            .get()
+            .unwrap()
+            .caps;
         let memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
-            self.binaries[&binary_key]
-                .precomputations
-                .tree_caps
-                .get()
-                .unwrap(),
+            caps,
             &final_register_values,
             &main_memory_commitments,
             &delegation_memory_commitments,

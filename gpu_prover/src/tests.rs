@@ -4,6 +4,7 @@ use crate::circuit_type::MainCircuitType;
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
 use crate::prover::setup::SetupPrecomputations;
+use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use cs::definitions::split_timestamp;
@@ -61,9 +62,9 @@ use worker::Worker;
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
 const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = true;
-const RECOMPUTE_TREES_FOR_CORRECTNESS: bool = true;
+const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CacheNone;
 const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
-const RECOMPUTE_TREES_FOR_BENCHMARKS: bool = false;
+const TREES_CACHE_MODE_FOR_BENCHMARKS: TreesCacheMode = TreesCacheMode::CacheFull;
 
 fn init_logger() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -475,15 +476,23 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 setup_row_major.len(),
             );
             setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+            let setup_evaluations = Arc::new(setup_evaluations);
+            let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                setup_evaluations.clone(),
+                prover_context,
+            )?;
             let mut setup = SetupPrecomputations::new(
                 circuit,
                 log_lde_factor,
                 log_tree_cap_size,
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                RECOMPUTE_TREES_FOR_CORRECTNESS,
+                setup_trees_and_caps,
                 prover_context,
             )?;
-            setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+            setup.schedule_transfer(setup_evaluations, prover_context)?;
             let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
                 (None, AuxArgumentsBoundaryValues::default())
             } else {
@@ -520,7 +529,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 POW_BITS,
                 Some(cpu_proof.pow_nonce),
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                RECOMPUTE_TREES_FOR_CORRECTNESS,
+                TREES_CACHE_MODE_FOR_CORRECTNESS,
                 prover_context,
             )?;
             job.finish()?
@@ -631,15 +640,23 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     setup_row_major.len(),
                 );
                 setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+                let setup_evaluations = Arc::new(setup_evaluations);
+                let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                    &gpu_circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    setup_evaluations.clone(),
+                    prover_context,
+                )?;
                 let mut setup = SetupPrecomputations::new(
                     &gpu_circuit,
                     log_lde_factor,
                     log_tree_cap_size,
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                    RECOMPUTE_TREES_FOR_CORRECTNESS,
+                    setup_trees_and_caps,
                     prover_context,
                 )?;
-                setup.schedule_transfer(Arc::new(setup_evaluations), prover_context)?;
+                setup.schedule_transfer(setup_evaluations, prover_context)?;
                 let trace = el.clone().into();
                 let data = TracingDataHost::Delegation(trace);
                 let circuit_type = CircuitType::from_delegation_type(*delegation_type);
@@ -658,7 +675,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                     POW_BITS,
                     Some(cpu_proof.pow_nonce),
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                    RECOMPUTE_TREES_FOR_CORRECTNESS,
+                    TREES_CACHE_MODE_FOR_CORRECTNESS,
                     prover_context,
                 )?;
                 job.finish()?
@@ -765,12 +782,19 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     let mut setups = Vec::with_capacity(contexts.len());
     for context in contexts.iter() {
         context.switch_to_device()?;
+        let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+            circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            setup_evaluations.clone(),
+            context,
+        )?;
         let mut setup = SetupPrecomputations::new(
             circuit,
             log_lde_factor,
             log_tree_cap_size,
             RECOMPUTE_COSETS_FOR_BENCHMARKS,
-            RECOMPUTE_TREES_FOR_BENCHMARKS,
+            setup_trees_and_caps,
             context,
         )?;
         setup.schedule_transfer(setup_evaluations.clone(), context)?;
@@ -800,7 +824,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 POW_BITS,
                 None,
                 RECOMPUTE_COSETS_FOR_BENCHMARKS,
-                RECOMPUTE_TREES_FOR_BENCHMARKS,
+                TREES_CACHE_MODE_FOR_BENCHMARKS,
                 context,
             )?;
             job.finish()?;
@@ -861,7 +885,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
                 POW_BITS,
                 None,
                 RECOMPUTE_COSETS_FOR_BENCHMARKS,
-                RECOMPUTE_TREES_FOR_BENCHMARKS,
+                TREES_CACHE_MODE_FOR_BENCHMARKS,
                 context,
             )?;
             let mut job = Some(job);

@@ -9,11 +9,11 @@ use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::precomputations::Precomputations;
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
-use crate::prover::trace_holder::get_tree_caps;
+use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
 use crate::witness::trace_main::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
-use era_cudart::device::get_device_properties;
+use era_cudart::device::{get_device_count, get_device_properties};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
 use log::{debug, error, info, trace};
@@ -121,13 +121,15 @@ const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
     OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32
 }
 
-fn get_recompute_trees(circuit_type: CircuitType, context: &ProverContext) -> bool {
+fn get_trees_cache_mode(circuit_type: CircuitType, context: &ProverContext) -> TreesCacheMode {
     match circuit_type {
         CircuitType::Main(main) => match main {
-            MainCircuitType::ReducedRiscVLog23Machine => (context.get_mem_size() >> 30) < 28, // less than 28GB
-            _ => false,
+            MainCircuitType::ReducedRiscVLog23Machine if (context.get_mem_size() >> 30) < 28 => {
+                TreesCacheMode::CacheNone
+            } // less than 28GB
+            _ => TreesCacheMode::CacheFull,
         },
-        _ => false,
+        _ => TreesCacheMode::CacheFull,
     }
 }
 
@@ -161,6 +163,33 @@ fn gpu_worker(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
+    let device_count = get_device_count()?;
+    for precomputations in setups_to_cache.iter().enumerate().filter_map(|(i, setup)| {
+        if (i as i32 % device_count) == device_id {
+            Some(&setup.precomputations)
+        } else {
+            None
+        }
+    }) {
+        let lde_factor = precomputations.lde_precomputations.lde_factor;
+        assert!(lde_factor.is_power_of_two());
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let domain_size = precomputations.lde_precomputations.domain_size;
+        assert!(domain_size.is_power_of_two());
+        let log_domain_size = domain_size.trailing_zeros();
+        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+        let circuit = &precomputations.compiled_circuit;
+        let trace = precomputations.setup_trace.clone();
+        let _ = precomputations.setup_trees_and_caps.get_or_try_init(|| {
+            SetupPrecomputations::get_trees_and_caps(
+                circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                trace,
+                &context,
+            )
+        })?;
+    }
     let mut setups = vec![];
     for setup in setups_to_cache {
         let SetupToCache {
@@ -174,20 +203,21 @@ fn gpu_worker(
         assert!(domain_size.is_power_of_two());
         let log_domain_size = domain_size.trailing_zeros();
         let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-        let recompute_trees = get_recompute_trees(circuit_type, &context);
+        let circuit = &precomputations.compiled_circuit;
+        let trees_and_caps = precomputations.setup_trees_and_caps.wait().clone();
         let mut setup = SetupPrecomputations::new(
-            &precomputations.compiled_circuit,
+            circuit,
             log_lde_factor,
             log_tree_cap_size,
             false,
-            recompute_trees,
+            trees_and_caps,
             &context,
         )?;
         match circuit_type {
             CircuitType::Main(main) => trace!("GPU_WORKER[{device_id}] transferring setup trace for main circuit {main:?}"),
             CircuitType::Delegation(delegation) => trace!("GPU_WORKER[{device_id}] transferring setup trace for delegation circuit {delegation:?}"),
         }
-        let trace = precomputations.setup.clone();
+        let trace = precomputations.setup_trace.clone();
         setup.schedule_transfer(trace.clone(), &context)?;
         match circuit_type {
             CircuitType::Main(main) => {
@@ -197,13 +227,8 @@ fn gpu_worker(
                 "GPU_WORKER[{device_id}] generating setup for delegation circuit {delegation:?}"
             ),
         }
-        setup.ensure_commitment_produced(&context)?;
+        setup.ensure_is_extended(&context)?;
         context.get_exec_stream().synchronize()?;
-        if matches!(circuit_type, CircuitType::Main(_)) {
-            let accessors = setup.trace_holder.get_tree_caps_accessors();
-            let tree_caps = get_tree_caps(&accessors);
-            let _ = precomputations.tree_caps.set(tree_caps);
-        }
         let setup = Rc::new(RefCell::new(setup));
         let holder = SetupHolder { setup, trace };
         setups.push(holder);
@@ -228,7 +253,7 @@ fn gpu_worker(
                     let precomputations = &request.precomputations;
                     let holder = setups
                         .iter()
-                        .find(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup))
+                        .find(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup_trace))
                         .unwrap();
                     let setup = holder.setup.clone();
                     (
@@ -330,7 +355,7 @@ fn gpu_worker(
                         CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
                     };
-                    let recompute_trees = get_recompute_trees(circuit_type, &context);
+                    let trees_cache_mode = get_trees_cache_mode(circuit_type, &context);
                     let job = prove(
                         precomputations.compiled_circuit.clone(),
                         external_values,
@@ -344,7 +369,7 @@ fn gpu_worker(
                         POW_BITS,
                         None,
                         false,
-                        recompute_trees,
+                        trees_cache_mode,
                         &context,
                     )?;
                     JobType::Proof(job)

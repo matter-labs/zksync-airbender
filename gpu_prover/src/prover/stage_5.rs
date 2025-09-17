@@ -90,7 +90,7 @@ impl StageFiveOutput {
             }
             let folding_inputs = if i == 0 {
                 match &stage_4_output.trace_holder.cosets {
-                    CosetsHolder::Full { evaluations } => evaluations,
+                    CosetsHolder::Full(evaluations) => evaluations,
                     CosetsHolder::Single { .. } => unreachable!(),
                 }
             } else {

@@ -11,7 +11,7 @@ use super::stage_4_kernels::{
 };
 use super::trace_holder::{
     allocate_tree_caps, compute_coset_evaluations, split_evaluations_pair, transfer_tree_cap,
-    CosetsHolder, TraceHolder, TreesHolder,
+    CosetsHolder, TraceHolder, TreesCacheMode, TreesHolder,
 };
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
@@ -70,7 +70,7 @@ impl StageFourOutput {
             false,
             true,
             false,
-            false,
+            TreesCacheMode::CacheFull,
             context,
         )?;
         let seed_accessor = seed.get_mut_accessor();
@@ -309,11 +309,12 @@ impl StageFourOutput {
         for (((vectorized_lde, lde), tree), caps) in vectorized_ldes
             .iter()
             .zip_eq(match &mut trace_holder.cosets {
-                CosetsHolder::Full { evaluations } => evaluations.iter_mut(),
+                CosetsHolder::Full(evaluations) => evaluations.iter_mut(),
                 CosetsHolder::Single { .. } => unreachable!(),
             })
             .zip_eq(match &mut trace_holder.trees {
-                TreesHolder::Device { trees } => trees.iter_mut(),
+                TreesHolder::Full(trees) => trees.iter_mut(),
+                TreesHolder::Partial(_) => unimplemented!(),
                 TreesHolder::None => unreachable!(),
             })
             .zip_eq(tree_caps.iter_mut())

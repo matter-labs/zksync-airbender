@@ -198,7 +198,7 @@ cuda_kernel!(
     )
 );
 
-pub fn gather_merkle_paths(
+pub fn gather_merkle_paths_device(
     indexes: &DeviceSlice<u32>,
     values: &DeviceSlice<Digest>,
     results: &mut DeviceSlice<Digest>,
@@ -226,6 +226,43 @@ pub fn gather_merkle_paths(
     let args =
         GatherMerklePathsArguments::new(indexes, indexes_count, values, log_leaves_count, result);
     GatherMerklePathsFunction::default().launch(&config, &args)
+}
+
+pub fn gather_merkle_paths_host(
+    indexes: &[u32],
+    values: &[Digest],
+    results: &mut [Digest],
+    layers_count: u32,
+) {
+    assert!(indexes.len() <= u32::MAX as usize);
+    let indexes_count = indexes.len() as u32;
+    let values_count = values.len();
+    assert!(values_count.is_power_of_two());
+    let log_values_count = values_count.trailing_zeros();
+    assert_ne!(log_values_count, 0);
+    let log_leaves_count = log_values_count - 1;
+    assert!(layers_count < log_leaves_count);
+    assert_eq!(indexes.len() * layers_count as usize, results.len());
+    for layer_index in 0..layers_count {
+        let layer_offset =
+            (1 << (log_leaves_count + 1)) - (1 << (log_leaves_count + 1 - layer_index));
+        for (idx, &leaf_index) in indexes.iter().enumerate() {
+            let hash_offset = ((leaf_index >> layer_index) ^ 1) as usize;
+            let dst_index = idx + (layer_index * indexes_count) as usize;
+            let src_index = layer_offset + hash_offset;
+            results[dst_index] = values[src_index];
+        }
+    }
+    /*
+     const unsigned leaf_index = indexes[idx];
+     const unsigned layer_index = blockIdx.y;
+     const unsigned layer_offset = ((1u << log_leaves_count + 1) - (1u << log_leaves_count + 1 - layer_index)) * STATE_SIZE;
+     const unsigned hash_offset = (leaf_index >> layer_index ^ 1) * STATE_SIZE;
+     const unsigned element_offset = threadIdx.x;
+     const unsigned src_index = layer_offset + hash_offset + element_offset;
+     const unsigned dst_index = layer_index * indexes_count * STATE_SIZE + idx * STATE_SIZE + element_offset;
+     results[dst_index] = values[src_index];
+    */
 }
 
 pub fn merkle_tree_cap(
@@ -509,7 +546,7 @@ mod tests {
         let mut results_device = DeviceAllocation::alloc(results_host.len()).unwrap();
         memory_copy_async(&mut indexes_device, &indexes_host, &stream).unwrap();
         memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-        super::gather_merkle_paths(
+        gather_merkle_paths_device(
             &indexes_device,
             &values_device,
             &mut results_device,
