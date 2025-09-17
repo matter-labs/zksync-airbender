@@ -6,7 +6,7 @@ use super::stage_2::StageTwoOutput;
 use super::stage_3::StageThreeOutput;
 use super::stage_4_kernels::{
     compute_deep_denom_at_z_on_main_domain, compute_deep_quotient_on_main_domain,
-    prepare_challenges_for_gpu_transfer, ChallengesTimesEvalsSums,
+    prepare_async_challenge_data, ChallengesTimesEvalsSums,
 };
 use super::trace_holder::{
     allocate_tree_caps, compute_coset_evaluations, split_evaluations_pair, transfer_tree_cap,
@@ -225,7 +225,7 @@ impl StageFourOutput {
         let h_challenges_times_evals_accessor = h_challenges_times_evals.get_mut_accessor();
         let omega_inv = PRECOMPUTATIONS.omegas_inv[log_domain_size as usize];
         let get_challenges = move || unsafe {
-            prepare_challenges_for_gpu_transfer(
+            prepare_async_challenge_data(
                 values_at_z_accessor.get(),
                 *alpha_accessor.get(),
                 omega_inv,
