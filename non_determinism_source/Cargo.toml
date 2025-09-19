@@ -1,5 +1,6 @@
 [package]
-name = "non_determinism_source"
+name = "airbender_non_determinism_source"
+description = "ZKsync Airbender source of non-determinism"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

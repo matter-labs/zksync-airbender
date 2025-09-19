@@ -1,5 +1,6 @@
 [package]
-name = "prover"
+name = "airbender_prover"
+description = "ZKsync Airbender prover"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -30,16 +31,16 @@ proc-macro2 = { version = "1", optional = true }
 syn = { version = "2", optional = true }
 quote = { version = "1", optional = true }
 bit-set = { version = "0.8", optional = true }
-lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git", optional = true }
 serde_json = { version = "*", optional = true }
 bincode = { version = "1.3", optional = true }
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std", "std_rng"]}
 bincode = { version = "1.3" }
+lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 
 [features]
-prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "proc-macro2", "syn", "quote", "bit-set", "lib-rv32-asm", "serde_json", "itertools"]
+prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "proc-macro2", "syn", "quote", "bit-set", "serde_json", "itertools"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.
 timing_logs = []

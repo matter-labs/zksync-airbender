@@ -1,5 +1,6 @@
 [package]
-name = "transcript"
+name = "airbender_transcript"
+description = "ZKsync Airbender transcript"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

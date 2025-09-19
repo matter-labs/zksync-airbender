@@ -1,5 +1,6 @@
 [package]
-name = "risc_v_cycles"
+name = "airbender_risc_v_cycles"
+description = "ZKsync Airbender RISC-V cycles"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,5 +1,6 @@
 [package]
-name = "full_statement_verifier"
+name = "airbender_full_statement_verifier"
+description = "ZKsync Airbender full statement verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,12 +12,12 @@ categories.workspace = true
 
 [dependencies]
 verifier_common = { workspace = true, default-features = false}
-risc_v_cycles_verifier = {path = "../circuit_defs/risc_v_cycles/verifier", default-features = false}
-reduced_risc_v_machine_verifier = {path = "../circuit_defs/reduced_risc_v_machine/verifier", default-features = false}
-reduced_risc_v_log_23_machine_verifier = {path = "../circuit_defs/reduced_risc_v_log_23_machine/verifier", default-features = false}
-final_reduced_risc_v_machine_verifier = {path = "../circuit_defs/final_reduced_risc_v_machine/verifier", default-features = false}
-blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compression/verifier", default-features = false}
-bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false}
+risc_v_cycles_verifier = { workspace = true, default-features = false}
+reduced_risc_v_machine_verifier = { workspace = true, default-features = false}
+reduced_risc_v_log_23_machine_verifier = { workspace = true, default-features = false}
+final_reduced_risc_v_machine_verifier = { workspace = true, default-features = false}
+blake2_with_compression_verifier = { workspace = true, default-features = false}
+bigint_with_control_verifier = { workspace = true, default-features = false}
 
 # blake2_single_round_verifier = {path = "../circuit_defs/blake2_single_round/verifier", default-features = false}
 # poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}

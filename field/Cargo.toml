@@ -1,5 +1,6 @@
 [package]
-name = "field"
+name = "airbender_field"
+description = "ZKsync Airbender field"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

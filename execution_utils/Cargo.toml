@@ -1,5 +1,6 @@
 [package]
-name = "execution_utils"
+name = "airbender_execution_utils"
+description = "ZKsync Airbender execution utils"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -18,16 +19,12 @@ serde = { workspace = true }
 serde_json = "*"
 
 [dev-dependencies]
-prover_examples = { path = "../circuit_defs/prover_examples" }
+prover_examples = { workspace = true }
 bincode = { version = "1.3" }
 # full_statement_verifier = { workspace = true }
 # full_statement_verifier = { path = "../full_statement_verifier" }
 
 [features]
-# Will evaluate quotient on main domain for debug
-debug_satisfiable = ["prover_examples/debug_satisfiable"]
-# Will perform satisfiability tests on witness
-precheck_satisfied = ["prover_examples/precheck_satisfied"]
 extended_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
 default = []

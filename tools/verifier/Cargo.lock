@@ -3,54 +3,42 @@
 version = 4
 
 [[package]]
-name = "arrayvec"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
-name = "bigint_with_control_verifier"
-version = "0.1.0"
+name = "airbender_bigint_with_control_verifier"
+version = "0.4.5"
 dependencies = [
- "field",
+ "airbender_field",
+ "airbender_verifier_common",
  "unroll",
- "verifier_common",
 ]
 
 [[package]]
-name = "blake2_with_compression_verifier"
-version = "0.1.0"
+name = "airbender_blake2_with_compression_verifier"
+version = "0.4.5"
 dependencies = [
- "field",
+ "airbender_field",
+ "airbender_verifier_common",
  "unroll",
- "verifier_common",
 ]
 
 [[package]]
-name = "blake2s_u32"
-version = "0.1.0"
+name = "airbender_blake2s_u32"
+version = "0.4.5"
 dependencies = [
  "unroll",
 ]
 
 [[package]]
-name = "byteorder"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
-
-[[package]]
-name = "cs"
-version = "0.1.0"
+name = "airbender_cs"
+version = "0.4.5"
 dependencies = [
+ "airbender_field",
  "arrayvec",
- "field",
  "serde",
 ]
 
 [[package]]
-name = "field"
-version = "0.1.0"
+name = "airbender_field"
+version = "0.4.5"
 dependencies = [
  "rand",
  "seq-macro",
@@ -58,26 +46,136 @@ dependencies = [
 ]
 
 [[package]]
-name = "final_reduced_risc_v_machine_verifier"
-version = "0.1.0"
+name = "airbender_final_reduced_risc_v_machine_verifier"
+version = "0.4.5"
 dependencies = [
- "field",
+ "airbender_field",
+ "airbender_verifier_common",
  "unroll",
- "verifier_common",
 ]
 
 [[package]]
-name = "full_statement_verifier"
-version = "0.1.0"
+name = "airbender_full_statement_verifier"
+version = "0.4.5"
 dependencies = [
- "bigint_with_control_verifier",
- "blake2_with_compression_verifier",
- "final_reduced_risc_v_machine_verifier",
- "reduced_risc_v_log_23_machine_verifier",
- "reduced_risc_v_machine_verifier",
- "risc_v_cycles_verifier",
- "verifier_common",
+ "airbender_bigint_with_control_verifier",
+ "airbender_blake2_with_compression_verifier",
+ "airbender_final_reduced_risc_v_machine_verifier",
+ "airbender_reduced_risc_v_log_23_machine_verifier",
+ "airbender_reduced_risc_v_machine_verifier",
+ "airbender_risc_v_cycles_verifier",
+ "airbender_verifier_common",
 ]
+
+[[package]]
+name = "airbender_non_determinism_source"
+version = "0.4.5"
+
+[[package]]
+name = "airbender_poseidon2"
+version = "0.4.5"
+dependencies = [
+ "airbender_field",
+ "airbender_non_determinism_source",
+ "rand",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_prover"
+version = "0.4.5"
+dependencies = [
+ "airbender_blake2s_u32",
+ "airbender_cs",
+ "airbender_field",
+ "airbender_non_determinism_source",
+ "airbender_poseidon2",
+ "airbender_transcript",
+ "serde",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_reduced_keccak"
+version = "0.4.5"
+
+[[package]]
+name = "airbender_reduced_risc_v_log_23_machine_verifier"
+version = "0.4.5"
+dependencies = [
+ "airbender_field",
+ "airbender_verifier_common",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_reduced_risc_v_machine_verifier"
+version = "0.4.5"
+dependencies = [
+ "airbender_field",
+ "airbender_verifier_common",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_risc_v_cycles_verifier"
+version = "0.4.5"
+dependencies = [
+ "airbender_field",
+ "airbender_verifier_common",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_riscv_common"
+version = "0.4.5"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
+name = "airbender_transcript"
+version = "0.4.5"
+dependencies = [
+ "airbender_blake2s_u32",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_verifier"
+version = "0.4.5"
+dependencies = [
+ "airbender_field",
+ "airbender_verifier_common",
+ "unroll",
+]
+
+[[package]]
+name = "airbender_verifier_common"
+version = "0.4.5"
+dependencies = [
+ "airbender_blake2s_u32",
+ "airbender_cs",
+ "airbender_field",
+ "airbender_non_determinism_source",
+ "airbender_poseidon2",
+ "airbender_prover",
+ "airbender_transcript",
+ "serde",
+ "unroll",
+]
+
+[[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "hash32"
@@ -99,40 +197,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "non_determinism_source"
-version = "0.1.0"
-
-[[package]]
-name = "poseidon2"
-version = "0.1.0"
-dependencies = [
- "field",
- "non_determinism_source",
- "rand",
- "unroll",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02b3e5e68a3a1a02aad3ec490a98007cbc13c37cbe84a3cd7b8e406d76e7f778"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "prover"
-version = "0.1.0"
-dependencies = [
- "blake2s_u32",
- "cs",
- "field",
- "non_determinism_source",
- "poseidon2",
- "serde",
- "transcript",
- "unroll",
 ]
 
 [[package]]
@@ -158,44 +228,6 @@ name = "rand_core"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
-
-[[package]]
-name = "reduced_keccak"
-version = "0.1.0"
-
-[[package]]
-name = "reduced_risc_v_log_23_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "reduced_risc_v_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "risc_v_cycles_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "riscv_common"
-version = "0.1.0"
-dependencies = [
- "heapless",
-]
 
 [[package]]
 name = "seq-macro"
@@ -252,14 +284,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "transcript"
-version = "0.1.0"
-dependencies = [
- "blake2s_u32",
- "unroll",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -276,35 +300,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "verifier_common"
-version = "0.1.0"
-dependencies = [
- "blake2s_u32",
- "cs",
- "field",
- "non_determinism_source",
- "poseidon2",
- "prover",
- "serde",
- "transcript",
- "unroll",
-]
-
-[[package]]
 name = "zksync_os_verifier"
 version = "0.1.0"
 dependencies = [
- "full_statement_verifier",
- "reduced_keccak",
- "riscv_common",
- "verifier",
+ "airbender_full_statement_verifier",
+ "airbender_reduced_keccak",
+ "airbender_riscv_common",
+ "airbender_verifier",
 ]

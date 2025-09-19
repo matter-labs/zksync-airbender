@@ -1,5 +1,6 @@
 [package]
-name = "fft"
+name = "airbender_fft"
+description = "ZKsync Airbender FFT"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

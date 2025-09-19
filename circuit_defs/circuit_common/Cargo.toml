@@ -1,5 +1,6 @@
 [package]
-name = "circuit_common"
+name = "airbender_circuit_common"
+description = "ZKsync Airbender circuit common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

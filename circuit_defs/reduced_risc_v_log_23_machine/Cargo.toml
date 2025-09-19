@@ -1,5 +1,6 @@
 [package]
-name = "reduced_risc_v_log_23_machine"
+name = "airbender_reduced_risc_v_log_23_machine"
+description = "ZKsync Airbender RISC-V log23 machine"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

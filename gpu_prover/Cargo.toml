@@ -1,5 +1,6 @@
 [package]
-name = "gpu_prover"
+name = "airbender_gpu_prover"
+description = "ZKsync Airbender GPU prover"
 version.workspace = true
 edition.workspace = true
 build = "build/main.rs"

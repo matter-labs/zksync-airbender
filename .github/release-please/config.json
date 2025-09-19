@@ -1,0 +1,19 @@
+{
+  "bootstrap-sha": "6cc83584123585f9ecaf81d89d605b95432c84d1",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "include-component-in-tag": false,
+  "release-type": "simple",
+  "packages": {
+    ".": {
+      "component": "zksync-airbender",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        }
+      ]
+    }
+  }
+}

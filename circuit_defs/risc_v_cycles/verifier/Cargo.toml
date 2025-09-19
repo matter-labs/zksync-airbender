@@ -1,5 +1,6 @@
 [package]
-name = "risc_v_cycles_verifier"
+name = "airbender_risc_v_cycles_verifier"
+description = "ZKsync Airbender risc_v_cycles verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,5 +1,6 @@
 [package]
-name = "poseidon2"
+name = "airbender_poseidon2"
+description = "ZKsync Airbender Poseidon2 implementation"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

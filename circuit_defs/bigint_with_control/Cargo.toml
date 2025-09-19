@@ -1,5 +1,6 @@
 [package]
-name = "bigint_with_control"
+name = "airbender_bigint_with_control"
+description = "ZKsync Airbender bigint with control"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

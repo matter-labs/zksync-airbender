@@ -1,5 +1,6 @@
 [package]
-name = "reduced_keccak"
+name = "airbender_reduced_keccak"
+description = "ZKsync Airbender reduced keccak"
 
 version.workspace = true
 edition.workspace = true

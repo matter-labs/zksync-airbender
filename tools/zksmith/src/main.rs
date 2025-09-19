@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli_lib::prover_utils::{
+use cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, u32_from_hex_string,
     GpuSharedState,
 };
@@ -84,7 +84,7 @@ impl LocalProver {
         #[cfg(feature = "gpu")]
         let gpu_state = GpuSharedState::new(
             &padded_binary,
-            cli_lib::prover_utils::MainCircuitType::ReducedRiscVMachine,
+            cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
         );
 
         #[cfg(not(feature = "gpu"))]

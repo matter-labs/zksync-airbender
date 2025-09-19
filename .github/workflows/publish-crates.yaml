@@ -1,0 +1,47 @@
+name: Publish crates
+
+permissions:
+  contents: write
+
+# Manual workflow to publish crates to crates.io
+# can be used in case of failed release-please workflow
+# to release crates after a bugfix
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-build:
+        type: boolean
+        description: 'Build the workspace before release.'
+        required: false
+        default: true
+      run-tests:
+        type: boolean
+        description: 'Run tests before release.'
+        required: false
+        default: false
+      org-owner:
+        type: string
+        description: 'Organization to add as owner of the crates.'
+        required: false
+        default: 'github:matter-labs:crates-io'
+
+env:
+  # Use stubs for CUDA during publishing.
+  ZKSYNC_USE_CUDA_STUBS: 1
+
+jobs:
+
+  publish-crates:
+    name: Publish to crates.io
+    runs-on: matterlabs-ci-runner-highdisk
+    steps:
+      - name: Publish crates
+        uses: matter-labs/zksync-ci-common/.github/actions/publish-crates@v1
+        with:
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK_RELEASES }} # Slack webhook for notifications
+          cargo_registry_token: ${{ secrets.CRATES_IO_TOKEN }} # Crates.io token for publishing
+          org_owner: ${{ inputs.org-owner }}
+          run_build: ${{ inputs.run-build }}
+          run_tests: ${{ inputs.run-tests }}
+          gh_token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,6 @@
 [package]
-name = "trace_holder"
+name = "airbender_trace_holder"
+description = "ZKsync Airbender trace holder"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

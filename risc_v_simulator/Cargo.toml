@@ -1,5 +1,6 @@
 [package]
-name = "risc_v_simulator"
+name = "airbender_risc_v_simulator"
+description = "ZKsync Airbender RISC-V simulator"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -36,5 +37,5 @@ default = ["field", "delegation"]
 delegation = ["blake2s_u32", "field", "poseidon2", "ruint"]
 
 [[bin]]
-name = "runner"
+name = "airbender_risc_v_simulator_runner"
 path = "bin/runner.rs"

@@ -1,5 +1,6 @@
 [package]
-name = "machine_without_signed_mul_div_verifier"
+name = "airbender_machine_without_signed_mul_div_verifier"
+description = "ZKsync Airbender machine_without_signed_mul_div verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

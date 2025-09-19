@@ -1,5 +1,6 @@
 [package]
-name = "final_reduced_risc_v_machine"
+name = "airbender_final_reduced_risc_v_machine"
+description = "ZKsync Airbender final reduced RISC-V machine"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

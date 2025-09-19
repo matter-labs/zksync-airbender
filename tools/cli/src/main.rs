@@ -2,15 +2,15 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use base64::Engine;
-use blake2s_u32::Blake2sState;
-use clap::{Parser, Subcommand};
-use cli_lib::prover_utils::{
+use airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
     serialize_to_file, u32_from_hex_string, ProvingLimit, DEFAULT_CYCLES,
 };
+use base64::Engine;
+use blake2s_u32::Blake2sState;
+use clap::{Parser, Subcommand};
 
-use cli_lib::vk::generate_vk;
+use airbender_cli::vk::generate_vk;
 use execution_utils::{
     generate_constants_for_binary, Machine, ProgramProof, RecursionStrategy,
     VerifierCircuitsIdentifiers,
@@ -459,7 +459,7 @@ pub fn proof_name_to_circuit_type(file_name: &str) -> CircuitType {
 
 #[cfg(feature = "include_verifiers")]
 fn verify_proof(proof_path: &String) {
-    use cli_lib::prover_utils::get_end_params_output_suffix_from_proof;
+    use airbender_cli::prover_utils::get_end_params_output_suffix_from_proof;
 
     println!("Verifying proof from {}", proof_path);
     let proof: Proof = deserialize_from_file(proof_path);

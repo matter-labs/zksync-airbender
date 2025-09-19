@@ -1,5 +1,6 @@
 [package]
-name = "machine_without_signed_mul_div"
+name = "airbender_machine_without_signed_mul_div"
+description = "ZKsync Airbender machine without signed mul/div"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

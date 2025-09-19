@@ -8,15 +8,16 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+publish = false
 
 [dependencies]
 serde = { workspace = true }
 serde_json = "*"
 clap = { workspace = true }
-execution_utils = { path = "../../execution_utils"}
+execution_utils = { workspace = true }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3_ce", version = "=0.10.6" }
-cli = { path = "../cli" }
+cli = { workspace = true }
 warp = "0.3"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"

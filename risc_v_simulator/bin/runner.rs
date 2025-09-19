@@ -1,4 +1,5 @@
-use risc_v_simulator::{runner::run_simple_simulator, sim::SimulatorConfig};
+use airbender_risc_v_simulator::runner::run_simple_simulator;
+use airbender_risc_v_simulator::sim::{DiagnosticsConfig, ProfilerConfig, SimulatorConfig};
 
 pub fn main() {
     // let args: Vec<String> = std::env::args().collect();
@@ -9,9 +10,6 @@ pub fn main() {
 
     let path = "../zksync-os/zksync_os/app.bin";
     let path_sym = "../zksync-os/zksync_os/app.elf";
-
-    use risc_v_simulator::sim::DiagnosticsConfig;
-    use risc_v_simulator::sim::ProfilerConfig;
 
     let mut config = SimulatorConfig::simple(path);
     config.entry_point = 0;

@@ -1,5 +1,6 @@
 [package]
-name = "gpu_witness_eval_generator"
+name = "airbender_gpu_witness_eval_generator"
+description = "ZKsync Airbender GPU witness eval generator"
 version.workspace = true
 edition = "2024"
 authors.workspace = true

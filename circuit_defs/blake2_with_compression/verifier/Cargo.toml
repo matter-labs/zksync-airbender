@@ -1,5 +1,6 @@
 [package]
-name = "blake2_with_compression_verifier"
+name = "airbender_blake2_with_compression_verifier"
+description = "ZKsync Airbender blake2_with_compression verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

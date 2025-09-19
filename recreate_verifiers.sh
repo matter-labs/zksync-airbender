@@ -37,7 +37,8 @@ for CIRCUIT_NAME in "${circuit_names[@]}"; do
     rm $DST_DIR/expand.sh
     rm $DST_DIR/flamegraph.svg
 
-    sed 's/^name = "verifier"$/name = "'"${CIRCUIT_NAME}_verifier"'"/' verifier/Cargo.toml > $DST_DIR/Cargo.toml
+    sed 's/^name = "airbender_verifier"$/name = "'"airbender_${CIRCUIT_NAME}_verifier"'"/;
+         s/^description = "ZKsync Airbender verifier"$/description = "'"ZKsync Airbender ${CIRCUIT_NAME} verifier"'"/' verifier/Cargo.toml > $DST_DIR/Cargo.toml
     echo "WARNING: this directory was created by the recreate_verifier.sh script. DO NOT MODIFY BY HAND" >> $DST_DIR/README.md
 
 done

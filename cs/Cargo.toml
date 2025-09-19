@@ -1,5 +1,6 @@
 [package]
-name = "cs"
+name = "airbender_cs"
+description = "ZKsync Airbender CS"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,5 +1,6 @@
 [package]
-name = "verifier_common"
+name = "airbender_verifier_common"
+description = "ZKsync Airbender verifier common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,14 +15,16 @@ field = { workspace = true }
 blake2s_u32 = { workspace = true, default-features = false }
 transcript = { workspace = true, default-features = false }
 cs = { workspace = true, default-features = false, features = ["definitions_only"] }
-prover = { workspace = true, default-features = false, features = ["definitions_only"] }
 serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }
 poseidon2 = { workspace = true, default-features = false }
 
-[dev-dependencies]
-prover = { workspace = true, features = ["prover"] }
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+prover = { workspace = true, default-features = false, features = ["definitions_only"] }
+
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+prover = { workspace = true, default-features = false, features = ["definitions_only", "prover"] }
 
 [features]
 blake2_with_compression = ["blake2s_u32/blake2_with_compression", "transcript/blake2_with_compression"]

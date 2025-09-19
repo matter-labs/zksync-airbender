@@ -1,5 +1,5 @@
 [package]
-name = "riscv_common"
+name = "airbender_riscv_common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

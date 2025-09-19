@@ -1,5 +1,6 @@
 [package]
-name = "witness_eval_generator"
+name = "airbender_witness_eval_generator"
+description = "ZKsync Airbender witness eval generator"
 version.workspace = true
 edition = "2024"
 authors.workspace = true

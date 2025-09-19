@@ -1,5 +1,6 @@
 [package]
-name = "worker"
+name = "airbender_worker"
+description = "ZKsync Airbender worker"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

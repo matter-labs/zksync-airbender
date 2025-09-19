@@ -1,5 +1,6 @@
 [package]
-name = "final_reduced_risc_v_machine_verifier"
+name = "airbender_final_reduced_risc_v_machine_verifier"
+description = "ZKsync Airbender final_reduced_risc_v_machine verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

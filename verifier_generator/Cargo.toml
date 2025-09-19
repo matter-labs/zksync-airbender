@@ -1,5 +1,6 @@
 [package]
-name = "verifier_generator"
+name = "airbender_verifier_generator"
+description = "ZKsync Airbender verifier generator"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
