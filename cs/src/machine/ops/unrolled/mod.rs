@@ -10,6 +10,7 @@ pub mod load_store;
 pub mod load_store_subword_only;
 pub mod load_store_word_only;
 pub mod mul_div;
+pub mod reduced_machine_ops;
 pub mod shift_binary_csr;
 
 use crate::cs::witness_placer::graph_description::WitnessGraphCreator;

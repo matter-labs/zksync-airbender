@@ -380,6 +380,21 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
     previous
 }
 
+#[test]
+fn get_raw_proof() {
+    let mut src = std::fs::File::open("recursion_layer.json").unwrap();
+    let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+    let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+        .iter()
+        .map(|el| el.0)
+        .collect();
+    let non_determinism_source = proofs.flatten_for_delegation_circuits_set(&allowed_delegations);
+
+    let mut dst = std::fs::File::create("recursion_layer_flattened.json").unwrap();
+    serde_json::to_writer_pretty(&mut dst, &non_determinism_source).unwrap();
+}
+
 #[cfg(all(feature = "verifier_binaries", test))]
 mod test {
     use std::alloc::Global;

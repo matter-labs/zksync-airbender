@@ -70,7 +70,7 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        let mut repr = 0u8;
+        let mut repr = 0u32;
         let instruction_type;
         match (opcode, func3, func7) {
             (OPERATION_OP_IMM, 0b001, 0) => {

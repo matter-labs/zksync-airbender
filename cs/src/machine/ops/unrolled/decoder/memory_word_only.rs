@@ -48,7 +48,7 @@ impl OpcodeFamilyDecoder for WordOnlyMemoryFamilyDecoder {
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        let mut repr = 0u8;
+        let mut repr = 0u32;
         let instruction_type;
         match (opcode, func3, func7) {
             (OPERATION_LOAD, 0b010, _) => {

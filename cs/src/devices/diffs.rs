@@ -82,6 +82,7 @@ impl<F: PrimeField> CommonDiffs<F> {
         cs: &mut CS,
         sources: &[Self],
         default_next_pc: Register<F>,
+        result_vars: Option<[Variable; 2]>,
     ) -> Register<F> {
         let mut default_case_exec_flags = vec![];
         let mut non_default_cases = vec![];
@@ -109,7 +110,8 @@ impl<F: PrimeField> CommonDiffs<F> {
             witness_sets_for_words.push((*flag, words));
         }
 
-        let result_vars: [Variable; REGISTER_SIZE] = [cs.add_variable(), cs.add_variable()];
+        let result_vars: [Variable; REGISTER_SIZE] =
+            result_vars.unwrap_or([cs.add_variable(), cs.add_variable()]);
         let default_pc_vars = default_next_pc.0.map(|el| el.get_variable());
         let default_case_exec_flags_vars: Vec<_> = default_case_exec_flags
             .iter()
