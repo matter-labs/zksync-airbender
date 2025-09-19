@@ -8,7 +8,7 @@ use super::stage_4::StageFourOutput;
 use super::stage_5::StageFiveOutput;
 use super::BF;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::blake2s::{gather_merkle_paths, gather_rows, Digest};
+use crate::blake2s::{gather_merkle_paths_device, gather_merkle_paths_host, gather_rows, Digest};
 use crate::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
 use crate::prover::trace_holder::{CosetsHolder, TreesHolder};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
@@ -21,6 +21,7 @@ use prover::prover_stages::query_producer::{assemble_query_index, BitSource};
 use prover::prover_stages::stage5::Query;
 use prover::prover_stages::QuerySet;
 use prover::transcript::Seed;
+use std::sync::Arc;
 
 struct LeafsAndDigests {
     leafs: HostAllocation<[BF]>,
@@ -171,7 +172,7 @@ impl QueriesOutput {
             let (witness_evaluations, witness_tree) = stage_1_output
                 .witness_holder
                 .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let witness = Self::get_leafs_and_digests(
+            let witness = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
                 true,
                 witness_evaluations,
@@ -185,7 +186,7 @@ impl QueriesOutput {
             let (memory_evaluations, memory_tree) = stage_1_output
                 .memory_holder
                 .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let memory = Self::get_leafs_and_digests(
+            let memory = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
                 true,
                 memory_evaluations,
@@ -196,24 +197,26 @@ impl QueriesOutput {
                 context,
             )?;
             drop(memory_tree);
-            let (setup_evaluations, setup_tree) = setup
+            let setup_evaluations = setup
                 .trace_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let setup = Self::get_leafs_and_digests(
+                .get_coset_evaluations(coset_idx, context)?;
+            let setup_tree = setup.trees_and_caps.trees[coset_idx].clone();
+            let setup = Self::get_leafs_and_digests_host(
                 &d_tree_indexes,
+                &h_tree_indexes,
                 true,
                 setup_evaluations,
-                &setup_tree,
+                setup_tree,
                 log_domain_size,
                 0,
                 layers_count,
+                callbacks,
                 context,
             )?;
-            drop(setup_tree);
             let (stage_2_evaluations, stage_2_tree) = stage_2_output
                 .trace_holder
                 .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let stage_2 = Self::get_leafs_and_digests(
+            let stage_2 = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
                 true,
                 stage_2_evaluations,
@@ -227,7 +230,7 @@ impl QueriesOutput {
             let (stage_3_evaluations, stage_3_tree) = stage_3_output
                 .trace_holder
                 .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let quotient = Self::get_leafs_and_digests(
+            let quotient = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
                 true,
                 stage_3_evaluations,
@@ -254,14 +257,15 @@ impl QueriesOutput {
             )?;
             layers_count -= initial_log_fold;
             let stage_4_evaluations = match &stage_4_output.trace_holder.cosets {
-                CosetsHolder::Full { evaluations } => &evaluations[coset_idx],
+                CosetsHolder::Full(evaluations) => &evaluations[coset_idx],
                 CosetsHolder::Single { .. } => unreachable!(),
             };
             let stage_4_tree = match &stage_4_output.trace_holder.trees {
-                TreesHolder::Device { trees } => &trees[coset_idx],
+                TreesHolder::Full(trees) => &trees[coset_idx],
+                TreesHolder::Partial(_) => unimplemented!(),
                 TreesHolder::None => unreachable!(),
             };
-            let initial_fri = Self::get_leafs_and_digests(
+            let initial_fri = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
                 false,
                 unsafe { stage_4_evaluations.transmute() },
@@ -291,7 +295,7 @@ impl QueriesOutput {
                     unsafe { h_tree_indexes_accessor.get() },
                     stream,
                 )?;
-                let queries = Self::get_leafs_and_digests(
+                let queries = Self::get_leafs_and_digests_device(
                     &d_tree_indexes,
                     false,
                     unsafe { intermediate_oracle.ldes[coset_idx].transmute() },
@@ -329,16 +333,14 @@ impl QueriesOutput {
         Ok(result)
     }
 
-    fn get_leafs_and_digests(
+    fn get_leafs(
         indexes: &DeviceSlice<u32>,
         bit_reverse_leaf_indexing: bool,
         values: &DeviceSlice<BF>,
-        tree: &DeviceSlice<Digest>,
         log_domain_size: u32,
         log_rows_per_index: u32,
-        layers_count: u32,
         context: &ProverContext,
-    ) -> CudaResult<LeafsAndDigests> {
+    ) -> CudaResult<HostAllocation<[BF]>> {
         let queries_count = indexes.len();
         let domain_size = 1 << log_domain_size;
         let values_matrix = DeviceMatrix::new(values, domain_size);
@@ -363,15 +365,93 @@ impl QueriesOutput {
             stream,
         )?;
         d_leafs.free();
+        Ok(leafs)
+    }
+
+    fn get_digests_device(
+        indexes: &DeviceSlice<u32>,
+        tree: &DeviceSlice<Digest>,
+        layers_count: u32,
+        context: &ProverContext,
+    ) -> CudaResult<HostAllocation<[Digest]>> {
+        let queries_count = indexes.len();
+        let stream = context.get_exec_stream();
         let digests_len = queries_count * layers_count as usize;
         let mut d_digests = context.alloc(digests_len, AllocationPlacement::BestFit)?;
-        gather_merkle_paths(indexes, tree, &mut d_digests, layers_count, stream)?;
+        gather_merkle_paths_device(indexes, tree, &mut d_digests, layers_count, stream)?;
         let mut digests = unsafe { context.alloc_host_uninit_slice(digests_len) };
         memory_copy_async(
             unsafe { digests.get_mut_accessor().get_mut() },
             &d_digests,
             stream,
         )?;
+        Ok(digests)
+    }
+
+    fn get_digests_host(
+        indexes: &HostAllocation<[u32]>,
+        tree: Arc<Box<[Digest]>>,
+        layers_count: u32,
+        callbacks: &mut Callbacks,
+        context: &ProverContext,
+    ) -> CudaResult<HostAllocation<[Digest]>> {
+        let queries_accessor = indexes.get_accessor();
+        let queries_count = unsafe { queries_accessor.get().len() };
+        let digests_len = queries_count * layers_count as usize;
+        let mut digests = unsafe { context.alloc_host_uninit_slice(digests_len) };
+        let digests_accessor = digests.get_mut_accessor();
+        let gather_fn = move || unsafe {
+            let indexes = queries_accessor.get();
+            gather_merkle_paths_host(indexes, &tree, digests_accessor.get_mut(), layers_count);
+        };
+        callbacks.schedule(gather_fn, context.get_exec_stream())?;
+        Ok(digests)
+    }
+
+    fn get_leafs_and_digests_device(
+        indexes: &DeviceSlice<u32>,
+        bit_reverse_leaf_indexing: bool,
+        values: &DeviceSlice<BF>,
+        tree: &DeviceSlice<Digest>,
+        log_domain_size: u32,
+        log_rows_per_index: u32,
+        layers_count: u32,
+        context: &ProverContext,
+    ) -> CudaResult<LeafsAndDigests> {
+        let leafs = Self::get_leafs(
+            indexes,
+            bit_reverse_leaf_indexing,
+            values,
+            log_domain_size,
+            log_rows_per_index,
+            context,
+        )?;
+        let digests = Self::get_digests_device(indexes, tree, layers_count, context)?;
+        let result = LeafsAndDigests { leafs, digests };
+        Ok(result)
+    }
+
+    fn get_leafs_and_digests_host(
+        indexes_device: &DeviceSlice<u32>,
+        indexes_host: &HostAllocation<[u32]>,
+        bit_reverse_leaf_indexing: bool,
+        values: &DeviceSlice<BF>,
+        tree: Arc<Box<[Digest]>>,
+        log_domain_size: u32,
+        log_rows_per_index: u32,
+        layers_count: u32,
+        callbacks: &mut Callbacks,
+        context: &ProverContext,
+    ) -> CudaResult<LeafsAndDigests> {
+        let leafs = Self::get_leafs(
+            indexes_device,
+            bit_reverse_leaf_indexing,
+            values,
+            log_domain_size,
+            log_rows_per_index,
+            context,
+        )?;
+        let digests = Self::get_digests_host(indexes_host, tree, layers_count, callbacks, context)?;
         let result = LeafsAndDigests { leafs, digests };
         Ok(result)
     }

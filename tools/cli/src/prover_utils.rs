@@ -61,7 +61,7 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
 pub fn create_proofs(
     bin_path: &String,
     output_dir: &String,
-    input_hex: &Option<String>,
+    input_data: Option<Vec<u32>>,
     prev_metadata: &Option<String>,
     machine: &Machine,
     cycles: &Option<usize>,
@@ -83,11 +83,7 @@ pub fn create_proofs(
         num_instances
     );
 
-    let non_determinism_data = if let Some(input_hex) = input_hex {
-        u32_from_hex_string(input_hex)
-    } else {
-        vec![]
-    };
+    let non_determinism_data = input_data.unwrap_or_default();
 
     // Serialization and deserialization of artifacts
     // (as requested by user arguments) can take a lot of time,

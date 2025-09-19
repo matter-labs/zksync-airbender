@@ -8,6 +8,7 @@
 #![feature(iter_array_chunks)]
 #![feature(iter_advance_by)]
 #![feature(sync_unsafe_cell)]
+#![feature(once_cell_try)]
 
 pub mod allocator;
 pub mod barycentric;

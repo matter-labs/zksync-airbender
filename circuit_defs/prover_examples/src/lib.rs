@@ -40,6 +40,7 @@ pub mod gpu;
 pub mod unrolled;
 
 pub const LDE_FACTOR_LOG2: usize = 1;
+pub const POW_BITS: usize = verifier_common::POW_BITS;
 pub const NUM_QUERIES: usize = verifier_common::num_queries_for_security_params(
     verifier_common::SECURITY_BITS,
     verifier_common::POW_BITS,
@@ -255,7 +256,6 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
 ) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
     let trace_len = risc_v_circuit_precomputations.compiled_circuit.trace_len;
     let cycles_per_circuit = trace_len - 1;
-    let max_cycles_to_run = num_instances_upper_bound * cycles_per_circuit;
 
     let lde_factor = risc_v_circuit_precomputations
         .lde_precomputations
@@ -267,7 +267,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
         delegation_circuits_witness,
         final_register_values,
     ) = trace_execution_for_gpu::<ND, C, A>(
-        max_cycles_to_run,
+        num_instances_upper_bound,
         bytecode,
         non_determinism,
         trace_len,

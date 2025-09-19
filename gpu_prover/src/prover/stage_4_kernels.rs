@@ -112,7 +112,7 @@ cuda_kernel!(
 
 deep_quotient!(ab_deep_quotient_kernel);
 
-pub(super) fn prepare_challenges_for_gpu_transfer(
+pub(super) fn prepare_async_challenge_data(
     evals: &[E4],
     alpha: E4,
     omega_inv: E2,
@@ -496,7 +496,7 @@ pub(crate) mod tests {
             )
             .unwrap();
             let mut h_challenges_times_evals_sums = ChallengesTimesEvalsSums::default();
-            prepare_challenges_for_gpu_transfer(
+            prepare_async_challenge_data(
                 evals,
                 alpha,
                 twiddles.omega_inv,

@@ -4,7 +4,7 @@ use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 pub(crate) use super::stage_2_kernels::*;
-use super::trace_holder::{flatten_tree_caps, TraceHolder};
+use super::trace_holder::{flatten_tree_caps, TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
@@ -35,7 +35,7 @@ impl StageTwoOutput {
         log_lde_factor: u32,
         log_tree_cap_size: u32,
         recompute_cosets: bool,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -52,7 +52,7 @@ impl StageTwoOutput {
             true,
             true,
             recompute_cosets,
-            recompute_trees,
+            trees_cache_mode,
             context,
         )?;
         Ok(Self {

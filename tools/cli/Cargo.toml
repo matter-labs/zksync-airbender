@@ -45,6 +45,8 @@ sha3 = { package = "sha3_ce", version = "=0.10.6" }
 gpu_prover = { workspace = true, optional = true }
 
 env_logger = "0.11"
+base64 = "0.21.7"
+
 
 [features]
 

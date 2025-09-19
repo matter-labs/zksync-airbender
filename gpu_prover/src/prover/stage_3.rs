@@ -1,11 +1,10 @@
-use super::arg_utils::LookupChallenges;
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
-use super::trace_holder::TraceHolder;
+use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -15,7 +14,7 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations};
-use field::{Field, FieldExtension};
+use field::FieldExtension;
 use prover::definitions::ExternalValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
@@ -41,7 +40,7 @@ impl StageThreeOutput {
         stage_2_output: &mut StageTwoOutput,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         callbacks: &mut Callbacks,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -58,7 +57,7 @@ impl StageThreeOutput {
             true,
             false,
             false,
-            recompute_trees,
+            trees_cache_mode,
             context,
         )?;
         let stream = context.get_exec_stream();
@@ -99,6 +98,9 @@ impl StageThreeOutput {
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
+        let static_metadata =
+            StaticMetadata::new(tau, omega_inv, cached_data, &circuit, log_domain_size);
+        let static_metadata_clone = static_metadata.clone();
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =
                 [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -130,12 +132,11 @@ impl StageThreeOutput {
             )
             .unwrap_or_default();
             let mut helpers = Vec::with_capacity(MAX_HELPER_VALUES);
-            let _ = Metadata::new(
+            prepare_async_challenge_data(
+                &static_metadata_clone,
                 &alpha_powers,
                 &beta_powers,
-                tau,
                 omega,
-                omega_inv,
                 stage_2_lookup_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
@@ -143,7 +144,6 @@ impl StageThreeOutput {
                 public_inputs_accessor.get(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,
-                log_domain_size,
                 &mut helpers,
                 h_constants_times_challenges_accessor.get_mut(),
             );
@@ -171,23 +171,6 @@ impl StageThreeOutput {
             slice::from_ref(unsafe { h_constants_times_challenges_accessor.get() }),
             stream,
         )?;
-        let metadata = Metadata::new(
-            &vec![E4::ZERO; alpha_powers_count],
-            &[E4::ZERO; BETA_POWERS_COUNT],
-            tau,
-            omega,
-            omega_inv,
-            &LookupChallenges::default(),
-            cached_data,
-            &circuit,
-            &external_values,
-            &vec![BF::ZERO; circuit.public_inputs.len()],
-            E4::ZERO,
-            E4::ZERO,
-            log_domain_size,
-            &mut Vec::with_capacity(MAX_HELPER_VALUES),
-            &mut ConstantsTimesChallenges::default(),
-        );
         let d_setup_cols = DeviceMatrix::new(
             setup
                 .trace_holder
@@ -219,7 +202,7 @@ impl StageThreeOutput {
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
             &circuit,
-            metadata,
+            static_metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,

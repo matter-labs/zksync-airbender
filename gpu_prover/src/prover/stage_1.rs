@@ -1,7 +1,7 @@
 use super::callbacks::Callbacks;
 use super::context::{DeviceAllocation, HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
-use super::trace_holder::TraceHolder;
+use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::BF;
 use crate::allocator::tracker::AllocationPlacement;
@@ -38,7 +38,7 @@ impl StageOneOutput {
         log_lde_factor: u32,
         log_tree_cap_size: u32,
         recompute_cosets: bool,
-        recompute_trees: bool,
+        trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -54,7 +54,7 @@ impl StageOneOutput {
             true,
             true,
             recompute_cosets,
-            recompute_trees,
+            trees_cache_mode,
             context,
         )?;
         let memory_columns_count = circuit.memory_layout.total_width;
@@ -67,7 +67,7 @@ impl StageOneOutput {
             true,
             true,
             recompute_cosets,
-            recompute_trees,
+            trees_cache_mode,
             context,
         )?;
         Ok(Self {

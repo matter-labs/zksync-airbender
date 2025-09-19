@@ -8,6 +8,7 @@ use crate::device_context::DeviceContext;
 use era_cudart::device::{device_get_attribute, get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::{CudaSlice, CudaSliceMut};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaDeviceAttr, CudaError};
 use log::error;
@@ -349,5 +350,17 @@ impl<T: ?Sized> HostAllocation<T> {
 impl<T> HostAllocation<[T]> {
     unsafe fn new_uninit_slice(len: usize, context: &ProverContext) -> Self {
         Self(Box::new_uninit_slice_in(len, context.get_host_allocator()).assume_init())
+    }
+}
+
+impl<T> CudaSlice<T> for HostAllocation<[T]> {
+    unsafe fn as_slice(&self) -> &[T] {
+        self.0.as_slice()
+    }
+}
+
+impl<T> CudaSliceMut<T> for HostAllocation<[T]> {
+    unsafe fn as_mut_slice(&mut self) -> &mut [T] {
+        self.0.as_mut_slice()
     }
 }

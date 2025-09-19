@@ -1,5 +1,5 @@
 use super::context::{ProverContext, UnsafeMutAccessor};
-use super::trace_holder::{get_tree_caps, TraceHolder};
+use super::trace_holder::{get_tree_caps, TraceHolder, TreesCacheMode};
 use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
 use super::{device_tracing, BF};
 use crate::device_structures::DeviceMatrixMut;
@@ -60,7 +60,7 @@ pub fn commit_memory<'a>(
         true,
         true,
         false,
-        false,
+        TreesCacheMode::CacheFull,
         context,
     )?;
     let TracingDataTransfer {
