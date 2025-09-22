@@ -43,7 +43,7 @@ Then we keep in mind that `init + write set` is a permutation of `teardown + rea
     - either it comes from the init - then it's 0
     - otherwise it is formed by RISC-V cycle circuit, that where IF read-value is range-checked, then written value is range checked. But any read-value here comes from the "past", so it's either 0 from init set, or range-checked by induction
 
-For efficiency we model registers as a part of RAM argument, with address space being formally a tuple of `(bool, u32)` where boolean indicated whether it's a register or not, and `u32` is either register index, or memory address (that is `0 mod 4` in our circuits in practice). Timestamp is modeled as a pair of 19-bit integers, forming 2^38 timestamps range, with 4 timestamps being used per row, that allows us to run up to 2^36 cycles without wrapping. Total number of cycles during single program invocation is checked by the verifier.
+For efficiency we model registers as a part of RAM argument, with address space being formally a tuple of `(bool, u32)` where boolean indicated whether it's a register or not, and `u32` is either register index, or memory address (that is `0 mod 4` in our circuits in practice). Timestamp is modeled as a pair of 19-bit integers, forming $2^{38}$ timestamps range, with 4 timestamps being used per row, that allows us to run up to $2^{36}$ cycles without wrapping. Total number of cycles during single program invocation is checked by the verifier.
 
 ## Delegation argument
 

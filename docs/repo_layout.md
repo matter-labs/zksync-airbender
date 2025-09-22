@@ -3,6 +3,7 @@
 What follows is a very rough and partly incomplete layout of our repo. What is NOT present in this repo is our "kernel" ZKsync OS which runs on top of the RISC-V CPU, and is found in another repo.
 
 ## Crates and Scripts
+
 - blake2s_u32/ - native blake2s/3 implementation
 - circuit_defs/ - cpu to gpu circuit glue code, RISC-V ISA circuit tests, cpu prover chunking implementation, core stark verifier logic
 - cs/ - all air circuit apis and implementations

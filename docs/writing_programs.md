@@ -4,7 +4,7 @@ This tutorial shows how to write, build, and run RISC‑V programs for AirBender
 
 ## Program skeleton (no_std, no_main, entry, traps)
 
-AirBender executes bare‑metal RISC‑V code. Since there’s no OS, you provide a little bootstrap so your program can start and return its result. A minimal skeleton looks like this:
+AirBender executes bare‑metal RISC‑V code. Since there’s no OS, you have to provide a little bootstrap so your program can start and return its result. A minimal skeleton looks like this:
 
 ```rust
 // On bare metal, std isn’t available. You need to use core instead, and you provide your own startup, panic, I/O, etc. Some embedded patterns (custom allocators, generic const exprs) need nightly. In this file you don’t actually use allocator_api or generic_const_exprs.
@@ -127,12 +127,12 @@ fn main() -> ! {
 
 - **Bare‑metal environment**: There is no `std` and no OS. The tiny assembly sets the stack pointer, clears/initializes memory regions, and jumps into `_start_rust`. Without it, your code would not have a valid entry point or stack.
 - **Deterministic entry**: AirBender simulator/prover needs a deterministic, simple entry point so the execution trace is reproducible for proving.
-- **Exit convention**: The prover/simulator reads registers x10..x17 on exit. The helper `zksync_os_finish_success(&[u32; 8])` writes your 8 outputs into those registers and halts in the expected way.
+- **Exit convention**: The prover/simulator reads registers `x10..x17` on exit. The helper `zksync_os_finish_success(&[u32; 8])` writes your 8 outputs into those registers and halts in the expected way.
 
 
 ##  Producing outputs (the exit convention)
 
-On success, write exactly 8 words to x10..x17 and zero x18..x25. Always use:
+On success, write exactly 8 words to `x10..x17` and sets to zero `x18..x25`. Always use the following structure:
 
 ```rust
 use riscv_common::zksync_os_finish_success;
@@ -141,7 +141,7 @@ let outputs = [w0, w1, w2, w3, w4, w5, w6, w7];
 zksync_os_finish_success(&outputs);
 ```
 
-The CLI `run` command prints these values so you can verify your program’s behavior before proving.
+The CLI `run` command prints these values for you to verify the program’s behavior before proving.
 
 ## Building and running
 
@@ -159,7 +159,7 @@ cargo objcopy --release -- -R .text app.elf
 cargo objcopy --release -- -O binary --only-section=.text app.text
 ```
 
-Run in the risc v simulator from the repository root:
+Run the binary in the RISC-V simulator from the repository root:
 
 ```bash
 cargo run --profile cli --package cli -- run --bin examples/big_int/app.bin
@@ -173,10 +173,7 @@ Useful flags:
 
 ### Note
 
-Delegations are ABI‑specific. Some use indirect memory access (via pointers in x10/x11) and may modify certain registers (e.g., write status back to x12). Before calling a delegation, check its ABI to confirm which registers are indirect vs direct and which are read‑only vs read‑write. See the Delegation Circuits guide for per‑delegation details: [Delegation circuits](./delegation_circuits.md).
+Delegations are ABI‑specific. Some use indirect memory access via pointers in `x10`/`x11`, and may modify certain registers, for example, when writing status back to `x12`. Before calling a delegation, check its ABI to first confirm which registers are indirect and which direct and second which are read‑only and which read‑write. See the Delegation Circuits guide for per‑delegation details: [Delegation circuits](./delegation_circuits.md).
 
 
 In practice, your program uses the main circuit for overall logic and calls delegations for the heavy cryptographic or big‑integer pieces. When testing, first run with the CLI `run` command to confirm outputs, then move on to proving as described in [End-to-end guide](./end_to_end.md).
-
-
-

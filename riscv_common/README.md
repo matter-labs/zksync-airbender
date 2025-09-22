@@ -1,4 +1,4 @@
-# RiscV common
+# RISC-V common
 
 Crate that should be used by programs that are proven with risc_v prover.
 

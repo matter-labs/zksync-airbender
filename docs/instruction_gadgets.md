@@ -1,15 +1,14 @@
 # Instruction Gadget Circuits
 
-*ZKsync Airbender – Core circuits *
+In this document key details about the *core circuits of ZKsync Airbender* are detailed. **Every RISC-V instruction circuit**  can be found under `cs/src/machine/ops`.
 
-**every RISC-V instruction circuit** found under `cs/src/machine/ops`.  .
 ---
 
 ## Reading Conventions
 
 * **Gadget** – synonym for “instruction circuit implementation”.  A gadget consumes decoded operand variables and produces *state diffs* (changes to registers, memory, CSR, …).
-* **Lookup Table (LUT)** – a pre-computed table proved via a lookup constraint.  We rely on different tables for byte-wise Boolean ops, multiplication, division, etc.
-* **`OptimizationContext`** – a helper passed into every gadget that deduplicates identical lookups and merges per-byte relations, thus decreasing total constraint count.
+* **Lookup Table (LUT)** – a pre-computed table proved via a lookup constraint.  We rely on different tables for byte-wise boolean ops, multiplication, division, etc.
+* **`OptimizationContext`** – a helper passed into every gadget that deduplicates identical lookups and merges per-byte relations, thus decreasing the total constraint count.
 
 Every gadget follows roughly the same shape:
 
@@ -45,7 +44,7 @@ Implements `AND`, `OR`, `XOR` (and immediate forms).
 Covers `SLL`, `SRL`, `SRA` (plus immediates `SLLI`, `SRLI`, `SRAI`).
 
 * Shifts > 31 are masked to 5 bits as per the spec.
-* Logical shifts are routed to a generic barrel-shifter implemented with conditional rotations, incurring *O(log n)* constraints.
+* Logical shifts are routed to a generic barrel-shifter implemented with conditional rotations, incurring `O(log n)` constraints.
 * Arithmetic right shift re-uses logical shifter then conditionally ORs the vacated bits with the sign mask.
 
 ### 4. `mul_div.rs` – Multiply / Divide / Remainder
@@ -60,9 +59,9 @@ The largest gadget in the folder – implements the complete RV32M extension: `M
 
 Handles all variants (`LB`, `LBU`, `LH`, `LHU`, `LW`).
 
-* Computes effective address with adder gadget, then feeds it into the MMU sub-system.
+* Computes effective address with adder gadget, then feeds it into the memory management unit (MMU) sub-system.
 * Byte/half-word loads rely on gadget-level selector logic to pick the requested offset from the fetched 32-bit word.
-* Sign extension for `LB` / `LH` is done per byte via Boolean logic without introducing extra range checks.
+* Sign extension for `LB` / `LH` is done per byte via boolean logic without introducing extra range checks.
 
 ### 6. `store.rs` – Memory Stores
 
@@ -104,7 +103,7 @@ Implements `CSRRW`, `CSRRS`, `CSRRC` and their immediate forms.
 
 Currently covers `FENCE` and `FENCE_I` with placeholders for future atomics.
 
-* Proves that all in-flight memory ops are completed before continuing (modelled via a timestamp monotonicity constraint).
+* Proves that all in-flight memory ops are completed before continuing by modelling via a timestamp monotonicity constraint.
 
 ### 12. `common_impls/`
 
