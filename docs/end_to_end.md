@@ -4,7 +4,7 @@ This guide shows how to prove execution of RISC‑V binaries and generate SNARKs
 
 > **Prerequisites**: Before proving, you need a RISC‑V binary. If you haven't written one yet, see the [Writing Programs guide](./writing_programs.md) to learn how to create, build, and test your program.
 
-To run prover end to end (from rRISC-V binary to a SNARK), you will need 3 pieces:
+To run prover end to end, from the RISC-V binary to a SNARK, you will need 3 pieces:
 * `cli` from this repo (tools/cli)
 * `cli` from the `zkos_wrapper` repo
 * `cli` from `era-boojum-validator-cli` repo

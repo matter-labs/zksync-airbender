@@ -173,7 +173,8 @@ Useful flags:
 
 ### Note
 
-Delegations are ABI‑specific. Some use indirect memory access via pointers in `x10`/`x11`, and may modify certain registers, for example, when writing status back to `x12`. Before calling a delegation, check its ABI to first confirm which registers are indirect and which direct and second which are read‑only and which read‑write. See the Delegation Circuits guide for per‑delegation details: [Delegation circuits](./delegation_circuits.md).
+Delegations are ABI‑specific. Some use indirect memory access via pointers in `x10`/`x11`, and may modify certain registers, for example, when writing status back to `x12`. Before calling a delegation, check its ABI to confirm which registers are indirect or direct, and whether they are read-only or read-write.
+See the Delegation Circuits guide for per‑delegation details: [Delegation circuits](./delegation_circuits.md).
 
 
 In practice, your program uses the main circuit for overall logic and calls delegations for the heavy cryptographic or big‑integer pieces. When testing, first run with the CLI `run` command to confirm outputs, then move on to proving as described in [End-to-end guide](./end_to_end.md).

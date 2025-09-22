@@ -40,7 +40,7 @@ Airbender is the zkVM that proves RISC-V execution, whose role is to verify that
 
 1. **Transaction Processing**: ZKsync OS (x86) executes transactions and updates state.
 2. **RISC-V Compilation**: The same ZKsync OS is compiled to RISC-V for proving.
-3. **Deterministic Replay**: Airbender executes the RISC-V binary with identical inputs in the simulator (the simulator is an internal RISC-V interpreter (see `risc_v_simulator/` crate)). 
+3. **Deterministic Replay**: Airbender executes the RISC-V binary with identical inputs in the simulator, the internal RISC-V interpreter, to replay the binary with the exact same inputs and to produce the execution trace/witness before proving.
 4. **Proof Generation**: Airbender generates a ZK proof of the execution correctness.
 5. **Verification**: Anyone can verify the proof without re-running the computation.
 
@@ -51,7 +51,7 @@ Airbender is the zkVM that proves RISC-V execution, whose role is to verify that
 Airbender provides a bare-metal RISC-V execution environment with:
 
 - **Custom CSR (Control Status Registers)**: For delegation calls to specialized circuits.
-- **No Exception Handling**: All exceptions are handled at the constraint level rather than runtime. Exceptions, invalid behaviors aren’t trapped, instead, circuit constraints make illegal paths unsatisfiable.
+- **No Exception Handling**: Exceptions aren’t trapped at runtime, instead, constraint relations make illegal paths unsatisfiable. If an access would be misaligned or illegal, there is no witness satisfies the polynomial relations, causing proof generation to fail.
 - **Trusted Code Assumption**: Memory accesses are assumed to be properly aligned and within bounds.
 - **Delegation Support**: Precompiles for cryptographic operations .
 

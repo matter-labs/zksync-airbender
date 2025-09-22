@@ -4,7 +4,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 
 ## Crates and Scripts
 
-- blake2s_u32/ - native blake2s/3 implementation
+- blake2s_u32/ - native BLAKE2s/3 implementation
 - circuit_defs/ - cpu to gpu circuit glue code, RISC-V ISA circuit tests, cpu prover chunking implementation, core stark verifier logic
 - cs/ - all air circuit apis and implementations
 - examples/ - simple mock cpu "kernel" programs used for testing
@@ -52,7 +52,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - cs/
     - cs/ - basic AIR polynomial APIs used everywhere to compose our circuits in a programmatic manner (similar to using a custom DSL). `circuit.rs` trait and `cs_reference.rs` trait impl. are at the heart of all our circuits
     - definitions/ - AIR api extensions
-    - delegation/ - custom precompile circuits and their abis (Blake, U256 BigInt)
+    - delegation/ - custom precompile circuits and their abis (BLAKE, U256 BigInt)
     - devices/ - AIR api extensions, mostly for constraints that are orthogonally shared between branching opcodes. `optimization_context.rs` contains the bulk of it
     - machine/
         - decoder/ - circuit for the decoding operation of a RISC-V cycle, it's called by machine configurations

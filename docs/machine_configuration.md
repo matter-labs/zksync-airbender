@@ -50,21 +50,19 @@ Each machine configuration defines:
 * **Definitions of used tables and constants** that parameterize the constraint system (`Machine::define_used_tables()`). Common tables include range checks, bitwise truth tables, decoder tables, etc.
 * **A state-transition function** (`Machine::describe_state_transition`) which builds the constraints for one execution step. This encapsulates the fetch-decode-execute loop and applies diffs to form the next state.
 
+---
+
 ### Full ISA (No Exceptions) – `full_isa_no_exceptions.rs`
 
 **Purpose:** This configuration implements the **Full Kernel Mode** of Airbender, supporting the complete 32-bit RISC-V instruction set –RV32I base plus the RV32M multiplication/division extension– **without** any additional custom features or exception handling logic. It is intended for proving general-purpose kernel code, for example the zkSync OS, that requires the full range of standard RISC-V operations while assuming *trusted* code that never triggers traps.
 
 By omitting both *delegation* instructions and exception modelling, this configuration represents the **simplest fully-featured RISC-V machine** in the Airbender suite: every canonical integer instruction is available, but the circuit trusts the program to be self-contained and deterministic.
 
----
-
 #### Key Types & Constants
 
 * `ASSUME_TRUSTED_CODE = true` and `OUTPUT_EXACT_EXCEPTIONS = false` – traps are not modelled, so any illegal condition simply makes constraints unsatisfiable.
 * `USE_ROM_FOR_BYTECODE = true` – instructions are fetched from the fixed ROM lookup-table each step.
 * **Control & Status Register (CSR) support** – for this configuration we support `CSRRW` but not `CSRRS`, `CSRRC`, or CSR immediate variants. The system includes the CSR opcode infrastructure for potential future extensions, but currently all CSR operations are unnecessary due to our Trusted Code Machine Mode design. Access to the custom non-determinism CSR `0x7C0` is disallowed in this configuration.
-
----
 
 #### Supported Instructions
 
@@ -83,8 +81,6 @@ This configuration’s `all_supported_opcodes()` returns **every** RV32I and RV3
 
 The operations in the RV32M extension are among the most complex to encode in constraints.
 
----
-
 #### Constraint Logic Overview
 
 1. **Fetch** – PC must be 4-byte aligned and within ROM bounds; the instruction word is obtained via the ROM lookup table.
@@ -97,11 +93,13 @@ The operations in the RV32M extension are among the most complex to encode in co
   * Set `pc_next` according to branch/jump logic or `pc + 4` for linear execution.
 6. **Global invariants** – All executed opcodes must be in the supported set; all addresses must be within the RAM range and properly aligned due to the trusted-code premise.
 
----
-
 #### When to Use
 
-`FullIsaNoExceptions` is the go-to configuration for proving fully-featured, deterministic RISC-V binaries that **need** the M extension but **do not** rely on delegation, syscalls, or trap handling. It provides a faithful model of a standard RV32IM core while keeping the constraint system lean by excluding exception paths.
+`FullIsaNoExceptions` is the go-to configuration for proving fully-featured, deterministic RISC-V binaries that:
+* **Need** the M extension. 
+* **Do not** rely on delegation, syscalls, or trap handling. 
+
+It provides a faithful model of a standard RV32IM core while keeping the constraint system lean by excluding exception paths.
 
 ---
 
@@ -111,7 +109,6 @@ The operations in the RV32M extension are among the most complex to encode in co
 
 In Airbender, delegation is exposed via a **single custom CSR at address `0x7C0`**, often referred to as `Mcustom`. A CSR read/write to this address serves as a call-out to an external proof or circuit like BLAKE2s hashing and recursive proof verification. While the core VM **does not** compute those operations itself, it constrains their inputs/outputs and  to prove correctness relies on a companion circuit, an external circuit that proves the correctness of a delegated operation.
 
----
 #### Key Types & Constants
 
 * Inherits the minimal `State` struct (only `pc`), with all 32 registers resident in memory.  
@@ -119,8 +116,6 @@ In Airbender, delegation is exposed via a **single custom CSR at address `0x7C0`
 * **Delegation flags**  
   * `allow_non_determinism_csr = true`  
   * `ALLOWED_DELEGATION_CSRS = [0x7C0]` (no other CSR addresses are accepted).
-
----
 
 #### Supported Instructions
 
@@ -131,8 +126,6 @@ Everything from *Full ISA (No Exceptions)* **plus** the CSR instruction(s) requi
   * Any CSR opcode targeting a different address is treated as **invalid**.
 * **RV32I base & RV32M extension** – identical coverage to the previous section (loads/stores, ALU ops, branches/jumps, multiply/divide, etc.).
 
----
-
 #### Delegation Mechanism
 
 1. **Decode** – The instruction decoder recognizes `CSRRW` with CSR=`0x7C0` and sets the *delegation* flag. Attempts to access other CSRs raise the *invalid* flag  as it is disallowed under trusted code.
@@ -142,15 +135,11 @@ Everything from *Full ISA (No Exceptions)* **plus** the CSR instruction(s) requi
 3. **External proof** – Outside the main circuit, a separate circuit verifies that the produced witness value indeed equals the result of the requested operation. During aggregation, the main proof checks that every row of the delegation table is covered by a valid proof.
 4. **State update** – From the VM’s perspective `CSRRW` is a single-cycle instruction: it writes the returned value to `rd`, applies normal diffs, and increments `pc` by 4.
 
----
-
 #### Security & Invariants
 
 * Only CSR `0x7C0` is permitted. Any access to other CSR addresses makes the execution invalid.
 * Each delegated call must have a matching external proof; otherwise the witness table relation fails and the overall proof is unsatisfiable.
 * All original invariants (aligned accesses, address bounds, `x0 = 0`, divide-by-zero forbidden, etc.) remain in force.
-
----
 
 #### When to Use
 
@@ -166,7 +155,6 @@ Choose `FullIsaWithDelegationNoExceptions` for ZKsync OS or applications that bo
 
 By ruling out the 64-bit signed-result operations (`MULH`, `MULHSU`, `MULHU`) and signed division/remainder (`DIV`, `REM`) we avoid the wide-word arithmetic gadgets that dominate gate count in the full machine.  The remaining opcodes are sufficient for most recursion and verifier binaries, which deal only with unsigned values or low-word products.
 
----
 #### Key Types & Constants
 
 * Inherits the minimal `State` struct with registers in memory (same as the other *Delegation* machine).
@@ -175,7 +163,6 @@ By ruling out the 64-bit signed-result operations (`MULH`, `MULHSU`, `MULHU`) an
   * `allow_non_determinism_csr = true`  
   * `ALLOWED_DELEGATION_CSRS = [0x7C0]`.
 
----
 #### Supported Instructions
 
 * **RV32I base** – *all* byte/half-word/word loads & stores, ALU immediates, register-register ALU ops, branches/jumps, etc. (identical to previous configs).
@@ -200,16 +187,14 @@ If the binary ever executes a signed `MUL`/`DIV`/`REM` instruction, the circuit 
 
 ### Minimal ISA (No Exceptions) – `minimal_no_exceptions.rs`
 
-Purpose: This is the **smallest, fastest-to-prove** RISC-V configuration in Airbender.  It strips the ISA down to the *essential 32-bit arithmetic and control-flow instructions* and enforces **word-aligned memory**.  All byte/half-word operations and the entire multiply/divide extension are removed, delivering a very light constraint system ideal for recursion layers or arithmetic-heavy programs that do not require complex opcodes.
+**Purpose:** This is the **smallest, fastest-to-prove** RISC-V configuration in Airbender.  It strips the ISA down to the *essential 32-bit arithmetic and control-flow instructions* and enforces **word-aligned memory**.  All byte/half-word operations and the entire multiply/divide extension are removed, delivering a very light constraint system ideal for recursion layers or arithmetic-heavy programs that do not require complex opcodes.
 
----
 #### Key Types & Constants
 
 * Uses the same `MinimalStateRegistersInMemory` (`MinimalState`) that keeps only the program counter; all 32 registers live in RAM via the `is_register == 1` mechanism.
 * `ASSUME_TRUSTED_CODE = true`, `OUTPUT_EXACT_EXCEPTIONS = false`, `USE_ROM_FOR_BYTECODE = true` – trusted code, no trap handling, ROM-backed bytecode.
 * **No delegation** – the custom CSR `0x7C0` is *not* permitted in this configuration.
 
----
 #### Supported Instructions
 
 * **RV32I base (reduced)**  
@@ -225,14 +210,12 @@ Purpose: This is the **smallest, fastest-to-prove** RISC-V configuration in Airb
 
 Any instruction outside this whitelist –including byte/half-word memory ops, `MUL`/`DIV`, or delegation CSR access– causes an *invalid opcode* flag, making the proof unsatisfiable under the trusted-code assumption.
 
----
 #### Constraint Logic Highlights
 
 1. **Aligned memory simplification** – since only word accesses exist, the memory-alignment checks are trivial (address \% 4 == 0) and byte-select multiplexers are eliminated.  
 2. **No wide-word arithmetic** – removing signed/unsigned 64-bit multiply & divide slashes gate count and eliminates large range-check tables.  
 3. **Modular arithmetic gadget** – `MOP` combines limb-level arithmetic with conditional modular reduction inside a single row, keeping the circuit tight.
 
----
 #### When to Use
 
 Choose `MinimalMachineNoExceptionHandling` when:
@@ -249,7 +232,6 @@ It is frequently used as the **innermost recursive verifier** or for pure arithm
 
 **Purpose:** This configuration combines the **lean opcode set** of the *Minimal ISA* with the **delegation interface** used for heavy cryptographic primitives.  It keeps the constraint system light while still allowing a RISC-V program to call out to pre-compiled gadgets (BLAKE2, BigInt arithmetic, etc.) via the custom CSR `0x7C0`.
 
----
 #### Key Types & Constants
 
 * Same `MinimalStateRegistersInMemory` as the other minimal configs – registers in RAM, only PC in the state.  
@@ -258,7 +240,6 @@ It is frequently used as the **innermost recursive verifier** or for pure arithm
   * `allow_non_determinism_csr = true`  
   * `ALLOWED_DELEGATION_CSRS = [0x7C0]`
 
----
 #### Supported Instructions
 
 Identical to *Minimal ISA (No Exceptions)* **plus** delegation CSR ops:
@@ -268,12 +249,10 @@ Identical to *Minimal ISA (No Exceptions)* **plus** delegation CSR ops:
 * **Custom `MOP` modular arithmetic** – `ADDMOD`, `SUBMOD`, `MULMOD`.  
 * **CSR delegation** – `CSRRW`, `CSRRS`, `CSRRC`, and their immediate forms if compiled in, **only when CSR = `0x7C0`**. Any CSR access outside this address is invalid.
 
----
 #### Delegation Mechanism
 
-Exactly the same flow described for the full delegation machine: a `CSRRW` to `0x7C0` triggers a row in the delegation table, producing an unconstrained witness that a separate circuit later validates.  Removing multiplication/division does **not** affect the delegation plumbing.
+Exactly the same flow described for the full delegation machine: a `CSRRW` to `0x7C0` triggers a row in the delegation table, producing an unconstrained witness that a separate circuit later validates. Removing multiplication/division does **not** affect the delegation plumbing.
 
----
 #### Constraint-System Footprint
 
 Compared to the full delegation machine this config remains small because it:
@@ -283,7 +262,6 @@ Compared to the full delegation machine this config remains small because it:
 
 Overall gate count is only slightly larger than the non-delegation minimal machine, yet it unlocks powerful cryptographic gadgets.
 
----
 #### When to Use
 
 Pick `MinimalMachineNoExceptionHandlingWithDelegation` when:
@@ -293,5 +271,3 @@ Pick `MinimalMachineNoExceptionHandlingWithDelegation` when:
 * You are implementing **recursive proof layers** where the verifier binary uses delegation but otherwise avoids complex opcodes.
 
 As always, executing an unsupported opcode or accessing a non-whitelisted CSR makes the proof unsatisfiable.
-
-

@@ -2,15 +2,15 @@
 ### What is a delegation circuit?
 
 A *delegation circuit* is an specialized gadget executed outside the main RISC-V semantics but still inside the same proving system, it can also be called 'precompile circuit'. The program issues a delegation request, the circuit builder materializes a small sub-circuit to process that request, together with formal register and memory accesses that integrates into the unified memory/register argument.
+* **Creation**: `get_delegation_circuit()` builds and compiles a specific delegation circuit (e.g., BLAKE2 or BigInt), then returns a `DelegationProcessorDescription` containing its delegation_type (CSR ID), `trace_len`, `num_requests_per_circuit`, the circuit’s `table_driver` (lookup tables), and the compiled circuit artifact. 
+* **Access specification**: The circuit defines which registers are read/written and which memory words are accessed indirectly via base registers.
+* **Integration**: All register/memory accesses are recorded just like main RISC-V circuits accesses and enforced in Stage 2/3 alongside the rest of the system.
 
-**Creation**: `get_delegation_circuit()` builds and compiles a specific delegation circuit (e.g., BLAKE2 or BigInt), then returns a `DelegationProcessorDescription` containing its delegation_type (CSR ID), `trace_len`, `num_requests_per_circuit`, the circuit’s `table_driver` (lookup tables), and the compiled circuit artifact. 
-
-**Access specification**: The circuit defines which registers are read/written and which memory words are accessed indirectly via base registers.
-
-**Integration**: All register/memory accesses are recorded just like main RISC-V circuits accesses and enforced in Stage 2/3 alongside the rest of the system.
+One **delegation request** is a small primitive, not a full workflow. A complete high‑level operation, like a full hash or multi‑step u256 flow, typically spans multiple delegation requests. Our current implementations include:
+- BLAKE2: Full hashing over multiple rounds and/or blocks requires multiple requests, typically in a loop over rounds/blocks.
+- BigInt (`u256`): A request performs one selected operation (`ADD`/`SUB`/`MUL_LOW`/`MUL_HIGH`/`EQ`/`MEMCOPY`) on a single 256‑bit pair. Larger transformations require multiple requests.
 
 Currently in our system we have 3 delegation circuits implemented: 
-
 - BLAKE2 round with extended control — `cs/src/delegation/blake2_round_with_extended_control/mod.rs`
   - Used in: Prover recursion commitments and Merkle tree hashing
 - BLAKE2 single round — `cs/src/delegation/blake2_single_round/mod.rs`
@@ -18,11 +18,7 @@ Currently in our system we have 3 delegation circuits implemented:
 - BigInt (u256) ops with control — `cs/src/delegation/bigint_with_control/mod.rs`
   - Used in: ZKsync OS as a BN254 math primitive (256-bit field ops; `ADD`/`SUB`/`MUL`/`EQ`, `carry`, `memcopy`)
 
-### Delegation call 
-
-One delegation request is a small primitive, not a full workflow. A complete high‑level operation, like a full hash or multi‑step u256 flow, typically spans multiple delegation requests. Our current implementations include:
-- BLAKE2: Full hashing over multiple rounds and/or blocks requires multiple requests, typically in a loop over rounds/blocks.
-- BigInt (`u256`): A request performs one selected operation (`ADD`/`SUB`/`MUL_LOW`/`MUL_HIGH`/`EQ`/`MEMCOPY`) on a single 256‑bit pair. Larger transformations require multiple requests.
+---
 
 ### BLAKE2 single round
 A fast cryptographic hash function built from add/xor/rotate G rounds over 32-bit words, it achieves high performance on CPUs and GPUs, keeping Merkle commitments and recursion fast. The function is circuit-friendly, as its operations decompose into simple XOR/bitwise lookups and additions, making it efficient as a delegation circuit, and it produces compact 256-bit outputs suitable for commitments.
@@ -39,6 +35,8 @@ Defined in `cs/src/delegation/blake2_single_round/mod.rs`.
 
 If during the first round `round_bitmask[0]` is set, it overwrites the state indices `[8,9,10,11,13,15]` with IV words. Message words are permuted via `SIGMAS` and output state is written back.
 
+---
+
 ### BigInt (`u256`) ops with control
 
 Defined in `cs/src/delegation/bigint_with_control/mod.rs`.
@@ -51,6 +49,8 @@ Defined in `cs/src/delegation/bigint_with_control/mod.rs`.
 **Tables used**: `U16SplitAsBytes`, `RangeCheck9x9`, `RangeCheck10x10`, `RangeCheck11`, `RangeCheck12`, `RangeCheck13`.
 
 Results are written back to `a` (via writes at `x10`). If the delegation is not executed, ABI mandates zero writes.
+
+---
 
 ### BLAKE2 round with extended control
 
@@ -73,7 +73,9 @@ Defined in `cs/src/delegation/blake2_round_with_extended_control/mod.rs`.
   - `x13` `control_mask` (3 bits incl. `LAST_ROUND`, `INPUT_IS_RIGHT_NODE`).
 - Single round: memory-only ABI — 16 state `[R/W]`, 16 message `[R]`, 1 `round_bitmask`. No extended state, no control mask, no register-indirect accesses.
 
-### Why “indirect access”
+---
+
+### Why “indirect access”?
 
 *Indirect* means that memory is accessed via an address held in a register (a pointer) rather than by direct register file read/write. The circuit constructs formal memory queries from `(base pointer register, offset, alignment)` and feeds them into the global memory argument.
 

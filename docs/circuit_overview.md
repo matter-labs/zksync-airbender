@@ -14,7 +14,7 @@ State and data model:
   - Execution is chunked: Each chunk has “lazy init” (initial values/timestamps) and “teardown” (final values/timestamps), linked across chunks to ensure continuity.
 
 Constraints and arguments:
-  - Generic constraints: Arithmetic/logic, control semantics, decoder, range checks, and delegation infrastructure compiled from the CS.
+  - Generic constraints: Arithmetic/logic, control semantics, decoder, range checks, and delegation infrastructure compiled from the constraint system.
   - Hardcoded constraints (Stage 3): Part that validates Stage 2 arguments (memory, lookups, delegation), boundary conditions, state linkage, ROM separation, lazy‑init sorting with the borrow trick, and per‑domain masking.
 
 Performance/optimization philosophy:
