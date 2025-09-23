@@ -1,6 +1,6 @@
 # Running prover end to end
 
-This guide shows how to prove execution of RISC‑V binaries and generate SNARKs. You can either prove some ethereum transaction (using zksync-os-server) or prove execution of a custom binary.
+This guide shows how to prove execution of RISC‑V binaries and generate SNARKs. You can either prove some ethereum transaction (using `zksync-os-server`) or prove execution of a custom binary.
 
 > **Prerequisites**: Before proving, you need a RISC‑V binary. If you haven't written one yet, see the [Writing Programs guide](./writing_programs.md) to learn how to create, build, and test your program.
 
@@ -33,7 +33,6 @@ There are 3 different setups for proving:
 * You have GPU with 24GB VRAM
 * You have GPU with 32GB VRAM
 
-
 ### CPU only
 
 If you run your custom code:
@@ -44,7 +43,6 @@ cargo run --release -p cli prove --bin examples/hashed_fibonacci/app.bin --input
 ### GPU (24GB VRAM)
 
 If you have gpu, you can compile with `--features gpu` flag, and then pass `--gpu` - to make proving go a lot faster:
-
 ```shell
 cargo run --release -p cli --features gpu prove --bin ../zksync-os/zksync_os/app.bin  --input-rpc http://localhost:8011 --input-batch 1 --output-dir /tmp --gpu --until final-proof
 ```
