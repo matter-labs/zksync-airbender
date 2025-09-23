@@ -1,6 +1,6 @@
 # ZKsync Airbender Overview
 
-ZKsync Airbender is a zero-knowledge virtual machine (zkVM) and proving system that generates cryptographic proofs for RISC-V program execution. It serves as the proving layer for [ZKsync OS](https://github.com/matter-labs/zksync-os), enabling verifiable computation of blockchain state transitions.
+ZKsync Airbender is a zero-knowledge virtual machine (zkVM) and proving system that generates cryptographic proofs for RISC-V program execution. It serves as the Proving Layer for [ZKsync OS](https://github.com/matter-labs/zksync-os), enabling verifiable computation of blockchain state transitions.
 
 ### The ZKsync Architecture Problem
 
@@ -25,8 +25,8 @@ Airbender solves this by providing a specialized zkVM that can prove RISC-V prog
 
 The main goals for ZKsyncOS are:
 
-- EVM equivalence: ZKsyncOS should be able to process EVM transactions keeping the EVM semantics (including gas model).
-- Customizability: ZKsyncOS should be easily configurable and extended.
+- EVM equivalence: ZKsyncOS should be able to process EVM transactions, keeping the EVM semantics (including gas model).
+- Customizability: ZKsyncOS should be easily configurable and extendable.
 - Performance: The proving of an ERC20 transfer should have a cost of $0.0001. Additionally, we should be able to handle 10,000 TPS.
 
 ### Airbender: The Proving Layer
@@ -51,7 +51,7 @@ Airbender is the zkVM that proves RISC-V execution, whose role is to verify that
 Airbender provides a bare-metal RISC-V execution environment with:
 
 - **Custom CSR (Control Status Registers)**: For delegation calls to specialized circuits.
-- **No Exception Handling**: Exceptions aren’t trapped at runtime, instead, constraint relations make illegal paths unsatisfiable. If an access would be misaligned or illegal, there is no witness satisfies the polynomial relations, causing proof generation to fail.
+- **No Exception Handling**: Exceptions aren't trapped at runtime; instead, constraint relations make illegal paths unsatisfiable. If an access would be misaligned or illegal, there is no witness that satisfies the polynomial relations, causing proof generation to fail.
 - **Trusted Code Assumption**: Memory accesses are assumed to be properly aligned and within bounds.
 - **Delegation Support**: Precompiles for cryptographic operations .
 

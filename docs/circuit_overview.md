@@ -1,12 +1,12 @@
 ## Airbender Circuit Overview
 
-This document provides a high level overview of Airbender proving system for RISC‑V execution and then dives into key design patterns and the proving stages. If you just want the big picture, read this section. Later sections explain how each part is implemented and optimized.
+This document provides a high-level overview of the Airbender proving system for RISC‑V execution and then dives into key design patterns and the proving stages. If you just want the big picture, read this section. Later sections explain how each part is implemented and optimized.
 
 ### High‑level overview
 
 What we prove:
   - Deterministic execution of RV32I+M programs over a fixed number of cycles ($2^{22}$), in machine mode, with no exceptions due to the trusted‑code model. Unsupported or invalid behavior makes constraints unsatisfiable.
-  - Bytecode lives in ROM. Registers are modeled as a dedicated address space inside a unified memory argument alongside RAM.They occupy a distinct address space (selected by `is_register = 1`), yet their accesses are encoded using the same `RegisterOrRam` queries and folded into the global shuffle memory argument.
+  - Bytecode lives in ROM. Registers are modeled as a dedicated address space inside a unified memory argument alongside RAM. They occupy a distinct address space (selected by `is_register = 1`), yet their accesses are encoded using the same `RegisterOrRam` queries and folded into the global shuffle memory argument.
 
 State and data model:
   - Minimal explicit state per row, typically only `pc` split into 16‑bit limbs. All register/memory values flow through a global shuffle RAM argument.
@@ -24,13 +24,13 @@ Performance/optimization philosophy:
 
 ### Optimization Context with orthogonal selection (we “execute all” and then choose one)
 
-**Core idea**: for each cycle we prepare candidate computations for many instruction handlers, but every relation is guarded by mutually exclusive boolean flags. At enforcement time we orthogonally select exactly one variant, the actual opcode, and ignore the rest. This reduces muxing cost and enables aggressive variable reuse.
+**Core idea**: For each cycle, we prepare candidate computations for many instruction handlers, but every relation is guarded by mutually exclusive boolean flags. At enforcement time, we orthogonally select exactly one variant, the actual opcode, and ignore the rest. This reduces muxing cost and enables aggressive variable reuse.
 
 - We accumulate relations in an `OptimizationContext` rather than immediately constraining each operation. Relations include addition/subtraction, multiplication/division, range checks, lookups, and is-zero checks, each with an `exec_flag` that marks when they are active.
 
 - Outputs are preallocated in reusable buffers. Non-taken branches may hold invalid witness values, but they never appear in constraints because we always mask by `exec_flag`. This saves variables and selectors.
 
-- During enforcement we select from orthogonal variants based on the opcode flags, collapsing many candidate relations into the single active one. Table lookups: build per-variant rows, then choose a single row by orthogonal flags and enforce one lookup.
+- During enforcement, we select from orthogonal variants based on the opcode flags, collapsing many candidate relations into the single active one. Table lookups: build per-variant rows, then choose a single row by orthogonal flags and enforce one lookup.
 
 - Indexers and buffers: The context keeps typed relation buffers and indexers to batch-enforce relations of the same shape. Outputs (registers, flags, lookup outputs) are preallocated and reused. 
 ```70:99:zksync-airbender/cs/src/devices/optimization_context.rs
@@ -39,7 +39,7 @@ pub struct OptCtxIndexers
 pub struct OptimizationContext<F, C> 
 ```
 
-- `get_register_output` allocates a fresh `Register` only when the pool is exhausted; otherwise it reuses one.
+- `get_register_output` allocates a fresh `Register` only when the pool is exhausted; otherwise, it reuses one.
 ```152:166:zksync-airbender/cs/src/devices/optimization_context.rs
 pub fn get_register_output(&mut self, cs: &mut CS) -> Register<F> { /* reuse or Register::new(cs) */ }
 ```
@@ -73,7 +73,7 @@ pub fn append_lookup_relation(...) -> [Variable; N]
 pub fn append_lookup_relation_from_linear_terms(...) -> [Variable; N]
 ```
 
-- Execute all, choose one: We call all instruction handlers to produce candidate diffs, then later select the one that matches the decoded opcode. The optimizer enforces only the active relations. `enforce_all` iterates relation types in a fixed order, and for each index selects inputs via `cs.choose_from_orthogonal_variants(&flags, ...)`. When specialization is possible, it uses a compact form, otherwise it builds masked accumulators and decomposes carries explicitly to stay at degree ≤ 2.
+- Execute all, choose one: We call all instruction handlers to produce candidate diffs, then later select the one that matches the decoded opcode. The optimizer enforces only the active relations. `enforce_all` iterates relation types in a fixed order, and for each index selects inputs via `cs.choose_from_orthogonal_variants(&flags, ...)`. When specialization is possible, it uses a compact form; otherwise it builds masked accumulators and decomposes carries explicitly to stay at degree ≤ 2.
 
 - Early-branch witness assignment to skip heavy computations on inactive branches:
 ```262:267:zksync-airbender/cs/src/devices/optimization_context.rs
@@ -85,7 +85,6 @@ This pattern yields **significant savings**:
 - Fewer muxes and selectors: Selection happens once per relation type, not per wire.
 - Variable reuse: Preallocated registers/flags/bytes are recycled across operations.
 - Better for GPU: Uniform relation shapes are easier to fold in Stage 3.
-
 
 ---
 
@@ -101,7 +100,7 @@ See also the brief description in the philosophy doc: [philosophy_and_logic.md](
   - LDE these argument columns to the coset domain and commit on both domains.
 
 - Stage 3
-  - Evaluate the constraint quotient on the coset domain, the *zerofier* denominators vanish on the main domain.
+  - Evaluate the constraint quotient on the coset domain; the *zerofier* denominators vanish on the main domain.
   - The quotient includes:
     - Generic constraints compiled from the constraint system (RISC-V op semantics, delegation internals, etc.).
     - A large set of hardcoded constraints (see [`prover/src/prover_stages/stage3.rs`](../prover/src/prover_stages/stage3.rs)) that glue together Stage 2 arguments, enforce boundary conditions, state linkage, lazy init sorting, and other per-domain masks.
@@ -124,13 +123,13 @@ See also the brief description in the philosophy doc: [philosophy_and_logic.md](
 
 In the minimal no-exceptions configuration, the state transition is built to leverage the optimization context and orthogonal selection end-to-end:
 
-- Initialize the minimal state and range-check `pc` limbs as needed. The program counter (PC) will be split/checked again by the decoder.
+- Initialize the minimal state and range-check `pc` limbs as needed. The program counter (PC) will be split/rechecked by the decoder.
 - Decode once using the optimized decoder that pulls ROM bytecode, range-checks sub-chunks, computes opcode-format flags, and prepares memory queries.
 - Precompute `pc_next` and decompose operands (`src1`, `src2`) with sign bits for opcodes that need signed arithmetic.
 - Apply every relevant instruction handler in sequence (`ADD`/`SUB`/…/`CSR`). Each handler writes candidate diffs guarded by its exec flag into the optimization context.
 - After all handlers have contributed, run `opt_ctx.enforce_all(cs)` to select and enforce only the active relations.
 - Perform write-back: apply exactly one memory/register diff and update `pc` to `pc_next` according to branch/jump logic, again guided by flags.
-- The decoder explicitly splits the high 16-bit limb of `pc` and applies range checks to those bits during table access it then concatenates with the low limb to index the ROM/decoder tables. Pre-decoding, we range-check only `pc_low` to ensure both limbs are in-range without duplicating checks.
+- The decoder explicitly splits the high 16-bit limb of `pc` and applies range checks to those bits during table access. It then concatenates with the low limb to index the ROM/decoder tables. Pre-decoding, we range-check only `pc_low` to ensure both limbs are in range without duplicating checks.
 - Because `pc` is part of the explicit state and is linked row-to-row, its range is preserved across steps.
 - ROM fetch enforces `pc % 4 == 0`, so alignment constraints for branches/jumps can be omitted and delegated to the ROM access itself.
 
@@ -154,7 +153,7 @@ let [low, high] = cs.get_variables_from_lookup_constrained(
 );
 ```
 
-This means `pc_high` is validated via the `RomAddressSpaceSeparator` lookup, while `pc_low` is explicitly range-checked before decode. Together they guarantee `pc` is in-range for ROM access without redundant checks.
+This means `pc_high` is validated via the `RomAddressSpaceSeparator` lookup, while `pc_low` is explicitly range-checked before decode. Together they guarantee `pc` is in range for ROM access without redundant checks.
 
 ---
 
@@ -176,7 +175,7 @@ public_inputs_first_row.push((BoundaryConstraintLocation::FirstRow, *i));
 public_inputs_one_row_before_last.push((BoundaryConstraintLocation::OneBeforeLastRow, *f));
 ```
 
-How Stage 3 enforces it everywhere, with the exception of the last two rows as mentioned:
+How Stage 3 enforces it everywhere, execpt of the last two rows, as mentioned:
 
 ```2742:2767:zksync-airbender/prover/src/prover_stages/stage3.rs
 // linking constraints: src(this) - dst(next) == 0 over the domain mask
@@ -209,18 +208,18 @@ Only three boundary categories are needed:
 
 - Initial state at the first row (public input)
 - Final state at the one-before-last row (public input)
-- Lazy init addresses for memory argument, which are handled manually and not added as boundary constraints.
+- Lazy init addresses for the memory argument, which are handled manually and not added as boundary constraints.
 ---
 
 ### Unified memory/register argument — why reads need no extra range checks
 
-- Every register and RAM access is recorded as a ShuffleRam query. In the state-transition we prebuild three per-cycle queries (RS1 read, RS2 read-or-RAM, RD/STORE), keeping shapes fixed and predictable for later stages.
+- Every register and RAM access is recorded as a ShuffleRam query. In the state-transition, we pre-build three per-cycle queries (RS1 read, RS2 read-or-RAM, RD/STORE), keeping shapes fixed and predictable for later stages.
 
 - Stage 2 constructs the randomized memory argument over all recorded accesses.
 
 - Stage 3 consumes the accumulator and enforces the memory argument, together with lazy init/teardown boundary conditions for the shuffle RAM initialization.
 
-- Consequence: Since writes are range-checked at the point of creation, and the shuffle argument forces each read to equal some earlier write or an initialization value, every read value necessarily inherits the same range bound. Therefore, we do not re‑range‑check values on reads. When an opcode requires finer granularity, for example byte or bit-level behavior, it adds the necessary local checks at that point.
+- Consequence: Since writes are range-checked at the point of creation, and the shuffle argument forces each read to equal some earlier write or an initialization value, every read value necessarily inherits the same range bound. Therefore, we do not re‑range‑check values on reads. When an opcode requires finer granularity, for example, byte or bit-level behavior, it adds the necessary local checks at that point.
 
 This is why sections like RS1/RS2 operand preparation explicitly skip range checks on read values.
 

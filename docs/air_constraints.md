@@ -17,42 +17,42 @@ This document explains how algebraic constraints are represented and enforced in
 ## Degree and normalization
 
 `Term * Term` can result in a degree up to 4 at the Term level. This is allowed for composition, but not for final constraints. Normalization is applied:
-  - **After** most arithmetic on Constraint (e.g., add/sub/mul with a Term).
+  - **After** most arithmetic on constraint (e.g., add/sub/mul with a Term).
   - **Before** storing constraints via `add_constraint`/`add_constraint_allow_explicit_linear`.
   - **Before** splitting with `split_max_quadratic()`.
   - **After** transform helpers like e`xpress_variable`/`substitute_variable`.
 
-If a Constraint still has degree > 2 at normalization time, the normalization function will panic.
+If a constraint still has a degree > 2 at normalization time, the normalization function will panic.
 
 - `Constraint::normalize()`:
   - Sorts terms, first by degree and then by variables.
-  - Combine like monomials terms.
+  - Combine like monomial terms.
   - Drops zero terms.
   - Asserts final degree ≤ 2.
 
 ## Witness generation vs constraints 
-- Create an empty variable, that is, a placeholder with index but no assigned witness value.
-- `set_values(value_fn)`: Records a closure that computes and assigns witness values for variables. This function does not add constraints, meaning that the closure is stored and executed later during the witness‑generation phase before constraints are checked. It should be used to fill concrete values for variables that were allocated earlier (placeholders).
+- Create an empty variable, that is, a placeholder with an index but no assigned witness value.
+- `set_values(value_fn)`: Records a closure that computes and assigns witness values for variables. This function does not add constraints, meaning that the closure is stored and executed later during the witness‑generation phase before constraints are checked. It should be used to fill in concrete values for variables that were allocated earlier (placeholders).
 - During witness generation, the executor runs the recorded closures to fill variable values.
 - You must still add constraints/lookup relations that verify the assigned witnesses satisfy the circuit equations.
 
 ## Invariants and compiler layout
 
 Some properties are not enforced immediately but are recorded as invariants and realized during compilation/placement. Concretely:
-- At allocation time the builder queues an invariant via `require_invariant(...)`.
+- At allocation time, the builder queues an invariant via `require_invariant(...)`.
   - Booleans: The variable is pushed into an internal `boolean_variables` list.
   - Range checks: A `RangeCheckQuery { variable, width }` is pushed into `rangechecked_expressions`.
 - During finalize/layout:
   - Range checks: The compiler converts queued `rangechecked_expressions` into lookups against the 8/16‑bit tables (batched where possible), and appends them to lookup storage.
   - Booleans: The queued `boolean_variables` are laid out into dedicated columns, one boolean constraint per placed row/column, and the compiled circuit enforces `x^2 − x = 0` for each.
-In practice, no polynomial is emitted at the call site, we tag the variable/relation now and materialize the corresponding polynomial later while building the prover's execution table.
+In practice, no polynomial is emitted at the call site; we tag the variable/relation now and materialize the corresponding polynomial later while building the prover's execution table.
 
 Boolean variables are created via `add_boolean_variable` or helpers that return `Boolean::Is`.
   - Records `Invariant::Boolean`.
   - Compiler emits `x^2 − x = 0` (i.e., `x * (x − 1) = 0`) for each boolean in the witness subtree.
 
 Range-checked variables: `add_variable_with_range_check(width)` records `Invariant::RangeChecked { width }`.
-  - Compiler converts these into lookup constraints, 8-bit and 16-bit tables are supported here.
+  - Compiler converts these into lookup constraints; 8-bit and 16-bit tables are supported here.
 
 Substitutions/Linkage: Some variables are marked with substitutions or linkages (e.g., public I/O linkage), and the compiler materializes (generates and inserts) the corresponding constraints at layout time.
 
@@ -63,7 +63,7 @@ Substitutions/Linkage: Some variables are marked with substitutions or linkages 
     - `(a − b) * zero_flag = 0`
     - `(a − b) * inv + zero_flag − 1 = 0`
 - `is_zero(var)` returns a boolean and is implemented as `equals_to(var, 0)`.
-- Variants exist for register tuples when their parts are range-checked and sums can be used.
+- Variants exist for register tuples when their parts are range-checked, and sums can be used.
 
 ## Selection and masking patterns
 

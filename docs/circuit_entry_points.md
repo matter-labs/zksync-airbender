@@ -17,19 +17,19 @@ All of the circuit-setup signatures mentioned below are declared in each crate�
 5. `fn get_reduced_riscv_circuit_setup`.
 6. `fn get_riscv_without_signed_mul_div_circuit_setup`.
 
-
 ---
+
 ## Delegation circuits 
 
 Any algorithm written in Rust can be compiled to RISC-V instructions and proven with the main machine circuits.  
 However, some algorithms we use frequently—such as hashing inside Merkle trees—are far more efficient when implemented as dedicated circuits.  
-To support this we introduce custom CSR instructions that invoke so-called *delegation circuits*.  
+To support this, we introduce custom CSR instructions that invoke so-called *delegation circuits*.  
 Delegation circuits are small, self-contained gadgets that a RISC-V program can *call* via a dedicated CSR value.  
-Each precompile therefore exposes a unique **`DELEGATION_TYPE_ID`** constant that must match the CSR value written by the program.
+Each precompile, therefore, exposes a unique **`DELEGATION_TYPE_ID`** constant that must match the CSR value written by the program.
 
 ### `bigint_with_control` 
 
-The main RISC-V machine circuit works on 32-bit words. When a program needs **256-bit** arithmetic, for example to implement EVM‐style `ADD`, `MUL`, modular math or cryptographic primitives, expressing those operations directly inside the machine would reduce the gates.
+The main RISC-V machine circuit works on 32-bit words. When a program requires **256-bit** arithmetic, for example, to implement EVM‐style `ADD`, `MUL`, modular math or cryptographic primitives, expressing those operations directly inside the machine would reduce the gates.
 
 Path: [`circuit_defs/bigint_with_control`](../circuit_defs/bigint_with_control)
 
@@ -62,26 +62,25 @@ Path: [`circuit_defs/blake2_with_compression`](../circuit_defs/blake2_with_compr
 | `NUM_DELEGATION_CYCLES` | `DOMAIN_SIZE - 1` | Number of steps processed by one circuit instance |
 | `TREE_CAP_SIZE` | `32` | Merkle cap size for memory commitments |
 
-
 ---
 
 ## Main RISC-V machine circuits
 
-These circuits prove full execution traces of a RISC-V program under slightly different Instruction Set Architecture (ISA) configurations.  Instead of `DELEGATION_TYPE_ID` they export a set of helper functions for building a **compiled machine**.
+These circuits prove full execution traces of a RISC-V program under slightly different Instruction Set Architecture (ISA) configurations.  Instead of `DELEGATION_TYPE_ID`, they export a set of helper functions for building a **compiled machine**.
 
-There are five concrete machine-mode types; each is a compile-time description of which RISC-V opcodes, CSR delegations and exception handling logic the circuit supports. 
+There are five concrete machine-mode types; each is a compile-time description of which RISC-V opcodes, CSR delegations, and exception handling logic the circuit supports. 
 
 1. `FullIsaMachineNoExceptionHandling`
     * Full IM32 instruction set (byte loads/stores, signed & unsigned multiplication/division, etc.).
     * No delegation CSRs.
     * Assumes “trusted” code – no traps or exceptions are ever raised, so the circuit omits exception-handling constraints.
 2. `FullIsaMachineWithDelegationNoExceptionHandling`
-    * Same full ISA as above plus support for delegation CSR calls (BLAKE2 hash, BigInt operations).
+    * Same full ISA as above, plus support for delegation CSR calls (BLAKE2 hash, BigInt operations).
     * No exception handling logic.
     * Supports delegations.
 3. `FullIsaMachineWithDelegationNoExceptionHandlingNoSignedMulDiv`
     * Drops the signed multiply/divide & remainder opcodes (`MULH`, `MULHSU`, `MULH​U`, `DIV`, `REM`).
-    * Keeps unsigned `MUL`, `DIVU`, `REMU` and keeps all delegations.
+    * Keeps unsigned `MUL`, `DIVU`, `REMU`, and keeps all delegations.
    * Cheaper than the full machine.
     * Used in recursion.
 4. `MinimalMachineNoExceptionHandling`
@@ -99,9 +98,9 @@ Entry-point functions:
 * **`witness_eval_fn_for_gpu_tracer(proxy)`** – GPU witness generator.
 * **`generate_artifacts()`** – emit verifier layout & quotient code.
 
-Where a ROM-size generic parameter is necessary there is a second pair of helpers suffixed with **`_for_rom_bound`**.
+Where a ROM-size generic parameter is necessary, there is a second pair of helpers suffixed with **`_for_rom_bound`**.
 
-Each crate exposes the exact same entry-points listed above.  The only divergent parts are constant parameters such as `DOMAIN_SIZE`, `LDE_FACTOR`, `ALLOWED_DELEGATION_CSRS`, etc.
+Each crate exposes the exact same entry points listed above.  The only divergent parts are constant parameters such as `DOMAIN_SIZE`, `LDE_FACTOR`, `ALLOWED_DELEGATION_CSRS`, etc.
 
 ---
 

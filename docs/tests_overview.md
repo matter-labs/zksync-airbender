@@ -1,8 +1,8 @@
 # Test Suites – Circuits & Proof System
 
-Below you will find some of the *main* automated tests covering the arithmetic circuits, prover and verifier code.  It is **not** an exhaustive list of every `#[test]` function, but a subset of those that validate correctness of the constraint systems, witness generation, proof production, and on-chain verifier skeletons.
+Below you will find some of the *main* automated tests covering the arithmetic circuits, prover, and verifier code.  It is **not** an exhaustive list of every `#[test]` function, but a subset of those that validate correctness of the constraint systems, witness generation, proof production, and on-chain verifier skeletons.
 
-> To run any of the tests below use Cargo’s standard interface, e.g.:
+> To run any of the tests below, use Cargo’s standard interface, e.g.:
 > ```bash
 > cargo test -p opcode_tests jalr::test_jalr_op   # Example of single opcode test
 > ```
@@ -13,7 +13,7 @@ Below you will find some of the *main* automated tests covering the arithmetic c
 
 **Location**: [`circuit_defs/opcode_tests/`](../circuit_defs/opcode_tests/).
 
-**Purpose**: Ensure that the full-machine circuit correct compile every RISC-V instruction.
+**Purpose**: Ensure that the full-machine circuit correctly compiles every RISC-V instruction.
 
 How it works:
 1. Runs the reference RISC-V simulator for a *single instruction*  with randomized register/memory state.
@@ -21,7 +21,7 @@ How it works:
 3. Compares resulting register values, memory reads/writes, PC updates, etc.
 
 Highlights:
-- 40+ individual tests (`src/opcodes/*.rs`) – one per opcode (`add.rs`, `lb.rs`, `jal.rs`, …) each containing a `test_<opcode>` function.
+- 40+ individual tests (`src/opcodes/*.rs`) – one per opcode (`add.rs`, `lb.rs`, `jal.rs`, …), each containing a `test_<opcode>` function.
 - Additional tests in `src/lib.rs` (`test_single_opcode`, `broken_tests`, etc.) gather multiple opcodes.
 - Can be run with: `cargo test -p opcode_tests --profile test-release`.
 These tests provide **completeness coverage** – if an opcode is incorrectly constrained, the comparison with the simulator will fail.
@@ -47,7 +47,7 @@ Representative tests:
 - **`test_blake2_single_round`** – validates the BLAKE2 compression round delegation against known test-vectors.
 - **`test_extended_blake2_single_round`** – covers the extended BLAKE2 state transformation.
 - **`test_bigint_with_control_call`** – 256-bit arithmetic with the additional control selectors.
-- **`multiple_instances_test`** – runs batches of tiny programs (Fibonacci, arithmetic, jumps) to check that batched proof generation / verification works.
+- **`multiple_instances_test`** – runs batches of tiny programs (Fibonacci, arithmetic, jumps) to check that batched proof generation/verification works.
 - **`gpu_prover::basic_test`** – produces the same proof on CPU *and* GPU.
 
 Run with:
@@ -102,7 +102,7 @@ Crate [**`circuit_defs/prover_examples`**](../circuit_defs/prover_examples) cont
 1. Runs the full staged prover pipeline.
 2. Optionally serialises the resulting proof for later use by verifier tests.
 
-Because it exercises *all* prover stages together, it’s almost end-to-end check.  It is *slow*.
+Because it exercises **all** prover stages together, it's almost an end-to-end check.  It is **slow**.
 
 ---
 

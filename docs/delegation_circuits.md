@@ -1,16 +1,16 @@
 ### Delegation circuits
 ### What is a delegation circuit?
 
-A *delegation circuit* is an specialized gadget executed outside the main RISC-V semantics but still inside the same proving system, it can also be called 'precompile circuit'. The program issues a delegation request, the circuit builder materializes a small sub-circuit to process that request, together with formal register and memory accesses that integrates into the unified memory/register argument.
-* **Creation**: `get_delegation_circuit()` builds and compiles a specific delegation circuit (e.g., BLAKE2 or BigInt), then returns a `DelegationProcessorDescription` containing its delegation_type (CSR ID), `trace_len`, `num_requests_per_circuit`, the circuit’s `table_driver` (lookup tables), and the compiled circuit artifact. 
+A *delegation circuit* is a specialized gadget executed outside the main RISC-V semantics but still inside the same proving system, it can also be called 'precompile circuit'. The program issues a delegation request, the circuit builder materializes a small sub-circuit to process that request, together with formal register and memory accesses that integrate into the unified memory/register argument.
+* **Creation**: `get_delegation_circuit()` builds and compiles a specific delegation circuit (e.g., BLAKE2 or BigInt), then returns a `DelegationProcessorDescription` containing its delegation_type (CSR ID), `trace_len`, `num_requests_per_circuit`, the circuit's `table_driver` (lookup tables), and the compiled circuit artifact. 
 * **Access specification**: The circuit defines which registers are read/written and which memory words are accessed indirectly via base registers.
-* **Integration**: All register/memory accesses are recorded just like main RISC-V circuits accesses and enforced in Stage 2/3 alongside the rest of the system.
+* **Integration**: All register/memory accesses are recorded just like main RISC-V circuit accesses and enforced in Stage 2/3 alongside the rest of the system.
 
-One **delegation request** is a small primitive, not a full workflow. A complete high‑level operation, like a full hash or multi‑step u256 flow, typically spans multiple delegation requests. Our current implementations include:
+One **delegation request** is a small primitive, not a full workflow. A complete high‑level operation, such as a full hash or multi‑step u256 flow, typically spans multiple delegation requests. Our current implementations include:
 - BLAKE2: Full hashing over multiple rounds and/or blocks requires multiple requests, typically in a loop over rounds/blocks.
 - BigInt (`u256`): A request performs one selected operation (`ADD`/`SUB`/`MUL_LOW`/`MUL_HIGH`/`EQ`/`MEMCOPY`) on a single 256‑bit pair. Larger transformations require multiple requests.
 
-Currently in our system we have 3 delegation circuits implemented: 
+Currently, in our system, we have three delegation circuits implemented: 
 - BLAKE2 round with extended control — [`cs/src/delegation/blake2_round_with_extended_control/mod.rs`](../cs/src/delegation/blake2_round_with_extended_control/mod.rs).
   - Used in: Prover recursion commitments and Merkle tree hashing.
 - BLAKE2 single round — [`cs/src/delegation/blake2_single_round/mod.rs`](../cs/src/delegation/blake2_single_round/mod.rs).
@@ -33,7 +33,7 @@ Defined in [`cs/src/delegation/blake2_single_round/mod.rs`](../cs/src/delegation
 
 **Tables used**: `Xor`, `Xor3`, `Xor4`, `Xor7`, `Xor9`.
 
-If during the first round `round_bitmask[0]` is set, it overwrites the state indices `[8,9,10,11,13,15]` with IV words. Message words are permuted via `SIGMAS` and output state is written back.
+If during the first round, `round_bitmask[0]` is set, it overwrites the state indices `[8,9,10,11,13,15]` with IV words. Message words are permuted via `SIGMAS` and the output state is written back.
 
 ---
 
@@ -44,7 +44,7 @@ Defined in [`cs/src/delegation/bigint_with_control/mod.rs`](../cs/src/delegation
  **Registers**
   - **x10**: pointer to U256 `a` (8×32-bit words). Creates 8 indirect `[R/W]` accesses with alignment $2^5$.
   - **x11**: pointer to U256 `b` (8×32-bit words). Creates 8 indirect `[R]` accesses with alignment $2^5$.
-  - **x12**: `control_mask` (read), boolean-split into 8 bits: `ADD`, `SUB`, `SUB_AND_NEGATE`, `MUL_LOW`, `MUL_HIGH`, `EQ`, `CARRY`, `MEMCOPY`. Exactly one operation bit must be `1` at a time, `CARRY` is a separate flag that may be set together with `ADD` or `SUB`.
+  - **x12**: `control_mask` (read), boolean-split into 8 bits: `ADD`, `SUB`, `SUB_AND_NEGATE`, `MUL_LOW`, `MUL_HIGH`, `EQ`, `CARRY`, `MEMCOPY`. Exactly one operation bit must be `1` at a time; `CARRY` is a separate flag that may be set together with `ADD` or `SUB`.
 
 **Tables used**: `U16SplitAsBytes`, `RangeCheck9x9`, `RangeCheck10x10`, `RangeCheck11`, `RangeCheck12`, `RangeCheck13`.
 
@@ -89,4 +89,4 @@ Multiplicity 0 rows (padding): All columns that participate in the unified memor
 - BLAKE2, both single round and extended control: These circuits read all inputs (state, message, round/control masks) through the unified memory/register interface. On multiplicity 0 rows, those sources are zero, and all selectors are zero. The Blake constraints are built to be zero‑preserving under zero inputs and zero selectors, so outputs remain zero without needing to multiply every relation by an `execute` flag. 
 - BigInt with control: It derives booleans such as equality flags that could otherwise evaluate to `1` on all‑zero inputs. To avoid asserting non‑zero signals on padding rows, it masks such derived flags with the `execute` predicate obtained from `cs.process_delegation_request()` (see [`cs/src/delegation/bigint_with_control/mod.rs`](../cs/src/delegation/bigint_with_control/mod.rs)).
 
-This uniform handling ensures that delegation circuits agree with padding/zeroing constraints. On rows with multiplicity 0, inputs are zero, derived selectors are zero, and outputs are zero, keeping the circuit satisfiable. 
+This uniform handling ensures that delegation circuits agree with padding/zeroing constraints. On rows with multiplicity 0, the inputs are zero, the derived selectors are zero, and outputs are zero, thereby keeping the circuit satisfiable. 

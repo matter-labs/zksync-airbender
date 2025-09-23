@@ -1,6 +1,6 @@
 # Instruction Gadget Circuits
 
-In this document key details about the *core circuits of ZKsync Airbender* are detailed. **Every RISC-V instruction circuit**  can be found under [`cs/src/machine/ops`](../cs/src/machine/ops).
+In this document, key details about the *core circuits of ZKsync Airbender* are detailed. **Every RISC-V instruction circuit**  can be found under [`cs/src/machine/ops`](../cs/src/machine/ops).
 
 ---
 
@@ -37,7 +37,7 @@ Implements `AND`, `OR`, `XOR` (and immediate forms).
 
 * Each byte pair of the operands is looked up in the `TableType::{And, Or, Xor}` LUTs.
 * The lookup itself enforces that the bytes are in `[0,255]`, hence earlier decomposition can skip explicit range checks.
-* Four byte results are recombined into two 16-bit limbs to form the resulting register value.
+* Four-byte results are recombined into two 16-bit limbs to form the resulting register value.
 
 ### 3. `shift.rs` – Logical & Arithmetic Shifts
 
@@ -45,15 +45,15 @@ Covers `SLL`, `SRL`, `SRA` (plus immediates `SLLI`, `SRLI`, `SRAI`).
 
 * Shifts > 31 are masked to 5 bits as per the spec.
 * Logical shifts are routed to a generic barrel-shifter implemented with conditional rotations, incurring `O(log n)` constraints.
-* Arithmetic right shift re-uses logical shifter then conditionally ORs the vacated bits with the sign mask.
+* Arithmetic right shift re-uses the logical shifter, then conditionally ORs the vacated bits with the sign mask.
 
 ### 4. `mul_div.rs` – Multiply / Divide / Remainder
 
-The largest gadget in the folder – implements the complete RV32M extension: `MUL`, `MULH`, `MULHSU`, `MULHU`, `DIV`, `DIVU`, `REM`, `REMU`.
+The largest gadget in the folder, it implements the complete RV32M extension: `MUL`, `MULH`, `MULHSU`, `MULHU`, `DIV`, `DIVU`, `REM`, `REMU`.
 
 * 16×16-bit partial products reduced via Karatsuba for efficient constraint utilisation.
 * Division / remainder proven through a **reciprocal-based equality**: `quot * divisor + rem = dividend` plus range and sign conditions.
-* Over-flow cases like division by zero return the architecturally-defined results and optionally raise traps when `OUTPUT_EXACT_EXCEPTIONS` is enabled.
+* Overflow cases like division by zero return the architecturally-defined results and optionally raise traps when `OUTPUT_EXACT_EXCEPTIONS` is enabled.
 
 ### 5. `load.rs` – Memory Loads
 
@@ -94,9 +94,9 @@ Implements `LUI` and `AUIPC`.
 
 ### 10. `csr.rs` – Control-and-Status Registers
 
-Implements `CSRRW`, `CSRRS`, `CSRRC` and their immediate forms.
+Implements `CSRRW`, `CSRRS`, `CSRRC`, and their immediate forms.
 
-* Reads/Writes go through the CSR device; side-effects (e.g. privilege escalation) are encoded as traps.
+* Reads/Writes go through the CSR device; side-effects (e.g, privilege escalation) are encoded as traps.
 * Immediate zero optimisation avoids unnecessary CSR reads when the mask is zero.
 
 ### 11. `mop.rs` – Memory Ordering Primitives
@@ -107,5 +107,4 @@ Currently covers `FENCE` and `FENCE_I` with placeholders for future atomics.
 
 ### 12. `common_impls/`
 
-Shared helper gadgets used by multiple instruction families, e.g. sign extension logic or optimised byte decomposition.
-
+Shared helper gadgets used by multiple instruction families, e.g, sign extension logic or optimized byte decomposition.

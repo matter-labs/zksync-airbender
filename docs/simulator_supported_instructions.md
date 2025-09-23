@@ -49,7 +49,7 @@
 
 ## Control and Status Registers (CSRs)
 
-CSRs are special-purpose registers that control privileged state such as interrupt masks, trap vectors, and memory translation. They are accessed exclusively through the Zicsr instruction family listed above.
+CSRs are special-purpose registers that control privileged state, such as interrupt masks, trap vectors, and memory translation. They are accessed exclusively through the Zicsr instruction family listed above.
 
 ### Implemented Machine-Level CSRs
 

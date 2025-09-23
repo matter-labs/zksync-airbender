@@ -4,7 +4,7 @@ This tutorial shows how to write, build, and run RISC‑V programs for AirBender
 
 ## Program skeleton (no_std, no_main, entry, traps)
 
-AirBender executes bare‑metal RISC‑V code. Since there’s no OS, you have to provide a little bootstrap so your program can start and return its result. A minimal skeleton looks like this:
+AirBender executes bare‑metal RISC‑V code. Since there's no OS, you have to provide a little bootstrap so your program can start and return its result. A minimal skeleton looks like this:
 
 ```rust
 // On bare metal, std isn’t available. You need to use core instead, and you provide your own startup, panic, I/O, etc. Some embedded patterns (custom allocators, generic const exprs) need nightly. In this file you don’t actually use allocator_api or generic_const_exprs.
@@ -127,12 +127,11 @@ fn main() -> ! {
 
 - **Bare‑metal environment**: There is no `std` and no OS. The tiny assembly sets the stack pointer, clears/initializes memory regions, and jumps into `_start_rust`. Without it, your code would not have a valid entry point or stack.
 - **Deterministic entry**: AirBender simulator/prover needs a deterministic, simple entry point so the execution trace is reproducible for proving.
-- **Exit convention**: The prover/simulator reads registers `x10..x17` on exit. The helper `zksync_os_finish_success(&[u32; 8])` writes your 8 outputs into those registers and halts in the expected way.
-
+- **Exit convention**: The prover/simulator reads registers `x10..x17` on exit. The helper `zksync_os_finish_success(&[u32; 8])` writes your eight outputs into those registers and halts in the expected way.
 
 ##  Producing outputs (the exit convention)
 
-On success, write exactly 8 words to `x10..x17` and sets to zero `x18..x25`. Always use the following structure:
+On success, write exactly eight words to `x10..x17` and set to zero `x18..x25`. Always use the following structure:
 
 ```rust
 use riscv_common::zksync_os_finish_success;
@@ -141,7 +140,7 @@ let outputs = [w0, w1, w2, w3, w4, w5, w6, w7];
 zksync_os_finish_success(&outputs);
 ```
 
-The CLI `run` command prints these values for you to verify the program’s behavior before proving.
+The CLI `run` command prints these values for you to verify the program's behavior before proving.
 
 ## Building and running
 
@@ -169,7 +168,6 @@ Useful flags:
 - `--cycles N` to limit cycles.
 - `--machine mini` to use the minimal machine when applicable.
 - `--input-file path.txt` to provide input when your program reads from the CSR oracle.
-
 
 ### Note
 

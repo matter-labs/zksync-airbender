@@ -275,7 +275,7 @@ impl OptimizedDecoder {
         ));
 
         // chunk 5 is just higher part of the immediate
-        // This encodes sign-extension for all formats. For U format we take insn_high entirly.
+        // This encodes sign-extension for all formats. For U format we take insn_high entirely.
         let imm_high = Num::Var(circuit.add_variable_from_constraint(
             Term::from(j_insn) * (Term::from(sign_bit) * Term::from(0xfff0) + Term::from(rs1_high))
                 + Term::from(u_insn) * Term::from(inputs.instruction.0[1])
