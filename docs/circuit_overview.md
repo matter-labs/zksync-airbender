@@ -104,7 +104,7 @@ See also the brief description in the philosophy doc: [philosophy_and_logic.md](
   - Evaluate the constraint quotient on the coset domain, the *zerofier* denominators vanish on the main domain.
   - The quotient includes:
     - Generic constraints compiled from the constraint system (RISC-V op semantics, delegation internals, etc.).
-    - A large set of hardcoded constraints (see `prover/src/prover_stages/stage3.rs`) that glue together Stage 2 arguments, enforce boundary conditions, state linkage, lazy init sorting, and other per-domain masks.
+    - A large set of hardcoded constraints (see [`prover/src/prover_stages/stage3.rs`](../prover/src/prover_stages/stage3.rs)) that glue together Stage 2 arguments, enforce boundary conditions, state linkage, lazy init sorting, and other per-domain masks.
   - NTT the quotient to the main domain and commit on both domains.
 
 - Stage 4

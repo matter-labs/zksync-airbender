@@ -2,7 +2,7 @@
 
 ZKsync Airbender is implemented with multiple machine configurations. These are distinct sets of RISC-V instruction support and parameters designed to optimize the proving circuit for different use cases.
 
-Each configuration is defined in the `cs/src/machine/machine_configurations`. Despite differences in supported features, all configurations share the same design: a 32-bit RISC-V execution model, the RV32I base with optional M extension for multiplication/division and precompiles, running in machine mode with a fixed fetch-decode-execute loop enforced every cycle.
+Each configuration is defined in the [`cs/src/machine/machine_configurations`](../cs/src/machine/machine_configurations). Despite differences in supported features, all configurations share the same design: a 32-bit RISC-V execution model, the RV32I base with optional M extension for multiplication/division and precompiles, running in machine mode with a fixed fetch-decode-execute loop enforced every cycle.
 
 We use a Mersenne prime field ($2^{31}$−1) for arithmetic in constraints, which influences how 32-bit values are represented and checked. As the Mersenne prime covers 31 bits, representing the 32-bit values that we use requires two separate elements.  
 
@@ -52,7 +52,7 @@ Each machine configuration defines:
 
 ---
 
-### Full ISA (No Exceptions) – `full_isa_no_exceptions.rs`
+### Full ISA (No Exceptions) – [`full_isa_no_exceptions.rs`](../cs/src/machine/machine_configurations/full_isa_no_exceptions)
 
 **Purpose:** This configuration implements the **Full Kernel Mode** of Airbender, supporting the complete 32-bit RISC-V instruction set –RV32I base plus the RV32M multiplication/division extension– **without** any additional custom features or exception handling logic. It is intended for proving general-purpose kernel code, for example the zkSync OS, that requires the full range of standard RISC-V operations while assuming *trusted* code that never triggers traps.
 
@@ -103,7 +103,7 @@ It provides a faithful model of a standard RV32IM core while keeping the constra
 
 ---
 
-### Full ISA with Delegation (No Exceptions) – `full_isa_with_delegation_no_exceptions.rs`
+### Full ISA with Delegation (No Exceptions) – [`full_isa_with_delegation_no_exceptions.rs`](../cs/src/machine/machine_configurations/full_isa_with_delegation_no_exceptions)
 
 **Purpose:** This configuration extends the *Full ISA (No Exceptions)* model by enabling **delegation** through controlled CSR accesses. It targets kernel-level programs that need to invoke cryptographic gadgets or inject non-deterministic witness data during execution.
 
@@ -149,7 +149,7 @@ Choose `FullIsaWithDelegationNoExceptions` for ZKsync OS or applications that bo
 
 ---
 
-### Full ISA with Delegation (No Exceptions, *No Signed MUL/DIV*) – `full_isa_with_delegation_no_exceptions_no_signed_mul_div.rs`
+### Full ISA with Delegation (No Exceptions, *No Signed MUL/DIV*) – [`full_isa_with_delegation_no_exceptions_no_signed_mul_div.rs`](../cs/src/machine/machine_configurations/full_isa_with_delegation_no_exceptions_no_signed_mul_div)
 
 **Purpose:** This configuration is a **cost-reduced** variant of *Full ISA with Delegation (No Exceptions)*. It **removes all signed multiply, divide and remainder opcodes** to shrink the constraint system while retaining delegation CSR support.
 
@@ -185,7 +185,7 @@ If the binary ever executes a signed `MUL`/`DIV`/`REM` instruction, the circuit 
 
 ---
 
-### Minimal ISA (No Exceptions) – `minimal_no_exceptions.rs`
+### Minimal ISA (No Exceptions) – [`minimal_no_exceptions.rs`](../cs/src/machine/machine_configurations/minimal_no_exceptions)
 
 **Purpose:** This is the **smallest, fastest-to-prove** RISC-V configuration in Airbender.  It strips the ISA down to the *essential 32-bit arithmetic and control-flow instructions* and enforces **word-aligned memory**.  All byte/half-word operations and the entire multiply/divide extension are removed, delivering a very light constraint system ideal for recursion layers or arithmetic-heavy programs that do not require complex opcodes.
 
@@ -228,7 +228,7 @@ It is frequently used as the **innermost recursive verifier** or for pure arithm
 
 ---
 
-### Minimal ISA with Delegation (No Exceptions) – `minimal_no_exceptions_with_delegation.rs`
+### Minimal ISA with Delegation (No Exceptions) – [`minimal_no_exceptions_with_delegation.rs`](../cs/src/machine/machine_configurations/minimal_no_exceptions_with_delegation)
 
 **Purpose:** This configuration combines the **lean opcode set** of the *Minimal ISA* with the **delegation interface** used for heavy cryptographic primitives.  It keeps the constraint system light while still allowing a RISC-V program to call out to pre-compiled gadgets (BLAKE2, BigInt arithmetic, etc.) via the custom CSR `0x7C0`.
 

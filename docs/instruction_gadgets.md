@@ -1,6 +1,6 @@
 # Instruction Gadget Circuits
 
-In this document key details about the *core circuits of ZKsync Airbender* are detailed. **Every RISC-V instruction circuit**  can be found under `cs/src/machine/ops`.
+In this document key details about the *core circuits of ZKsync Airbender* are detailed. **Every RISC-V instruction circuit**  can be found under [`cs/src/machine/ops`](../cs/src/machine/ops).
 
 ---
 

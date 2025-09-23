@@ -11,12 +11,12 @@ One **delegation request** is a small primitive, not a full workflow. A complete
 - BigInt (`u256`): A request performs one selected operation (`ADD`/`SUB`/`MUL_LOW`/`MUL_HIGH`/`EQ`/`MEMCOPY`) on a single 256‑bit pair. Larger transformations require multiple requests.
 
 Currently in our system we have 3 delegation circuits implemented: 
-- BLAKE2 round with extended control — `cs/src/delegation/blake2_round_with_extended_control/mod.rs`
-  - Used in: Prover recursion commitments and Merkle tree hashing
-- BLAKE2 single round — `cs/src/delegation/blake2_single_round/mod.rs`
-  - Used in: Experiments/tests. Not enabled by default in setups
-- BigInt (u256) ops with control — `cs/src/delegation/bigint_with_control/mod.rs`
-  - Used in: ZKsync OS as a BN254 math primitive (256-bit field ops; `ADD`/`SUB`/`MUL`/`EQ`, `carry`, `memcopy`)
+- BLAKE2 round with extended control — [`cs/src/delegation/blake2_round_with_extended_control/mod.rs`](../cs/src/delegation/blake2_round_with_extended_control/mod.rs).
+  - Used in: Prover recursion commitments and Merkle tree hashing.
+- BLAKE2 single round — [`cs/src/delegation/blake2_single_round/mod.rs`](../cs/src/delegation/blake2_single_round/mod.rs).
+  - Used in: Experiments/tests. Not enabled by default in setups.
+- BigInt (u256) ops with control — [`cs/src/delegation/bigint_with_control/mod.rs`](../cs/src/delegation/bigint_with_control/mod.rs).
+  - Used in: ZKsync OS as a BN254 math primitive (256-bit field ops; `ADD`/`SUB`/`MUL`/`EQ`, `carry`, `memcopy`).
 
 ---
 
@@ -24,7 +24,7 @@ Currently in our system we have 3 delegation circuits implemented:
 A fast cryptographic hash function built from add/xor/rotate G rounds over 32-bit words, it achieves high performance on CPUs and GPUs, keeping Merkle commitments and recursion fast. The function is circuit-friendly, as its operations decompose into simple XOR/bitwise lookups and additions, making it efficient as a delegation circuit, and it produces compact 256-bit outputs suitable for commitments.
 
 Integration is simple and deterministic, not requiring a trusted setup.
-Defined in `cs/src/delegation/blake2_single_round/mod.rs`.
+Defined in [`cs/src/delegation/blake2_single_round/mod.rs`](../cs/src/delegation/blake2_single_round/mod.rs).
 
  **Memory ABI**
   - 16 state words `[R/W]`
@@ -39,7 +39,7 @@ If during the first round `round_bitmask[0]` is set, it overwrites the state ind
 
 ### BigInt (`u256`) ops with control
 
-Defined in `cs/src/delegation/bigint_with_control/mod.rs`.
+Defined in [`cs/src/delegation/bigint_with_control/mod.rs`](../cs/src/delegation/bigint_with_control/mod.rs).
 
  **Registers**
   - **x10**: pointer to U256 `a` (8×32-bit words). Creates 8 indirect `[R/W]` accesses with alignment $2^5$.
@@ -54,7 +54,7 @@ Results are written back to `a` (via writes at `x10`). If the delegation is not 
 
 ### BLAKE2 round with extended control
 
-Defined in `cs/src/delegation/blake2_round_with_extended_control/mod.rs`.
+Defined in [`cs/src/delegation/blake2_round_with_extended_control/mod.rs`](../cs/src/delegation/blake2_round_with_extended_control/mod.rs).
 
 **Registers**
   - **x10**: pointer to state + extended state. Creates 24 indirect [R/W] accesses with alignment $2^7$.
@@ -87,6 +87,6 @@ Defined in `cs/src/delegation/blake2_round_with_extended_control/mod.rs`.
 Multiplicity 0 rows (padding): All columns that participate in the unified memory/register and lookup arguments are zeroed on rows that exist only for padding. This is enforced during Stage 3. Circuits must, therefore, be satisfiable when presented with all‑zero inputs on those rows.
 
 - BLAKE2, both single round and extended control: These circuits read all inputs (state, message, round/control masks) through the unified memory/register interface. On multiplicity 0 rows, those sources are zero, and all selectors are zero. The Blake constraints are built to be zero‑preserving under zero inputs and zero selectors, so outputs remain zero without needing to multiply every relation by an `execute` flag. 
-- BigInt with control: It derives booleans such as equality flags that could otherwise evaluate to `1` on all‑zero inputs. To avoid asserting non‑zero signals on padding rows, it masks such derived flags with the `execute` predicate obtained from `cs.process_delegation_request()` (see `cs/src/delegation/bigint_with_control/mod.rs`).
+- BigInt with control: It derives booleans such as equality flags that could otherwise evaluate to `1` on all‑zero inputs. To avoid asserting non‑zero signals on padding rows, it masks such derived flags with the `execute` predicate obtained from `cs.process_delegation_request()` (see [`cs/src/delegation/bigint_with_control/mod.rs`](../cs/src/delegation/bigint_with_control/mod.rs)).
 
 This uniform handling ensures that delegation circuits agree with padding/zeroing constraints. On rows with multiplicity 0, inputs are zero, derived selectors are zero, and outputs are zero, keeping the circuit satisfiable. 

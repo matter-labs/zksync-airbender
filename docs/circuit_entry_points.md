@@ -1,7 +1,7 @@
 # Circuits
 ## Circuit entry points
 
-For every circuit crate that lives under `circuit_defs/`, *entry-point* functions are intended to be the first place you look when you need to:
+For every circuit crate that lives under [`circuit_defs/`](../circuit_defs/), *entry-point* functions are intended to be the first place you look when you need to:
 
 * Compile a circuit, either for proving or for generating a verifier,
 * Obtain the lookup tables (`TableDriver`) belonging to a circuit,
@@ -9,7 +9,7 @@ For every circuit crate that lives under `circuit_defs/`, *entry-point* function
 * Compile custom precompiles
 * Call a witness generator
 
-All of the circuit-setup signatures mentioned below are declared in each crate’s `circuit_defs/setup/src/circuits`. There are six different circuit setups (machines) you can invoke: 
+All of the circuit-setup signatures mentioned below are declared in each crate’s [`circuit_defs/setup/src/circuits`](../circuit_defs/setup/src/circuits). There are six different circuit setups (machines) you can invoke: 
 1. `fn get_bigint_with_control_circuit_setup`.
 2. `fn get_blake2_with_compression_circuit_setup`.
 3. `fn get_final_reduced_riscv_circuit_setup`.
@@ -31,7 +31,7 @@ Each precompile therefore exposes a unique **`DELEGATION_TYPE_ID`** constant tha
 
 The main RISC-V machine circuit works on 32-bit words. When a program needs **256-bit** arithmetic, for example to implement EVM‐style `ADD`, `MUL`, modular math or cryptographic primitives, expressing those operations directly inside the machine would reduce the gates.
 
-Path: `circuit_defs/bigint_with_control`
+Path: [`circuit_defs/bigint_with_control`](../circuit_defs/bigint_with_control)
 
 | Constant | Value | Meaning |
 |----------|-------|---------|
@@ -52,7 +52,7 @@ Entry-point functions:
 
 RISC-V programs often rely on **BLAKE2s** hashing — for Merkle-tree commitments, transcript updates, or random oracle challenges.  The hash function’s 10-round compression consumes a lot of instructions; embedding it directly into the main machine circuit would reduce every cycle.
 
-Path: `circuit_defs/blake2_with_compression`
+Path: [`circuit_defs/blake2_with_compression`](../circuit_defs/blake2_with_compression)
 
 
 | Constant | Value | Meaning |
@@ -106,7 +106,8 @@ Each crate exposes the exact same entry-points listed above.  The only divergent
 ---
 
 ## Utility crate – `setups`  
-Path: `circuit_defs/setups`
+
+Path: [`circuit_defs/setups`](../circuit_defs/setups)
 
 The *setups* crate is a thin orchestrator that glues the individual circuits together.  It offers convenience helpers such as:
 

@@ -11,7 +11,7 @@ Below you will find some of the *main* automated tests covering the arithmetic c
 
 ## 1. Opcode-level functional tests (`opcode_tests` crate)
 
-**Location**: `circuit_defs/opcode_tests/`.
+**Location**: [`circuit_defs/opcode_tests/`](../circuit_defs/opcode_tests/).
 
 **Purpose**: Ensure that the full-machine circuit correct compile every RISC-V instruction.
 
@@ -30,7 +30,7 @@ These tests provide **completeness coverage** – if an opcode is incorrectly co
 
 ## 2. Program-level prover & delegation tests (`prover` crate)
 
-**Location**: `prover/src/tests/`
+**Location**: [`prover/src/tests/`](../prover/src/tests/)
 
 **Purpose**: Exercise the *entire* STARK proving pipeline, through witness generation, to proof creation and verification on small RISC-V programs and cryptographic delegation gadgets.
 
@@ -66,7 +66,7 @@ Crates:
 * `verifier`
 * `circuit_defs/*/verifier` (one per machine configuration & delegation gadget)
 
-Key files: `verifier/src/tests.rs`, plus duplicated copies generated for each machine config.
+Key files: [`verifier/src/tests.rs`](../verifier/src/tests.rs), plus duplicated copies generated for each machine config.
 
 There are usually two flavours:
 - **`test_full_machine_verifier_out_of_simulator`** / `test_reduced_machine_verifier_out_of_simulator` – run the verifier directly in a Rust thread.
@@ -82,10 +82,11 @@ These tests are heavier – they perform full Merkle verifications and FRI check
 ---
 
 ## 4. FFT & Field arithmetic correctness 
+
 Examples:
 | Crate | File | Notes |
 |-------|------|-------|
-| `fft` | `src/row_major/tests.rs` & several functions marked `#[test]` in `src/grinded_fft/*` | Validate NTT/FFT forward & inverse consistency, coset conversions, butterfly kernels, etc. |
+| `fft` | [`src/row_major/tests.rs`](../fft/src/row_major/tests.rs) & several functions marked `#[test]` in [`src/grinded_fft/*`](../fft/src/grinded_fft) | Validate NTT/FFT forward & inverse consistency, coset conversions, butterfly kernels, etc. |
 | `field` | (many small `#[test]` items inline) | Check field arithmetic, inversion, serialization, randomness, etc. |
 
 Run with:
@@ -97,7 +98,7 @@ cargo test -p fft
 
 ## 5. Prover integration ests (`prover_examples`)
 
-Crate **`circuit_defs/prover_examples`** contains:
+Crate [**`circuit_defs/prover_examples`**](../circuit_defs/prover_examples) contains:
 1. Runs the full staged prover pipeline.
 2. Optionally serialises the resulting proof for later use by verifier tests.
 
