@@ -1,30 +1,25 @@
-use crate::{
-    get_padded_binary, Machine, ProofMetadata, UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
-    UNIVERSAL_CIRCUIT_VERIFIER,
-};
+use crate::{get_padded_binary, Machine, ProofMetadata, UNIVERSAL_CIRCUIT_VERIFIER};
 use clap::ValueEnum;
 use std::alloc::Global;
 
 use crate::{
-    base_layer_verifier_vk, compute_chain_encoding, final_recursion_layer_verifier_vk,
-    recursion_layer_no_delegation_verifier_vk, recursion_layer_verifier_vk,
-    recursion_log_23_layer_verifier_vk, universal_circuit_log_23_verifier_vk,
-    universal_circuit_no_delegation_verifier_vk, universal_circuit_verifier_vk,
+    compute_chain_encoding, recursion_layer_verifier_vk, recursion_log_23_layer_verifier_vk,
+    universal_circuit_log_23_verifier_vk, universal_circuit_verifier_vk,
 };
 use verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 
 /// We have two layers of recursion:
 /// 1. Reduced machine (2^22 cycles) + blake delegation
 /// 2. Here we have two options:
-///   - Final reduced machine (2^25 cycles)
+///   - Final reduced machine (2^25 cycles) - no longer supported.
 ///   - Reduced log23 machine (2^23 cycles) + blake delegation
 /// Note: end_params constant differs if we do 1 or multiple repetitions of the 2nd layer.
 /// So we need to run the 2nd layer exactly one time or at least twice.
 /// Then we can define four recursion strategies:
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
 pub enum RecursionStrategy {
-    /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine (always two repetitions)
-    UseFinalMachine,
+    /// UseFinalMachine is no longer supported.
+    // UseFinalMachine,
     /// Does 1st layer until 2 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
     UseReducedLog23Machine,
     /// Does 1st layer until N reduced + M delegation then reduced 2^23 + delegation (at least two repetitions)
@@ -46,13 +41,6 @@ impl RecursionStrategy {
         const M: usize = 2;
 
         let continue_first_layer = match self {
-            RecursionStrategy::UseFinalMachine => {
-                proof_metadata.reduced_proof_count > 2
-                    || proof_metadata
-                        .delegation_proof_count
-                        .iter()
-                        .any(|(_, x)| *x > 1)
-            }
             RecursionStrategy::UseReducedLog23Machine => {
                 proof_metadata.reduced_proof_count > 2
                     || proof_metadata
@@ -79,7 +67,6 @@ impl RecursionStrategy {
         proof_level: usize,
     ) -> bool {
         let continue_second_layer = match self {
-            RecursionStrategy::UseFinalMachine => proof_metadata.final_proof_count > 1,
             RecursionStrategy::UseReducedLog23Machine => {
                 // In this strategy we should run only one repetition of 2nd layer
                 assert!(proof_level == 0);
@@ -103,7 +90,6 @@ impl RecursionStrategy {
 
     pub fn get_second_layer_machine(&self) -> Machine {
         match self {
-            RecursionStrategy::UseFinalMachine => Machine::ReducedFinal,
             RecursionStrategy::UseReducedLog23Machine
             | RecursionStrategy::UseReducedLog23MachineMultiple
             | RecursionStrategy::UseReducedLog23MachineOnly => Machine::ReducedLog23,
@@ -112,9 +98,6 @@ impl RecursionStrategy {
 
     pub fn get_second_layer_binary(&self) -> Vec<u32> {
         match self {
-            RecursionStrategy::UseFinalMachine => {
-                get_padded_binary(UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER)
-            }
             RecursionStrategy::UseReducedLog23Machine
             | RecursionStrategy::UseReducedLog23MachineMultiple
             | RecursionStrategy::UseReducedLog23MachineOnly => {
@@ -124,10 +107,7 @@ impl RecursionStrategy {
     }
 
     pub fn use_final_machine(&self) -> bool {
-        match self {
-            RecursionStrategy::UseFinalMachine => true,
-            _ => false,
-        }
+        false
     }
 }
 
@@ -143,20 +123,6 @@ pub fn generate_constants_for_binary(
     let (end_params, aux_values) = if universal_verifier {
         if recompute {
             match recursion_mode {
-                RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
-                    &[
-                        (&base_layer_bin, Machine::Standard),
-                        (&crate::UNIVERSAL_CIRCUIT_VERIFIER, Machine::Reduced),
-                        (
-                            &crate::UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
-                            Machine::ReducedFinal,
-                        ),
-                    ],
-                    (
-                        &crate::UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
-                        Machine::ReducedFinal,
-                    ),
-                ),
                 RecursionStrategy::UseReducedLog23Machine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
@@ -188,19 +154,6 @@ pub fn generate_constants_for_binary(
             let base_params = generate_params_for_binary(&base_layer_bin, Machine::Standard);
 
             match recursion_mode {
-                RecursionStrategy::UseFinalMachine => {
-                    let aux_values = compute_chain_encoding(vec![
-                        [0u32; 8],
-                        base_params,
-                        universal_circuit_verifier_vk().params,
-                        universal_circuit_no_delegation_verifier_vk().params,
-                    ]);
-
-                    (
-                        universal_circuit_no_delegation_verifier_vk().params,
-                        aux_values,
-                    )
-                }
                 RecursionStrategy::UseReducedLog23Machine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
@@ -234,21 +187,6 @@ pub fn generate_constants_for_binary(
     } else {
         if recompute {
             match recursion_mode {
-                RecursionStrategy::UseFinalMachine => generate_params_and_register_values(
-                    &[
-                        (&base_layer_bin, Machine::Standard),
-                        (&crate::BASE_LAYER_VERIFIER, Machine::Reduced),
-                        (&crate::RECURSION_LAYER_VERIFIER, Machine::Reduced),
-                        (
-                            &crate::RECURSION_LAYER_NO_DELEGATION_VERIFIER,
-                            Machine::ReducedFinal,
-                        ),
-                    ],
-                    (
-                        &crate::FINAL_RECURSION_LAYER_VERIFIER,
-                        Machine::ReducedFinal,
-                    ),
-                ),
                 RecursionStrategy::UseReducedLog23Machine => generate_params_and_register_values(
                     &[
                         (&base_layer_bin, Machine::Standard),
@@ -263,17 +201,6 @@ pub fn generate_constants_for_binary(
             let base_params = generate_params_for_binary(&base_layer_bin, Machine::Standard);
 
             match recursion_mode {
-                RecursionStrategy::UseFinalMachine => {
-                    let aux_values = compute_chain_encoding(vec![
-                        [0u32; 8],
-                        base_params,
-                        base_layer_verifier_vk().params,
-                        recursion_layer_verifier_vk().params,
-                        recursion_layer_no_delegation_verifier_vk().params,
-                    ]);
-
-                    (final_recursion_layer_verifier_vk().params, aux_values)
-                }
                 RecursionStrategy::UseReducedLog23Machine => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],

@@ -12,7 +12,8 @@ pub enum VerifierCircuitsIdentifiers {
     // This enum is used inside tools/verifier/main.rs
     BaseLayer = 0,
     RecursionLayer = 1,
-    FinalLayer = 2,
+    // Final layer is not used / supported anymore. We use Log23 layer instead.
+    // FinalLayer = 2,
     RiscV = 3,
     /// Combine 2 proofs (from recursion layers) into one.
     // This is used in OhBender to combine previous block proof with current one.
@@ -35,7 +36,7 @@ pub fn generate_oracle_data_for_universal_verifier(
     } else if metadata.reduced_log_23_proof_count > 0 {
         oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLog23Layer as u32);
     } else {
-        oracle.insert(0, VerifierCircuitsIdentifiers::FinalLayer as u32);
+        panic!("Final proofs are no longer supported. Use log23 proofs instead.");
     };
     oracle
 }
@@ -102,19 +103,7 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
 
         reduced_machine_allowed_delegation_types()
     } else {
-        oracle_data.push(metadata.final_proof_count.try_into().unwrap());
-
-        for i in 0..metadata.final_proof_count {
-            let proof = &proofs.final_proofs[i];
-            oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(proof, true));
-            for query in proof.queries.iter() {
-                oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-            }
-        }
-
-        // For final proof - empty vec.
-        vec![]
+        panic!("No proofs");
     };
 
     for (k, _) in metadata.delegation_proof_count.iter() {

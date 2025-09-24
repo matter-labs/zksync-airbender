@@ -560,7 +560,7 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     } else if metadata.reduced_proof_count > 0 {
         oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLayer as u32);
     } else {
-        oracle.insert(0, VerifierCircuitsIdentifiers::FinalLayer as u32);
+        panic!("No proofs");
     };
 
     u32_to_file(output_file, &oracle);

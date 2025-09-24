@@ -58,9 +58,6 @@ pub const FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
 
 pub const UNIVERSAL_CIRCUIT_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/universal.bin");
 
-pub const UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER: &[u8] =
-    include_bytes!("../../tools/verifier/universal_no_delegation.bin");
-
 // Methods to fetch the verification keys for the binaries above.
 // They are usually refreshed with build_vk.sh
 pub fn base_layer_verifier_vk() -> VerificationKey {
@@ -108,13 +105,6 @@ pub fn universal_circuit_verifier_vk() -> VerificationKey {
 pub fn universal_circuit_log_23_verifier_vk() -> VerificationKey {
     serde_json::from_slice::<VerificationKey>(include_bytes!(
         "../../tools/verifier/universal.reduced_log23.vk.json"
-    ))
-    .unwrap()
-}
-
-pub fn universal_circuit_no_delegation_verifier_vk() -> VerificationKey {
-    serde_json::from_slice::<VerificationKey>(include_bytes!(
-        "../../tools/verifier/universal_no_delegation.final.vk.json"
     ))
     .unwrap()
 }

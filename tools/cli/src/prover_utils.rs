@@ -328,7 +328,6 @@ pub fn create_proofs_internal(
                     basic_proofs,
                     reduced_proofs: vec![],
                     reduced_log_23_proofs: vec![],
-                    final_proofs: vec![],
                     delegation_proofs,
                 },
                 register_values,
@@ -384,7 +383,6 @@ pub fn create_proofs_internal(
                     basic_proofs: vec![],
                     reduced_proofs,
                     reduced_log_23_proofs: vec![],
-                    final_proofs: vec![],
                     delegation_proofs,
                 },
                 register_values,
@@ -443,43 +441,12 @@ pub fn create_proofs_internal(
                     basic_proofs: vec![],
                     reduced_proofs: vec![],
                     reduced_log_23_proofs,
-                    final_proofs: vec![],
                     delegation_proofs,
                 },
                 register_values,
             )
         }
-        Machine::ReducedFinal => {
-            let main_circuit_precomputations =
-                setups::get_final_reduced_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-
-            let delegation_precomputations =
-                setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
-
-            let (final_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_final_reduced_machine(
-                    num_instances,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                );
-            if delegation_proofs.len() != 0 {
-                panic!("Expected no delegation proofs for final reduced machine.");
-            }
-
-            (
-                ProofList {
-                    basic_proofs: vec![],
-                    reduced_proofs: vec![],
-                    reduced_log_23_proofs: vec![],
-                    final_proofs,
-                    delegation_proofs: vec![],
-                },
-                register_values,
-            )
-        }
+        Machine::ReducedFinal => panic!("ReducedFinal no longer supported"),
     };
 
     let total_delegation_proofs: usize = proof_list
@@ -489,12 +456,11 @@ pub fn create_proofs_internal(
         .sum();
 
     println!(
-        "Created {} basic proofs, {} reduced proofs, {} reduced (log23) proofs and {} delegation proofs. Final proofs: {}",
+        "Created {} basic proofs, {} reduced proofs, {} reduced (log23) proofs and {} delegation proofs.",
         proof_list.basic_proofs.len(),
         proof_list.reduced_proofs.len(),
         proof_list.reduced_log_23_proofs.len(),
         total_delegation_proofs,
-        proof_list.final_proofs.len()
     );
     let last_proof = proof_list.get_last_proof();
 
@@ -511,7 +477,7 @@ pub fn create_proofs_internal(
         basic_proof_count: proof_list.basic_proofs.len(),
         reduced_proof_count: proof_list.reduced_proofs.len(),
         reduced_log_23_proof_count: proof_list.reduced_log_23_proofs.len(),
-        final_proof_count: proof_list.final_proofs.len(),
+        deprecated_final_proof_count: 0,
         delegation_proof_count: proof_list
             .delegation_proofs
             .iter()
@@ -593,11 +559,6 @@ pub fn create_final_proofs_from_program_proof(
     let (proof_metadata, proof_list) = input.to_metadata_and_proof_list();
 
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        assert!(
-            recursion_mode != RecursionStrategy::UseFinalMachine,
-            "GPU is not supported for final machine recursion."
-        );
-
         #[cfg(feature = "gpu")]
         {
             // Here we use GPU for final recursion layer only.
