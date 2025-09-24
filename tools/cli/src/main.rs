@@ -598,11 +598,10 @@ fn verify_all(metadata_path: &String) {
         assert!(metadata.reduced_proof_count > 0);
         let output = full_statement_verifier::verify_recursion_layer();
         println!("Output is: {:?}", output);
+    } else if metadata.reduced_log_23_proof_count > 0 {
+        todo!("not implemented yet");
     } else {
-        println!("Running final recursive");
-        assert!(metadata.final_proof_count > 0);
-        let output = full_statement_verifier::verify_final_recursion_layer();
-        println!("Output is: {:?}", output);
+        panic!("No proofs");
     };
     assert!(
         verifier_common::prover::nd_source_std::try_read_word().is_none(),

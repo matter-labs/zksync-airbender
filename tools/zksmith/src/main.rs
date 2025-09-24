@@ -16,7 +16,7 @@ use serde_json::json;
 use serde_json::Value;
 use warp::Filter;
 
-const DEFAULT_RECURSION_STRATEGY: RecursionStrategy = RecursionStrategy::UseFinalMachine;
+const DEFAULT_RECURSION_STRATEGY: RecursionStrategy = RecursionStrategy::UseReducedLog23Machine;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
