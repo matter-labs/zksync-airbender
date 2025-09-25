@@ -1,30 +1,28 @@
-## Airbender Circuit Overview
+# Airbender Circuit Overview
 
 This document provides a high-level overview of the Airbender proving system for RISC‑V execution and then dives into key design patterns and the proving stages. If you just want the big picture, read this section. Later sections explain how each part is implemented and optimized.
 
-### High‑level overview
+## High‑level overview
 
-What we prove:
-  - Deterministic execution of RV32I+M programs over a fixed number of cycles ($2^{22}$), in machine mode, with no exceptions due to the trusted‑code model. Unsupported or invalid behavior makes constraints unsatisfiable.
-  - Bytecode lives in ROM. Registers are modeled as a dedicated address space inside a unified memory argument alongside RAM. They occupy a distinct address space (selected by `is_register = 1`), yet their accesses are encoded using the same `RegisterOrRam` queries and folded into the global shuffle memory argument.
+We want to prove the eterministic execution of RV32I+M programs over a fixed number of cycles ($2^{22}$), in machine mode, with no exceptions due to the trusted‑code model —unsupported or invalid behavior makes constraints unsatisfiable. Theb ytecode lives in ROM, and registers are modeled as a dedicated address space inside a unified memory argument alongside RAM. They occupy a distinct address space (selected by `is_register = 1`), yet their accesses are encoded using the same `RegisterOrRam` queries and folded into the global shuffle memory argument.
 
-State and data model:
+#### State and data model:
   - Minimal explicit state per row, typically only `pc` split into 16‑bit limbs. All register/memory values flow through a global shuffle RAM argument.
-  - Instruction fetches are separate ROM lookups keyed by `pc` (ROM != RAM). Branching/jumps update `pc` deterministically. `x0` is enforced to remain zero.
-  - Execution is chunked: Each chunk has “lazy init” (initial values/timestamps) and “teardown” (final values/timestamps), linked across chunks to ensure continuity.
+  - Instruction fetches are separated ROM lookups keyed by `pc` (ROM != RAM). Branching/jumps update `pc` deterministically, and `x0` is enforced to remain zero.
+  - Execution is chunked: Each chunk has a “lazy init” (initial values/timestamps) and “teardown” (final values/timestamps), linked across chunks to ensure continuity.
 
-Constraints and arguments:
+#### Constraints and arguments:
   - Generic constraints: Arithmetic/logic, control semantics, decoder, range checks, and delegation infrastructure compiled from the constraint system.
   - Hardcoded constraints (Stage 3): Part that validates Stage 2 arguments (memory, lookups, delegation), boundary conditions, state linkage, ROM separation, lazy‑init sorting with the borrow trick, and per‑domain masking.
 
-Performance/optimization philosophy:
+#### Performance/optimization philosophy:
   - Optimization Context with orthogonal selection: Compute candidate relations for many opcodes once, then select the active one via mutually exclusive flags to achieve maximal reuse.
   - Lookup‑centric design: Prefer fixed‑table lookups (decoder, ROM, range) and linear constraints to keep degrees low and folding fast on GPU. Dozens of small lookups across the pipeline to replace bulky arithmetic constraints.
   - Unified memory/register model: A single shuffle argument for consistency, lazy init/teardown for chunk linking. “First read” always matches an init or prior write.
 
-### Optimization Context with orthogonal selection (we “execute all” and then choose one)
+## Optimization Context with orthogonal selection (we “execute all” and then choose one)
 
-**Core idea**: For each cycle, we prepare candidate computations for many instruction handlers, but every relation is guarded by mutually exclusive boolean flags. At enforcement time, we orthogonally select exactly one variant, the actual opcode, and ignore the rest. This reduces muxing cost and enables aggressive variable reuse.
+The **core idea** is that, for each cycle, we prepare candidate computations for many instruction handlers, but every relation is guarded by mutually exclusive boolean flags. At enforcement time, we orthogonally select exactly one variant, the actual opcode, and ignore the rest. This reduces muxing cost and enables aggressive variable reuse.
 
 - We accumulate relations in an `OptimizationContext` rather than immediately constraining each operation. Relations include addition/subtraction, multiplication/division, range checks, lookups, and is-zero checks, each with an `exec_flag` that marks when they are active.
 
@@ -86,9 +84,7 @@ This pattern yields **significant savings**:
 - Variable reuse: Preallocated registers/flags/bytes are recycled across operations.
 - Better for GPU: Uniform relation shapes are easier to fold in Stage 3.
 
----
-
-### Prover pipeline at a glance
+## Prover pipeline at a glance
 
 See also the brief description in the philosophy doc: [philosophy_and_logic.md](./philosophy_and_logic.md).
 
@@ -117,9 +113,7 @@ See also the brief description in the philosophy doc: [philosophy_and_logic.md](
   - Draw a challenge based on these commitments, combine it with a PoW nonce, and grind to obtain a valid seed for FRI queries.
   - Draw query points and construct queries.
 
----
-
-### Optimized state transition 
+## Optimized state transition 
 
 In the minimal no-exceptions configuration, the state transition is built to leverage the optimization context and orthogonal selection end-to-end:
 
@@ -155,9 +149,7 @@ let [low, high] = cs.get_variables_from_lookup_constrained(
 
 This means `pc_high` is validated via the `RomAddressSpaceSeparator` lookup, while `pc_low` is explicitly range-checked before decode. Together they guarantee `pc` is in range for ROM access without redundant checks.
 
----
-
-### State linkage constraint
+## State linkage constraint
 
 The VM carries a small explicit state between rows, typically the program counter split into limbs. The “linkage” constraint enforces that the state produced by the current row becomes the initial state of the next row:
 
@@ -185,9 +177,7 @@ diff.sub_assign(&dst_value);
 add_quotient_term_contribution_in_ext2(&mut every_row_except_last_two_challenges_ptr, term_contribution, &mut quotient_term);
 ```
 
----
-
-### What is “hardcoded” in Stage 3 and why
+## What is “hardcoded” in Stage 3 and why
 
 Stage 3 folds constraints into the quotient polynomial.
 
@@ -200,18 +190,16 @@ The hardcoded set includes:
 - Shuffle RAM initialization and teardown ordering.
 - Batched RAM accesses and register/indirect access consistency.
 - Boundary contributions for first and one-before-last rows (handled via a dedicated structure).
----
 
-### Boundary constraints and public inputs
+## Boundary constraints and public inputs
 
 Only three boundary categories are needed:
 
 - Initial state at the first row (public input)
 - Final state at the one-before-last row (public input)
 - Lazy init addresses for the memory argument, which are handled manually and not added as boundary constraints.
----
 
-### Unified memory/register argument — why reads need no extra range checks
+## Unified memory/register argument — why reads need no extra range checks
 
 - Every register and RAM access is recorded as a ShuffleRam query. In the state-transition, we pre-build three per-cycle queries (RS1 read, RS2 read-or-RAM, RD/STORE), keeping shapes fixed and predictable for later stages.
 
@@ -223,9 +211,7 @@ Only three boundary categories are needed:
 
 This is why sections like RS1/RS2 operand preparation explicitly skip range checks on read values.
 
----
-
-### Verifier folding for register lazy init and teardown
+## Verifier folding for register lazy init and teardown
 
 - The verifier explicitly folds in the lazy-init/teardown contributions for registers during statement verification.
   - See: [full_statement_verifier/src/lib.rs (lines 379–387)](https://github.com/matter-labs/zksync-airbender/blob/main/full_statement_verifier/src/lib.rs#L379-L387)
@@ -243,9 +229,7 @@ Design notes and assumptions:
 
 - The init and teardown ingredient terms are laid out across segments for the whole program with monotonically increasing address entries. They may be laid out continuously without caring about segment splits, because only their inclusion in the global memory product matters; segmentation is purely organizational for the trace.
 
----
-
-### Lazy init/teardown columns and monotonicity
+## Lazy init/teardown columns and monotonicity
 
 - Dedicated columns: The field elements that contribute to lazy‑init and teardown entries live in their own dedicated columns. These columns can be split into row‑chunks arbitrarily. What matters is that every entry participates in the global memory grand product. Practically, we place them alongside per‑cycle columns even though a row’s lazy‑init/teardown cells are not semantically tied to that row’s per‑cycle witness.
 
@@ -259,12 +243,8 @@ These choices make lazy‑init/teardown columns easy to split and merge across s
 
 See also a visual overview in the ZKsync Airbender slides: [memory layout slide](https://docs.google.com/presentation/d/1mCCsz5uQQEjlf2BI5vPZ0Gf5Sex6f0oKDkrvdaE-tXY/edit?slide=id.g3315c18d5c8_0_19#slide=id.g3315c18d5c8_0_19).
 
----
-
-### ROM vs RAM
+## ROM vs RAM
 
 - ROM is a separate read-only region accessed via dedicated lookups (`RomAddressSpaceSeparator` → `RomRead`) and enforced with `is_ram_range == 0`. It is not part of the RAM/register shuffle argument.
 - RAM/register accesses alone participate in the shuffle RAM argument. Loads/stores are constrained to RAM by the separator, and ROM writes are impossible.
 - Opcode fetches always come from ROM and are not mixed with general RAM reads.
-
----
