@@ -19,14 +19,14 @@ Airbender solves this by providing a specialized zkVM that can prove RISC-V prog
 
 ### ZKsync OS: The Execution Layer
 
-[ZKsync OS](https://github.com/matter-labs/zksync-os) is the state transition function for ZKsync. ZKsyncOS is implemented as a Rust program that needs to be compiled to two targets:
+[ZKsync OS](https://github.com/matter-labs/zksync-os) is the state transition function for ZKsync. ZKsync OS is implemented as a Rust program that needs to be compiled to two targets:
 - One is compiled to x86 and runs in the sequencer.
 - The second one is compiled to RISC-V and fed as an input to the ZKsync Airbender prover to produce the validity proof of the state transition.
 
-The main goals for ZKsyncOS are:
+The main goals for ZKsync OS are:
 
-- EVM equivalence: ZKsyncOS should be able to process EVM transactions, keeping the EVM semantics (including gas model).
-- Customizability: ZKsyncOS should be easily configurable and extendable.
+- EVM equivalence: ZKsync OS should be able to process EVM transactions, keeping the EVM semantics (including gas model).
+- Customizability: ZKsync OS should be easily configurable and extendable.
 - Performance: The proving of an ERC20 transfer should have a cost of $0.0001. Additionally, we should be able to handle 10,000 TPS.
 
 ### Airbender: The Proving Layer

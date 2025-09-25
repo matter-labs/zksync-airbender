@@ -81,7 +81,7 @@ This tool will verify that the proof and verification key match.
 
 ### Generating verification keys
 
-The code above is using 'fake' CRS - for production use cases, you should pass `--trusted-setup-file` during ZKsyncOS wrapper.
+The code above is using 'fake' CRS - for production use cases, you should pass `--trusted-setup-file` during ZKsync OS wrapper.
 
 You can also generate a verification key for SNARK by running the following from the `zkos_wrapper` repo:
 ```shell
