@@ -645,6 +645,13 @@ impl<F: PrimeField> std::ops::Add for Constraint<F> {
     }
 }
 
+impl<F: PrimeField> std::ops::AddAssign<Constraint<F>> for Constraint<F> {
+    fn add_assign(&mut self, rhs: Constraint<F>) {
+        self.terms.extend(rhs.terms);
+        self.normalize();
+    }
+}
+
 impl<F: PrimeField> std::ops::Sub for Constraint<F> {
     type Output = Self;
 

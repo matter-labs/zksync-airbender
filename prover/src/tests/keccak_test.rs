@@ -9,7 +9,7 @@ const SECOND_WORD_BITS: usize = 4;
 
 use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 
-// use --features debug_satisfiable ?
+// use --features debug_satisfiable
 pub fn run_keccak_test_impl(
     maybe_delegator_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
     maybe_delegated_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,

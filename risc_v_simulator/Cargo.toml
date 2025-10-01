@@ -27,7 +27,7 @@ ruint = { version = "1.16", optional = true }
 serde = { workspace = true }
 
 [dev-dependencies]
-lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
+lib-rv32-asm = {git = "https://github.com/mabbamog/lib-rv32.git" }
 
 [features]
 opcode_stats = []

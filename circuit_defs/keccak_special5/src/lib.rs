@@ -29,7 +29,7 @@ pub fn get_delegation_circuit() -> DelegationProcessorDescription {
     use cs::one_row_compiler::OneRowCompiler;
 
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    define_keccak_special5_delegation_circuit(&mut cs);
+    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
     let (circuit_output, _) = cs.finalize();
     let table_driver = circuit_output.table_driver.clone();
     let compiler = OneRowCompiler::default();
@@ -56,7 +56,7 @@ pub fn get_ssa_form() -> Vec<Vec<RawExpression<Mersenne31Field>>> {
 
     let mut cs = BasicAssembly::<Mersenne31Field, WitnessGraphCreator<Mersenne31Field>>::new();
     cs.witness_placer = Some(WitnessGraphCreator::<Mersenne31Field>::new());
-    define_keccak_special5_delegation_circuit(&mut cs);
+    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
 
     let witness_placer = cs.witness_placer.unwrap();
     let (_resolution_order, ssa_forms) = witness_placer.compute_resolution_order();
