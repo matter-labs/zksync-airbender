@@ -466,115 +466,85 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-#[ignore = "broken"]
-#[test]
-fn calculate_fft() {
-    for i in 2..30 {
-        let tau: Mersenne31Complex = domain_generator_for_size(1 << i);
-        dbg!(tau);
-    }
-    let domain_size = 1 << 2;
-    let worker = Worker::new_with_num_threads(1);
-    let twiddles = Twiddles::<Mersenne31Complex, Global>::new(domain_size, &worker);
+#[cfg(test)]
+fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src = std::fs::File::open(filename).unwrap();
+    serde_json::from_reader(src).unwrap()
+}
 
-    let mut values_main_domain = vec![];
-    let mut sum = Mersenne31Field::ZERO;
-    for i in 0..(domain_size - 1) {
-        let value = if i == 0 {
-            Mersenne31Field(1u32 << i)
-        } else {
-            Mersenne31Field::ZERO
-        };
-
-        sum.add_assign(&value);
-        values_main_domain.push(Mersenne31Complex::from_base(value));
-    }
-    sum.negate();
-    values_main_domain.push(Mersenne31Complex::from_base(sum));
-
-    dbg!(&values_main_domain);
-    let mut monomials = values_main_domain.clone();
-    partial_ifft_natural_to_natural(
-        &mut monomials,
-        Mersenne31Complex::ONE,
-        &twiddles.inverse_twiddles,
-    );
-    // scale
-    let scale =
-        Mersenne31Complex::from_base(Mersenne31Field(domain_size as u32).inverse().unwrap());
-    for el in monomials.iter_mut() {
-        el.mul_assign(&scale);
-    }
-
-    let tau = domain_generator_for_size(domain_size as u64 * 2);
-    dbg!(tau);
-    let mut values_on_coset = monomials.clone();
-    fft_natural_to_natural(
-        &mut values_on_coset,
-        Mersenne31Complex::ONE,
-        tau,
-        &twiddles.forward_twiddles,
-    );
-    dbg!(&values_on_coset);
-
-    let mut tmp = Mersenne31Complex::ONE;
-    for (a, b) in values_main_domain.iter().zip(values_on_coset.iter()) {
-        let b_ext = *b;
-        let a = a.c0;
-        let b = b.c1;
-
-        let mut t = b;
-        t.mul_assign(&a.inverse().unwrap());
-        dbg!(t);
-
-        let mut t = b_ext;
-        t.mul_assign(&tmp);
-        dbg!(t);
-
-        tmp.mul_assign(&tau.inverse().unwrap());
-    }
+#[cfg(test)]
+fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src = std::fs::File::open(filename).unwrap();
+    bincode::deserialize_from(src).unwrap()
 }
 
 #[test]
-fn test_batch_inverse_amortization() {
-    use rand::SeedableRng;
-    let num_inputs = 32;
-    let mut inputs = Vec::with_capacity(num_inputs);
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    for _ in 0..num_inputs {
-        let el = rand_fp4_from_rng(&mut rng);
-        inputs.push(el);
-    }
-
-    let mut buffer = inputs.clone();
-
-    let inp = inputs[0];
-    let now = std::time::Instant::now();
-    for _ in 0..1 << 20 {
-        let _ = std::hint::black_box(inp.inverse());
-    }
-    let t = now.elapsed().as_micros();
-    println!(
-        "Batch inverse of single element took {:?} ns",
-        now.elapsed().div_f64(f64::from(1 << 20))
+fn test_bigint_with_control_call() {
+    use crate::cs::cs::cs_reference::BasicAssembly;
+    use crate::tracers::delegation::DelegationWitness;
+    use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+    use cs::cs::circuit::Circuit;
+    use crate::cs::delegation::bigint_with_control::*;
+    println!("Deserializing witness");
+    let mut oracle_input = fast_deserialize_from_file::<DelegationWitness<Global>>(
+        "delegation_circuit_1994_0_oracle_witness.bin",
     );
+    println!("Will check {} different inputs", oracle_input.num_requests);
+    
+    let round = 263413;
+    oracle_input.skip_n(round);
+    // for round in 0..oracle_input.len() {
+    {
+        println!("Round = {}", round);
 
-    let now = std::time::Instant::now();
-    for _ in 0..1 << 20 {
-        let _ = std::hint::black_box(batch_inverse_checked(&mut inputs, &mut buffer));
+        let oracle = DelegationCircuitOracle {
+            cycle_data: &oracle_input,
+        };
+
+        // for (_i, el) in oracle_input[round].accesses[..8].iter().enumerate() {
+        //     println!("a[{}] = 0x{:08x}", _i, el.read_value);
+        // }
+        // for (_i, el) in oracle_input[round].accesses[8..16].iter().enumerate() {
+        //     println!("b[{}] = 0x{:08x}", _i, el.read_value);
+        // }
+        // let mut expected_state = vec![];
+        // for (_i, el) in oracle_input[round].accesses[..8].iter().enumerate() {
+        //     // println!("result[{}] = 0x{:08x}", _i, el.write_value);
+        //     expected_state.push(el.write_value);
+        // }
+        // println!("Op bitmask = 0b{:032b}", oracle_input[round].register_and_indirect_accesses[2].read_value);
+
+        // let expected_x12 = oracle_input[round].register_and_indirect_accesses[2].written_value;
+
+        let oracle: DelegationCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle(oracle);
+        let (output_state_vars, output_extended_state_vars) =
+            define_u256_ops_extended_control_delegation_circuit(&mut cs);
+
+        assert!(cs.is_satisfied());
+
+        let mut produced_state_outputs = vec![];
+
+        use cs::types::Num;
+        use cs::types::Register;
+
+        for (_, input) in output_state_vars.iter().enumerate() {
+            let register = Register(input.map(|el| Num::Var(el)));
+            let value = register.get_value_unsigned(&cs).unwrap();
+            produced_state_outputs.push(value);
+        }
+
+        let register = Register(output_extended_state_vars.map(|el| Num::Var(el)));
+        let result_x12 = register.get_value_unsigned(&cs).unwrap();
+
+        // assert_eq!(expected_x12, result_x12, "x12 diverged for round {}", round);
+
+        // assert_eq!(
+        //     expected_state, produced_state_outputs,
+        //     "state diverged for round {}",
+        //     round
+        // );
     }
-    let tt = now.elapsed().as_micros();
-    println!(
-        "Batch inverse of {} elements took {:?} ns",
-        num_inputs,
-        now.elapsed().div_f64(f64::from(1 << 20))
-    );
-
-    let amortization = f64::from(tt as u32) / f64::from(t as u32) / f64::from(num_inputs as u32);
-    println!(
-        "Amortization factor for {} elements = {}",
-        num_inputs, amortization
-    );
 }
 
 // #[test]

@@ -590,18 +590,18 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             let oracle = DelegationCircuitOracle::<A> { cycle_data: el };
 
             if should_dump_witness {
-                // println!(
-                //     "Will serialize witness for delegaiton circuit {}",
-                //     delegation_type
-                // );
-                // bincode_serialize_to_file(
-                //     &oracle.cycle_data,
-                //     &format!(
-                //         "delegation_circuit_{}_{}_oracle_witness.bin",
-                //         delegation_type, _circuit_idx
-                //     ),
-                // );
-                // println!("Serialization is done");
+                println!(
+                    "Will serialize witness for delegaiton circuit {}",
+                    delegation_type
+                );
+                bincode_serialize_to_file(
+                    &oracle.cycle_data.realloc_to_global(),
+                    &format!(
+                        "delegation_circuit_{}_{}_oracle_witness.bin",
+                        delegation_type, _circuit_idx
+                    ),
+                );
+                println!("Serialization is done");
             }
 
             #[cfg(feature = "timing_logs")]
