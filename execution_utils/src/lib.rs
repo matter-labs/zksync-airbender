@@ -20,6 +20,13 @@ mod verifiers;
 
 pub mod unrolled;
 
+#[derive(Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Machine {
+    Standard,
+    Reduced,
+    ReducedLog23,
+}
+
 use self::constants::*;
 pub use self::proofs::{ProgramProof, ProofList, ProofMetadata};
 pub use riscv_common::EXIT_SEQUENCE;
@@ -159,15 +166,6 @@ pub mod verifier_binaries {
         u32,
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     )] = &[];
-
-    #[derive(Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
-    pub enum Machine {
-        Standard,
-        Reduced,
-        ReducedLog23,
-        // Final reduced machine, used to generate a single proof at the end.
-        ReducedFinal,
-    }
 
     /// VerificationKey represents the verification key for a specific machine type and bytecode hash.
     #[derive(Serialize, Deserialize, Debug)]
