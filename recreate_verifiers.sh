@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Copies over the verifier template from 'verifier' dir to different circuits directories.
 circuit_names=(
     "risc_v_cycles"

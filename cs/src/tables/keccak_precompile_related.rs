@@ -145,7 +145,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
 
 // WARN: if you call this with a wrong round it returns junk!
 pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [
+    const ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
         0,
         1,
         32898,
@@ -170,6 +170,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
         9223372039002292353,
         9223372036854808704,
         2147483649,
+        0x8000000080008008, // last round, adjusted to fictitious 25th round
     ];
     let mut keys = Vec::with_capacity(1 << 16);
     for b in 0..1 << 8 {
@@ -192,7 +193,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
             let round_if_iter0 = (b_control & 0b11111) as usize;
             let u8_position = (b_control >> 5) as usize;
 
-            let b = if round_if_iter0 < 24 {
+            let b = if round_if_iter0 <= 24 {
                 let round_constant = ROUND_CONSTANTS_ADJUSTED[round_if_iter0];
                 let u8_chunks = round_constant.to_le_bytes();
                 u8_chunks[u8_position] as u64

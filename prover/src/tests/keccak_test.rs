@@ -94,7 +94,7 @@ pub fn run_keccak_test_impl(
     {
         use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
         let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_keccak_special5_delegation_circuit(&mut cs);
+        define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
         let (circuit_output, _) = cs.finalize();
         let table_driver = circuit_output.table_driver.clone();
         let compiler = OneRowCompiler::default();
@@ -489,6 +489,13 @@ fn run_keccak_test() {
     run_keccak_test_impl(None, None);
 }
 
+#[cfg_attr(
+    not(feature = "debug_satisfiable"),
+    ignore = "Running prover test without the 'debug_satisfiable' feature; run cargo test --features debug_satisfiable for the full test"
+)]
+#[test]
+fn run_keccak_test_info() {}
+
 #[allow(unused)]
 const APP_KECCAK_SIMPLE_BIN: &[u8] = include_bytes!("../../app_keccak_simple.bin");
 
@@ -500,6 +507,7 @@ const APP_KECCAK_SIMPLE_BIN: &[u8] = include_bytes!("../../app_keccak_simple.bin
 
 // expects state ptr to be in x10
 #[allow(unused)]
+#[deprecated = "this is using an old version of the keccak ABI"]
 const KECCAK_F1600_BIN: &[u32] = &[
     0x00200537, // init: loads 1<<21 in x10
     329107, 2164023, 1049628787, 4261175, 1049628787, 8455479, 1049628787, 16844087, 1049628787,

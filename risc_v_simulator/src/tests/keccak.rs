@@ -4,8 +4,8 @@ use crate::{
     cycle::status_registers::TrapReason,
     delegations::DelegationsCSRProcessor,
 };
-use core::array::from_fn;
 use common_constants::delegation_types::keccak_special5::*;
+use core::array::from_fn;
 
 #[test]
 fn test_keccak() {
@@ -69,23 +69,25 @@ fn test_keccak() {
 
     // get RAM
     let state_output_oldisa: [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS] = {
-        let state_output_u32: [u32; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS * 2] = from_fn(|i| {
-            memory_oldisa.get(
-                state_addr as u64 + i as u64 * 4,
-                AccessType::MemLoad,
-                &mut TrapReason::NoTrap,
-            )
-        });
+        let state_output_u32: [u32; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS * 2] =
+            from_fn(|i| {
+                memory_oldisa.get(
+                    state_addr as u64 + i as u64 * 4,
+                    AccessType::MemLoad,
+                    &mut TrapReason::NoTrap,
+                )
+            });
         from_fn(|i| state_output_u32[i * 2] as u64 | (state_output_u32[i * 2 + 1] as u64) << 32)
     };
     let state_output_newunrolled: [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS] = {
-        let state_output_u32: [u32; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS * 2] = from_fn(|i| {
-            memory_newunrolled.get(
-                state_addr as u64 + i as u64 * 4,
-                AccessType::MemLoad,
-                &mut TrapReason::NoTrap,
-            )
-        });
+        let state_output_u32: [u32; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS * 2] =
+            from_fn(|i| {
+                memory_newunrolled.get(
+                    state_addr as u64 + i as u64 * 4,
+                    AccessType::MemLoad,
+                    &mut TrapReason::NoTrap,
+                )
+            });
         from_fn(|i| state_output_u32[i * 2] as u64 | (state_output_u32[i * 2 + 1] as u64) << 32)
     };
     assert_eq!(state_output_oldisa, KECCAK_STATE_OUTPUT);
