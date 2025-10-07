@@ -47,6 +47,43 @@ pub const BASE_PROGRAM: &[u8] = include_bytes!("../../examples/hashed_fibonacci/
 pub const BASE_PROGRAM_TEXT_SECTION: &[u8] =
     include_bytes!("../../examples/hashed_fibonacci/app.text");
 
+pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
+    let mut bytecode = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    trace_and_split::setups::pad_bytecode_for_proving(&mut bytecode);
+
+    bytecode
+}
+
+pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
+    assert!(binary.len() % 4 == 0);
+
+    let binary: Vec<u32> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let mut candidates = vec![];
+
+    for (start_offset, window) in binary.windows(EXIT_SEQUENCE.len()).enumerate() {
+        if window == EXIT_SEQUENCE {
+            candidates.push(start_offset);
+        }
+    }
+
+    assert_eq!(candidates.len(), 1, "too many candidates for exit sequence");
+    let start = candidates[0];
+    let final_pc = (start + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
+
+    final_pc as u32
+}
+
 #[cfg(feature = "verifier_binaries")]
 pub mod verifier_binaries {
     pub const BASE_LAYER_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/base_layer.bin");
@@ -124,18 +161,6 @@ pub mod verifier_binaries {
         .unwrap()
     }
 
-    pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
-        let mut bytecode = binary
-            .as_chunks::<4>()
-            .0
-            .into_iter()
-            .map(|el| u32::from_le_bytes(*el))
-            .collect();
-        trace_and_split::setups::pad_bytecode_for_proving(&mut bytecode);
-
-        bytecode
-    }
-
     pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
         u32,
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
@@ -207,31 +232,6 @@ pub mod verifier_binaries {
         let regs = final_state.state.registers[10..26].try_into().unwrap();
 
         Some(regs)
-    }
-
-    pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
-        assert!(binary.len() % 4 == 0);
-
-        let binary: Vec<u32> = binary
-            .as_chunks::<4>()
-            .0
-            .into_iter()
-            .map(|el| u32::from_le_bytes(*el))
-            .collect();
-
-        let mut candidates = vec![];
-
-        for (start_offset, window) in binary.windows(EXIT_SEQUENCE.len()).enumerate() {
-            if window == EXIT_SEQUENCE {
-                candidates.push(start_offset);
-            }
-        }
-
-        assert_eq!(candidates.len(), 1, "too many candidates for exit sequence");
-        let start = candidates[0];
-        let final_pc = (start + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
-
-        final_pc as u32
     }
 
     #[cfg(feature = "verifier_binaries")]
