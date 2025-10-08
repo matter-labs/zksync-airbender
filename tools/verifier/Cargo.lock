@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "add_sub_lui_auipc_mop_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,6 +39,7 @@ dependencies = [
 name = "blake2s_u32"
 version = "0.1.0"
 dependencies = [
+ "common_constants",
  "unroll",
 ]
 
@@ -40,10 +50,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
+name = "common_constants"
+version = "0.1.0"
+
+[[package]]
 name = "cs"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "common_constants",
  "field",
  "serde",
 ]
@@ -70,12 +85,23 @@ dependencies = [
 name = "full_statement_verifier"
 version = "0.1.0"
 dependencies = [
+ "add_sub_lui_auipc_mop_verifier",
  "bigint_with_control_verifier",
  "blake2_with_compression_verifier",
+ "common_constants",
  "final_reduced_risc_v_machine_verifier",
+ "inits_and_teardowns_verifier",
+ "jump_branch_slt_verifier",
+ "keccak_special5_verifier",
+ "load_store_subword_only_verifier",
+ "load_store_word_only_verifier",
+ "mul_div_unsigned_verifier",
+ "mul_div_verifier",
  "reduced_risc_v_log_23_machine_verifier",
  "reduced_risc_v_machine_verifier",
  "risc_v_cycles_verifier",
+ "shift_binary_csr_all_delegations_verifier",
+ "shift_binary_csr_blake_only_delegation_verifier",
  "verifier_common",
 ]
 
@@ -96,6 +122,69 @@ checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
 dependencies = [
  "hash32",
  "stable_deref_trait",
+]
+
+[[package]]
+name = "inits_and_teardowns_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "jump_branch_slt_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "keccak_special5_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "load_store_subword_only_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "load_store_word_only_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "mul_div_unsigned_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "mul_div_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
 ]
 
 [[package]]
@@ -126,11 +215,13 @@ name = "prover"
 version = "0.1.0"
 dependencies = [
  "blake2s_u32",
+ "common_constants",
  "cs",
  "field",
  "non_determinism_source",
  "poseidon2",
  "serde",
+ "serde-big-array",
  "transcript",
  "unroll",
 ]
@@ -213,6 +304,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,6 +321,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "shift_binary_csr_all_delegations_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
+]
+
+[[package]]
+name = "shift_binary_csr_blake_only_delegation_verifier"
+version = "0.1.0"
+dependencies = [
+ "field",
+ "unroll",
+ "verifier_common",
 ]
 
 [[package]]
