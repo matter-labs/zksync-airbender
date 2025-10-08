@@ -481,16 +481,16 @@ fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) ->
 #[test]
 fn test_bigint_with_control_call() {
     use crate::cs::cs::cs_reference::BasicAssembly;
+    use crate::cs::delegation::bigint_with_control::*;
     use crate::tracers::delegation::DelegationWitness;
     use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
     use cs::cs::circuit::Circuit;
-    use crate::cs::delegation::bigint_with_control::*;
     println!("Deserializing witness");
     let mut oracle_input = fast_deserialize_from_file::<DelegationWitness<Global>>(
         "delegation_circuit_1994_0_oracle_witness.bin",
     );
     println!("Will check {} different inputs", oracle_input.num_requests);
-    
+
     let round = 263413;
     oracle_input.skip_n(round);
     // for round in 0..oracle_input.len() {
