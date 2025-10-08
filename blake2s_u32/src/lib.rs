@@ -52,7 +52,7 @@ pub const CONFIGURED_IV: [u32; 8] = const {
     result
 };
 
-pub const EXNTENDED_CONFIGURED_IV: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] = const {
+pub const EXTENDED_CONFIGURED_IV: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] = const {
     let mut result = [0u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS];
     let mut i = 0;
     while i < 8 {
@@ -76,7 +76,7 @@ pub use self::state_with_extended_control::Blake2RoundFunctionEvaluator as Deleg
 
 pub mod state_with_extended_control_flags {
     use crate::BLAKE2S_BLOCK_SIZE_BYTES;
-    use crate::EXNTENDED_CONFIGURED_IV;
+    use crate::EXTENDED_CONFIGURED_IV;
 
     pub const LAST_ROUND_BIT_IDX: usize = 0;
     pub const INPUT_IS_RIGHT_NODE_BIT_IDX: usize = 1;
@@ -87,7 +87,7 @@ pub mod state_with_extended_control_flags {
     pub const TEST_IF_COMPRESSION_MODE_MASK: u32 = 1 << COMPRESSION_MODE_BIT_IDX;
 
     pub const COMPRESSION_MODE_EXTENDED_CONFIGURED_IV: [u32; 16] = const {
-        let mut result = EXNTENDED_CONFIGURED_IV;
+        let mut result = EXTENDED_CONFIGURED_IV;
         result[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
         result[14] ^= 0xffffffff;
 

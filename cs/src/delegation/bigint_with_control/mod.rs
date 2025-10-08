@@ -457,7 +457,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             // we always add it along with "b" term
             constraint = constraint + Term::from(perform_add) * Term::from(carry_or_borrow);
             constraint = constraint + Term::from(perform_sub) * Term::from(carry_or_borrow);
-            constraint = constraint - Term::from(perform_sub_negate) * Term::from(carry_or_borrow);
+            constraint = constraint + Term::from(perform_sub_negate) * Term::from(carry_or_borrow);
             // memcopy is present here
             constraint = constraint + Term::from(perform_memcopy) * Term::from(carry_or_borrow);
         } else {

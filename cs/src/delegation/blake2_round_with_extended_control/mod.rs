@@ -12,7 +12,7 @@ use crate::types::Num;
 use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 use blake2s_u32::CONFIGURED_IV;
-use blake2s_u32::EXNTENDED_CONFIGURED_IV;
+use blake2s_u32::EXTENDED_CONFIGURED_IV;
 use blake2s_u32::SIGMAS;
 
 const MAX_ROUNDS: usize = 10;
@@ -273,7 +273,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     for word_idx in [8, 9, 10, 11, 13, 15] {
         let existing = &mut input_extended_state[word_idx];
-        let initialization_word = EXNTENDED_CONFIGURED_IV[word_idx];
+        let initialization_word = EXTENDED_CONFIGURED_IV[word_idx];
         for i in 0..2 {
             let mut constraint = Constraint::empty();
             // if it's not the first round - keep existing
