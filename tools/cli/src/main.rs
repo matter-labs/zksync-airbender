@@ -701,14 +701,6 @@ fn run_binary(
 
             result.state.registers
         }
-        Machine::ReducedFinal => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IWithoutByteAccessIsaConfig,
-            >(config, non_determinism_source);
-
-            result.state.registers
-        }
     };
 
     // our convention is to return 32 bytes placed into registers x10-x17

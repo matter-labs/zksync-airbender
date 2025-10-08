@@ -1,9 +1,9 @@
 use clap::ValueEnum;
+use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
 use execution_utils::Machine;
 use execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
     get_padded_binary, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
-    UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
@@ -218,6 +218,7 @@ impl GpuSharedState {
 
     #[cfg(feature = "gpu")]
     pub fn new(binary: &Vec<u32>, recursion_circuit_type: MainCircuitType) -> Self {
+        use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
         use gpu_prover::execution::prover::ExecutableBinary;
         use gpu_prover::execution::prover::ExecutionProver;
 
@@ -446,7 +447,6 @@ pub fn create_proofs_internal(
                 register_values,
             )
         }
-        Machine::ReducedFinal => panic!("ReducedFinal no longer supported"),
     };
 
     let total_delegation_proofs: usize = proof_list
