@@ -13,6 +13,11 @@ extern "C" {
     static mut _sstack: usize;
     static mut _estack: usize;
 }
+#[cfg(any(
+    feature = "universal_circuit",
+    feature = "universal_circuit_no_delegation"
+))]
+use reduced_keccak::Keccak32;
 
 core::arch::global_asm!(include_str!("asm/asm_reduced.S"));
 
@@ -133,8 +138,6 @@ unsafe fn workload() -> ! {
 // This verifier can handle any circuit and any layer.
 // It uses the first word in the input to determine which circuit to verify.
 unsafe fn workload() -> ! {
-    use reduced_keccak::Keccak32;
-
     let metadata = riscv_common::csr_read_word();
 
     // These values should match VerifierCircuitsIdentifiers.
@@ -169,19 +172,9 @@ unsafe fn workload() -> ! {
             // This way, to verify the combined proof, we can check that it matches
             // the rolling hash of the public inputs.
             let mut hasher = Keccak32::new();
-            // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-            // and we'll actually shift them all by 1.
-            // So our output is the keccak(input1[0..8]>>32, input2[0..8]>>32)
 
-            // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-            hasher.update(&[0u32]); // 0 after shift
-            for i in 0..7 {
-                hasher.update(&[output1[i]]);
-            }
-            hasher.update(&[0u32]); // 0 after shift
-            for i in 0..7 {
-                hasher.update(&[output2[i]]);
-            }
+            hash(&mut hasher, &output1);
+            hash(&mut hasher, &output2);
             let mut result = [0u32; 16];
             // TODO: in the future - set the result[7] to be equal to 0.
             result[0..8].copy_from_slice(&hasher.finalize());
@@ -193,10 +186,70 @@ unsafe fn workload() -> ! {
             let output = full_statement_verifier::verify_recursion_log_23_layer();
             riscv_common::zksync_os_finish_success_extended(&output);
         }
+        // Combine multiple proofs into one.
+        // This is similar to 4, combine 2 proofs into one, but now we combine N proofs into one.
+        // The advantage is in the number of proving rounds you need to do.
+        // Option 4 requires O(n) rounds of proving, whilst this requires a single round.
+        6 => {
+            let no_circuits = riscv_common::csr_read_word();
+            assert!(no_circuits > 0, "Requires at least on circuit to verify");
+
+            // The first 8 words of the result are the hash of the proof's outputs.
+            // This way, to verify multiple combined proof, we can check that it matches
+            // the rolling hash of the public inputs.
+            let mut hasher = Keccak32::new();
+
+            // verify first proof & keep it's output to ensure all proof come from the same chain
+            // NOTE: this could be any other proof, not necessarily the first one.
+            let first_output = full_statement_verifier::verify_recursion_layer();
+
+            hash(&mut hasher, &first_output);
+
+            // iterate over remaining circuits
+            for _ in 1..no_circuits {
+                // verify proof
+                let output = full_statement_verifier::verify_recursion_layer();
+
+                // Proving chains must be equal.
+                for i in 8..16 {
+                    assert_eq!(first_output[i], output[i], "Proving chains must be equal");
+                }
+
+                // build the rolling hash over proofs's outputs
+                hash(&mut hasher, &output);
+            }
+
+            let mut result = [0u32; 16];
+
+            // TODO: in the future - set the result[7] to be equal to 0.
+            result[0..8].copy_from_slice(&hasher.finalize());
+            // chain remains the same
+            result[8..16].copy_from_slice(&first_output[8..16]);
+
+            riscv_common::zksync_os_finish_success_extended(&result);
+        }
         // Unknown metadata.
         _ => {
             riscv_common::zksync_os_finish_error();
         }
+    }
+}
+
+#[cfg(any(
+    feature = "universal_circuit",
+    feature = "universal_circuit_no_delegation"
+))]
+/// Used in hashing proofs for verification.
+/// Keccak-256 implementation, but hashes specifically to be compatible with our SNARK.
+fn hash(hasher: &mut Keccak32, output: &[u32; 16]) {
+    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
+    // and we'll actually shift them all by 1.
+    // So our output is the keccak(input_1[0..8]>>32, input_2[0..8]>>32, ..., input_n[0..8]>>32)
+    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+    hasher.update(&[0u32]);
+
+    for i in 0..7 {
+        hasher.update(&[output[i]]);
     }
 }
 

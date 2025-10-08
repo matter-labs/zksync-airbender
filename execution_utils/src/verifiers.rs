@@ -19,6 +19,11 @@ pub enum VerifierCircuitsIdentifiers {
     // This is used in OhBender to combine previous block proof with current one.
     CombinedRecursionLayers = 4,
     RecursionLog23Layer = 5,
+    /// Combine multiple proofs (from recursion layers) into one.
+    /// Requires u32 to be passed as first word after this one,
+    /// indicating how many proofs are combined.
+    // Used to combine multiple FRIs into a single proof before SNARKing.
+    CombinedMultipleRecursionLayers = 6,
 }
 
 /// Create oracle data for universal verifier.
