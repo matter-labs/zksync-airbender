@@ -177,4 +177,55 @@ impl<F: PrimeField> CommonDiffs<F> {
 
         Register(result)
     }
+
+    // NOTE: avoid witness evaluation of next PC, as it's available from witness
+    #[track_caller]
+    pub fn select_final_pc_into<CS: Circuit<F>>(
+        cs: &mut CS,
+        sources: &[Self],
+        default_next_pc: Register<F>,
+        next_pc: [Variable; 2],
+    ) {
+        let mut default_case_exec_flags = vec![];
+        let mut non_default_cases = vec![];
+
+        for el in sources {
+            match el.new_pc_value {
+                NextPcValue::Default => {
+                    default_case_exec_flags.push(el.exec_flag);
+                }
+                NextPcValue::Custom(diff) => {
+                    non_default_cases.push((el.exec_flag, diff));
+                }
+            }
+        }
+
+        // Enforce result of selection
+        for word_idx in [0, 1] {
+            let mut orthogonality_flag = false;
+
+            let mut constraint = Constraint::empty();
+            for flag in default_case_exec_flags.iter() {
+                let word = default_next_pc.0[word_idx];
+                constraint = mask_by_boolean_into_accumulator_constraint(flag, &word, constraint);
+            }
+
+            for (flag, diff) in non_default_cases.iter() {
+                let word = diff.0[word_idx];
+                constraint = mask_by_boolean_into_accumulator_constraint(flag, &word, constraint);
+                if flag.get_value(cs).unwrap_or(false) {
+                    if orthogonality_flag {
+                        panic!("Not orthogonal application");
+                    } else {
+                        orthogonality_flag = true;
+                    }
+                }
+            }
+
+            let selection_result = next_pc[word_idx]; // No range check required
+            constraint -= Term::from(selection_result);
+
+            cs.add_constraint(constraint);
+        }
+    }
 }

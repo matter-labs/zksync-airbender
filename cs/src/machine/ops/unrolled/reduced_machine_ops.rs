@@ -7,13 +7,12 @@ pub fn reduced_machine_tables() -> Vec<TableType> {
     use crate::machine::Machine;
     use field::Mersenne31Field;
 
+    // these get dynamically allocated by instance of the circuit depending on the machine configuration
+    //      TableType::RomAddressSpaceSeparator,
+    //      TableType::RomRead,
+
     let mut result = vec![
-        TableType::And,
         TableType::ZeroEntry,
-        TableType::QuickDecodeDecompositionCheck4x4x4,
-        TableType::QuickDecodeDecompositionCheck7x3x6,
-        TableType::U16GetSignAndHighByte,
-        TableType::RangeCheckSmall,
     ];
 
     result.extend(
@@ -531,11 +530,19 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
         cs.add_shuffle_ram_query(rs2_or_mem_load_query);
         cs.add_shuffle_ram_query(rd_or_mem_store_query);
 
-        let _new_pc = CommonDiffs::select_final_pc_value(
+        // let _new_pc = CommonDiffs::select_final_pc_value(
+        //     cs,
+        //     &application_results,
+        //     default_next_pc,
+        //     Some(inputs.cycle_end_state.pc),
+        // );
+
+        // enforce that next PC is the one that is a result of selection
+        CommonDiffs::select_final_pc_into(
             cs,
             &application_results,
             default_next_pc,
-            Some(inputs.cycle_end_state.pc),
+            inputs.cycle_end_state.pc,
         );
 
         cs.set_log(&opt_ctx, "EXECUTOR");
@@ -570,7 +577,7 @@ mod test {
             },
             &|cs| reduced_machine_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(cs),
             1 << (16 + SECOND_WORD_BITS),
-            24,
+            23,
         );
 
         serialize_to_file(&compiled, "reduced_machine_preprocessed_layout.json");
