@@ -1,5 +1,5 @@
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-use verifier_common::cs::utils::split_timestamp;
+use verifier_common::cs::definitions::split_timestamp;
 
 use super::*;
 

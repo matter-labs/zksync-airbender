@@ -30,7 +30,11 @@ pub struct ProofMetadata {
     pub basic_proof_count: usize,
     pub reduced_proof_count: usize,
     pub reduced_log_23_proof_count: usize,
-    pub final_proof_count: usize,
+
+    /// This field is deprecated and should not be used anymore.
+    #[serde(alias = "final_proof_count")]
+    pub deprecated_final_proof_count: usize,
+
     pub delegation_proof_count: Vec<(u32, usize)>,
     pub register_values: Vec<FinalRegisterValue>,
     // hash from current binary (from end pc and setup tree).
@@ -46,7 +50,6 @@ pub struct ProofList {
     pub basic_proofs: Vec<Proof>,
     pub reduced_proofs: Vec<Proof>,
     pub reduced_log_23_proofs: Vec<Proof>,
-    pub final_proofs: Vec<Proof>,
     pub delegation_proofs: Vec<(u32, Vec<Proof>)>,
 }
 
@@ -115,7 +118,7 @@ impl ProgramProof {
         proof_metadata: &ProofMetadata,
     ) -> ProgramProof {
         // program proof doesn't distinguish between final, reduced & basic proofs.
-        let mut base_layer_proofs = proof_list.final_proofs.clone();
+        let mut base_layer_proofs = vec![];
         base_layer_proofs.extend_from_slice(&proof_list.basic_proofs);
         base_layer_proofs.extend_from_slice(&proof_list.reduced_log_23_proofs);
         base_layer_proofs.extend_from_slice(&proof_list.reduced_proofs);
@@ -136,7 +139,6 @@ impl ProgramProof {
             // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
             reduced_proofs: self.base_layer_proofs,
             reduced_log_23_proofs: vec![],
-            final_proofs: vec![],
             delegation_proofs: self.delegation_proofs.clone().into_iter().collect(),
         };
 
@@ -144,7 +146,7 @@ impl ProgramProof {
             basic_proof_count: 0,
             reduced_proof_count,
             reduced_log_23_proof_count: 0,
-            final_proof_count: 0,
+            deprecated_final_proof_count: 0,
             delegation_proof_count: vec![],
             register_values: self.register_final_values,
             end_params: self.end_params,
@@ -160,7 +162,6 @@ impl ProofMetadata {
         self.basic_proof_count
             + self.reduced_proof_count
             + self.reduced_log_23_proof_count
-            + self.final_proof_count
             + self
                 .delegation_proof_count
                 .iter()
@@ -192,12 +193,6 @@ impl ProofList {
             serialize_to_file(
                 proof,
                 &Path::new(output_dir).join(&format!("reduced_log_23_proof_{}.json", i)),
-            );
-        }
-        for (i, proof) in self.final_proofs.iter().enumerate() {
-            serialize_to_file(
-                proof,
-                &Path::new(output_dir).join(&format!("final_proof_{}.json", i)),
             );
         }
         for (delegation_type, proofs) in self.delegation_proofs.iter() {
@@ -233,13 +228,6 @@ impl ProofList {
             reduced_log_23_proofs.push(proof);
         }
 
-        let mut final_proofs = vec![];
-        for i in 0..metadata.final_proof_count {
-            let proof_path = Path::new(input_dir).join(format!("final_proof_{}.json", i));
-            let proof: Proof = deserialize_from_file(proof_path.to_str().unwrap());
-            final_proofs.push(proof);
-        }
-
         let mut delegation_proofs = vec![];
         for (delegation_type, count) in metadata.delegation_proof_count.iter() {
             let mut proofs = vec![];
@@ -256,19 +244,16 @@ impl ProofList {
             basic_proofs,
             reduced_proofs,
             reduced_log_23_proofs,
-            final_proofs,
             delegation_proofs,
         }
     }
 
     pub fn get_last_proof(&self) -> &Proof {
-        self.final_proofs.last().unwrap_or_else(|| {
-            self.basic_proofs.last().unwrap_or_else(|| {
-                self.reduced_log_23_proofs.last().unwrap_or_else(|| {
-                    self.reduced_proofs
-                        .last()
-                        .expect("Neither main proof nor reduced proof is present")
-                })
+        self.basic_proofs.last().unwrap_or_else(|| {
+            self.reduced_log_23_proofs.last().unwrap_or_else(|| {
+                self.reduced_proofs
+                    .last()
+                    .expect("Neither main proof nor reduced proof is present")
             })
         })
     }

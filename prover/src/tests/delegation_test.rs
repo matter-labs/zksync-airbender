@@ -478,18 +478,6 @@ fn run_basic_delegation_test() {
     run_basic_delegation_test_impl(None, None);
 }
 
-#[cfg(test)]
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    serde_json::from_reader(src).unwrap()
-}
-
-#[cfg(test)]
-fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    bincode::deserialize_from(src).unwrap()
-}
-
 // commented out until we get new inputs
 
 // #[test]

@@ -564,7 +564,7 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     } else if metadata.reduced_proof_count > 0 {
         oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLayer as u32);
     } else {
-        oracle.insert(0, VerifierCircuitsIdentifiers::FinalLayer as u32);
+        panic!("No proofs");
     };
 
     u32_to_file(output_file, &oracle);
@@ -602,11 +602,10 @@ fn verify_all(metadata_path: &String) {
         assert!(metadata.reduced_proof_count > 0);
         let output = full_statement_verifier::verify_recursion_layer();
         println!("Output is: {:?}", output);
+    } else if metadata.reduced_log_23_proof_count > 0 {
+        todo!("not implemented yet");
     } else {
-        println!("Running final recursive");
-        assert!(metadata.final_proof_count > 0);
-        let output = full_statement_verifier::verify_final_recursion_layer();
-        println!("Output is: {:?}", output);
+        panic!("No proofs");
     };
     assert!(
         verifier_common::prover::nd_source_std::try_read_word().is_none(),
@@ -698,14 +697,6 @@ fn run_binary(
             let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
                 _,
                 IWithoutByteAccessIsaConfigWithDelegation,
-            >(config, non_determinism_source);
-
-            result.state.registers
-        }
-        Machine::ReducedFinal => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IWithoutByteAccessIsaConfig,
             >(config, non_determinism_source);
 
             result.state.registers

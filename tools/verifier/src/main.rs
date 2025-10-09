@@ -147,10 +147,7 @@ unsafe fn workload() -> ! {
             let output = full_statement_verifier::verify_recursion_layer();
             riscv_common::zksync_os_finish_success_extended(&output);
         }
-        2 => {
-            let output = full_statement_verifier::verify_final_recursion_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
+        // 2 used to be final layer, but we don't have that anymore.
         3 => {
             full_statement_verifier::RISC_V_VERIFIER_PTR(
                 &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
@@ -196,21 +193,9 @@ unsafe fn workload() -> ! {
             let output = full_statement_verifier::verify_recursion_log_23_layer();
             riscv_common::zksync_os_finish_success_extended(&output);
         }
-        other => {
-            let Some(pos) =
-                full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                    .iter()
-                    .position(|el| el.0 == other)
-            else {
-                riscv_common::zksync_os_finish_error();
-            };
-            let verification_ptr =
-                full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS[pos].3;
-            (verification_ptr)(
-                &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
-                &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
-            );
-            riscv_common::zksync_os_finish_success(&[1, 1, 1, 1, 1, 1, 1, 1]);
+        // Unknown metadata.
+        _ => {
+            riscv_common::zksync_os_finish_error();
         }
     }
 }

@@ -12,8 +12,6 @@ use clap::ValueEnum;
 /// Then we can define four recursion strategies:
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
 pub enum RecursionStrategy {
-    /// Does 1st layer until 2 reduced + 1 delegation then final reduced machine (always two repetitions)
-    UseFinalMachine,
     /// Does 1st layer until 2 reduced + 1 delegation then 1 reduced 2^23 + 1 delegation (one repetition)
     UseReducedLog23Machine,
     /// Does 1st layer until N reduced + M delegation then reduced 2^23 + delegation (at least two repetitions)
@@ -35,13 +33,6 @@ impl RecursionStrategy {
         const M: usize = 2;
 
         let continue_first_layer = match self {
-            RecursionStrategy::UseFinalMachine => {
-                proof_metadata.reduced_proof_count > 2
-                    || proof_metadata
-                        .delegation_proof_count
-                        .iter()
-                        .any(|(_, x)| *x > 1)
-            }
             RecursionStrategy::UseReducedLog23Machine => {
                 proof_metadata.reduced_proof_count > 2
                     || proof_metadata
@@ -68,7 +59,6 @@ impl RecursionStrategy {
         proof_level: usize,
     ) -> bool {
         let continue_second_layer = match self {
-            RecursionStrategy::UseFinalMachine => proof_metadata.final_proof_count > 1,
             RecursionStrategy::UseReducedLog23Machine => {
                 // In this strategy we should run only one repetition of 2nd layer
                 assert!(proof_level == 0);
@@ -91,33 +81,18 @@ impl RecursionStrategy {
     }
 
     pub fn get_second_layer_machine(&self) -> Machine {
-        match self {
-            RecursionStrategy::UseFinalMachine => Machine::ReducedFinal,
-            RecursionStrategy::UseReducedLog23Machine
-            | RecursionStrategy::UseReducedLog23MachineMultiple
-            | RecursionStrategy::UseReducedLog23MachineOnly => Machine::ReducedLog23,
-        }
+        Machine::ReducedLog23
     }
 
     #[cfg(feature = "verifier_binaries")]
     pub fn get_second_layer_binary(&self) -> Vec<u32> {
         use crate::get_padded_binary;
         match self {
-            RecursionStrategy::UseFinalMachine => get_padded_binary(
-                crate::verifier_binaries::UNIVERSAL_CIRCUIT_NO_DELEGATION_VERIFIER,
-            ),
             RecursionStrategy::UseReducedLog23Machine
             | RecursionStrategy::UseReducedLog23MachineMultiple
             | RecursionStrategy::UseReducedLog23MachineOnly => {
                 get_padded_binary(crate::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER)
             }
-        }
-    }
-
-    pub fn use_final_machine(&self) -> bool {
-        match self {
-            RecursionStrategy::UseFinalMachine => true,
-            _ => false,
         }
     }
 }
