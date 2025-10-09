@@ -8,6 +8,9 @@ const UPDATE_RD_BIT: usize = 0; // = r_insn || i_insn || j_insn || u_insn
 const USE_RS2_BIT: usize = 1; // = r_insn || s_insn || b_insn
 const B_INST_BIT: usize = 2;
 const FLAGS_SOURCE_OFFSET: usize = 3;
+// const RS2_QUERY_IS_REGISTER: usize = 3;
+// const RD_QUERY_IS_REGISTER: usize = 4;
+// const FLAGS_SOURCE_OFFSET: usize = 5;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReducedMachineCircuitMask {
@@ -34,6 +37,14 @@ impl ReducedMachineCircuitMask {
     pub fn get_b_instruction_flag(&self) -> Boolean {
         self.inner[B_INST_BIT]
     }
+
+    // pub fn get_rs2_query_is_register_flag(&self) -> Boolean {
+    //     self.inner[RS2_QUERY_IS_REGISTER]
+    // }
+
+    // pub fn get_rd_query_is_register_flag(&self) -> Boolean {
+    //     self.inner[RD_QUERY_IS_REGISTER]
+    // }
 }
 
 impl InstructionFamilyBitmaskCircuitParser for ReducedMachineCircuitMask {
@@ -110,6 +121,14 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
                 if instr_format == InstructionType::BType {
                     mask |= 1 << B_INST_BIT;
                 }
+
+                // if opcode != OPERATION_LOAD {
+                //     mask |= 1 << RS2_QUERY_IS_REGISTER;
+                // }
+
+                // if instr_format != InstructionType::SType {
+                //     mask |= 1 << RD_QUERY_IS_REGISTER;
+                // }
 
                 // flags source
                 let major_index = all_keys.get_major_index(&major_key);

@@ -10,7 +10,9 @@ use cs::cs::circuit::Circuit;
 use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
+use riscv_transpiler::witness::UnifiedDestinationHolder;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
@@ -31,7 +33,9 @@ pub mod reduced_machine {
 
     include!("../../../reduced_machine_preprocessed_generated.rs");
 
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>) {
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
+    ) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
             SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
@@ -48,11 +52,19 @@ fn run_unrolled_reduced_test() {
 pub fn run_unrolled_reduced_test_impl(
     maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
+    use riscv_transpiler::ir::*;
+    use riscv_transpiler::replayer::*;
+    use riscv_transpiler::vm::*;
+
+    type CountersT = DelegationsCounters;
+
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
     // invalid locations
     const TRACE_LEN_LOG2: usize = 23;
     const NUM_CYCLES_PER_CHUNK: usize = (1 << TRACE_LEN_LOG2) - 1;
+
+    const SECOND_WORD_BITS: usize = 4;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
@@ -60,7 +72,8 @@ pub fn run_unrolled_reduced_test_impl(
 
     let worker = Worker::new_with_num_threads(1);
     // load binary
-    let binary = std::fs::read("../tools/verifier/recursion_layer.bin").unwrap();
+    let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
+    // let binary = std::fs::read("../tools/verifier/recursion_layer.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -69,89 +82,95 @@ pub fn run_unrolled_reduced_test_impl(
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    // assert!(text_section.len() % 4 == 0);
-    // let text_section: Vec<_> = text_section
-    //     .as_chunks::<4>()
-    //     .0
-    //     .into_iter()
-    //     .map(|el| u32::from_le_bytes(*el))
-    //     .collect();
+    let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
+    assert!(text_section.len() % 4 == 0);
+    let text_section: Vec<_> = text_section
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
 
-    let mut opcode_family_factories = HashMap::new();
+    // first run to capture minimal information
+    let instructions: Vec<Instruction> = text_section
+        .iter()
+        .copied()
+        .map(|el| decode::<ReducedMachineDecoderConfig>(el))
+        .collect();
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<SECOND_WORD_BITS>::from_rom_content(&binary, 1 << 30);
+    let period = 1 << 20;
+    let num_snapshots = 1;
+    let cycles_bound = period * num_snapshots;
 
-    for family in [128] {
-        let factory =
-            Box::new(|| NonMemTracingFamilyChunk::new_for_num_cycles(NUM_CYCLES_PER_CHUNK));
-        opcode_family_factories.insert(family, factory as _);
-    }
-    let mem_factory =
-        Box::new(|| MemTracingFamilyChunk::new_for_num_cycles(NUM_CYCLES_PER_CHUNK)) as _;
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, period, state);
+    let mut non_determinism = QuasiUARTSource::default();
 
-    let csr_processor = DelegationsCSRProcessor;
-
-    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, 1 << 21 as usize); // use full RAM
-    for (idx, insn) in binary.iter().enumerate() {
-        memory.populate(INITIAL_PC + idx as u32 * 4, *insn);
-    }
-
-    use crate::tracers::delegation::*;
-
-    let mut factories = HashMap::new();
-    for delegation_type in [BLAKE2S_DELEGATION_CSR_REGISTER] {
-        if delegation_type == BLAKE2S_DELEGATION_CSR_REGISTER {
-            let num_requests_per_circuit = (1 << 20) - 1;
-            let delegation_type = delegation_type as u16;
-            let factory_fn = move || {
-                blake2_with_control_factory_fn(delegation_type, num_requests_per_circuit, Global)
-            };
-            factories.insert(
-                delegation_type,
-                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness + Send + Sync + 'static>,
-            );
-        } else {
-            panic!(
-                "delegation type {} is unsupported for tests",
-                delegation_type
-            )
-        }
-    }
-
-    let mut src = std::fs::File::open("../execution_utils/recursion_layer_flattened.json").unwrap();
-    let raw_src: Vec<u32> = serde_json::from_reader(&mut src).unwrap();
-
-    let preprocessing_data = process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
-        &binary, // text_section,
-        &[Box::new(ReducedMachineDecoder)],
-        1 << 20,
-        &[NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER as u16],
+    VM::<CountersT>::run_basic_unrolled::<
+        SimpleSnapshotter<CountersT, SECOND_WORD_BITS>,
+        RamWithRomRegion<SECOND_WORD_BITS>,
+        _,
+    >(
+        &mut state,
+        num_snapshots,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        period,
+        &mut non_determinism,
     );
 
-    let (
-        final_pc,
-        family_circuits,
-        mem_circuits,
-        delegation_circuits,
-        register_final_state,
-        shuffle_ram_touched_addresses,
-    ) = {
-        let mut non_determinism = QuasiUARTSource::new_with_reads(raw_src);
+    let total_snapshots = snapshotter.snapshots.len();
+    let cycles_upper_bound = total_snapshots * period;
 
-        // TODO: use other tracer
-        run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global>(
-            NUM_CYCLES_PER_CHUNK,
-            INITIAL_PC,
-            csr_processor,
-            &mut memory,
-            1 << 21,
-            &mut non_determinism,
-            opcode_family_factories,
-            mem_factory,
-            factories,
-            1 << 32,
-            &worker,
+    let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+
+    println!("Passed exactly {} cycles", exact_cycles_passed);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+
+    let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
+
+    use crate::tracers::oracles::chunk_lazy_init_and_teardown;
+    let total_unique_teardowns: usize = shuffle_ram_touched_addresses
+        .iter()
+        .map(|el| el.len())
+        .sum();
+
+    println!("Touched {} unique addresses", total_unique_teardowns);
+
+    let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global, _>(
+        1,
+        NUM_CYCLES_PER_CHUNK,
+        &shuffle_ram_touched_addresses,
+        &worker,
+    );
+    assert_eq!(num_trivial, 0, "trivial padding is not expected in tests");
+
+    println!("Finished at PC = 0x{:08x}", state.pc);
+    for (reg_idx, reg) in state.registers.iter().enumerate() {
+        println!("x{} = {}", reg_idx, reg.value);
+    }
+
+    let final_pc = state.pc;
+    let final_timestamp = state.timestamp;
+
+    let register_final_state = state.registers.map(|el| RamShuffleMemStateRecord {
+        last_access_timestamp: el.timestamp,
+        current_value: el.value,
+    });
+
+    let (decoder_table_data, witness_gen_data) =
+        process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
+            &text_section,
+            // &binary, // text_section,
+            &[Box::new(ReducedMachineDecoder)],
+            1 << 20,
+            &[NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER as u16],
         )
-    };
+        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+        .unwrap();
 
     println!("Finished at PC = 0x{:08x}", final_pc);
     for (reg_idx, reg) in register_final_state.iter().enumerate() {
@@ -246,14 +265,16 @@ pub fn run_unrolled_reduced_test_impl(
         println!("Will try to prove ReducedMachine circuit");
 
         use cs::machine::ops::unrolled::reduced_machine_ops::*;
-        const SECOND_WORD_BITS: usize = 5;
 
         let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
             &binary,
-            &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
+            &[
+                common_constants::NON_DETERMINISM_CSR,
+                BLAKE2S_DELEGATION_CSR_REGISTER,
+            ],
         );
         let circuit = {
-            compile_unrolled_circuit_state_transition::<Mersenne31Field>(
+            compile_unified_circuit_state_transition::<Mersenne31Field>(
                 &|cs| {
                     reduced_machine_table_addition_fn(cs);
                     for (table_type, table) in extra_tables.clone() {
@@ -274,21 +295,45 @@ pub fn run_unrolled_reduced_test_impl(
             table_driver.add_table_with_content(table_type, table);
         }
 
-        let family_data = &mem_circuits;
-        assert_eq!(family_data.len(), 1);
-        let (decoder_table_data, witness_gen_data) =
-            &preprocessing_data[&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX];
-        let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
+        let num_calls = exact_cycles_passed as usize;
+        dbg!(num_calls);
 
-        let oracle = MemoryCircuitOracle {
-            inner: &family_data[0].data,
-            decoder_table: witness_gen_data,
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = UnifiedDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
+        let decoder_table_data = materialize_flattened_decoder_table(&decoder_table_data);
+
+        let oracle = UnifiedRiscvCircuitOracle {
+            inner: &buffer[..],
+            decoder_table: &witness_gen_data,
         };
 
         // println!(
         //     "Opcode = 0x{:08x}",
         //     family_data[0].data[29].opcode_data.opcode
         // );
+
+        println!("Evaluating memory witness");
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &circuit,
@@ -297,6 +342,8 @@ pub fn run_unrolled_reduced_test_impl(
             &worker,
             Global,
         );
+
+        println!("Evaluating full witness");
 
         let full_trace = evaluate_witness_for_executor_family::<_, Global>(
             &circuit,

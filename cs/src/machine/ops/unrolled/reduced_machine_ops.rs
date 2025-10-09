@@ -11,9 +11,7 @@ pub fn reduced_machine_tables() -> Vec<TableType> {
     //      TableType::RomAddressSpaceSeparator,
     //      TableType::RomRead,
 
-    let mut result = vec![
-        TableType::ZeroEntry,
-    ];
+    let mut result = vec![TableType::ZeroEntry, TableType::U16GetSignAndHighByte];
 
     result.extend(
         <MinimalMachineNoExceptionHandlingWithDelegation as Machine<Mersenne31Field>>::define_used_tables()
@@ -382,6 +380,7 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
         let query = ShuffleRamMemQuery {
             query_type: ShuffleRamQueryType::RegisterOrRam {
                 is_register: Boolean::Constant(true),
+                // is_register: decoder_bits.get_rs2_query_is_register_flag(),
                 address: read_address.0.map(|el| el.get_variable()),
             },
             local_timestamp_in_cycle,
@@ -410,6 +409,7 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
         let query = ShuffleRamMemQuery {
             query_type: ShuffleRamQueryType::RegisterOrRam {
                 is_register: Boolean::Constant(true),
+                // is_register: decoder_bits.get_rd_query_is_register_flag(),
                 address: read_address.0.map(|el| el.get_variable()),
             },
             local_timestamp_in_cycle,
@@ -425,7 +425,8 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
     let src2 = Register::choose(cs, &use_rs2_flag, &rs2_value_if_register, &imm);
 
     // now with PC considered range-checked we can compute next PC without overflows
-    let pc_next = calculate_pc_next_no_overflows(cs, start_pc);
+    let default_pc_next = Register::new_unchecked(cs);
+    bump_pc_no_range_checks_explicit(cs, start_pc, default_pc_next);
 
     let src1 = RegisterDecompositionWithSign::parse_reg(cs, src1);
     let src2 = RegisterDecompositionWithSign::parse_reg(cs, src2);
@@ -433,7 +434,7 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
     let rs2_index: Constraint<F> = inputs.decoder_data.rs2_index.into();
 
     let decoder_output = BasicDecodingResultWithSigns {
-        pc_next,
+        pc_next: default_pc_next,
         src1,
         src2,
         rs2_index,
@@ -465,6 +466,17 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
     if application_results.iter().all(|el| el.trapped.is_none()) {
         // there are no traps in opcodes support,
         // we can just apply state updates
+
+        {
+            let ShuffleRamQueryType::RegisterOrRam { is_register, .. } =
+                rd_or_mem_store_query.query_type
+            else {
+                unreachable!()
+            };
+            let Boolean::Is(..) = is_register else {
+                panic!("Memory opcode must resolve RS2/LOAD query `is_register` flag");
+            };
+        }
 
         // we do not care about predicating state updates below, because if trap happens it's already unsatisfiable circuit
 
@@ -530,20 +542,20 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
         cs.add_shuffle_ram_query(rs2_or_mem_load_query);
         cs.add_shuffle_ram_query(rd_or_mem_store_query);
 
-        // let _new_pc = CommonDiffs::select_final_pc_value(
-        //     cs,
-        //     &application_results,
-        //     default_next_pc,
-        //     Some(inputs.cycle_end_state.pc),
-        // );
-
-        // enforce that next PC is the one that is a result of selection
-        CommonDiffs::select_final_pc_into(
+        let _ = CommonDiffs::select_final_pc_value(
             cs,
             &application_results,
             default_next_pc,
-            inputs.cycle_end_state.pc,
+            Some(inputs.cycle_end_state.pc),
         );
+
+        // // enforce that next PC is the one that is a result of selection
+        // CommonDiffs::select_final_pc_into(
+        //     cs,
+        //     &application_results,
+        //     default_next_pc,
+        //     inputs.cycle_end_state.pc,
+        // );
 
         cs.set_log(&opt_ctx, "EXECUTOR");
     } else {
@@ -563,13 +575,16 @@ mod test {
     fn compile_reduced_machine_circuit() {
         use ::field::Mersenne31Field;
 
-        let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
+        let compiled = compile_unified_circuit_state_transition::<Mersenne31Field>(
             &|cs| {
                 reduced_machine_table_addition_fn(cs);
 
                 let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
                     DUMMY_BYTECODE,
-                    &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
+                    &[
+                        common_constants::NON_DETERMINISM_CSR,
+                        BLAKE2S_DELEGATION_CSR_REGISTER,
+                    ],
                 );
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);
@@ -593,7 +608,10 @@ mod test {
 
                 let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
                     DUMMY_BYTECODE,
-                    &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
+                    &[
+                        common_constants::NON_DETERMINISM_CSR,
+                        BLAKE2S_DELEGATION_CSR_REGISTER,
+                    ],
                 );
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);

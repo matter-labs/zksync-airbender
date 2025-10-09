@@ -14,6 +14,10 @@ impl<F: PrimeField> OneRowCompiler<F> {
         Vec<ShuffleRamInitAndTeardownLayout>,
         Vec<([Variable; REGISTER_SIZE], Variable, Variable)>,
     ) {
+        if num_sets == 0 {
+            return (vec![], vec![]);
+        }
+
         let mut result = Vec::with_capacity(num_sets);
 
         // first we will manually add extra space for constraint that lazy init values are unique

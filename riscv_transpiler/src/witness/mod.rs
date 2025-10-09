@@ -3,6 +3,7 @@ pub mod delegation;
 pub use self::delegation::{DelegationAbiDescription, DelegationWitness};
 use risc_v_simulator::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
+    UnifiedOpcodeTracingDataWithTimestamp,
 };
 
 pub trait WitnessTracer {
@@ -224,6 +225,72 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
                 }
             }
         } else {
+        }
+    }
+
+    fn write_delegation<
+        const DELEGATION_TYPE: u16,
+        const REG_ACCESSES_T: usize,
+        const INDIRECT_READS_T: usize,
+        const INDIRECT_WRITES_T: usize,
+        const VARIABLE_OFFSETS_T: usize,
+    >(
+        &mut self,
+        _data: DelegationWitness<
+            REG_ACCESSES_T,
+            INDIRECT_READS_T,
+            INDIRECT_WRITES_T,
+            VARIABLE_OFFSETS_T,
+        >,
+    ) {
+    }
+}
+
+pub struct UnifiedDestinationHolder<'a> {
+    pub buffers: &'a mut [&'a mut [UnifiedOpcodeTracingDataWithTimestamp]],
+}
+
+impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
+    fn write_non_memory_family_data<const FAMILY_T: u8>(
+        &mut self,
+        data: NonMemoryOpcodeTracingDataWithTimestamp,
+    ) {
+        unsafe {
+            if self.buffers.len() > 0 {
+                let first = self.buffers.get_unchecked_mut(0);
+                first
+                    .as_mut_ptr()
+                    .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
+                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                if first.is_empty() {
+                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                }
+            } else {
+                // nothing
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn write_memory_family_data<const FAMILY_T: u8>(
+        &mut self,
+        data: MemoryOpcodeTracingDataWithTimestamp,
+    ) {
+        unsafe {
+            if self.buffers.len() > 0 {
+                let first = self.buffers.get_unchecked_mut(0);
+                first
+                    .as_mut_ptr()
+                    .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
+                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                if first.is_empty() {
+                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                }
+            } else {
+                // nothing
+            }
         }
     }
 
