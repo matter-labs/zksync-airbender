@@ -11,7 +11,7 @@ categories = ["cryptography"]
 
 [dependencies]
 verifier = { path = "../../verifier", features = ["verifier_program", "blake2_with_compression"], optional = true }
-full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false}
+full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false, features = ["security_80"]}
 riscv_common = { path = "../../riscv_common"}
 reduced_keccak = { path = "../../reduced_keccak", optional = true }
 

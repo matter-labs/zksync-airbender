@@ -44,8 +44,8 @@ fn test_keccak() {
     // let mut tracer = GPUFriendlyTracer;
 
     // run SIMULATOR
-    state_oldisa.observable.registers[10] = state_addr; // this is where binary expects state addr
-    state_newunrolled.observable.registers[10] = state_addr; // this is where binary expects state addr
+    state_oldisa.observable.registers[11] = state_addr; // this is where binary expects state addr
+    state_newunrolled.observable.registers[11] = state_addr; // this is where binary expects state addr
     let mut memory_oldisa = memory_original.clone();
     let mut memory_newunrolled = memory_original;
     for i in 0..binary.len() {
@@ -162,9 +162,8 @@ const KECCAK_STATE_OUTPUT: [u64; 31] = [
 ];
 
 // this is the binary with the new abi, without explicit control write cycles
-const KECCAK_F1600_ASM: &[&str] = &[
-    // expects state ptr to be in x10
-    "addi	a1, a0, 0",
+const KECCAK_F1600_ASM: &[&str; 650] = &[
+    // expects state ptr to be in x11
     "add	a0, x0, x0",
     "csrrw	x0, 1995, x0",
     "csrrw	x0, 1995, x0",
