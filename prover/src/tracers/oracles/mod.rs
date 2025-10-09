@@ -8,6 +8,7 @@ use worker::Worker;
 
 pub mod delegation_oracle;
 pub mod main_risc_v_circuit;
+pub mod transpiler_oracles;
 
 pub fn chunk_lazy_init_and_teardown<A: GoodAllocator, B: GoodAllocator>(
     total_num_chunks: usize,

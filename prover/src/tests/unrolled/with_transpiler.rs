@@ -1,4 +1,10 @@
+use super::*;
+use crate::tests::unrolled::word_specialized::*;
+use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
+
+use risc_v_simulator::machine_mode_only_unrolled::*;
+use riscv_transpiler::witness::*;
 
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::machine::ops::unrolled::{
@@ -15,358 +21,36 @@ use cs::machine::ops::unrolled::{
 
 use crate::unrolled::{
     evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,
-    run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization,
 };
 
-use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
-
-use super::*;
+use crate::tracers::oracles::transpiler_oracles::delegation::*;
 
 const SUPPORT_SIGNED: bool = false;
 const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
-pub(crate) unsafe fn read_u32(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> u32 {
-    let low = trace_row[columns.start()].to_reduced_u32();
-    let high = trace_row[columns.start() + 1].to_reduced_u32();
-
-    (high << 16) | low
-}
-
-pub(crate) unsafe fn read_u16(trace_row: &[Mersenne31Field], columns: ColumnSet<1>) -> u16 {
-    let low = trace_row[columns.start()].to_reduced_u32();
-
-    low as u16
-}
-
-pub(crate) unsafe fn read_timestamp(
-    trace_row: &[Mersenne31Field],
-    columns: ColumnSet<2>,
-) -> TimestampScalar {
-    let low = trace_row[columns.start()].to_reduced_u32();
-    let high = trace_row[columns.start() + 1].to_reduced_u32();
-
-    ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
-}
-
-pub(crate) unsafe fn parse_state_permutation_elements(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let intermediate_state_layout = compiled_circuit
-        .memory_layout
-        .intermediate_state_layout
-        .unwrap();
-    let machine_state_layout = compiled_circuit.memory_layout.machine_state_layout.unwrap();
-    // intermediate_state_layout -> machine_state_layout
-    let execute = intermediate_state_layout.execute;
-    let is_active = trace_row[execute.start()].as_boolean();
-    let initial_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
-    let final_ts = read_timestamp(trace_row, machine_state_layout.timestamp);
-
-    let initial_pc = read_u32(trace_row, intermediate_state_layout.pc);
-    let final_pc = read_u32(trace_row, machine_state_layout.pc);
-
-    if is_active {
-        let is_unique = write_set.insert((final_pc, final_ts));
-        if is_unique == false {
-            panic!("Duplicate entry {:?} in write set", (final_pc, final_ts));
-        }
-
-        let is_unique = read_set.insert((initial_pc, initial_ts));
-        if is_unique == false {
-            panic!("Duplicate entry {:?} in read set", (initial_pc, initial_ts));
-        }
-    }
-}
-
-pub(crate) unsafe fn parse_shuffle_ram_accesses(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let intermediate_state_layout = compiled_circuit
-        .memory_layout
-        .intermediate_state_layout
-        .unwrap();
-    let execute = intermediate_state_layout.execute;
-    let is_active = trace_row[execute.start()].as_boolean();
-    if is_active {
-        let base_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
-        assert!(base_ts >= INITIAL_TIMESTAMP);
-        for (access_idx, access) in compiled_circuit
-            .memory_layout
-            .shuffle_ram_access_sets
-            .iter()
-            .enumerate()
-        {
-            let read_ts = read_timestamp(trace_row, access.get_read_timestamp_columns());
-            let read_value = read_u32(trace_row, access.get_read_value_columns());
-            let mut write_value = read_value;
-            if let ShuffleRamQueryColumns::Write(write) = access {
-                write_value = read_u32(trace_row, write.write_value);
-            }
-            let write_ts = base_ts + (access_idx as TimestampScalar);
-            let mut is_register = true;
-            let address;
-            match access.get_address() {
-                ShuffleRamAddress::RegisterOnly(reg_idx) => {
-                    let reg_idx = read_u16(trace_row, reg_idx.register_index);
-                    address = reg_idx as u32;
-                }
-                ShuffleRamAddress::RegisterOrRam(reg_or_ram) => {
-                    is_register = read_u16(trace_row, reg_or_ram.is_register) != 0;
-                    address = read_u32(trace_row, reg_or_ram.address);
-                }
-            }
-
-            // if is_register == false && address == 0 {
-            //     // special padding value to make ROM read via RAM read at 0
-            //     assert_eq!(read_value, 0);
-            //     continue;
-            // }
-
-            let to_write = (is_register, address, write_ts, write_value);
-            let is_unique = write_set.insert(to_write);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in write set", to_write);
-            }
-
-            let to_read = (is_register, address, read_ts, read_value);
-            let is_unique = read_set.insert(to_read);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in read set", to_read);
-            }
-        }
-    }
-}
-
-pub(crate) unsafe fn parse_delegation_ram_accesses(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let delegation_processor_layout = compiled_circuit
-        .memory_layout
-        .delegation_processor_layout
-        .unwrap();
-    let execute = delegation_processor_layout.multiplicity;
-    let is_active = trace_row[execute.start()].as_boolean();
-    if is_active {
-        let write_ts = read_timestamp(trace_row, delegation_processor_layout.write_timestamp);
-        assert_eq!(write_ts % 4, 3);
-        assert!(write_ts >= INITIAL_TIMESTAMP);
-        for (access_idx, access) in compiled_circuit
-            .memory_layout
-            .register_and_indirect_accesses
-            .iter()
-            .enumerate()
-        {
-            // register
-            let base_offset = {
-                let reg_idx = access.register_access.get_register_index();
-                let read_ts = read_timestamp(
-                    trace_row,
-                    access.register_access.get_read_timestamp_columns(),
-                );
-                let read_value =
-                    read_u32(trace_row, access.register_access.get_read_value_columns());
-                let mut write_value = read_value;
-                if let RegisterAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = access.register_access
-                {
-                    write_value = read_u32(trace_row, write_columns);
-                }
-
-                let to_write = (true, reg_idx, write_ts, write_value);
-                let is_unique = write_set.insert(to_write);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in write set", to_write);
-                }
-
-                let to_read = (true, reg_idx, read_ts, read_value);
-                let is_unique = read_set.insert(to_read);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in read set", to_read);
-                }
-
-                read_value
-            };
-
-            for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
-                }
-                assert!(base_offset >= 1 << 21);
-                let offset = indirect.offset_constant();
-                assert_eq!(offset % 4, 0);
-                let (address, of) = base_offset.overflowing_add(offset);
-                assert!(of == false);
-                assert!(address >= 1 << 21);
-                let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
-                let read_value = read_u32(trace_row, indirect.get_read_value_columns());
-                let mut write_value = read_value;
-                if let IndirectAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = indirect
-                {
-                    write_value = read_u32(trace_row, *write_columns);
-                }
-
-                let to_write = (false, address, write_ts, write_value);
-                let is_unique = write_set.insert(to_write);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in write set", to_write);
-                }
-
-                let to_read = (false, address, read_ts, read_value);
-                let is_unique = read_set.insert(to_read);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in read set", to_read);
-                }
-            }
-        }
-    } else {
-        // check conventions
-        let base_ts = read_timestamp(trace_row, delegation_processor_layout.write_timestamp);
-        assert_eq!(base_ts, 0);
-        for (_access_idx, access) in compiled_circuit
-            .memory_layout
-            .register_and_indirect_accesses
-            .iter()
-            .enumerate()
-        {
-            // register
-            {
-                let read_ts = read_timestamp(
-                    trace_row,
-                    access.register_access.get_read_timestamp_columns(),
-                );
-                let read_value =
-                    read_u32(trace_row, access.register_access.get_read_value_columns());
-                let mut write_value = read_value;
-                if let RegisterAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = access.register_access
-                {
-                    write_value = read_u32(trace_row, write_columns);
-                }
-                assert_eq!(read_ts, 0);
-                assert_eq!(read_value, 0);
-                assert_eq!(write_value, 0);
-            }
-
-            for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
-                }
-                let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
-                let read_value = read_u32(trace_row, indirect.get_read_value_columns());
-                let mut write_value = read_value;
-                if let IndirectAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = indirect
-                {
-                    write_value = read_u32(trace_row, *write_columns);
-                }
-                assert_eq!(read_ts, 0);
-                assert_eq!(read_value, 0);
-                assert_eq!(write_value, 0);
-            }
-        }
-    }
-}
-
-pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_state_permutation_elements(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
-
-pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_shuffle_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
-
-pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationData<N, Global>,
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_delegation_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
-
 // #[ignore = "test has explicit panic inside"]
 #[test]
-fn run_basic_unrolled_test_with_word_specialization() {
-    run_basic_unrolled_test_with_word_specialization_impl(None);
+fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
+    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None);
 }
 
-pub fn run_basic_unrolled_test_with_word_specialization_impl(
+pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
+    use riscv_transpiler::ir::*;
+    use riscv_transpiler::vm::*;
+
+    type CountersT = DelegationsAndFamiliesCounters;
+
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
     // invalid locations
     const TRACE_LEN_LOG2: usize = 24;
     const NUM_CYCLES_PER_CHUNK: usize = (1 << TRACE_LEN_LOG2) - 1;
+
+    const SECOND_WORD_BITS: usize = 4;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
@@ -396,119 +80,54 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    let mut opcode_family_factories = HashMap::new();
-    for family in 1..=4u8 {
-        let factory = Box::new(|| NonMemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1));
-        opcode_family_factories.insert(family, factory as _);
-    }
-    let word_mem_factory =
-        Box::new(|| MemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1)) as _;
-    let subword_mem_factory =
-        Box::new(|| MemTracingFamilyChunk::new_for_num_cycles((1 << 24) - 1)) as _;
+    // first run to capture minimal information
+    let instructions: Vec<Instruction> = text_section
+        .iter()
+        .copied()
+        .map(|el| decode::<FullUnsignedMachineDecoderConfig>(el))
+        .collect();
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<SECOND_WORD_BITS>::from_rom_content(&binary, 1 << 30);
+    let period = 1 << 20;
+    let num_snapshots = 1;
+    let cycles_bound = period * num_snapshots;
 
-    let csr_processor = DelegationsCSRProcessor;
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, period, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(1 << 32, 1 << 21 as usize); // use full RAM
-    for (idx, insn) in binary.iter().enumerate() {
-        memory.populate(INITIAL_PC + idx as u32 * 4, *insn);
-    }
-
-    use crate::tracers::delegation::*;
-
-    let mut factories = HashMap::new();
-    for delegation_type in [
-        BLAKE2S_DELEGATION_CSR_REGISTER,
-        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    ] {
-        if delegation_type == BLAKE2S_DELEGATION_CSR_REGISTER {
-            let num_requests_per_circuit = (1 << 20) - 1;
-            let delegation_type = delegation_type as u16;
-            let factory_fn = move || {
-                blake2_with_control_factory_fn(delegation_type, num_requests_per_circuit, Global)
-            };
-            factories.insert(
-                delegation_type,
-                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness + Send + Sync + 'static>,
-            );
-        } else if delegation_type == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
-            let num_requests_per_circuit = (1 << 21) - 1;
-            let delegation_type = delegation_type as u16;
-            let factory_fn = move || {
-                bigint_with_control_factory_fn(delegation_type, num_requests_per_circuit, Global)
-            };
-            factories.insert(
-                delegation_type,
-                Box::new(factory_fn) as Box<dyn Fn() -> DelegationWitness + Send + Sync + 'static>,
-            );
-        } else {
-            panic!(
-                "delegation type {} is unsupported for tests",
-                delegation_type
-            )
-        }
-    }
-
-    let (
-        final_pc,
-        final_timestamp,
-        cycles_used,
-        family_circuits,
-        (word_mem_circuits, subword_mem_circuits),
-        mut delegation_circuits,
-        register_final_state,
-        shuffle_ram_touched_addresses,
-    ) = if SUPPORT_SIGNED {
-        let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]); // 1000 steps of fibonacci, and 1 round of hashing
-        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
-            _,
-            IMStandardIsaConfig,
-            Global,
-        >(
-            NUM_CYCLES_PER_CHUNK,
-            INITIAL_PC,
-            csr_processor,
-            &mut memory,
-            1 << 21,
-            &mut non_determinism,
-            opcode_family_factories,
-            word_mem_factory,
-            subword_mem_factory,
-            factories,
-            1 << 32,
-            &worker,
-        )
-    } else {
-        let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]); // 1000 steps of fibonacci, and 1 round of hashing
-        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
-            _,
-            IMStandardIsaConfigWithUnsignedMulDiv,
-            Global,
-        >(
-            NUM_CYCLES_PER_CHUNK,
-            INITIAL_PC,
-            csr_processor,
-            &mut memory,
-            1 << 21,
-            &mut non_determinism,
-            opcode_family_factories,
-            word_mem_factory,
-            subword_mem_factory,
-            factories,
-            1 << 32,
-            &worker,
-        )
-    };
-
-    assert_eq!(
-        (cycles_used as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP,
-        final_timestamp
+    VM::<CountersT>::run_basic_unrolled::<
+        SimpleSnapshotter<CountersT, SECOND_WORD_BITS>,
+        RamWithRomRegion<SECOND_WORD_BITS>,
+        _,
+    >(
+        &mut state,
+        num_snapshots,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        period,
+        &mut non_determinism,
     );
+
+    let total_snapshots = snapshotter.snapshots.len();
+    let cycles_upper_bound = total_snapshots * period;
+
+    let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+
+    println!("Passed exactly {} cycles", exact_cycles_passed);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+
+    let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
 
     use crate::tracers::oracles::chunk_lazy_init_and_teardown;
     let total_unique_teardowns: usize = shuffle_ram_touched_addresses
         .iter()
         .map(|el| el.len())
         .sum();
+
+    println!("Touched {} unique addresses", total_unique_teardowns);
 
     let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global, _>(
         1,
@@ -518,38 +137,44 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     );
     assert_eq!(num_trivial, 0, "trivial padding is not expected in tests");
 
-    let _ = shuffle_ram_touched_addresses;
-
-    println!("Finished at PC = 0x{:08x}", final_pc);
-    for (reg_idx, reg) in register_final_state.iter().enumerate() {
-        println!("x{} = {}", reg_idx, reg.current_value);
+    println!("Finished at PC = 0x{:08x}", state.pc);
+    for (reg_idx, reg) in state.registers.iter().enumerate() {
+        println!("x{} = {}", reg_idx, reg.value);
     }
 
-    for (k, v) in family_circuits.iter() {
-        println!(
-            "Traced {} circuits of type {}, total len: {}",
-            v.len(),
-            k,
-            v.iter().map(|el| el.data.len()).sum::<usize>()
-        );
-    }
+    let final_pc = state.pc;
+    let final_timestamp = state.timestamp;
 
-    println!(
-        "Traced {} word-sized memory circuits, total len {}",
-        word_mem_circuits.len(),
-        word_mem_circuits
-            .iter()
-            .map(|el| el.data.len())
-            .sum::<usize>()
-    );
-    println!(
-        "Traced {} subword-sized memory circuits, total len {}",
-        subword_mem_circuits.len(),
-        subword_mem_circuits
-            .iter()
-            .map(|el| el.data.len())
-            .sum::<usize>()
-    );
+    let register_final_state = state.registers.map(|el| RamShuffleMemStateRecord {
+        last_access_timestamp: el.timestamp,
+        current_value: el.value,
+    });
+
+    // for (k, v) in family_circuits.iter() {
+    //     println!(
+    //         "Traced {} circuits of type {}, total len: {}",
+    //         v.len(),
+    //         k,
+    //         v.iter().map(|el| el.data.len()).sum::<usize>()
+    //     );
+    // }
+
+    // println!(
+    //     "Traced {} word-sized memory circuits, total len {}",
+    //     word_mem_circuits.len(),
+    //     word_mem_circuits
+    //         .iter()
+    //         .map(|el| el.data.len())
+    //         .sum::<usize>()
+    // );
+    // println!(
+    //     "Traced {} subword-sized memory circuits, total len {}",
+    //     subword_mem_circuits.len(),
+    //     subword_mem_circuits
+    //         .iter()
+    //         .map(|el| el.data.len())
+    //         .sum::<usize>()
+    // );
 
     let memory_argument_alpha = Mersenne31Quartic::from_array_of_base([
         Mersenne31Field(2),
@@ -705,6 +330,30 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         ));
     }
 
+    assert!(
+        counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>()
+            < NUM_CYCLES_PER_CHUNK
+    );
+    assert!(
+        counters.get_calls_to_circuit_family::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>()
+            < NUM_CYCLES_PER_CHUNK
+    );
+    assert!(
+        counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>()
+            < NUM_CYCLES_PER_CHUNK
+    );
+    assert!(
+        counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() < NUM_CYCLES_PER_CHUNK
+    );
+    assert!(
+        counters.get_calls_to_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>()
+            < NUM_CYCLES_PER_CHUNK
+    );
+    assert!(
+        counters.get_calls_to_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
+            < NUM_CYCLES_PER_CHUNK
+    );
+
     if true {
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
 
@@ -718,14 +367,39 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             )
         };
 
-        let family_data = &family_circuits[&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX];
-        assert_eq!(family_data.len(), 1);
+        let num_calls =
+            counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = NonMemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
             default_pc_value_in_padding: 4,
         };
@@ -837,8 +511,6 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        dbg!(proof.witness_tree_caps[0].cap[0]);
-
         serialize_to_file(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
@@ -861,16 +533,41 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         let mut table_driver = TableDriver::<Mersenne31Field>::new();
         jump_branch_slt_table_driver_fn(&mut table_driver);
 
-        let family_data = &family_circuits[&JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX];
-        assert_eq!(family_data.len(), 1);
+        let num_calls =
+            counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = NonMemDestinationHolder::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = NonMemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
-            default_pc_value_in_padding: 0, // we conditionally manupulate PC, and if no opcodes are applied in padding - it would end up in 0
+            default_pc_value_in_padding: 0,
         };
 
         let is_empty = oracle.inner.is_empty();
@@ -971,8 +668,6 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        dbg!(proof.witness_tree_caps[0].cap[0]);
-
         serialize_to_file(&proof, "jump_branch_slt_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
@@ -1011,14 +706,39 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             LookupWrapper::Dimensional3(csr_table),
         );
 
-        let family_data = &family_circuits[&SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX];
-        assert_eq!(family_data.len(), 1);
+        let num_calls =
+            counters.get_calls_to_circuit_family::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = NonMemDestinationHolder::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = NonMemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
             default_pc_value_in_padding: 4,
         };
@@ -1157,14 +877,38 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         let mut table_driver = TableDriver::<Mersenne31Field>::new();
         mul_div_table_driver_fn(&mut table_driver);
 
-        let family_data = &family_circuits[&MUL_DIV_CIRCUIT_FAMILY_IDX];
-        assert_eq!(family_data.len(), 1);
+        let num_calls = counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = NonMemDestinationHolder::<MUL_DIV_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&MUL_DIV_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = NonMemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
             default_pc_value_in_padding: 4,
         };
@@ -1279,8 +1023,6 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     if true {
         println!("Will try to prove word LOAD/STORE circuit");
 
-        const SECOND_WORD_BITS: usize = 4;
-
         let extra_tables =
             create_word_only_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
         let word_load_store_circuit = {
@@ -1307,14 +1049,39 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             table_driver.add_table_with_content(table_type, table);
         }
 
-        let family_data = &word_mem_circuits;
-        assert_eq!(family_data.len(), 1);
+        let num_calls =
+            counters.get_calls_to_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = MemDestinationHolder::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = MemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
         };
 
@@ -1455,14 +1222,39 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             table_driver.add_table_with_content(table_type, table);
         }
 
-        let family_data = &subword_mem_circuits;
-        assert_eq!(family_data.len(), 1);
+        let num_calls =
+            counters.get_calls_to_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>();
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = MemDestinationHolder::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX> {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
+
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = MemoryCircuitOracle {
-            inner: &family_data[0].data,
+            inner: &buffer[..],
             decoder_table: witness_gen_data,
         };
 
@@ -1705,149 +1497,163 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             (circuit, table_driver)
         };
 
-        let delegation_circuits = delegation_circuits
-            .remove(&(BLAKE2S_DELEGATION_CSR_REGISTER as u16))
-            .unwrap();
-        for delegation_witness in delegation_circuits.into_iter() {
-            println!("Will try to prove Blake delegation");
+        println!("Will try to prove Blake delegation");
 
-            assert_eq!(
-                delegation_witness.delegation_type as u32,
-                BLAKE2S_DELEGATION_CSR_REGISTER
-            );
+        let num_calls = counters.blake_calls;
+        dbg!(num_calls);
 
-            // evaluate a witness and memory-only witness for each
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+            ram_log: &snapshotter.reads_buffer,
+        };
+        let mut nd = ReplayerNonDeterminism {
+            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+        };
+        let mut buffer = vec![DelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
 
-            let delegation_type = delegation_witness.delegation_type;
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+            &mut state,
+            num_snapshots,
+            &mut ram,
+            &tape,
+            period,
+            &mut nd,
+            &mut tracer,
+        );
 
-            let oracle = DelegationCircuitOracle {
-                cycle_data: &delegation_witness,
-            };
-            #[cfg(feature = "debug_logs")]
-            println!(
-                "Evaluating memory-only witness for delegation circuit {}",
-                delegation_type
-            );
-            let mem_only_witness = evaluate_delegation_memory_witness(
-                &circuit,
-                NUM_DELEGATION_CYCLES,
-                &oracle,
-                &worker,
-                Global,
-            );
+        // evaluate a witness and memory-only witness for each
 
-            let eval_fn = super::blake2s_delegation_with_gpu_tracer::witness_eval_fn;
+        let delegation_type = BLAKE2S_DELEGATION_CSR_REGISTER as u16;
+        let oracle = Blake2sDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+        #[cfg(feature = "debug_logs")]
+        println!(
+            "Evaluating memory-only witness for delegation circuit {}",
+            delegation_type
+        );
+        let mem_only_witness = evaluate_delegation_memory_witness(
+            &circuit,
+            NUM_DELEGATION_CYCLES,
+            &oracle,
+            &worker,
+            Global,
+        );
 
-            #[cfg(feature = "debug_logs")]
-            println!(
-                "Evaluating witness for delegation circuit {}",
-                delegation_type
-            );
-            let full_witness = evaluate_witness(
-                &circuit,
-                eval_fn,
-                NUM_DELEGATION_CYCLES,
-                &oracle,
-                &[],
-                &table_driver,
-                0,
-                &worker,
-                Global,
-            );
+        let eval_fn = super::blake2s_delegation_with_transpiler::witness_eval_fn;
 
-            parse_delegation_ram_accesses_from_full_trace(
-                &circuit,
-                &full_witness,
-                &mut memory_write_set,
-                &mut memory_read_set,
-            );
+        #[cfg(feature = "debug_logs")]
+        println!(
+            "Evaluating witness for delegation circuit {}",
+            delegation_type
+        );
+        let full_witness = evaluate_witness(
+            &circuit,
+            eval_fn,
+            NUM_DELEGATION_CYCLES,
+            &oracle,
+            &[],
+            &table_driver,
+            0,
+            &worker,
+            Global,
+        );
 
-            let is_satisfied = check_satisfied(
-                &circuit,
-                &full_witness.exec_trace,
-                full_witness.num_witness_columns,
-            );
-            assert!(is_satisfied);
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &full_witness,
+            &mut memory_write_set,
+            &mut memory_read_set,
+        );
 
-            let trace_len = NUM_DELEGATION_CYCLES + 1;
+        let is_satisfied = check_satisfied(
+            &circuit,
+            &full_witness.exec_trace,
+            full_witness.num_witness_columns,
+        );
+        assert!(is_satisfied);
 
-            // create setup
-            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-            let lde_precomputations =
-                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+        let trace_len = NUM_DELEGATION_CYCLES + 1;
 
-            let setup = SetupPrecomputations::from_tables_and_trace_len(
-                &table_driver,
-                NUM_DELEGATION_CYCLES + 1,
-                &circuit.setup_layout,
-                &twiddles,
-                &lde_precomputations,
-                lde_factor,
-                tree_cap_size,
-                &worker,
-            );
+        // create setup
+        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
 
-            // let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
-            //     Some(witness.witness.lookup_mapping.clone())
-            // } else {
-            //     None
-            // };
+        let setup = SetupPrecomputations::from_tables_and_trace_len(
+            &table_driver,
+            NUM_DELEGATION_CYCLES + 1,
+            &circuit.setup_layout,
+            &twiddles,
+            &lde_precomputations,
+            lde_factor,
+            tree_cap_size,
+            &worker,
+        );
 
-            let now = std::time::Instant::now();
-            let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
-                &circuit,
-                &[],
-                &external_values,
-                full_witness,
-                &setup,
-                &twiddles,
-                &lde_precomputations,
-                0,
-                Some(delegation_type),
-                lde_factor,
-                tree_cap_size,
-                53,
-                28,
-                &worker,
-            );
-            println!(
-                "Delegation circuit type {} proving time is {:?}",
-                delegation_type,
-                now.elapsed()
-            );
+        // let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
+        //     Some(witness.witness.lookup_mapping.clone())
+        // } else {
+        //     None
+        // };
 
-            // if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
-            //     let log_n = work_type.trace_len.trailing_zeros();
-            //     assert_eq!(work_type.trace_len, 1 << log_n);
-            //     let dummy_public_inputs = Vec::<Mersenne31Field>::new();
-            //     let gpu_comparison_args = GpuComparisonArgs {
-            //         circuit: &work_type.compiled_circuit,
-            //         setup: &setup,
-            //         external_values: &external_values,
-            //         public_inputs: &dummy_public_inputs,
-            //         twiddles: &twiddles,
-            //         lde_precomputations: &lde_precomputations,
-            //         table_driver: &work_type.table_driver,
-            //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-            //         log_n: log_n as usize,
-            //         circuit_sequence: 0,
-            //         delegation_processing_type: Some(delegation_type),
-            //         prover_data: &prover_data,
-            //     };
-            //     gpu_comparison_hook(&gpu_comparison_args);
-            // }
+        let now = std::time::Instant::now();
+        let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
+            &circuit,
+            &[],
+            &external_values,
+            full_witness,
+            &setup,
+            &twiddles,
+            &lde_precomputations,
+            0,
+            Some(delegation_type),
+            lde_factor,
+            tree_cap_size,
+            53,
+            28,
+            &worker,
+        );
+        println!(
+            "Delegation circuit type {} proving time is {:?}",
+            delegation_type,
+            now.elapsed()
+        );
 
-            // if !for_gpu_comparison {
-            //     serialize_to_file(&proof, "blake2s_delegator_proof");
-            // }
+        // if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
+        //     let log_n = work_type.trace_len.trailing_zeros();
+        //     assert_eq!(work_type.trace_len, 1 << log_n);
+        //     let dummy_public_inputs = Vec::<Mersenne31Field>::new();
+        //     let gpu_comparison_args = GpuComparisonArgs {
+        //         circuit: &work_type.compiled_circuit,
+        //         setup: &setup,
+        //         external_values: &external_values,
+        //         public_inputs: &dummy_public_inputs,
+        //         twiddles: &twiddles,
+        //         lde_precomputations: &lde_precomputations,
+        //         table_driver: &work_type.table_driver,
+        //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+        //         log_n: log_n as usize,
+        //         circuit_sequence: 0,
+        //         delegation_processing_type: Some(delegation_type),
+        //         prover_data: &prover_data,
+        //     };
+        //     gpu_comparison_hook(&gpu_comparison_args);
+        // }
 
-            dbg!(prover_data.stage_2_result.grand_product_accumulator);
-            dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+        // if !for_gpu_comparison {
+        //     serialize_to_file(&proof, "blake2s_delegator_proof");
+        // }
 
-            permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
-            delegation_argument_accumulator
-                .sub_assign(&proof.delegation_argument_accumulator.unwrap());
-        }
+        dbg!(prover_data.stage_2_result.grand_product_accumulator);
+        dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+
+        permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
+        delegation_argument_accumulator.sub_assign(&proof.delegation_argument_accumulator.unwrap());
     }
 
     dbg!(permutation_argument_accumulator);

@@ -26,7 +26,7 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug)]
 pub struct QuasiUARTSource {
     pub oracle: VecDeque<u32>,
-    write_state: QuasiUARTSourceState,
+    pub write_state: QuasiUARTSourceState,
 }
 
 impl Default for QuasiUARTSource {

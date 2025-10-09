@@ -19,6 +19,7 @@ use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuit
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
 
 mod reduced_machine;
+mod with_transpiler;
 mod word_specialized;
 
 pub mod add_sub_lui_auipc_mod {

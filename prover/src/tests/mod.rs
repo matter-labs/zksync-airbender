@@ -104,6 +104,32 @@ pub mod blake2s_delegation_with_gpu_tracer {
     }
 }
 
+pub mod blake2s_delegation_with_transpiler {
+    use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
+    use crate::witness_evaluator::SimpleWitnessProxy;
+    use crate::witness_proxy::WitnessProxy;
+
+    use ::cs::cs::witness_placer::WitnessTypeSet;
+    use ::cs::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32,
+    };
+    use ::field::Mersenne31Field;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../blake_delegation_generated.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<Mersenne31Field, true>,
+            SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
 pub mod keccak_special5_delegation_with_gpu_tracer {
     use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;

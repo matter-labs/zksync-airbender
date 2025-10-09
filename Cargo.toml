@@ -58,6 +58,7 @@ members = [
     "circuit_defs/unrolled_circuits/load_store_subword_only",
     "circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations",
     "circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation",
+    "riscv_transpiler",
 ]
 
 default-members = [
@@ -163,6 +164,7 @@ poseidon2 = { path = "./poseidon2", default-features = false }
 
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
+riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator" }
