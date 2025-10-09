@@ -3,12 +3,9 @@ use super::*;
 use crate::tracers::unrolled::tracer::*;
 use crate::unrolled::evaluate_witness_for_executor_family;
 use crate::unrolled::run_unrolled_machine_for_num_cycles;
-use crate::unrolled::MemoryCircuitOracle;
-use crate::unrolled::NonMemoryCircuitOracle;
+use crate::unrolled::UnifiedRiscvCircuitOracle;
 use common_constants::circuit_families::*;
-use common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
-use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
 use cs::cs::circuit::Circuit;
 use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
@@ -19,7 +16,7 @@ use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuit
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
 
 pub mod reduced_machine {
-    use crate::unrolled::MemoryCircuitOracle;
+    use crate::unrolled::UnifiedRiscvCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
     use crate::witness_proxy::WitnessProxy;
     use ::cs::cs::placeholder::Placeholder;
@@ -34,10 +31,10 @@ pub mod reduced_machine {
 
     include!("../../../reduced_machine_preprocessed_generated.rs");
 
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
+    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
+            SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
         >;
         (fn_ptr)(proxy);
     }
@@ -54,7 +51,7 @@ pub fn run_unrolled_reduced_test_impl(
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
     // invalid locations
-    const TRACE_LEN_LOG2: usize = 22;
+    const TRACE_LEN_LOG2: usize = 23;
     const NUM_CYCLES_PER_CHUNK: usize = (1 << TRACE_LEN_LOG2) - 1;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -253,7 +250,7 @@ pub fn run_unrolled_reduced_test_impl(
 
         let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
             &binary,
-            &[BLAKE2S_DELEGATION_CSR_REGISTER],
+            &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
         );
         let circuit = {
             compile_unrolled_circuit_state_transition::<Mersenne31Field>(

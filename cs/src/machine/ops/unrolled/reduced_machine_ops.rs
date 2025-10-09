@@ -569,7 +569,7 @@ mod test {
 
                 let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
                     DUMMY_BYTECODE,
-                    &[BLAKE2S_DELEGATION_CSR_REGISTER],
+                    &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
                 );
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);
@@ -593,7 +593,7 @@ mod test {
 
                 let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
                     DUMMY_BYTECODE,
-                    &[BLAKE2S_DELEGATION_CSR_REGISTER],
+                    &[common_constants::NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER],
                 );
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);

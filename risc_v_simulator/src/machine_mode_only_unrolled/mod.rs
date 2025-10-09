@@ -95,6 +95,31 @@ pub const MEM_LOAD_TRACE_DATA_MARKER: u16 = 0;
 pub const MEM_STORE_TRACE_DATA_MARKER: u16 = MEM_LOAD_TRACE_DATA_MARKER + 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[repr(C, u32)]
+pub enum UnifiedOpcodeTracingDataWithTimestamp {
+    NonMem(NonMemoryOpcodeTracingDataWithTimestamp) = 0,
+    Mem(MemoryOpcodeTracingDataWithTimestamp),
+}
+
+impl UnifiedOpcodeTracingDataWithTimestamp {
+    #[inline(always)]
+    pub fn initial_pc(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.initial_pc,
+            Self::Mem(inner) => inner.opcode_data.initial_pc,
+        }
+    }
+
+    #[inline(always)]
+    pub fn final_pc(&self) -> u32{
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.new_pc,
+            Self::Mem(inner) => inner.opcode_data.initial_pc.wrapping_add(4),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct NonMemoryOpcodeTracingDataWithTimestamp {
     pub opcode_data: NonMemoryOpcodeTracingData,
