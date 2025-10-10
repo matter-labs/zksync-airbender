@@ -164,7 +164,7 @@ pub mod keccak_special5_delegation_with_transpiler {
     use ::cs::cs::witness_placer::WitnessTypeSet;
     use ::cs::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask
     };
     use ::field::Mersenne31Field;
     use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;

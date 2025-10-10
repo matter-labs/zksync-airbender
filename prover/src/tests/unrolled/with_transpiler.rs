@@ -61,7 +61,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    let binary = include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.bin");
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -71,7 +72,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         .collect();
 
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    let text_section = include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.text");
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -1670,7 +1672,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             use crate::cs::cs::cs_reference::BasicAssembly;
             use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
             let mut cs = BasicAssembly::<Mersenne31Field>::new();
-            define_keccak_special5_delegation_circuit(&mut cs);
+            define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
             let (circuit_output, _) = cs.finalize();
             let table_driver = circuit_output.table_driver.clone();
             let compiler = OneRowCompiler::default();

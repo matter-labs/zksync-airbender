@@ -209,12 +209,16 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
             };
 
             for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
-                }
                 assert!(base_offset >= 1 << 21);
-                let offset = indirect.offset_constant();
+                let mut offset = indirect.offset_constant();
                 assert_eq!(offset % 4, 0);
+
+                if let Some((var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
+                    let var_value = read_u16(trace_row, var_column);
+                    let var_offset = var_scale.checked_mul(var_value as u32).unwrap();
+                    offset = offset.checked_add(var_offset).unwrap();
+                }
+
                 let (address, of) = base_offset.overflowing_add(offset);
                 assert!(of == false);
                 assert!(address >= 1 << 21);
@@ -258,6 +262,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
         {
             // register
             {
+                let reg_idx = access.register_access.get_register_index();
                 let read_ts = read_timestamp(
                     trace_row,
                     access.register_access.get_read_timestamp_columns(),
@@ -272,14 +277,16 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
                 {
                     write_value = read_u32(trace_row, write_columns);
                 }
+                // assert_eq!(reg_idx, 0);
                 assert_eq!(read_ts, 0);
                 assert_eq!(read_value, 0);
                 assert_eq!(write_value, 0);
             }
 
             for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
+                if let Some((_var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
+                    let var_value = read_u16(trace_row, var_column);
+                    assert_eq!(var_value, 0);
                 }
                 let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
                 let read_value = read_u32(trace_row, indirect.get_read_value_columns());
