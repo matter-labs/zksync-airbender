@@ -8,6 +8,7 @@
 #![feature(slice_from_ptr_range)]
 #![feature(vec_push_within_capacity)]
 #![feature(maybe_uninit_slice)]
+#![feature(lazy_type_alias)] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
 
 #[cfg(feature = "debug_satisfiable")]
 pub const DEBUG_QUOTIENT: bool = true;

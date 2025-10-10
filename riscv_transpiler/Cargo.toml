@@ -1,0 +1,18 @@
+[package]
+name = "riscv_transpiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+common_constants = { workspace = true }
+field = { workspace = true }
+blake2s_u32 = { workspace = true }
+ruint = { version = "1.16" }
+risc_v_simulator = { workspace = true, features = ["delegation"] }
+worker = { workspace = true }

@@ -30,7 +30,8 @@ use crate::cycle::state::{CycleMarker, Mark, CYCLE_MARKER};
 mod delegations;
 
 use crate::cycle::opcode_formats::*;
-use cs::definitions::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+pub use cs::definitions::TimestampData;
+use cs::definitions::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 
 // In general we need to output decoder immediate output, but it's easier to just re-parse it in circuits,
 // so we just output PC and timestamp
@@ -41,11 +42,13 @@ pub struct TracingDecoderData {
     // pub timestamp: TimestampData,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct NonMemoryOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32,
+    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub rs2_value: u32,
     pub rd_old_value: u32,
@@ -54,11 +57,13 @@ pub struct NonMemoryOpcodeTracingData {
     pub delegation_type: u16,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct LoadOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32,
+    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub aligned_ram_address: u32,
     pub aligned_ram_read_value: u32,
@@ -66,11 +71,13 @@ pub struct LoadOpcodeTracingData {
     pub rd_value: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct StoreOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32,
+    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub aligned_ram_address: u32,
     pub aligned_ram_old_value: u32,
@@ -94,7 +101,9 @@ const _: () = const {
 pub const MEM_LOAD_TRACE_DATA_MARKER: u16 = 0;
 pub const MEM_STORE_TRACE_DATA_MARKER: u16 = MEM_LOAD_TRACE_DATA_MARKER + 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct NonMemoryOpcodeTracingDataWithTimestamp {
     pub opcode_data: NonMemoryOpcodeTracingData,
@@ -104,7 +113,9 @@ pub struct NonMemoryOpcodeTracingDataWithTimestamp {
     pub cycle_timestamp: TimestampData,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[repr(C)]
 pub struct MemoryOpcodeTracingDataWithTimestamp {
     pub opcode_data: LoadOpcodeTracingData,

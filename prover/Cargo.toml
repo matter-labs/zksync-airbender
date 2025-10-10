@@ -25,6 +25,7 @@ serde-big-array = "*"
 transcript = { workspace = true }
 non_determinism_source = { workspace = true }
 risc_v_simulator = { workspace = true, features = ["delegation"], optional = true }
+riscv_transpiler = { workspace = true, optional = true }
 itertools = { workspace = true, optional = true }
 
 rayon = { version = "1", optional = true }
@@ -41,7 +42,7 @@ rand = { workspace = true, features = ["std", "std_rng"]}
 bincode = { version = "1.3" }
 
 [features]
-prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "proc-macro2", "syn", "quote", "bit-set", "lib-rv32-asm", "serde_json", "itertools"]
+prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "riscv_transpiler", "proc-macro2", "syn", "quote", "bit-set", "lib-rv32-asm", "serde_json", "itertools"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.
 timing_logs = []
