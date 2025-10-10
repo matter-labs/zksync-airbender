@@ -157,6 +157,10 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         Self::from_inner(inner, log_chunk_size)
     }
 
+    pub fn capacity(&self) -> usize {
+        self.inner.execute(|inner| inner.tracker.capacity())
+    }
+
     pub fn alloc<T>(
         &self,
         len: usize,

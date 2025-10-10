@@ -197,22 +197,36 @@ impl QueriesOutput {
                 context,
             )?;
             drop(memory_tree);
-            let setup_evaluations = setup
+            // let setup_evaluations = setup
+            //     .trace_holder
+            //     .get_coset_evaluations(coset_idx, context)?;
+            // let setup_tree = setup.trees_and_caps.trees[coset_idx].clone();
+            // let setup = Self::get_leafs_and_digests_host(
+            //     &d_tree_indexes,
+            //     &h_tree_indexes,
+            //     true,
+            //     setup_evaluations,
+            //     setup_tree,
+            //     log_domain_size,
+            //     0,
+            //     layers_count,
+            //     callbacks,
+            //     context,
+            // )?;
+            let (setup_evaluations, setup_tree) = setup
                 .trace_holder
-                .get_coset_evaluations(coset_idx, context)?;
-            let setup_tree = setup.trees_and_caps.trees[coset_idx].clone();
-            let setup = Self::get_leafs_and_digests_host(
+                .get_coset_evaluations_and_tree(coset_idx, context)?;
+            let setup = Self::get_leafs_and_digests_device(
                 &d_tree_indexes,
-                &h_tree_indexes,
                 true,
                 setup_evaluations,
-                setup_tree,
+                &setup_tree,
                 log_domain_size,
                 0,
                 layers_count,
-                callbacks,
                 context,
             )?;
+            drop(setup_tree);
             let (stage_2_evaluations, stage_2_tree) = stage_2_output
                 .trace_holder
                 .get_coset_evaluations_and_tree(coset_idx, context)?;

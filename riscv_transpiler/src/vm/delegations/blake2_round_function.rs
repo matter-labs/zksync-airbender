@@ -66,7 +66,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>
 ) {
     let x10 = read_register::<C, 3>(state, 10);
     let x11 = read_register::<C, 3>(state, 11);
-    let x12 = read_register::<C, 3>(state, 12);
+    let x12 = state.registers[12].value;
 
     assert!(x10 >= 1 << 21);
     assert!(x11 >= 1 << 21);

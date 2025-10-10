@@ -33,6 +33,7 @@ impl StageThreeOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        is_unrolled: bool,
         cached_data: &ProverCachedData,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
@@ -108,7 +109,7 @@ impl StageThreeOutput {
             omega_inv,
             cached_data,
             &circuit,
-            false,
+            is_unrolled,
             log_domain_size,
         );
         let static_metadata_clone = static_metadata.clone();

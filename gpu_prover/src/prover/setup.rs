@@ -1,19 +1,16 @@
 use super::context::ProverContext;
-use super::trace_holder::{get_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use super::trace_holder::{get_tree_caps, TraceHolder, TreesCacheMode};
 use super::transfer::Transfer;
 use super::BF;
-use crate::blake2s::Digest;
 use cs::one_row_compiler::CompiledCircuitArtifact;
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
-use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct SetupTreesAndCaps {
-    pub trees: Vec<Arc<Box<[Digest]>>>,
+    // pub trees: Vec<Arc<Box<[Digest]>>>,
     pub caps: Arc<Vec<MerkleTreeCapVarLength>>,
 }
 
@@ -114,59 +111,61 @@ impl<'a> SetupPrecomputations<'a> {
         transfer.record_transferred(context)?;
         transfer.ensure_transferred(context)?;
         trace_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
-        let streams = [context.get_exec_stream(), context.get_aux_stream()];
-        for stream in streams {
-            stream.synchronize()?;
-        }
+        // let streams = [context.get_exec_stream(), context.get_aux_stream()];
+        // for stream in streams {
+        //     stream.synchronize()?;
+        // }
+        context.get_exec_stream().synchronize()?;
         let caps = get_tree_caps(&trace_holder.get_tree_caps_accessors());
-        let d_trees = match &trace_holder.trees {
-            TreesHolder::Full(trees) => trees,
-            _ => unreachable!(),
-        };
-        let lde_factor = 1usize << log_lde_factor;
-        let tree_len = 1usize << (log_domain_size + 1);
-        assert!(tree_len.is_multiple_of(CHUNK_SIZE));
-        let mut trees = (0..lde_factor)
-            .into_iter()
-            .map(|_| unsafe { Box::new_uninit_slice(tree_len).assume_init() })
-            .collect_vec();
-        const CHUNK_SIZE: usize = 1 << 20; // 32 MB
-        let mut chunks = unsafe {
-            [
-                context.alloc_host_uninit_slice(CHUNK_SIZE),
-                context.alloc_host_uninit_slice(CHUNK_SIZE),
-            ]
-        };
-        let mut callbacks = transfer.callbacks;
-        let mut i = 0;
-        for (coset_index, tree) in trees.iter_mut().enumerate() {
-            let d_tree = &d_trees[coset_index];
-            assert_eq!(d_tree.len(), tree_len);
-            for (src, dst) in d_tree
-                .chunks(CHUNK_SIZE)
-                .zip_eq(tree.chunks_exact_mut(CHUNK_SIZE))
-            {
-                let stream = streams[i % 2];
-                let chunk = &mut chunks[i % 2];
-                i += 1;
-                memory_copy_async(chunk, src, stream)?;
-                let chunk = chunk.get_accessor();
-                let copy_fn = {
-                    move || unsafe {
-                        let chunk = <[Digest]>::as_ptr(chunk.get());
-                        let dst = <[Digest]>::as_ptr(dst) as *mut Digest;
-                        std::ptr::copy_nonoverlapping(chunk, dst, CHUNK_SIZE);
-                    }
-                };
-                callbacks.schedule(copy_fn, stream)?;
-            }
-        }
-        for stream in streams {
-            stream.synchronize()?;
-        }
-        drop(callbacks);
-        let trees = trees.into_iter().map(Arc::new).collect_vec();
+        // let d_trees = match &trace_holder.trees {
+        //     TreesHolder::Full(trees) => trees,
+        //     _ => unreachable!(),
+        // };
+        // let lde_factor = 1usize << log_lde_factor;
+        // let tree_len = 1usize << (log_domain_size + 1);
+        // assert!(tree_len.is_multiple_of(CHUNK_SIZE));
+        // let mut trees = (0..lde_factor)
+        //     .into_iter()
+        //     .map(|_| unsafe { Box::new_uninit_slice(tree_len).assume_init() })
+        //     .collect_vec();
+        // const CHUNK_SIZE: usize = 1 << 20; // 32 MB
+        // let mut chunks = unsafe {
+        //     [
+        //         context.alloc_host_uninit_slice(CHUNK_SIZE),
+        //         context.alloc_host_uninit_slice(CHUNK_SIZE),
+        //     ]
+        // };
+        // let mut callbacks = transfer.callbacks;
+        // let mut i = 0;
+        // for (coset_index, tree) in trees.iter_mut().enumerate() {
+        //     let d_tree = &d_trees[coset_index];
+        //     assert_eq!(d_tree.len(), tree_len);
+        //     for (src, dst) in d_tree
+        //         .chunks(CHUNK_SIZE)
+        //         .zip_eq(tree.chunks_exact_mut(CHUNK_SIZE))
+        //     {
+        //         let stream = streams[i % 2];
+        //         let chunk = &mut chunks[i % 2];
+        //         i += 1;
+        //         memory_copy_async(chunk, src, stream)?;
+        //         let chunk = chunk.get_accessor();
+        //         let copy_fn = {
+        //             move || unsafe {
+        //                 let chunk = <[Digest]>::as_ptr(chunk.get());
+        //                 let dst = <[Digest]>::as_ptr(dst) as *mut Digest;
+        //                 std::ptr::copy_nonoverlapping(chunk, dst, CHUNK_SIZE);
+        //             }
+        //         };
+        //         callbacks.schedule(copy_fn, stream)?;
+        //     }
+        // }
+        // for stream in streams {
+        //     stream.synchronize()?;
+        // }
+        // drop(callbacks);
+        // let trees = trees.into_iter().map(Arc::new).collect_vec();
         let caps = Arc::new(caps);
-        Ok(SetupTreesAndCaps { trees, caps })
+        // Ok(SetupTreesAndCaps { trees, caps })
+        Ok(SetupTreesAndCaps { caps })
     }
 }

@@ -44,6 +44,7 @@ impl StageFourOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        is_unrolled: bool,
         cached_data: &ProverCachedData,
         setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
@@ -174,7 +175,7 @@ impl StageFourOutput {
             &cached_data,
             circuit,
             row_chunk_size,
-            false, // is_unrolled
+            is_unrolled,
             log_domain_size,
             stream,
         )?;
@@ -264,7 +265,7 @@ impl StageFourOutput {
             &circuit,
             log_domain_size,
             false, // bit_reversed
-            false, // is_unrolled
+            is_unrolled,
             &stream,
         )?;
         assert_eq!(log_lde_factor, 1);

@@ -32,7 +32,7 @@ const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 // #[ignore = "test has explicit panic inside"]
 #[test]
 fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
-    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None);
+    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None, None);
 }
 
 pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
@@ -70,8 +70,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -81,8 +81,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         .collect();
 
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()

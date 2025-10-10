@@ -4,4 +4,6 @@ mod gpu_worker;
 mod messages;
 mod precomputations;
 pub mod prover;
+mod ram;
 mod tracer;
+mod snapshotter;

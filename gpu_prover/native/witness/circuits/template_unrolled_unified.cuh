@@ -1,14 +1,14 @@
 #pragma once
-#include "../trace_main.cuh"
+#include "../trace_unrolled.cuh"
 #include "../witness_generation.cuh"
 
 using namespace ::airbender::witness::generation;
-using namespace ::airbender::witness::trace::main;
+using namespace ::airbender::witness::trace::unrolled;
 
 namespace airbender::witness::circuits::NAME {
 
-#include CIRCUIT_INCLUDE(NAME)
+#include UNROLLED_CIRCUIT_INCLUDE(NAME)
 
-KERNEL(NAME, MainTrace)
+KERNEL(NAME, UnrolledUnifiedOracle)
 
 } // namespace airbender::witness::circuits::NAME

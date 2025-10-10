@@ -25,115 +25,133 @@ struct RegisterOrIndirectVariableOffsetData {
   const u16 variable_offset_value;
 };
 
-#define MAX_INDIRECT_ACCESS_REGISTERS 2
-#define MAX_INDIRECT_ACCESS_WORDS 24
-#define USE_WRITES_MASK (1u << 31)
+constexpr u16 NON_DETERMINISM_CSR = 0x7c0;
 
-struct DelegationTrace {
-  const u32 num_requests;
-  const u32 num_register_accesses_per_delegation;
-  const u32 num_indirect_reads_per_delegation;
-  const u32 num_indirect_writes_per_delegation;
-  const u32 num_indirect_access_variable_offsets_per_delegation;
-  const u32 base_register_index;
-  const u16 delegation_type;
-  const u32 indirect_accesses_properties[MAX_INDIRECT_ACCESS_REGISTERS][MAX_INDIRECT_ACCESS_WORDS];
-  const TimestampData *const write_timestamp;
-  const RegisterOrIndirectReadWriteData *const register_accesses;
-  const RegisterOrIndirectReadData *const indirect_reads;
-  const RegisterOrIndirectReadWriteData *const indirect_writes;
-  const RegisterOrIndirectVariableOffsetData *const indirect_offset_variables;
-
-  template <typename T> [[nodiscard]] T get_witness_from_placeholder(Placeholder, unsigned) const;
+struct BigintWithControlAbiDescription {
+  static constexpr unsigned REG_ACCESSES = 3; // 3 x 16B = 48B
+  static constexpr unsigned INDIRECT_READS = 8; // 8 x 12B = 96B
+  static constexpr unsigned INDIRECT_WRITES = 8; // 8 x 16B = 128B
+  static constexpr unsigned VARIABLE_OFFSETS = 0; // 0 x 2B = 0B
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 10;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16 reg_idx) { return reg_idx == 11; }
 };
 
-template <> DEVICE_FORCEINLINE u32 DelegationTrace::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_row) const {
-  if (trace_row >= num_requests)
-    return 0;
-  const auto [register_index, word_index] = placeholder.payload;
-  const unsigned register_offset = register_index - base_register_index;
-  switch (placeholder.tag) {
-  case DelegationRegisterReadValue: {
-    const unsigned offset = trace_row * num_register_accesses_per_delegation + register_offset;
-    return register_accesses[offset].read_value;
-  }
-  case DelegationRegisterWriteValue: {
-    const unsigned offset = trace_row * num_register_accesses_per_delegation + register_offset;
-    return register_accesses[offset].write_value;
-  }
-  case DelegationIndirectReadValue: {
-    const u32 access = indirect_accesses_properties[register_offset][word_index];
-    const bool use_writes = access & USE_WRITES_MASK;
-    const u32 index = access & ~USE_WRITES_MASK;
-    const u32 t = use_writes ? num_indirect_writes_per_delegation : num_indirect_reads_per_delegation;
-    const unsigned offset = trace_row * t + index;
-    return use_writes ? indirect_writes[offset].read_value : indirect_reads[offset].read_value;
-  }
-  case DelegationIndirectWriteValue: {
-    const u32 access = indirect_accesses_properties[register_offset][word_index];
-    const u32 index = access & ~USE_WRITES_MASK;
-    const unsigned offset = trace_row * num_indirect_writes_per_delegation + index;
-    return indirect_writes[offset].write_value;
-  }
-  default:
-    __trap();
-  }
-}
+struct Blake2sRoundFunctionAbiDescription {
+  static constexpr unsigned REG_ACCESSES = 3; // 3 x 16B = 48B
+  static constexpr unsigned INDIRECT_READS = 16; // 16 x 12B = 192B
+  static constexpr unsigned INDIRECT_WRITES = 24; // 24 x 16B = 384B
+  static constexpr unsigned VARIABLE_OFFSETS = 0; // 0 x 2B = 0B
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 7;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16 reg_idx) { return reg_idx == 11; }
+};
 
-template <> DEVICE_FORCEINLINE u16 DelegationTrace::get_witness_from_placeholder<u16>(const Placeholder placeholder, const unsigned trace_row) const {
-  if (trace_row >= num_requests)
-    return 0;
-  switch (placeholder.tag) {
-  case DelegationABIOffset:
-    return 0;
-  case DelegationType:
-    return delegation_type;
-  case DelegationIndirectAccessVariableOffset: {
-    const u32 variable_index = placeholder.payload[0];
-    const unsigned offset = trace_row * num_indirect_access_variable_offsets_per_delegation + variable_index;
-    return indirect_offset_variables[offset].variable_offset_value;
-  }
-  default:
-    __trap();
-  }
-}
+#define KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS 6
 
-template <> DEVICE_FORCEINLINE bool DelegationTrace::get_witness_from_placeholder<bool>(const Placeholder placeholder, const unsigned trace_row) const {
-  if (trace_row >= num_requests)
-    return false;
-  switch (placeholder.tag) {
-  case ExecuteDelegation:
-    return true;
-  default:
-    __trap();
-  }
-}
+struct KeccakSpecial5AbiDescription {
+  static constexpr unsigned REG_ACCESSES = 2; // 2 x 16B = 32B
+  static constexpr unsigned INDIRECT_READS = 0; // 0 x 12B = 0B
+  static constexpr unsigned INDIRECT_WRITES = KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2; // 6 x 2 x 16B = 192B
+  static constexpr unsigned VARIABLE_OFFSETS = KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS; // 6 x 2B = 12B
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 11;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
+};
 
-template <>
-DEVICE_FORCEINLINE TimestampData DelegationTrace::get_witness_from_placeholder<TimestampData>(const Placeholder placeholder, const unsigned trace_row) const {
-  if (trace_row >= num_requests)
-    return {};
-  const auto [register_index, word_index] = placeholder.payload;
-  switch (placeholder.tag) {
-  case DelegationWriteTimestamp:
-    return write_timestamp[trace_row];
-  case DelegationRegisterReadTimestamp: {
-    const unsigned register_offset = register_index - base_register_index;
-    const unsigned offset = trace_row * num_register_accesses_per_delegation + register_offset;
-    return register_accesses[offset].timestamp;
+template <typename DESCRIPTION> struct DelegationWitness {
+  const TimestampScalar write_timestamp;
+  const RegisterOrIndirectReadWriteData reg_accesses[DESCRIPTION::REG_ACCESSES];
+  const RegisterOrIndirectReadData indirect_reads[DESCRIPTION::INDIRECT_READS];
+  const RegisterOrIndirectReadWriteData indirect_writes[DESCRIPTION::INDIRECT_WRITES];
+  const u16 variables_offsets[DESCRIPTION::VARIABLE_OFFSETS];
+};
+
+template <typename DESCRIPTION> struct DelegationTrace {
+  const u32 requests_count;
+  const DelegationWitness<DESCRIPTION> *const __restrict__ tracing_data;
+
+  DEVICE_FORCEINLINE u32 get_witness_from_placeholder_u32(const Placeholder placeholder, const unsigned trace_row) const {
+    if (trace_row >= requests_count)
+      return 0;
+    const auto [register_index, word_index] = placeholder.payload;
+    const unsigned reg_offset = register_index - DESCRIPTION::BASE_REGISTER;
+    const auto cycle_data = tracing_data + trace_row;
+    switch (placeholder.tag) {
+    case DelegationRegisterReadValue: {
+      return cycle_data->reg_accesses[reg_offset].read_value;
+    }
+    case DelegationRegisterWriteValue: {
+      return cycle_data->reg_accesses[reg_offset].write_value;
+    }
+    case DelegationIndirectReadValue: {
+      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads[word_index].read_value
+                                                             : cycle_data->indirect_writes[word_index].read_value;
+    }
+    case DelegationIndirectWriteValue: {
+      if (DESCRIPTION::use_read_indirects(register_index)) {
+        __trap();
+      }
+      return cycle_data->indirect_writes[word_index].write_value;
+    }
+    default:
+      __trap();
+    }
   }
-  case DelegationIndirectReadTimestamp: {
-    const unsigned register_offset = register_index - base_register_index;
-    const u32 access = indirect_accesses_properties[register_offset][word_index];
-    const bool use_writes = access & USE_WRITES_MASK;
-    const u32 index = access & ~USE_WRITES_MASK;
-    const u32 t = use_writes ? num_indirect_writes_per_delegation : num_indirect_reads_per_delegation;
-    const unsigned offset = trace_row * t + index;
-    return use_writes ? indirect_writes[offset].timestamp : indirect_reads[offset].timestamp;
+
+  DEVICE_FORCEINLINE u16 get_witness_from_placeholder_u16(const Placeholder placeholder, const unsigned trace_row) const {
+    if (trace_row >= requests_count)
+      return 0;
+    switch (placeholder.tag) {
+    case DelegationABIOffset:
+      return 0;
+    case DelegationType:
+      return DESCRIPTION::DELEGATION_TYPE;
+    case DelegationIndirectAccessVariableOffset: {
+      const u32 variable_index = placeholder.payload[0];
+      const auto cycle_data = tracing_data + trace_row;
+      return cycle_data->variables_offsets[variable_index];
+    }
+    default:
+      __trap();
+    }
   }
-  default:
-    __trap();
+
+  DEVICE_FORCEINLINE bool get_witness_from_placeholder_bool(const Placeholder placeholder, const unsigned trace_row) const {
+    if (trace_row >= requests_count)
+      return false;
+    switch (placeholder.tag) {
+    case ExecuteDelegation:
+      return true;
+    default:
+      __trap();
+    }
   }
-}
+
+  DEVICE_FORCEINLINE TimestampData get_witness_from_placeholder_ts(const Placeholder placeholder, const unsigned trace_row) const {
+    if (trace_row >= requests_count)
+      return {};
+    const auto [register_index, word_index] = placeholder.payload;
+    const unsigned reg_offset = register_index - DESCRIPTION::BASE_REGISTER;
+    const auto cycle_data = tracing_data + trace_row;
+    switch (placeholder.tag) {
+    case DelegationWriteTimestamp:
+      return TimestampData::from_scalar(cycle_data->write_timestamp);
+    case DelegationRegisterReadTimestamp: {
+      return cycle_data->reg_accesses[reg_offset].timestamp;
+    }
+    case DelegationIndirectReadTimestamp: {
+      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads[word_index].timestamp
+                                                             : cycle_data->indirect_writes[word_index].timestamp;
+    }
+    default:
+      __trap();
+    }
+  }
+};
+
+typedef DelegationTrace<BigintWithControlAbiDescription> BigintWithControlOracle;
+typedef DelegationTrace<Blake2sRoundFunctionAbiDescription> Blake2WithCompressionOracle;
+typedef DelegationTrace<KeccakSpecial5AbiDescription> KeccakSpecial5Oracle;
 
 } // namespace airbender::witness::trace::delegation

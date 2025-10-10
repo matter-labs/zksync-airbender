@@ -3,7 +3,7 @@ use crate::prover::callbacks::Callbacks;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::{CudaSlice, CudaSliceMut};
+use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use std::sync::Arc;
 
@@ -42,8 +42,34 @@ impl<'a> Transfer<'a> {
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(dst, src.as_ref(), stream)?;
+        let src = src.clone();
         let f = move || {
-            let _ = src.clone();
+            let _ = src;
+        };
+        self.callbacks.schedule(f, stream)
+    }
+
+    pub fn schedule_multiple<T>(
+        &mut self,
+        srcs: &[Arc<impl CudaSlice<T> + Send + Sync + ?Sized + 'a>],
+        dst: &mut (impl CudaSliceMut<T> + ?Sized),
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert_eq!(srcs.iter().map(|s| s.len()).sum::<usize>(), dst.len());
+        self.ensure_allocated(context)?;
+        let stream = context.get_h2d_stream();
+        let mut offset = 0;
+        for src in srcs.iter() {
+            let dst = unsafe {
+                let slice = &mut dst.as_mut_slice()[offset..offset + src.len()];
+                DeviceSlice::from_mut_slice(slice)
+            };
+            memory_copy_async(dst, src.as_ref(), stream)?;
+            offset += src.len();
+        }
+        let srcs = srcs.to_vec();
+        let f = move || {
+            let _ = srcs;
         };
         self.callbacks.schedule(f, stream)
     }
@@ -62,8 +88,10 @@ impl<'a> Transfer<'a> {
 #[cfg(test)]
 mod tests {
     use super::super::context::{ProverContext, ProverContextConfig};
-    use super::*;
     use crate::allocator::tracker::AllocationPlacement;
+    use crate::prover::transfer::Transfer;
+    use era_cudart::result::CudaResult;
+    use std::sync::Arc;
 
     #[test]
     fn test_transfer() -> CudaResult<()> {

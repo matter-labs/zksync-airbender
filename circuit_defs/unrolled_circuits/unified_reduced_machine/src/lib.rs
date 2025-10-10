@@ -23,6 +23,15 @@ pub const TREE_CAP_SIZE: usize = 32;
 pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 
+pub const ALLOWED_DELEGATION_CSRS: &[u32] = &[
+    common_constants::NON_DETERMINISM_CSR,
+    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
+];
+pub const ALLOWED_DELEGATION_CSRS_U16: &[u16] = &[
+    common_constants::NON_DETERMINISM_CSR as u16,
+    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+];
+
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
@@ -48,10 +57,7 @@ pub fn get_circuit_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize
             let extra_tables =
                 create_reduced_machine_special_tables::<_, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
                     bytecode,
-                    &[
-                        common_constants::NON_DETERMINISM_CSR,
-                        common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-                    ],
+                    ALLOWED_DELEGATION_CSRS,
                 );
             for (table_type, table) in extra_tables {
                 cs.add_table_with_content(table_type, table);
@@ -91,10 +97,7 @@ pub fn dump_ssa_form_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usi
             let extra_tables =
                 create_reduced_machine_special_tables::<_, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
                     bytecode,
-                    &[
-                        common_constants::NON_DETERMINISM_CSR,
-                        common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-                    ],
+                    ALLOWED_DELEGATION_CSRS,
                 );
             for (table_type, table) in extra_tables {
                 cs.add_table_with_content(table_type, table);
@@ -128,10 +131,7 @@ pub fn get_table_driver_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: 
 
     let extra_tables = create_reduced_machine_special_tables::<_, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
         bytecode,
-        &[
-            common_constants::NON_DETERMINISM_CSR,
-            common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-        ],
+        ALLOWED_DELEGATION_CSRS,
     );
     for (table_type, table) in extra_tables {
         table_driver.add_table_with_content(table_type, table);
@@ -173,10 +173,7 @@ pub fn get_decoder_table_for_rom_bound<
         bytecode,
         &[Box::new(ReducedMachineDecoder::new())],
         num_bytecode_words,
-        &[
-            common_constants::NON_DETERMINISM_CSR as u16,
-            common_constants::BLAKE2S_DELEGATION_CSR_REGISTER as u16,
-        ],
+        ALLOWED_DELEGATION_CSRS_U16,
     );
 
     t.remove(&common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)

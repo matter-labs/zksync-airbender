@@ -43,28 +43,23 @@ add_library(gpu_prover_native STATIC
         witness/circuits/add_sub_lui_auipc_mop.cu
         witness/circuits/bigint_with_control.cu
         witness/circuits/blake2_with_compression.cu
-        witness/circuits/final_reduced_risc_v_machine.cu
         witness/circuits/jump_branch_slt.cu
         witness/circuits/keccak_special5.cu
         witness/circuits/load_store_subword_only.cu
         witness/circuits/load_store_word_only.cu
-        witness/circuits/machine_without_signed_mul_div.cu
         witness/circuits/mul_div.cu
         witness/circuits/mul_div_unsigned.cu
-        witness/circuits/reduced_risc_v_machine.cu
-        witness/circuits/reduced_risc_v_log_23_machine.cu
-        witness/circuits/risc_v_cycles.cu
         witness/circuits/shift_binary_csr.cu
         witness/circuits/template_delegation.cuh
-        witness/circuits/template_main.cuh
         witness/circuits/template_unrolled_memory.cuh
         witness/circuits/template_unrolled_non_memory.cuh
+        witness/circuits/template_unrolled_unified.cuh
+        witness/circuits/unified_reduced_machine.cu
         witness/column.cuh
         witness/common.cuh
         witness/layout.cuh
         witness/memory.cuh
         witness/memory_delegation.cu
-        witness/memory_main.cu
         witness/memory_unrolled.cu
         witness/multiplicities.cu
         witness/option.cuh
@@ -73,7 +68,6 @@ add_library(gpu_prover_native STATIC
         witness/tables.cuh
         witness/trace.cuh
         witness/trace_delegation.cuh
-        witness/trace_main.cuh
         witness/trace_unrolled.cuh
         witness/witness_generation.cuh
 )

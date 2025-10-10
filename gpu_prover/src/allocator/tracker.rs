@@ -46,6 +46,10 @@ impl AllocationsTracker {
         }
     }
 
+    pub fn capacity(&self) -> usize {
+        self.lens.iter().sum()
+    }
+
     fn insert_remainder(
         &mut self,
         free_ptr: NonNull<u8>,

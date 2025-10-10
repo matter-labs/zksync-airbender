@@ -715,8 +715,8 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
 pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
     setup_row_major: &RowMajorTrace<Mersenne31Field, N, A>,
 ) -> Vec<Mersenne31Field, B> {
-    #[cfg(feature = "gpu")]
-    gpu::initialize_host_allocator_if_needed();
+    // #[cfg(feature = "gpu")]
+    // gpu::initialize_host_allocator_if_needed();
 
     let mut setup_evaluations =
         Vec::with_capacity_in(setup_row_major.as_slice().len(), B::default());

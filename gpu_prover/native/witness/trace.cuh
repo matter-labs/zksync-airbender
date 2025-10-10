@@ -58,24 +58,4 @@ struct TimestampData {
   }
 };
 
-struct RegIndexOrMemWordIndex {
-  static constexpr u32 IS_RAM_MASK = 0x80000000;
-  u32 value;
-
-  DEVICE_FORCEINLINE u32 as_u32_formal_address() const { return is_register() ? value : value << 2; }
-
-  DEVICE_FORCEINLINE bool is_register() const { return !(value & IS_RAM_MASK); }
-};
-
-struct __align__(16) InitAndTeardown {
-  u32 address;
-  u32 teardown_value;
-  TimestampData teardown_timestamp;
-};
-
-struct ShuffleRamInitsAndTeardowns {
-  // const u32 count;
-  const InitAndTeardown *const __restrict__ inits_and_teardowns;
-};
-
 } // namespace airbender::witness::trace
