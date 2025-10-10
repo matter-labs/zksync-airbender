@@ -1,8 +1,6 @@
 use super::*;
 
-use crate::tracers::unrolled::tracer::*;
-use crate::unrolled::evaluate_witness_for_executor_family;
-use crate::unrolled::run_unrolled_machine_for_num_cycles;
+use crate::unrolled::evaluate_witness_for_unified_executor;
 use crate::unrolled::UnifiedRiscvCircuitOracle;
 use common_constants::circuit_families::*;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
@@ -15,7 +13,7 @@ use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
-use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
+use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_unified_executor;
 
 pub mod reduced_machine {
     use crate::unrolled::UnifiedRiscvCircuitOracle;
@@ -242,24 +240,46 @@ pub fn run_unrolled_reduced_test_impl(
         .try_into()
         .unwrap();
 
-    let external_values = ExternalValues {
-        challenges: ExternalChallenges {
-            memory_argument: ExternalMemoryArgumentChallenges {
-                memory_argument_linearization_challenges:
-                    memory_argument_linearization_challenges_powers,
-                memory_argument_gamma,
-            },
-            delegation_argument: Some(ExternalDelegationArgumentChallenges {
-                delegation_argument_linearization_challenges,
-                delegation_argument_gamma,
-            }),
-            machine_state_permutation_argument: Some(ExternalMachineStateArgumentChallenges {
-                linearization_challenges,
-                additive_term: state_permutation_argument_gamma,
-            }),
+    let external_challenges = ExternalChallenges {
+        memory_argument: ExternalMemoryArgumentChallenges {
+            memory_argument_linearization_challenges:
+                memory_argument_linearization_challenges_powers,
+            memory_argument_gamma,
         },
-        aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+        delegation_argument: Some(ExternalDelegationArgumentChallenges {
+            delegation_argument_linearization_challenges,
+            delegation_argument_gamma,
+        }),
+        machine_state_permutation_argument: Some(ExternalMachineStateArgumentChallenges {
+            linearization_challenges,
+            additive_term: state_permutation_argument_gamma,
+        }),
     };
+
+    let mut permutation_argument_accumulator = produce_pc_into_permutation_accumulator_raw(
+        INITIAL_PC,
+        split_timestamp(INITIAL_TIMESTAMP),
+        final_pc,
+        split_timestamp(final_timestamp),
+        &external_challenges
+            .machine_state_permutation_argument
+            .as_ref()
+            .unwrap()
+            .linearization_challenges,
+        &external_challenges
+            .machine_state_permutation_argument
+            .as_ref()
+            .unwrap()
+            .additive_term,
+    );
+    let t = produce_register_contribution_into_memory_accumulator(
+        &register_final_state,
+        external_challenges
+            .memory_argument
+            .memory_argument_linearization_challenges,
+        external_challenges.memory_argument.memory_argument_gamma,
+    );
+    permutation_argument_accumulator.mul_assign(&t);
 
     if true {
         println!("Will try to prove ReducedMachine circuit");
@@ -321,23 +341,38 @@ pub fn run_unrolled_reduced_test_impl(
             &mut tracer,
         );
 
+        assert!(num_calls >= total_unique_teardowns);
+
         let decoder_table_data = materialize_flattened_decoder_table(&decoder_table_data);
 
         let oracle = UnifiedRiscvCircuitOracle {
+            // prepadding: NUM_CYCLES_PER_CHUNK - num_calls,
             inner: &buffer[..],
             decoder_table: &witness_gen_data,
         };
+
+        let aux_boundary_data = get_aux_boundary_data(
+            &circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &inits_and_teardowns[0].lazy_init_data,
+        );
 
         // println!(
         //     "Opcode = 0x{:08x}",
         //     family_data[0].data[29].opcode_data.opcode
         // );
 
+        assert_eq!(
+            inits_and_teardowns[0].lazy_init_data.len(),
+            NUM_CYCLES_PER_CHUNK
+        );
+
         println!("Evaluating memory witness");
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let memory_trace = evaluate_memory_witness_for_unified_executor::<_, Global>(
             &circuit,
             NUM_CYCLES_PER_CHUNK,
+            &inits_and_teardowns[0].lazy_init_data,
             &oracle,
             &worker,
             Global,
@@ -345,9 +380,10 @@ pub fn run_unrolled_reduced_test_impl(
 
         println!("Evaluating full witness");
 
-        let full_trace = evaluate_witness_for_executor_family::<_, Global>(
+        let full_trace = evaluate_witness_for_unified_executor::<_, Global>(
             &circuit,
             reduced_machine::witness_eval_fn,
+            &inits_and_teardowns[0].lazy_init_data,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &table_driver,
@@ -355,12 +391,16 @@ pub fn run_unrolled_reduced_test_impl(
             Global,
         );
 
+        println!("Checking is satisfied");
+
         let is_satisfied = check_satisfied(
             &circuit,
             &full_trace.exec_trace,
             full_trace.num_witness_columns,
         );
         assert!(is_satisfied);
+
+        println!("Precomputing");
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
         let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
@@ -392,9 +432,9 @@ pub fn run_unrolled_reduced_test_impl(
         >(
             &circuit,
             &vec![],
-            &external_values.challenges,
+            &external_challenges,
             full_trace,
-            &[],
+            &aux_boundary_data,
             &setup,
             &twiddles,
             &lde_precomputations,
@@ -406,5 +446,13 @@ pub fn run_unrolled_reduced_test_impl(
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
+
+        assert_eq!(
+            proof.delegation_argument_accumulator.unwrap(),
+            Mersenne31Quartic::ZERO
+        );
+        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
+
+    assert_eq!(permutation_argument_accumulator, Mersenne31Quartic::ONE);
 }

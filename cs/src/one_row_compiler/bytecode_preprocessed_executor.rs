@@ -380,7 +380,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 &mut witness_tree_offset,
                 &mut all_variables_to_place,
                 &mut layout,
-                0,
+                memory_layout.shuffle_ram_inits_and_teardowns.len() * 2,
             );
 
         let mut compiled_quadratic_terms = vec![];
@@ -537,7 +537,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup
         );
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts::<_, true>(
             &witness_layout,
             &memory_layout,
             &setup_layout,

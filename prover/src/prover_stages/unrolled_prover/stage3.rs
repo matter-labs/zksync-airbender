@@ -659,24 +659,6 @@ pub fn prover_stage_3_for_unrolled_circuit<
 
                         // Note on multiplication by tau^H/2: numerator and denominator are degree 1
 
-                        if process_shuffle_ram_init {
-                            evaluate_memory_init_teardown_accumulation(
-                                compiled_circuit,
-                                witness_trace_view_row,
-                                memory_trace_view_row,
-                                setup_trace_view_row,
-                                stage_2_trace_view_row,
-                                &tau_in_domain,
-                                &tau_in_domain_by_half,
-                                absolute_row_idx,
-                                is_last_row,
-                                &mut quotient_term,
-                                &mut other_challenges_ptr,
-                                &memory_argument_challenges,
-                                &mut permutation_argument_src,
-                            )
-                        }
-
                         // we assembled P(x) = write init set / read teardown set
 
                         // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
@@ -745,6 +727,24 @@ pub fn prover_stage_3_for_unrolled_circuit<
                                 &mut other_challenges_ptr,
                                 &mut permutation_argument_src,
                             );
+                        }
+
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_accumulation(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &memory_argument_challenges,
+                                &mut permutation_argument_src,
+                            )
                         }
 
                         // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)

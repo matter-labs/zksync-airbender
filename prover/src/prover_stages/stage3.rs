@@ -779,25 +779,6 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                         // Note on multiplication by tau^H/2: numerator and denominator are degree 1
 
-                        if process_shuffle_ram_init {
-                            use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_memory_init_teardown_accumulation;
-                            evaluate_memory_init_teardown_accumulation(
-                                compiled_circuit,
-                                witness_trace_view_row,
-                                memory_trace_view_row,
-                                setup_trace_view_row,
-                                stage_2_trace_view_row,
-                                &tau_in_domain,
-                                &tau_in_domain_by_half,
-                                absolute_row_idx,
-                                is_last_row,
-                                &mut quotient_term,
-                                &mut other_challenges_ptr,
-                                &memory_argument_challenges,
-                                &mut permutation_argument_src,
-                            )
-                        }
-
                         // we assembled P(x) = write init set / read teardown set
 
                         // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
@@ -822,6 +803,25 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             write_timestamp_low,
                             write_timestamp_high,
                         );
+
+                        if process_shuffle_ram_init {
+                            use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_memory_init_teardown_accumulation;
+                            evaluate_memory_init_teardown_accumulation(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &memory_argument_challenges,
+                                &mut permutation_argument_src,
+                            )
+                        }
 
                         // Same for batched RAM accesses
                         if process_batch_ram_access {

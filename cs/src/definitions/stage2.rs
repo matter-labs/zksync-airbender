@@ -210,7 +210,7 @@ impl LookupAndMemoryArgumentLayout {
         Some(poly_num)
     }
 
-    pub fn from_compiled_parts<F: PrimeField>(
+    pub fn from_compiled_parts<F: PrimeField, const INITS_AFTER_MASKING: bool>(
         witness_layout: &WitnessSubtree<F>,
         memory_layout: &MemorySubtree,
         setup_layout: &SetupLayout,
@@ -360,10 +360,14 @@ impl LookupAndMemoryArgumentLayout {
         // or as Q(x) = P(x) * a/b for memory accesses in cycle
         // or R(x*omega) = R(x) * Q(x) for final accumulation
 
-        let intermediate_polys_for_memory_init_teardown = AlignedColumnSet::layout_at(
-            &mut offset,
-            memory_layout.shuffle_ram_inits_and_teardowns.len(),
-        );
+        let mut intermediate_polys_for_memory_init_teardown = if INITS_AFTER_MASKING {
+            AlignedColumnSet::layout_at(&mut offset, 0)
+        } else {
+            AlignedColumnSet::layout_at(
+                &mut offset,
+                memory_layout.shuffle_ram_inits_and_teardowns.len(),
+            )
+        };
 
         let intermediate_polys_for_memory_argument =
             if memory_layout.shuffle_ram_access_sets.is_empty() == false {
@@ -442,6 +446,13 @@ impl LookupAndMemoryArgumentLayout {
         } else {
             AlignedColumnSet::<4>::empty()
         };
+
+        if INITS_AFTER_MASKING {
+            intermediate_polys_for_memory_init_teardown = AlignedColumnSet::layout_at(
+                &mut offset,
+                memory_layout.shuffle_ram_inits_and_teardowns.len(),
+            );
+        }
 
         let intermediate_poly_for_grand_product: AlignedColumnSet<4> =
             if intermediate_polys_for_memory_argument.num_elements() > 0

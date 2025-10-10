@@ -295,7 +295,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             total_width: witness_tree_offset,
         };
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts::<_, true>(
             &witness_layout,
             &memory_layout,
             &setup_layout,

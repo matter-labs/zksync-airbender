@@ -1,24 +1,156 @@
 use super::*;
-use crate::witness_evaluator::unrolled::family_circuits::memory::*;
-use cs::cs::oracle::Oracle;
-use cs::one_row_compiler::CompiledCircuitArtifact;
-use cs::tables::TableDriver;
-use fft::GoodAllocator;
-use worker::Worker;
 
-pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
+pub fn evaluate_memory_witness_for_unified_executor<
+    O: Oracle<Mersenne31Field>,
+    A: GoodAllocator,
+>(
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    cycles: usize,
+    lazy_init_data: &[LazyInitAndTeardown],
+    oracle: &O,
+    worker: &Worker,
+    allocator: A,
+) -> MemoryOnlyWitnessEvaluationDataForExecutionFamily<DEFAULT_TRACE_PADDING_MULTIPLE, A> {
+    assert_eq!(
+        lazy_init_data.len(),
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len()
+            * cycles
+    );
+    assert_eq!(
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len(),
+        compiled_circuit.lazy_init_address_aux_vars.len()
+    );
+
+    let trace_len = cycles.next_power_of_two();
+    assert_eq!(cycles, trace_len - 1);
+
+    let num_memory_columns = compiled_circuit.memory_layout.total_width;
+    let memory_trace_view =
+        RowMajorTrace::new_zeroed_for_size(trace_len, num_memory_columns, allocator.clone());
+
+    // NOTE: we only evaluate memory and can not rely on the circuit's machinery to evaluate witness at all
+
+    worker.scope(cycles, |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+
+            let range = chunk_start..(chunk_start + chunk_size);
+            let mut memory_trace_view = memory_trace_view.row_view(range.clone());
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for i in 0..chunk_size {
+                    let absolute_row_idx = chunk_start + i;
+                    let _is_last_cycle = absolute_row_idx == cycles - 1;
+
+                    let memory_trace_view_row = memory_trace_view.current_row();
+
+                    unsafe {
+                        evaluate_memory_witness_for_unified_executor_inner(
+                            &mut [],
+                            memory_trace_view_row,
+                            compiled_circuit,
+                            oracle,
+                            absolute_row_idx,
+                            _is_last_cycle,
+                            lazy_init_data,
+                        );
+                    }
+
+                    memory_trace_view.advance_row();
+                }
+            });
+        }
+    });
+
+    // we also do not care about multiplicities
+
+    MemoryOnlyWitnessEvaluationDataForExecutionFamily {
+        memory_trace: memory_trace_view,
+    }
+}
+
+#[inline]
+pub(crate) unsafe fn evaluate_memory_witness_for_unified_executor_inner<
+    O: Oracle<Mersenne31Field>,
+>(
+    witness_row: &mut [Mersenne31Field],
+    memory_row: &mut [Mersenne31Field],
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    oracle: &O,
+    absolute_row_idx: usize,
+    is_last_cycle: bool,
+    lazy_init_data: &[LazyInitAndTeardown],
+) {
+    process_lazy_init_work::<false>(
+        witness_row,
+        memory_row,
+        compiled_circuit,
+        absolute_row_idx,
+        is_last_cycle,
+        lazy_init_data,
+    );
+
+    use crate::unrolled::family_circuits::memory::*;
+
+    process_machine_state_assuming_preprocessed_decoder::<O, false>(
+        witness_row,
+        memory_row,
+        &mut [],
+        compiled_circuit,
+        oracle,
+        absolute_row_idx,
+    );
+
+    process_delegation_requests_in_executor_family::<O>(
+        memory_row,
+        compiled_circuit,
+        oracle,
+        absolute_row_idx,
+    );
+
+    process_shuffle_ram_accesses_in_executor_family::<O, false>(
+        witness_row,
+        memory_row,
+        compiled_circuit,
+        oracle,
+        absolute_row_idx,
+    );
+
+    // we can skip producing any other witness values, because none of them are placed into memory trace
+}
+
+pub fn evaluate_witness_for_unified_executor<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witnes_eval_fn_ptr: fn(&mut SimpleWitnessProxy<'_, O>),
+    lazy_init_data: &[LazyInitAndTeardown],
     cycles: usize,
     oracle: &O,
     table_driver: &TableDriver<Mersenne31Field>,
     worker: &Worker,
     allocator: A,
 ) -> WitnessEvaluationDataForExecutionFamily<DEFAULT_TRACE_PADDING_MULTIPLE, A> {
-    assert!(compiled_circuit
-        .memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .is_empty());
+    assert_eq!(
+        lazy_init_data.len(),
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len()
+            * cycles
+    );
+    assert_eq!(
+        compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .len(),
+        compiled_circuit.lazy_init_address_aux_vars.len()
+    );
     assert!(compiled_circuit.public_inputs.is_empty());
 
     let trace_len = cycles.next_power_of_two();
@@ -140,10 +272,11 @@ pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodA
                         vec![0u32; generic_lookup_multiplicities_total_len];
                     let mut decoder_multiplicities = vec![0u32; 1 << 20];
 
-                    evaluate_witness_for_executor_family_inner(
+                    evaluate_witness_for_unified_executor_inner(
                         exec_trace_view,
                         lookup_mapping_view,
                         witnes_eval_fn_ptr,
+                        lazy_init_data,
                         range,
                         num_witness_columns,
                         compiled_circuit,
@@ -205,17 +338,29 @@ pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodA
 }
 
 #[inline]
-pub(crate) unsafe fn evaluate_witness_static_work_for_executor_family<
+pub(crate) unsafe fn evaluate_witness_static_work_for_unified_executor<
     O: Oracle<Mersenne31Field>,
 >(
     witness_row: &mut [Mersenne31Field],
     memory_row: &mut [Mersenne31Field],
     decoder_multiplicieties: &mut [u32],
+    lazy_init_data: &[LazyInitAndTeardown],
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     oracle: &O,
     absolute_row_idx: usize,
-    _is_last_cycle: bool,
+    is_last_cycle: bool,
 ) {
+    process_lazy_init_work::<true>(
+        witness_row,
+        memory_row,
+        compiled_circuit,
+        absolute_row_idx,
+        is_last_cycle,
+        lazy_init_data,
+    );
+
+    use crate::unrolled::family_circuits::memory::*;
+
     process_machine_state_assuming_preprocessed_decoder::<O, true>(
         witness_row,
         memory_row,
@@ -241,138 +386,11 @@ pub(crate) unsafe fn evaluate_witness_static_work_for_executor_family<
     );
 }
 
-pub(crate) unsafe fn count_special_multiplicities_for_executor_family(
-    witness_trace_view_row: &mut [Mersenne31Field],
-    memory_trace_view_row: &mut [Mersenne31Field],
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    absolute_row_idx: usize,
-    range_check_16_multiplicieties: &mut [u32],
-    timestamp_range_check_multiplicieties: &mut [u32],
-    trace_len: usize,
-) {
-    assert!(trace_len.is_power_of_two());
-    // range check 16 are special-cased in the lookup argument, and we do not need to compute mapping for them
-    let num_trivial_relations = compiled_circuit
-        .witness_layout
-        .range_check_16_columns
-        .num_elements();
-
-    #[cfg(feature = "profiling")]
-    let t = std::time::Instant::now();
-
-    let trivial_range_check_16_relations = &compiled_circuit
-        .witness_layout
-        .range_check_16_lookup_expressions[..num_trivial_relations];
-    assert!(trivial_range_check_16_relations.len() % 2 == 0);
-
-    // here we do NOT need extra mapping - we can just use a value!
-    for range_check_expression in trivial_range_check_16_relations.iter() {
-        let LookupExpression::Variable(place) = range_check_expression else {
-            unreachable!()
-        };
-        let ColumnAddress::WitnessSubtree(offset) = place else {
-            unreachable!()
-        };
-        let value = *witness_trace_view_row.get_unchecked(*offset);
-        assert!(
-            value.to_reduced_u32() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 trivial expression {:?} at row {}",
-            value,
-            range_check_expression,
-            absolute_row_idx,
-        );
-        let index = value.to_reduced_u32() as usize;
-        *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
-    }
-
-    let nontrivial_range_check_16_relations = &compiled_circuit
-        .witness_layout
-        .range_check_16_lookup_expressions[num_trivial_relations..];
-    assert!(nontrivial_range_check_16_relations.len() % 2 == 0);
-
-    for range_check_expression in nontrivial_range_check_16_relations.iter() {
-        let value = match range_check_expression {
-            LookupExpression::Variable(place) => {
-                let ColumnAddress::WitnessSubtree(offset) = place else {
-                    unreachable!()
-                };
-                *witness_trace_view_row.get_unchecked(*offset)
-            }
-            LookupExpression::Expression(constraint) => constraint
-                .evaluate_at_row_on_main_domain(&*witness_trace_view_row, &*memory_trace_view_row),
-        };
-        assert!(
-            value.to_reduced_u32() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 expression {:?} at row {}",
-            absolute_row_idx,
-            range_check_expression,
-            value
-        );
-        let index = value.to_reduced_u32() as usize;
-        *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
-    }
-
-    // special case for lazy init values
-    for shuffle_ram_inits_and_teardowns in compiled_circuit
-        .memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .iter()
-    {
-        let start = shuffle_ram_inits_and_teardowns
-            .lazy_init_addresses_columns
-            .start();
-        for offset in start..(start + 2) {
-            let value = *memory_trace_view_row.get_unchecked(offset);
-            assert!(
-                value.to_reduced_u32() <= u16::MAX as u32,
-                "invalid value {:?} in range check 16 in lazy init addresses at row {}",
-                absolute_row_idx,
-                value
-            );
-            let index = value.to_reduced_u32() as usize;
-            *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
-        }
-    }
-
-    // now timestamp related relations - all are non-trivial
-
-    let timestamp_range_check_relations = &compiled_circuit
-        .witness_layout
-        .timestamp_range_check_lookup_expressions;
-    assert!(timestamp_range_check_relations.len() % 2 == 0);
-
-    for range_check_expression in timestamp_range_check_relations.iter() {
-        let value = match range_check_expression {
-            LookupExpression::Variable(place) => {
-                let ColumnAddress::WitnessSubtree(offset) = place else {
-                    unreachable!()
-                };
-                *witness_trace_view_row.get_unchecked(*offset)
-            }
-            LookupExpression::Expression(constraint) => constraint
-                .evaluate_at_row_on_main_domain(&*witness_trace_view_row, &*memory_trace_view_row),
-        };
-        assert!(
-            value.to_reduced_u32() < (1 << TIMESTAMP_COLUMNS_NUM_BITS),
-            "invalid value {:?} in timestamp range check expression {:?} at row {}",
-            value,
-            range_check_expression,
-            absolute_row_idx,
-        );
-        let index = value.to_reduced_u32() as usize;
-        *timestamp_range_check_multiplicieties.get_unchecked_mut(index) += 1;
-    }
-
-    #[cfg(feature = "profiling")]
-    PROFILING_TABLE.with_borrow_mut(|el| {
-        *el.entry("Range check multiplicity counting").or_default() += t.elapsed();
-    });
-}
-
-unsafe fn evaluate_witness_for_executor_family_inner<O: Oracle<Mersenne31Field>>(
+unsafe fn evaluate_witness_for_unified_executor_inner<O: Oracle<Mersenne31Field>>(
     mut exec_trace_view: RowMajorTraceView<Mersenne31Field, DEFAULT_TRACE_PADDING_MULTIPLE>,
     mut lookup_mapping_view: RowMajorTraceView<u32, DEFAULT_TRACE_PADDING_MULTIPLE>,
     witnes_eval_fn_ptr: fn(&mut SimpleWitnessProxy<'_, O>),
+    lazy_init_data: &[LazyInitAndTeardown],
     range: std::ops::Range<usize>,
     num_witness_columns: usize,
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
@@ -401,10 +419,11 @@ unsafe fn evaluate_witness_for_executor_family_inner<O: Oracle<Mersenne31Field>>
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
-        evaluate_witness_static_work_for_executor_family(
+        evaluate_witness_static_work_for_unified_executor(
             witness_row,
             memory_row,
             decoder_multiplicieties,
+            lazy_init_data,
             compiled_circuit,
             oracle,
             absolute_row_idx,
@@ -443,6 +462,8 @@ unsafe fn evaluate_witness_for_executor_family_inner<O: Oracle<Mersenne31Field>>
 
         // our witness evaluation would count multiplicities that result in explicit lookups, so we need only
         // to count ones that are from special range-checks
+
+        use crate::unrolled::family_circuits::witness::count_special_multiplicities_for_executor_family;
 
         count_special_multiplicities_for_executor_family(
             witness_row,
