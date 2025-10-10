@@ -131,7 +131,7 @@ impl<
             Placeholder::DelegationABIOffset => 0,
             Placeholder::DelegationType => D::DELEGATION_TYPE,
             Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
-                D::VARIABLE_OFFSETS_DESCRIPTION[variable_index]
+                self.cycle_data[trace_row].variables_offsets[variable_index]
             }
             a @ _ => {
                 panic!("Placeholder query {:?} is not supported as u16", a);
