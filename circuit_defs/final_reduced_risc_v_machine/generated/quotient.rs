@@ -5729,7 +5729,7 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
-                    let accumulator = *(stage_2.get_unchecked(34usize));
+                    let accumulator = *(stage_2.get_unchecked(33usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
                     individual_term.sub_assign(&numerator);
@@ -5787,8 +5787,8 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
-                    let accumulator = *(stage_2.get_unchecked(35usize));
-                    let previous = *(stage_2.get_unchecked(34usize));
+                    let accumulator = *(stage_2.get_unchecked(34usize));
+                    let previous = *(stage_2.get_unchecked(33usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
                     let mut t = previous;
@@ -5858,8 +5858,8 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
-                    let accumulator = *(stage_2.get_unchecked(36usize));
-                    let previous = *(stage_2.get_unchecked(35usize));
+                    let accumulator = *(stage_2.get_unchecked(35usize));
+                    let previous = *(stage_2.get_unchecked(34usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
                     let mut t = previous;
@@ -5901,8 +5901,8 @@ unsafe fn evaluate_every_row_except_last(
                     let mut t = memory_argument_linearization_challenges[3usize];
                     t.mul_assign(&timestamp_high);
                     denom.add_assign(&t);
-                    let accumulator = *(stage_2.get_unchecked(33usize));
-                    let previous = *(stage_2.get_unchecked(36usize));
+                    let accumulator = *(stage_2.get_unchecked(36usize));
+                    let previous = *(stage_2.get_unchecked(35usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
                     let mut t = previous;
@@ -5920,7 +5920,7 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = *(stage_2_next_row.get_unchecked(37usize));
                     let mut t = *(stage_2.get_unchecked(37usize));
-                    t.mul_assign(&*(stage_2.get_unchecked(33usize)));
+                    t.mul_assign(&*(stage_2.get_unchecked(36usize)));
                     individual_term.sub_assign(&t);
                     individual_term
                 };

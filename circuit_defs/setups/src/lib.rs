@@ -177,6 +177,7 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
         witness_fn: fn(&'_ mut SimpleWitnessProxy<'_, MemoryCircuitOracle<'_>>),
         decoder_table: Vec<ExecutorFamilyDecoderData, A>,
     },
+    Unified {},
 }
 
 pub struct UnrolledCircuitPrecomputations<A: GoodAllocator, B: GoodAllocator = Global> {

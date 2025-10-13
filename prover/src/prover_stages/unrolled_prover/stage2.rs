@@ -954,7 +954,9 @@ pub fn prover_stage_2_for_unrolled_circuit<
                 compiled_circuit
                     .stage_2_layout
                     .intermediate_polys_for_memory_init_teardown
-                    .start()
+                    .full_range()
+                    .end
+                    - 4
             } else if compiled_circuit
                 .stage_2_layout
                 .intermediate_polys_for_permutation_masking
@@ -974,18 +976,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                 compiled_circuit
                     .stage_2_layout
                     .intermediate_polys_for_memory_argument
-                    .full_range()
-                    .end
-                    - 4
-            } else if compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_init_teardown
-                .num_elements()
-                > 0
-            {
-                compiled_circuit
-                    .stage_2_layout
-                    .intermediate_polys_for_memory_init_teardown
                     .full_range()
                     .end
                     - 4

@@ -93,3 +93,13 @@ pub(crate) fn shift_binary_csr_blake_only_delegation_circuit_layout() -> (
         setups::shift_binary_csr_blake_only_delegation::dump_ssa_form(&dummy_bytecode()),
     )
 }
+
+pub(crate) fn unified_reduced_machine_circuit_layout() -> (
+    CompiledCircuitArtifact<Mersenne31Field>,
+    Vec<Vec<RawExpression<Mersenne31Field>>>,
+) {
+    (
+        setups::unified_reduced_machine::get_circuit(&dummy_bytecode()),
+        setups::unified_reduced_machine::dump_ssa_form(&dummy_bytecode()),
+    )
+}

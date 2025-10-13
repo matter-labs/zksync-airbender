@@ -147,7 +147,7 @@ use crate::unrolled_layouts::{
     jump_branch_slt_circuit_layout, load_store_subword_only_circuit_layout,
     load_store_word_only_circuit_layout, mul_div_circuit_layout, mul_div_unsigned_circuit_layout,
     shift_binary_csr_all_delegations_circuit_layout,
-    shift_binary_csr_blake_only_delegation_circuit_layout,
+    shift_binary_csr_blake_only_delegation_circuit_layout, unified_reduced_machine_circuit_layout,
 };
 
 const ALL_LAYOUTS: &[(
@@ -212,6 +212,10 @@ const ALL_UNROLLED_LAYOUTS: &[(
     (
         shift_binary_csr_blake_only_delegation_circuit_layout,
         "shift_binary_csr_blake_only_delegation",
+    ),
+    (
+        unified_reduced_machine_circuit_layout,
+        "unified_reduced_machine",
     ),
 ];
 

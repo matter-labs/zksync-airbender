@@ -22,6 +22,7 @@ unrolled_circuit_names=(
     "mul_div_unsigned"
     "shift_binary_csr_all_delegations"
     "shift_binary_csr_blake_only_delegation"
+    "unified_reduced_machine"
 )
 
 # update the generated files
