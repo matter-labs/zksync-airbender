@@ -42,6 +42,11 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             Placeholder::PcInit => cycle_data.initial_pc(),
             Placeholder::PcFin => cycle_data.initial_pc() + 4,
 
+            Placeholder::FirstRegMem => cycle_data.opcode_data.rs1_value,
+            Placeholder::SecondRegMem => cycle_data.rs2_or_ram_read_value(),
+            Placeholder::WriteRegMemReadWitness => cycle_data.rd_or_ram_read_value(),
+            Placeholder::WriteRegMemWriteValue => cycle_data.rd_or_ram_write_value(),
+
             Placeholder::ShuffleRamReadValue(access_idx) => match access_idx {
                 0 => cycle_data.opcode_data.rs1_value,
                 1 => cycle_data.rs2_or_ram_read_value(),
@@ -51,7 +56,7 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
                 }
             },
             Placeholder::ShuffleRamWriteValue(access_idx) => match access_idx {
-                2 => cycle_data.opcode_data.rd_value,
+                2 => cycle_data.rd_or_ram_write_value(),
                 _ => {
                     unreachable!()
                 }

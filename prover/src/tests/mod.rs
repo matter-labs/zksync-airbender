@@ -523,6 +523,12 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
 }
 
 #[cfg(test)]
+fn fast_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+    let mut dst = std::fs::File::create(filename).unwrap();
+    bincode::serialize_into(&mut dst, el).unwrap();
+}
+
+#[cfg(test)]
 fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     bincode::deserialize_from(src).unwrap()

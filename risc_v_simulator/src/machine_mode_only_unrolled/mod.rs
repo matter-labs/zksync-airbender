@@ -348,11 +348,7 @@ impl MemoryOpcodeTracingDataWithTimestamp {
 
     pub fn rd_or_ram_read_value(&self) -> u32 {
         match self.discr {
-            MEM_STORE_TRACE_DATA_MARKER => {
-                let as_memstore: &StoreOpcodeTracingData =
-                    unsafe { core::mem::transmute(&self.opcode_data) };
-                as_memstore.aligned_ram_old_value
-            }
+            MEM_STORE_TRACE_DATA_MARKER => self.as_store_data().aligned_ram_old_value,
             MEM_LOAD_TRACE_DATA_MARKER => self.opcode_data.rd_old_value,
             _ => unreachable!(),
         }
@@ -360,11 +356,7 @@ impl MemoryOpcodeTracingDataWithTimestamp {
 
     pub fn rd_or_ram_write_value(&self) -> u32 {
         match self.discr {
-            MEM_STORE_TRACE_DATA_MARKER => {
-                let as_memstore: &StoreOpcodeTracingData =
-                    unsafe { core::mem::transmute(&self.opcode_data) };
-                as_memstore.aligned_ram_write_value
-            }
+            MEM_STORE_TRACE_DATA_MARKER => self.as_store_data().aligned_ram_write_value,
             MEM_LOAD_TRACE_DATA_MARKER => self.opcode_data.rd_value,
             _ => unreachable!(),
         }

@@ -126,6 +126,8 @@ pub(crate) fn lh<C: Counters, S: Snapshotter<C>, R: RAM, const SIGN_EXTEND: bool
     let mut value = old_value >> ((address % 4) * 8);
     if SIGN_EXTEND {
         value = (((value as u16) as i16) as i32) as u32;
+    } else {
+        value = (value as u16) as u32;
     }
     let mut rd = value;
     write_register::<C, 2>(state, instr.rd, &mut rd);
@@ -153,6 +155,8 @@ pub(crate) fn lb<C: Counters, S: Snapshotter<C>, R: RAM, const SIGN_EXTEND: bool
     let mut value = old_value >> ((address % 4) * 8);
     if SIGN_EXTEND {
         value = (((value as u8) as i8) as i32) as u32;
+    } else {
+        value = (value as u8) as u32;
     }
     let mut rd = value;
     write_register::<C, 2>(state, instr.rd, &mut rd);

@@ -183,13 +183,15 @@ pub(crate) fn lh<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let address = rs1_value.wrapping_add(instr.imm);
-    debug_assert!(address % 4 == 0);
+    debug_assert_eq!(address % 2, 0);
     let aligned_address = address & !3;
     // NOTE: value here is either ROM or RAM, but timestamp is already consistent with masking
     let (ram_timestamp, ram_old_value) = ram.read_word(aligned_address, state.timestamp | 1);
     let mut value = ram_old_value >> ((address % 4) * 8);
     if SIGN_EXTEND {
         value = (((value as u16) as i16) as i32) as u32;
+    } else {
+        value = (value as u16) as u32;
     }
     let mut rd = value;
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
@@ -234,6 +236,8 @@ pub(crate) fn lb<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     let mut value = ram_old_value >> ((address % 4) * 8);
     if SIGN_EXTEND {
         value = (((value as u8) as i8) as i32) as u32;
+    } else {
+        value = (value as u8) as u32;
     }
     let mut rd = value;
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);

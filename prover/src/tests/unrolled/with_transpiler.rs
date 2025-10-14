@@ -62,7 +62,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
     // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    let binary = include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.bin");
+    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -73,8 +73,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
     // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    let text_section =
-        include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.text");
+    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -262,10 +261,10 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     };
 
     // evaluate memory witness
-    use crate::cs::machine::ops::unrolled::process_binary_into_separate_tables;
+    use crate::cs::machine::ops::unrolled::process_binary_into_separate_tables_ext;
 
     let preprocessing_data = if SUPPORT_SIGNED {
-        process_binary_into_separate_tables::<Mersenne31Field, Global>(
+        process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
             &text_section,
             &opcodes_for_full_machine_with_mem_word_access_specialization(),
             1 << 20,
@@ -277,7 +276,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             ],
         )
     } else {
-        process_binary_into_separate_tables::<Mersenne31Field, Global>(
+        process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
             &text_section,
             &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
             1 << 20,
@@ -1262,6 +1261,10 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &preprocessing_data[&LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX];
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
+        // {
+        //     fast_serialize_to_file(&(buffer.clone(), witness_gen_data.clone()), "test_wit.bin");
+        // }
+
         let oracle = MemoryCircuitOracle {
             inner: &buffer[..],
             decoder_table: witness_gen_data,
@@ -1889,4 +1892,51 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     assert_eq!(permutation_argument_accumulator, Mersenne31Quartic::ONE);
     assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
+}
+
+#[test]
+fn test_mem_circuit() {
+    use crate::cs::cs::cs_reference::BasicAssembly;
+    use cs::cs::circuit::Circuit;
+    use cs::cs::oracle::ExecutorFamilyDecoderData;
+    println!("Deserializing witness");
+    let (buffer, preprocessed_bytecode) = fast_deserialize_from_file::<(
+        Vec<MemoryOpcodeTracingDataWithTimestamp>,
+        Vec<ExecutorFamilyDecoderData>,
+    )>("test_wit.bin");
+    println!("Deserialization is complete");
+
+    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    assert!(binary.len() % 4 == 0);
+    let binary: Vec<_> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let round = 0;
+    {
+        println!("Round = {}", round);
+
+        let oracle = MemoryCircuitOracle {
+            inner: &[buffer[round]],
+            decoder_table: &preprocessed_bytecode,
+        };
+
+        let oracle: MemoryCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle_and_preprocessed_decoder(
+            oracle,
+            preprocessed_bytecode.clone(),
+        );
+        use cs::machine::ops::unrolled::load_store::create_load_store_special_tables;
+        let extra_tables = create_load_store_special_tables::<_, 5>(&binary);
+        subword_only_load_store_table_addition_fn(&mut cs);
+        for (table_type, table) in extra_tables.clone() {
+            cs.add_table_with_content(table_type, table);
+        }
+        subword_only_load_store_circuit_with_preprocessed_bytecode::<_, _, 5>(&mut cs);
+
+        assert!(cs.is_satisfied());
+    }
 }
