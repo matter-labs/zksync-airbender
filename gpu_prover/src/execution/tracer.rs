@@ -104,14 +104,14 @@ impl<const RAM_SIZE: usize, const TRACE_TOUCHED_RAM: bool>
     }
 }
 
-pub struct SetupAndTeardownChunker<I: Iterator<Item = LazyInitAndTeardown>> {
+pub struct InitsAndTeardownsChunker<I: Iterator<Item = LazyInitAndTeardown>> {
     pub touched_ram_cells_count: usize,
     pub chunk_size: usize,
     pub next_chunk_index: usize,
     iterator: I,
 }
 
-impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
+impl<I: Iterator<Item = LazyInitAndTeardown>> InitsAndTeardownsChunker<I> {
     pub fn get_chunks_count(&self) -> usize {
         self.touched_ram_cells_count.div_ceil(self.chunk_size)
     }
@@ -145,12 +145,12 @@ impl<I: Iterator<Item = LazyInitAndTeardown>> SetupAndTeardownChunker<I> {
     }
 }
 
-pub fn create_setup_and_teardown_chunker<'a>(
+pub fn create_inits_and_teardowns_chunker<'a>(
     pages: &'a [u32],
     memory: &'a [u32],
     timestamps: &'a [TimestampScalar],
     chunk_size: usize,
-) -> SetupAndTeardownChunker<impl Iterator<Item = LazyInitAndTeardown> + 'a> {
+) -> InitsAndTeardownsChunker<impl Iterator<Item = LazyInitAndTeardown> + 'a> {
     let touched_ram_cells_count = pages.iter().sum::<u32>() as usize;
     let get_value_fn = |index| unsafe {
         let timestamp = *timestamps.get_unchecked(index);
@@ -177,7 +177,7 @@ pub fn create_setup_and_teardown_chunker<'a>(
             }
         })
         .flat_map(move |index| (index..index + PAGE_WORDS_SIZE).filter_map(get_value_fn));
-    SetupAndTeardownChunker {
+    InitsAndTeardownsChunker {
         touched_ram_cells_count,
         chunk_size,
         next_chunk_index: 0,

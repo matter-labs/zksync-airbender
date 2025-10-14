@@ -58,6 +58,8 @@ members = [
     "circuit_defs/unrolled_circuits/load_store_subword_only",
     "circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations",
     "circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine",
+
     "riscv_transpiler",
 ]
 
@@ -105,6 +107,7 @@ default-members = [
     "circuit_defs/unrolled_circuits/load_store_subword_only",
     "circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations",
     "circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine",
 ]
 
 [workspace.package]
@@ -152,6 +155,7 @@ mul_div = { path = "./circuit_defs/unrolled_circuits/mul_div" }
 mul_div_unsigned = { path = "./circuit_defs/unrolled_circuits/mul_div_unsigned" }
 shift_binary_csr_all_delegations = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations" }
 shift_binary_csr_blake_only_delegation = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation" }
+unified_reduced_machine = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine" }
 
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
 setups = { path = "./circuit_defs/setups" }

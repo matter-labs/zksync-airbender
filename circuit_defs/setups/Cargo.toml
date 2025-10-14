@@ -31,6 +31,7 @@ mul_div = { workspace = true }
 mul_div_unsigned = { workspace = true }
 shift_binary_csr_all_delegations = { workspace = true }
 shift_binary_csr_blake_only_delegation = { workspace = true }
+unified_reduced_machine = { workspace = true }
 
 serde = { workspace = true }
 serde_json = "*"

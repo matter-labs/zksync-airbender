@@ -101,6 +101,169 @@ const _: () = const {
 pub const MEM_LOAD_TRACE_DATA_MARKER: u16 = 0;
 pub const MEM_STORE_TRACE_DATA_MARKER: u16 = MEM_LOAD_TRACE_DATA_MARKER + 1;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[repr(C, u32)]
+pub enum UnifiedOpcodeTracingDataWithTimestamp {
+    NonMem(NonMemoryOpcodeTracingDataWithTimestamp) = 0,
+    Mem(MemoryOpcodeTracingDataWithTimestamp),
+}
+
+impl Default for UnifiedOpcodeTracingDataWithTimestamp {
+    fn default() -> Self {
+        Self::NonMem(NonMemoryOpcodeTracingDataWithTimestamp::default())
+    }
+}
+
+impl UnifiedOpcodeTracingDataWithTimestamp {
+    #[inline(always)]
+    pub fn initial_pc(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.initial_pc,
+            Self::Mem(inner) => inner.opcode_data.initial_pc,
+        }
+    }
+
+    #[inline(always)]
+    pub fn final_pc(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.new_pc,
+            Self::Mem(inner) => inner.opcode_data.initial_pc.wrapping_add(4),
+        }
+    }
+
+    #[inline(always)]
+    pub fn rs2_is_reg(&self) -> bool {
+        match self {
+            Self::NonMem(inner) => true,
+            Self::Mem(inner) => {
+                if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    false
+                } else {
+                    debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
+                    true
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn rd_is_reg(&self) -> bool {
+        match self {
+            Self::NonMem(inner) => true,
+            Self::Mem(inner) => {
+                if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    true
+                } else {
+                    debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
+                    false
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn delegation_type(&self) -> u16 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.delegation_type,
+            Self::Mem(inner) => 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn rs1_read_value(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.rs1_value,
+            Self::Mem(inner) => inner.opcode_data.rs1_value,
+        }
+    }
+
+    #[inline(always)]
+    pub fn rs2_or_mem_load_read_value(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.rs2_value,
+            Self::Mem(inner) => {
+                if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    inner.opcode_data.aligned_ram_read_value
+                } else {
+                    debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
+                    unsafe {
+                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
+                            .rs2_value
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn rd_or_mem_store_read_value(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.rd_old_value,
+            Self::Mem(inner) => {
+                if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    inner.opcode_data.rd_old_value
+                } else {
+                    debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
+                    unsafe {
+                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
+                            .aligned_ram_old_value
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn rd_or_mem_store_write_value(&self) -> u32 {
+        match self {
+            Self::NonMem(inner) => inner.opcode_data.rd_value,
+            Self::Mem(inner) => {
+                if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    inner.opcode_data.rd_value
+                } else {
+                    debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
+                    unsafe {
+                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
+                            .aligned_ram_write_value
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn rs1_read_timestamp(&self) -> TimestampScalar {
+        match self {
+            Self::NonMem(inner) => inner.rs1_read_timestamp.as_scalar(),
+            Self::Mem(inner) => inner.rs1_read_timestamp.as_scalar(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn rs2_or_mem_load_read_timestamp(&self) -> TimestampScalar {
+        match self {
+            Self::NonMem(inner) => inner.rs2_read_timestamp.as_scalar(),
+            Self::Mem(inner) => inner.rs2_or_ram_read_timestamp.as_scalar(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn rd_or_mem_store_read_timestamp(&self) -> TimestampScalar {
+        match self {
+            Self::NonMem(inner) => inner.rd_read_timestamp.as_scalar(),
+            Self::Mem(inner) => inner.rd_or_ram_read_timestamp.as_scalar(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn cycle_timestamp(&self) -> TimestampScalar {
+        match self {
+            Self::NonMem(inner) => inner.cycle_timestamp.as_scalar(),
+            Self::Mem(inner) => inner.cycle_timestamp.as_scalar(),
+        }
+    }
+}
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]

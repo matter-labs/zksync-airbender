@@ -1,5 +1,5 @@
 use super::column::*;
-use super::option::*;
+use super::option::u32::*;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -127,8 +127,8 @@ pub struct ShuffleRamAuxComparisonSet {
     pub final_borrow: ColumnAddress,
 }
 
-impl From<&cs::definitions::ShuffleRamAuxComparisonSet> for ShuffleRamAuxComparisonSet {
-    fn from(value: &cs::definitions::ShuffleRamAuxComparisonSet) -> Self {
+impl From<cs::definitions::ShuffleRamAuxComparisonSet> for ShuffleRamAuxComparisonSet {
+    fn from(value: cs::definitions::ShuffleRamAuxComparisonSet) -> Self {
         Self {
             aux_low_high: [value.aux_low_high[0].into(), value.aux_low_high[1].into()],
             intermediate_borrow: value.intermediate_borrow.into(),
@@ -413,15 +413,15 @@ pub struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
     pub aux_borrow_sets: [AuxBorrowSet; MAX_AUX_BORROW_SETS_COUNT],
 }
 
-impl From<&cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars>
+impl From<cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars>
     for RegisterAndIndirectAccessTimestampComparisonAuxVars
 {
-    fn from(value: &cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
+    fn from(value: cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
         let aux_borrow_sets_count = value.aux_borrow_sets.len() as u32;
         assert!(aux_borrow_sets_count <= MAX_AUX_BORROW_SETS_COUNT as u32);
         let mut aux_borrow_sets = [AuxBorrowSet::default(); MAX_AUX_BORROW_SETS_COUNT];
-        for (i, value) in value.aux_borrow_sets.iter().enumerate() {
-            aux_borrow_sets[i] = value.clone().into();
+        for (i, value) in value.aux_borrow_sets.into_iter().enumerate() {
+            aux_borrow_sets[i] = value.into();
         }
         Self {
             predicate: value.predicate.into(),

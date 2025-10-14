@@ -1,4 +1,6 @@
 use super::column::*;
+pub const SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH: usize =
+    REGISTER_SIZE * 2 + NUM_TIMESTAMP_COLUMNS_FOR_RAM;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]

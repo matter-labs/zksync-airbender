@@ -5,17 +5,17 @@ pub use gpu_prover::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_prover::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use gpu_prover::cudart::result::CudaResult;
 use gpu_prover::prover::trace_holder::TreesCacheMode;
-use gpu_prover::witness::trace_delegation::DelegationTraceHost;
-use gpu_prover::witness::trace_main::{MainTraceHost, ShuffleRamSetupAndTeardownHost};
-use gpu_prover::{
-    prover::{
-        context::{ProverContext, ProverContextConfig},
-        memory::commit_memory,
-        setup::SetupPrecomputations,
-        tracing_data::{TracingDataHost, TracingDataTransfer},
-    },
-    witness::trace_main::get_aux_arguments_boundary_values,
+use gpu_prover::prover::{
+    context::{ProverContext, ProverContextConfig},
+    memory::commit_memory,
+    setup::SetupPrecomputations,
+    tracing_data::{TracingDataHost, TracingDataTransfer},
 };
+use gpu_prover::witness::trace::{
+    get_aux_arguments_boundary_values, ShuffleRamInitsAndTeardownsHost,
+};
+use gpu_prover::witness::trace_delegation::DelegationTraceHost;
+use gpu_prover::witness::trace_main::MainTraceHost;
 use itertools::Itertools;
 use prover::{
     definitions::{
@@ -29,7 +29,7 @@ use prover::{
 };
 
 use prover::{
-    definitions::{ExternalValues, OPTIMAL_FOLDING_PROPERTIES},
+    definitions::OPTIMAL_FOLDING_PROPERTIES,
     prover_stages::Proof,
     risc_v_simulator::{
         abstractions::non_determinism::NonDeterminismCSRSource, cycle::MachineConfig,
@@ -129,14 +129,14 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
             let log_domain_size = trace_len.trailing_zeros();
             let log_tree_cap_size =
                 OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-            let setup_and_teardown = if circuit_sequence < num_paddings {
+            let inits_and_teardowns = if circuit_sequence < num_paddings {
                 None
             } else {
                 Some(inits_and_teardowns[circuit_sequence - num_paddings].clone())
             };
             let trace = witness_chunk.clone();
             let data = TracingDataHost::Main {
-                setup_and_teardown,
+                inits_and_teardowns,
                 trace,
             };
 
@@ -145,6 +145,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
             let job = commit_memory(
                 transfer,
                 &risc_v_circuit_precomputations.compiled_circuit,
+                None,
+                0,
                 log_lde_factor,
                 log_tree_cap_size,
                 prover_context,
@@ -187,6 +189,8 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 let job = commit_memory(
                     transfer,
                     &circuit,
+                    None,
+                    0,
                     log_lde_factor,
                     log_tree_cap_size,
                     prover_context,
@@ -281,33 +285,34 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     let main_compiled_circuit = Arc::new(risc_v_circuit_precomputations.compiled_circuit.clone());
     let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.into_iter().enumerate() {
-        let (gpu_proof, _) = {
-            let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
-                (None, AuxArgumentsBoundaryValues::default())
+        let gpu_proof = {
+            let (inits_and_teardowns, aux_boundary_values) = if circuit_sequence < num_paddings {
+                (None, vec![AuxArgumentsBoundaryValues::default()])
             } else {
-                let shuffle_rams = &inits_and_teardowns[circuit_sequence - num_paddings];
+                let inits_and_teardowns = &inits_and_teardowns[circuit_sequence - num_paddings];
                 (
-                    Some(shuffle_rams.clone()),
+                    Some(inits_and_teardowns.clone()),
                     get_aux_arguments_boundary_values(
-                        &shuffle_rams.lazy_init_data,
+                        &main_compiled_circuit,
                         cycles_per_circuit,
+                        &inits_and_teardowns.inits_and_teardowns,
                     ),
                 )
             };
             let trace = witness_chunk.into();
             let data = TracingDataHost::Main {
-                setup_and_teardown,
+                inits_and_teardowns,
                 trace,
             };
             let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
             transfer.schedule_transfer(prover_context)?;
-            let external_values = ExternalValues {
-                challenges: external_challenges,
-                aux_boundary_values,
-            };
             let job = gpu_prover::prover::proof::prove(
+                circuit_type,
                 main_compiled_circuit.clone(),
-                external_values,
+                external_challenges,
+                aux_boundary_values,
+                None,
+                0,
                 &mut gpu_setup_main,
                 transfer,
                 &risc_v_circuit_precomputations.lde_precomputations,
@@ -321,7 +326,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                 TreesCacheMode::CacheFull,
                 prover_context,
             )?;
-            job.finish()?
+            job.finish()?.0.into_regular().unwrap()
         };
 
         memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
@@ -412,19 +417,19 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
             delegation_proofs_count += 1;
 
             // and prove
-            let external_values = ExternalValues {
-                challenges: external_challenges,
-                aux_boundary_values: AuxArgumentsBoundaryValues::default(),
-            };
-            let (gpu_proof, _) = {
+            let gpu_proof = {
                 let trace = el.clone();
                 let data = TracingDataHost::Delegation(trace);
                 let circuit_type = CircuitType::Delegation(delegation_type);
                 let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
                 transfer.schedule_transfer(prover_context)?;
                 let job = gpu_prover::prover::proof::prove(
+                    circuit_type,
                     delegation_compiled_circuit.clone(),
-                    external_values,
+                    external_challenges,
+                    vec![AuxArgumentsBoundaryValues::default()],
+                    None,
+                    0,
                     &mut gpu_setup_delegation,
                     transfer,
                     &prec.lde_precomputations,
@@ -438,7 +443,7 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
                     TreesCacheMode::CacheFull,
                     prover_context,
                 )?;
-                job.finish()?
+                job.finish()?.0.into_regular().unwrap()
             };
 
             memory_grand_product.mul_assign(&gpu_proof.memory_grand_product_accumulator);
@@ -496,7 +501,7 @@ pub fn trace_execution_for_gpu<
     Vec<MainTraceHost<A>>,
     (
         usize, // number of empty ones to assume
-        Vec<ShuffleRamSetupAndTeardownHost<A>>,
+        Vec<ShuffleRamInitsAndTeardownsHost<A>>,
     ),
     HashMap<DelegationCircuitType, Vec<DelegationTraceHost<A>>>,
     Vec<FinalRegisterValue>,

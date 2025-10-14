@@ -1,5 +1,5 @@
 pub(crate) mod arg_utils;
-mod callbacks;
+pub(crate) mod callbacks;
 pub mod context;
 mod device_tracing;
 pub mod memory;

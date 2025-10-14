@@ -1,60 +1,85 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
-use crate::circuit_type::CircuitType;
-use crate::circuit_type::MainCircuitType;
+use crate::circuit_type::{CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType};
+use crate::circuit_type::{MainCircuitType, UnrolledMemoryCircuitType};
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
 use crate::prover::setup::SetupPrecomputations;
-use crate::prover::trace_holder::TreesCacheMode;
-use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::get_aux_arguments_boundary_values;
-use cs::definitions::split_timestamp;
+use crate::prover::trace_holder::{get_tree_caps, TreesCacheMode};
+use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost};
+use crate::witness::trace::get_aux_arguments_boundary_values;
+use cs::definitions::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::device::{get_device_count, get_device_properties, set_device};
 use era_cudart::event::elapsed_time;
 use era_cudart::event::CudaEvent;
-use era_cudart::memory::memory_copy;
+use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
-use execution_utils::{find_binary_exit_point, get_padded_binary};
+use era_cudart::slice::{CudaSlice, DeviceSlice};
 use fft::{adjust_to_zero_c0_var_length, GoodAllocator, LdePrecomputations, Twiddles};
-use field::{Field, Mersenne31Complex, Mersenne31Field, Mersenne31Quartic};
+use field::{Field, Mersenne31Complex, Mersenne31Field};
 use itertools::Itertools;
 use prover::definitions::{
-    produce_register_contribution_into_memory_accumulator_raw, AuxArgumentsBoundaryValues,
-    ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
+    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength, MerkleTreeConstructor};
 use prover::prover_stages::stage5::Query;
-use prover::prover_stages::{prove, Proof};
+use prover::prover_stages::Proof;
 use prover::risc_v_simulator::abstractions::non_determinism::{
     NonDeterminismCSRSource, QuasiUARTSource,
 };
-use prover::risc_v_simulator::cycle::IMStandardIsaConfig;
 use prover::risc_v_simulator::cycle::MachineConfig;
+use prover::risc_v_simulator::cycle::{
+    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv, IMWithoutSignedMulDivIsaConfig,
+    IWithoutByteAccessIsaConfigWithDelegation,
+};
+use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
 use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::CycleData;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
+use prover::tracers::unrolled::tracer::{MemTracingFamilyChunk, NonMemTracingFamilyChunk};
 use prover::transcript::Seed;
-use prover::{
-    evaluate_delegation_memory_witness, evaluate_memory_witness, evaluate_witness,
-    DelegationMemoryOnlyWitnessEvaluationData, MemoryOnlyWitnessEvaluationData,
-    ShuffleRamSetupAndTeardown, VectorMemoryImplWithRom, WitnessEvaluationAuxData,
+use prover::unrolled::{
+    evaluate_init_and_teardown_witness,
+    run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization, MemoryCircuitOracle,
+    NonMemoryCircuitOracle,
 };
+use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
+use prover::{
+    common_constants, evaluate_delegation_memory_witness, evaluate_memory_witness,
+    evaluate_witness, DelegationMemoryOnlyWitnessEvaluationData,
+    ExecutorFamilyWitnessEvaluationAuxData, MemoryOnlyWitnessEvaluationData,
+    ShuffleRamSetupAndTeardown, VectorMemoryImplWithRom, WitnessEvaluationAuxData,
+    WitnessEvaluationData, WitnessEvaluationDataForExecutionFamily,
+};
+
+use crate::allocator::tracker::AllocationPlacement;
+use crate::circuit_type::CircuitType::Unrolled;
+use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::field::BaseField;
+use crate::ops_complex::transpose;
+use crate::prover::callbacks::Callbacks;
+use crate::prover::proof::prove;
+use crate::prover::stage_1::StageOneOutput;
+use riscv_common::EXIT_SEQUENCE;
+use setups::MainCircuitPrecomputations;
+use setups::{pad_bytecode_for_proving, DelegationCircuitPrecomputations};
+use setups::{UnrolledCircuitPrecomputations, UnrolledCircuitWitnessEvalFn};
 use std::alloc::Global;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::CStr;
 use std::io::Read;
 use std::mem;
 use std::mem::MaybeUninit;
+use std::path::Path;
 use std::sync::Arc;
-use trace_and_split::setups::{
-    risc_v_cycles, DelegationCircuitPrecomputations, MainCircuitPrecomputations,
-};
 use trace_and_split::{
-    fs_transform_for_memory_and_delegation_arguments, run_and_split_for_gpu, setups,
-    FinalRegisterValue,
+    commit_memory_tree_for_inits_and_teardowns_unrolled_circuit,
+    commit_memory_tree_for_unrolled_mem_circuits, commit_memory_tree_for_unrolled_nonmem_circuits,
+    fs_transform_for_memory_and_delegation_arguments,
+    fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, run_and_split_for_gpu,
+    FinalRegisterValue, ENTRY_POINT,
 };
 use trace_holder::RowMajorTrace;
 use worker::Worker;
@@ -109,25 +134,15 @@ fn test_prove_hashed_fibonacci() -> CudaResult<()> {
 
     println!("precomputations created in {:?}", instant.elapsed());
 
-    let (main_proofs, delegation_proofs, _register_values) =
-        prove_image_execution_for_machine_with_gpu_tracers(
-            10,
-            &binary,
-            non_determinism_source,
-            &main_circuit_precomputations,
-            &delegation_precomputations,
-            &prover_context,
-            &worker,
-        )?;
-
-    let total_delegation_proofs: usize = delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-    println!(
-        "Created {} basic proofs and {} delegation proofs.",
-        main_proofs.len(),
-        total_delegation_proofs
-    );
-    Ok(())
+    prove_image_execution_for_machine_with_gpu_tracers(
+        10,
+        &binary,
+        non_determinism_source,
+        &main_circuit_precomputations,
+        &delegation_precomputations,
+        &prover_context,
+        &worker,
+    )
 }
 
 #[test]
@@ -164,25 +179,15 @@ fn test_prove_keccak_simple() -> CudaResult<()> {
 
     println!("precomputations created in {:?}", instant.elapsed());
 
-    let (main_proofs, delegation_proofs, _register_values) =
-        prove_image_execution_for_machine_with_gpu_tracers(
-            10,
-            &binary,
-            non_determinism_source,
-            &main_circuit_precomputations,
-            &delegation_precomputations,
-            &prover_context,
-            &worker,
-        )?;
-
-    let total_delegation_proofs: usize = delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-    println!(
-        "Created {} basic proofs and {} delegation proofs.",
-        main_proofs.len(),
-        total_delegation_proofs
-    );
-    Ok(())
+    prove_image_execution_for_machine_with_gpu_tracers(
+        10,
+        &binary,
+        non_determinism_source,
+        &main_circuit_precomputations,
+        &delegation_precomputations,
+        &prover_context,
+        &worker,
+    )
 }
 
 #[test]
@@ -244,6 +249,56 @@ fn bench_prove_hashed_fibonacci() -> CudaResult<()> {
     )
 }
 
+#[test]
+fn test_prove_unrolled_fibonacci() -> CudaResult<()> {
+    init_logger();
+    let instant = std::time::Instant::now();
+    ProverContext::initialize_global_host_allocator(4, 1 << 8, 22)?;
+    let mut prover_context_config = ProverContextConfig::default();
+    prover_context_config.allocation_block_log_size = 22;
+    let prover_context = ProverContext::new(&prover_context_config)?;
+    println!("prover_context created in {:?}", instant.elapsed());
+
+    let (_, binary_image) = setups::read_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
+    let (_, text_section) = setups::read_binary(&Path::new("../examples/basic_fibonacci/app.text"));
+
+    // setups::pad_bytecode_for_proving(&mut binary);
+
+    let worker = Worker::new();
+    println!("Performing precomputations for circuit families");
+    let families_precomps =
+        setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
+            IMWithoutSignedMulDivIsaConfig,
+            _,
+            _,
+        >(&binary_image, &text_section, &worker);
+
+    println!("Performing precomputations for inits and teardowns");
+    let inits_and_teardowns_precomps = setups::unrolled_circuits::inits_and_teardowns_circuit_setup(
+        &binary_image,
+        &text_section,
+        &worker,
+    );
+
+    println!("Performing precomputations for delegation circuits");
+    let delegation_precomputations = setups::all_delegation_circuits_precomputations(&worker);
+
+    let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
+
+    prove_unrolled_execution::<_, IMWithoutSignedMulDivIsaConfig, Global, 5>(
+        1 << 24,
+        &binary_image,
+        &text_section,
+        non_determinism_source,
+        &families_precomps,
+        &inits_and_teardowns_precomps,
+        &delegation_precomputations,
+        1 << 32,
+        &prover_context,
+        &worker,
+    )
+}
+
 fn prove_image_execution_for_machine_with_gpu_tracers<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
 >(
@@ -261,7 +316,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     )],
     prover_context: &ProverContext,
     worker: &Worker,
-) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
+) -> CudaResult<()> {
     let cycles_per_circuit = MainCircuitType::RiscVCycles.get_num_cycles();
     let trace_len = MainCircuitType::RiscVCycles.get_domain_size();
     assert_eq!(cycles_per_circuit + 1, trace_len);
@@ -307,14 +362,14 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             let log_domain_size = trace_len.trailing_zeros();
             let log_tree_cap_size =
                 OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
-            let setup_and_teardown = if circuit_sequence < num_paddings {
+            let inits_and_teardowns = if circuit_sequence < num_paddings {
                 None
             } else {
                 Some(shuffle_rams.clone().into())
             };
             let trace = witness_chunk.clone().into();
             let data = TracingDataHost::Main {
-                setup_and_teardown,
+                inits_and_teardowns,
                 trace,
             };
             let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
@@ -323,6 +378,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             let job = commit_memory(
                 transfer,
                 &risc_v_circuit_precomputations.compiled_circuit,
+                None,
+                0,
                 log_lde_factor,
                 log_tree_cap_size,
                 prover_context,
@@ -379,6 +436,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 let job = commit_memory(
                     transfer,
                     &circuit,
+                    None,
+                    0,
                     log_lde_factor,
                     log_tree_cap_size,
                     prover_context,
@@ -422,23 +481,6 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     let external_challenges =
         ExternalChallenges::draw_from_transcript_seed(memory_challenges_seed, true);
 
-    let input = final_register_values
-        .iter()
-        .map(|el| (el.value, split_timestamp(el.last_access_timestamp)))
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    let mut memory_grand_product = produce_register_contribution_into_memory_accumulator_raw(
-        &input,
-        external_challenges
-            .memory_argument
-            .memory_argument_linearization_challenges,
-        external_challenges.memory_argument.memory_argument_gamma,
-    );
-    let mut delegation_argument_sum = Mersenne31Quartic::ZERO;
-
-    let mut aux_memory_trees = vec![];
-
     println!(
         "Producing proofs for main RISC-V circuit, {} proofs in total",
         main_circuits_witness.len()
@@ -449,7 +491,6 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     let gpu_circuit = Arc::new(risc_v_circuit_precomputations.compiled_circuit.clone());
 
     // now prove one by one
-    let mut main_proofs = vec![];
     for (circuit_sequence, witness_chunk) in main_circuits_witness.iter().enumerate() {
         let shuffle_rams = if circuit_sequence < num_paddings {
             &padding_shuffle_ram_inits_and_teardowns
@@ -493,7 +534,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
 
         let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
 
-        let (_, cpu_proof) = prove(
+        let (_, cpu_proof) = prover::prover_stages::prove(
             &risc_v_circuit_precomputations.compiled_circuit,
             &public_inputs,
             &external_values,
@@ -504,7 +545,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             circuit_sequence,
             None,
             lde_factor,
-            risc_v_cycles::TREE_CAP_SIZE,
+            setups::risc_v_cycles::TREE_CAP_SIZE,
             NUM_QUERIES,
             POW_BITS,
             worker,
@@ -546,32 +587,33 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 prover_context,
             )?;
             setup.schedule_transfer(setup_evaluations, prover_context)?;
-            let (setup_and_teardown, aux_boundary_values) = if circuit_sequence < num_paddings {
-                (None, AuxArgumentsBoundaryValues::default())
+            let (inits_and_teardowns, aux_boundary_values) = if circuit_sequence < num_paddings {
+                (None, vec![AuxArgumentsBoundaryValues::default()])
             } else {
                 (
                     Some(shuffle_rams.clone().into()),
                     get_aux_arguments_boundary_values(
-                        &shuffle_rams.lazy_init_data,
+                        circuit,
                         cycles_per_circuit,
+                        &shuffle_rams.lazy_init_data,
                     ),
                 )
             };
             let trace = witness_chunk.clone().into();
             let data = TracingDataHost::Main {
-                setup_and_teardown,
+                inits_and_teardowns,
                 trace,
             };
             let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
             let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
             transfer.schedule_transfer(prover_context)?;
-            let external_values = ExternalValues {
-                challenges: external_challenges,
-                aux_boundary_values,
-            };
-            let job = crate::prover::proof::prove(
+            let job = prove(
+                circuit_type,
                 gpu_circuit.clone(),
-                external_values,
+                external_challenges,
+                aux_boundary_values,
+                None,
+                0,
                 &mut setup,
                 transfer,
                 &risc_v_circuit_precomputations.lde_precomputations,
@@ -587,17 +629,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             )?;
             job.finish()?
         };
-
+        let gpu_proof = gpu_proof.into_regular().unwrap();
         compare_proofs(&cpu_proof, &gpu_proof);
-
-        memory_grand_product.mul_assign(&cpu_proof.memory_grand_product_accumulator);
-        delegation_argument_sum.add_assign(&cpu_proof.delegation_argument_accumulator.unwrap());
-
-        // assert_eq!(&proof.memory_tree_caps, &memory_trees[circuit_sequence]);
-
-        aux_memory_trees.push(cpu_proof.memory_tree_caps.clone());
-
-        main_proofs.push(cpu_proof);
     }
 
     if main_circuits_witness.len() > 0 {
@@ -610,8 +643,6 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     }
 
     // all the same for delegation circuit
-    let mut aux_delegation_memory_trees = vec![];
-    let mut delegation_proofs = vec![];
     let delegation_proving_start = std::time::Instant::now();
     let mut delegation_proofs_count = 0u32;
     // commit memory trees
@@ -628,9 +659,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             .position(|el| el.0 == *delegation_type as u32)
             .unwrap();
         let prec = &delegation_circuits_precomputations[idx].1;
-        let mut per_tree_set = vec![];
 
-        let mut per_delegation_type_proofs = vec![];
         let gpu_circuit = Arc::new(prec.compiled_circuit.compiled_circuit.clone());
 
         for (_circuit_idx, el) in els.iter().enumerate() {
@@ -656,7 +685,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             };
 
             assert!(*delegation_type < 1 << 12);
-            let (_, cpu_proof) = prove(
+            let (_, cpu_proof) = prover::prover_stages::prove(
                 &prec.compiled_circuit.compiled_circuit,
                 &[],
                 &external_values,
@@ -715,9 +744,14 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 let circuit_type = CircuitType::from_delegation_type(*delegation_type);
                 let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
                 transfer.schedule_transfer(prover_context)?;
-                let job = crate::prover::proof::prove(
+                let aux_boundary_values = vec![AuxArgumentsBoundaryValues::default()];
+                let job = prove(
+                    circuit_type,
                     gpu_circuit.clone(),
-                    external_values,
+                    external_challenges,
+                    aux_boundary_values,
+                    None,
+                    0,
                     &mut setup,
                     transfer,
                     &prec.lde_precomputations,
@@ -733,19 +767,9 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 )?;
                 job.finish()?
             };
-
+            let gpu_proof = gpu_proof.into_regular().unwrap();
             compare_proofs(&cpu_proof, &gpu_proof);
-
-            memory_grand_product.mul_assign(&cpu_proof.memory_grand_product_accumulator);
-            delegation_argument_sum.sub_assign(&cpu_proof.delegation_argument_accumulator.unwrap());
-
-            per_tree_set.push(cpu_proof.memory_tree_caps.clone());
-
-            per_delegation_type_proofs.push(cpu_proof);
         }
-
-        aux_delegation_memory_trees.push((*delegation_type as u32, per_tree_set));
-        delegation_proofs.push((*delegation_type as u32, per_delegation_type_proofs));
     }
 
     if delegation_proofs_count > 0 {
@@ -757,25 +781,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         )
     }
 
-    assert_eq!(memory_grand_product, Mersenne31Quartic::ONE);
-    assert_eq!(delegation_argument_sum, Mersenne31Quartic::ZERO);
-
-    // assert_eq!(&aux_memory_trees, &memory_trees);
-    // assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees);
-
-    let setup_caps = DefaultTreeConstructor::dump_caps(&risc_v_circuit_precomputations.setup.trees);
-
-    // compare challenge
-    let aux_memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
-        &setup_caps,
-        &final_register_values,
-        &aux_memory_trees,
-        &aux_delegation_memory_trees,
-    );
-
-    assert_eq!(aux_memory_challenges_seed, memory_challenges_seed);
-
-    Ok((main_proofs, delegation_proofs, final_register_values))
+    Ok(())
 }
 
 fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
@@ -808,7 +814,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
 
     let trace = main_circuits_witness.into_iter().nth(0).unwrap().into();
     let data = TracingDataHost::Main {
-        setup_and_teardown: None,
+        inits_and_teardowns: None,
         trace,
     };
     let lde_factor = MainCircuitType::RiscVCycles.get_lde_factor();
@@ -856,17 +862,18 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     let circuit_type = CircuitType::Main(MainCircuitType::RiscVCycles);
     nvtx::range_push!("warmup");
     {
-        let external_values = ExternalValues {
-            challenges: ExternalChallenges::draw_from_transcript_seed(Seed([0; 8]), true),
-            aux_boundary_values: AuxArgumentsBoundaryValues::default(),
-        };
+        let external_challenges = ExternalChallenges::draw_from_transcript_seed(Seed([0; 8]), true);
         for (context, setup) in contexts.iter().zip(setups.iter_mut()) {
             context.switch_to_device()?;
             let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
             transfer.schedule_transfer(context)?;
-            let job = crate::prover::proof::prove(
+            let job = prove(
+                circuit_type,
                 gpu_circuit.clone(),
-                external_values,
+                external_challenges,
+                vec![AuxArgumentsBoundaryValues::default()],
+                None,
+                0,
                 setup,
                 transfer,
                 &precomputations.lde_precomputations,
@@ -911,10 +918,8 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
         event.record(context.get_exec_stream())?;
     }
     for i in 0..PROOF_COUNT {
-        let external_values = ExternalValues {
-            challenges: ExternalChallenges::draw_from_transcript_seed(Seed([i as u32; 8]), true),
-            aux_boundary_values: AuxArgumentsBoundaryValues::default(),
-        };
+        let external_challenges =
+            ExternalChallenges::draw_from_transcript_seed(Seed([i as u32; 8]), true);
         for (((context, setup), current_transfer), current_job) in contexts
             .iter()
             .zip(setups.iter_mut())
@@ -925,9 +930,13 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
             let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), context)?;
             transfer.schedule_transfer(context)?;
             mem::swap(current_transfer, &mut transfer);
-            let job = crate::prover::proof::prove(
+            let job = prove(
+                circuit_type,
                 gpu_circuit.clone(),
-                external_values,
+                external_challenges,
+                vec![AuxArgumentsBoundaryValues::default()],
+                None,
+                0,
                 setup,
                 transfer,
                 &precomputations.lde_precomputations,
@@ -1229,6 +1238,1209 @@ fn commit_memory_tree_for_delegation_circuit_with_gpu_tracer(
     (caps, witness_chunk.delegation_type as u32)
 }
 
+fn run_and_split_unrolled<
+    ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    _text_section: &[u32],
+    non_determinism: &mut ND,
+    non_mem_factories: HashMap<
+        u8,
+        Box<dyn Fn() -> NonMemTracingFamilyChunk<A> + Send + Sync + 'static>,
+    >,
+    mut mem_factories: HashMap<
+        u8,
+        Box<dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static>,
+    >,
+    delegation_factories: HashMap<
+        u16,
+        Box<dyn Fn() -> DelegationWitness<A> + Send + Sync + 'static>,
+    >,
+    ram_bound: usize,
+    worker: &Worker,
+) -> (
+    u32,
+    TimestampScalar,
+    usize,
+    BTreeMap<u8, Vec<NonMemTracingFamilyChunk<A>>>,
+    (Vec<MemTracingFamilyChunk<A>>, Vec<MemTracingFamilyChunk<A>>),
+    BTreeMap<u16, Vec<DelegationWitness<A>>>,
+    [FinalRegisterValue; 32],
+    Vec<ShuffleRamSetupAndTeardown<A>>,
+) {
+    let rom_address_space_bound: usize = 1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
+    assert!(ram_bound > rom_address_space_bound);
+    let mut memory = VectorMemoryImplWithRom::new_for_byte_size(ram_bound, rom_address_space_bound);
+    for (idx, insn) in binary_image.iter().enumerate() {
+        memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
+    }
+
+    let csr_processor = DelegationsCSRProcessor;
+
+    let (
+        final_pc,
+        final_timestamp,
+        cycles_used,
+        family_circuits,
+        (word_mem_circuits, subword_mem_circuits),
+        delegation_circuits,
+        register_final_state,
+        shuffle_ram_touched_addresses,
+    ) = if setups::is_default_machine_configuration::<C>() {
+        let word_mem_factory = mem_factories
+            .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
+            .expect("must exist");
+        let subword_mem_factory = mem_factories
+            .remove(&common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX)
+            .expect("must exist");
+        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
+            _,
+            IMStandardIsaConfigWithUnsignedMulDiv,
+            A,
+        >(
+            cycles_bound,
+            ENTRY_POINT,
+            csr_processor,
+            &mut memory,
+            rom_address_space_bound,
+            non_determinism,
+            non_mem_factories,
+            word_mem_factory,
+            subword_mem_factory,
+            delegation_factories,
+            ram_bound,
+            &worker,
+        )
+    } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
+        let word_mem_factory = mem_factories
+            .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
+            .expect("must exist");
+        let subword_mem_factory = mem_factories
+            .remove(&common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX)
+            .expect("must exist");
+        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
+            _,
+            IMStandardIsaConfigWithUnsignedMulDiv,
+            A,
+        >(
+            cycles_bound,
+            ENTRY_POINT,
+            csr_processor,
+            &mut memory,
+            rom_address_space_bound,
+            non_determinism,
+            non_mem_factories,
+            word_mem_factory,
+            subword_mem_factory,
+            delegation_factories,
+            ram_bound,
+            &worker,
+        )
+    } else if setups::is_reduced_machine_configuration::<C>() {
+        let word_mem_factory = mem_factories
+            .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
+            .expect("must exist");
+        let (_, subword_mem_factory) = setups::load_store_subword_only::get_tracer_factory(); // NOT used internally
+        run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
+            _,
+            IWithoutByteAccessIsaConfigWithDelegation,
+            A,
+        >(
+            cycles_bound,
+            ENTRY_POINT,
+            csr_processor,
+            &mut memory,
+            rom_address_space_bound,
+            non_determinism,
+            non_mem_factories,
+            word_mem_factory,
+            subword_mem_factory,
+            delegation_factories,
+            ram_bound,
+            &worker,
+        )
+    } else {
+        panic!("Unknown configuration {:?}", std::any::type_name::<C>());
+    };
+
+    assert_eq!(
+        (cycles_used as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP,
+        final_timestamp
+    );
+
+    let num_inits_per_circuit = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
+        * (setups::inits_and_teardowns::DOMAIN_SIZE - 1);
+
+    let total_input_len: usize = shuffle_ram_touched_addresses
+        .iter()
+        .map(|el| el.len())
+        .sum();
+    let num_needed_chunks =
+        total_input_len.next_multiple_of(num_inits_per_circuit) / num_inits_per_circuit;
+
+    let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<A, _>(
+        num_needed_chunks,
+        num_inits_per_circuit,
+        &shuffle_ram_touched_addresses,
+        &worker,
+    );
+    assert_eq!(num_trivial, 0);
+
+    (
+        final_pc,
+        final_timestamp,
+        cycles_used,
+        BTreeMap::from_iter(family_circuits.into_iter()),
+        (word_mem_circuits, subword_mem_circuits),
+        BTreeMap::from_iter(delegation_circuits.into_iter()),
+        register_final_state.map(|el| FinalRegisterValue {
+            value: el.current_value,
+            last_access_timestamp: el.last_access_timestamp,
+        }),
+        inits_and_teardowns,
+    )
+}
+
+fn trace_unrolled_execution<
+    ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    mut non_determinism: ND,
+    ram_bound: usize,
+    worker: &Worker,
+) -> (
+    u32,
+    TimestampScalar,
+    usize,
+    BTreeMap<u8, Vec<NonMemTracingFamilyChunk<A>>>,
+    (Vec<MemTracingFamilyChunk<A>>, Vec<MemTracingFamilyChunk<A>>),
+    BTreeMap<u16, Vec<DelegationWitness<A>>>,
+    [FinalRegisterValue; 32],
+    Vec<ShuffleRamSetupAndTeardown<A>>,
+) {
+    let (non_mem_factories, mem_factories) = if setups::is_default_machine_configuration::<C>() {
+        setups::factories_for_unrolled_circuits_base_layer::<A>()
+    } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
+        setups::factories_for_unrolled_circuits_base_layer_unsigned_only::<A>()
+    } else if setups::is_reduced_machine_configuration::<C>() {
+        setups::factories_for_unrolled_circuits_recursion_layer::<A>()
+    } else {
+        panic!("Unknown configuration {:?}", std::any::type_name::<C>());
+    };
+
+    let delegation_factories = setups::delegation_factories_for_machine::<C, A>();
+
+    let (
+        final_pc,
+        final_timestamp,
+        cycles_used,
+        family_circuits,
+        (word_mem_circuits, subword_mem_circuits),
+        delegation_circuits,
+        register_final_state,
+        inits_and_teardowns,
+    ) = run_and_split_unrolled::<ND, C, A, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        &mut non_determinism,
+        non_mem_factories,
+        mem_factories,
+        delegation_factories,
+        ram_bound,
+        worker,
+    );
+
+    println!(
+        "Program finished execution with final pc = 0x{:08x} and final register state\n{}",
+        final_pc,
+        register_final_state
+            .iter()
+            .enumerate()
+            .map(|(idx, r)| format!("x{} = {}", idx, r.value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    (
+        final_pc,
+        final_timestamp,
+        cycles_used,
+        family_circuits,
+        (word_mem_circuits, subword_mem_circuits),
+        delegation_circuits,
+        register_final_state,
+        inits_and_teardowns,
+    )
+}
+
+fn prove_unrolled_execution<
+    ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    non_determinism: ND,
+    unrolled_circuits_precomputations: &BTreeMap<u8, UnrolledCircuitPrecomputations<A, A>>,
+    inits_and_teardowns_precomputation: &UnrolledCircuitPrecomputations<A, A>,
+    delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
+    ram_bound: usize,
+    prover_context: &ProverContext,
+    worker: &Worker,
+) -> CudaResult<()> {
+    let (
+        final_pc,
+        final_timestamp,
+        _cycles_used,
+        family_circuits,
+        (word_mem_circuits, subword_mem_circuits),
+        delegation_circuits,
+        register_final_state,
+        inits_and_teardowns,
+    ) = trace_unrolled_execution::<ND, C, A, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        non_determinism,
+        ram_bound,
+        worker,
+    );
+
+    let mut memory_trees = vec![];
+
+    // commit memory trees
+    for (family_idx, witness_chunks) in family_circuits.iter() {
+        if witness_chunks.is_empty() {
+            continue;
+        }
+
+        let mut family_caps = vec![];
+        let precomputation = &unrolled_circuits_precomputations[family_idx];
+        let UnrolledCircuitWitnessEvalFn::NonMemory {
+            decoder_table,
+            default_pc_value_in_padding,
+            ..
+        } = precomputation
+            .witness_eval_fn_for_gpu_tracer
+            .as_ref()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+
+        let h_decoder_table = decoder_table
+            .iter()
+            .copied()
+            .map(|d| d.into())
+            .collect_vec();
+        let mut d_decoder_table =
+            prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
+        memory_copy_async(
+            &mut d_decoder_table,
+            &h_decoder_table,
+            prover_context.get_exec_stream(),
+        )?;
+
+        for chunk in witness_chunks.iter() {
+            let (gpu_caps, _) = {
+                let lde_factor = precomputation.lde_factor;
+                let log_lde_factor = lde_factor.trailing_zeros();
+                let circuit = &precomputation.compiled_circuit;
+                let trace_len = circuit.trace_len;
+                let log_domain_size = trace_len.trailing_zeros();
+                let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
+                    .total_caps_size_log2 as u32;
+                let trace = chunk.clone().into();
+                let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace));
+                let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::from_family_idx::<C>(*family_idx),
+                ));
+                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+                transfer.schedule_transfer(prover_context)?;
+                let job = commit_memory(
+                    transfer,
+                    circuit,
+                    Some(&d_decoder_table),
+                    *default_pc_value_in_padding,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    prover_context,
+                )?;
+                job.finish()?
+            };
+
+            let caps = commit_memory_tree_for_unrolled_nonmem_circuits(
+                &precomputation.compiled_circuit,
+                &chunk.data,
+                &precomputation.twiddles,
+                &precomputation.lde_precomputations,
+                *default_pc_value_in_padding,
+                decoder_table,
+                worker,
+            );
+
+            gpu_caps
+                .iter()
+                .zip(caps.iter())
+                .for_each(|(gpu_cap, cpu_cap)| assert_eq!(gpu_cap, cpu_cap));
+
+            family_caps.push(caps);
+        }
+        memory_trees.push((*family_idx as u32, family_caps));
+    }
+
+    let mem_circuits = [
+        (
+            common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+            word_mem_circuits,
+        ),
+        (
+            common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
+            subword_mem_circuits,
+        ),
+    ];
+    for (family_idx, witness_chunks) in mem_circuits.iter() {
+        if witness_chunks.is_empty() {
+            continue;
+        }
+
+        let mut family_caps = vec![];
+        let precomputation = &unrolled_circuits_precomputations[family_idx];
+        let UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. } = precomputation
+            .witness_eval_fn_for_gpu_tracer
+            .as_ref()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+
+        let h_decoder_table = decoder_table
+            .iter()
+            .copied()
+            .map(|d| d.into())
+            .collect_vec();
+        let mut d_decoder_table =
+            prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
+        memory_copy_async(
+            &mut d_decoder_table,
+            &h_decoder_table,
+            prover_context.get_exec_stream(),
+        )?;
+
+        for chunk in witness_chunks.iter() {
+            let (gpu_caps, _) = {
+                let lde_factor = precomputation.lde_factor;
+                let log_lde_factor = lde_factor.trailing_zeros();
+                let circuit = &precomputation.compiled_circuit;
+                let trace_len = circuit.trace_len;
+                let log_domain_size = trace_len.trailing_zeros();
+                let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
+                    .total_caps_size_log2 as u32;
+                let trace = chunk.clone().into();
+                let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(trace));
+                let circuit_type = Unrolled(UnrolledCircuitType::Memory(
+                    UnrolledMemoryCircuitType::from_family_idx::<C>(*family_idx),
+                ));
+                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+                transfer.schedule_transfer(prover_context)?;
+                let job = commit_memory(
+                    transfer,
+                    circuit,
+                    Some(&d_decoder_table),
+                    0,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    prover_context,
+                )?;
+                job.finish()?
+            };
+
+            let caps = commit_memory_tree_for_unrolled_mem_circuits(
+                &precomputation.compiled_circuit,
+                &chunk.data,
+                &precomputation.twiddles,
+                &precomputation.lde_precomputations,
+                decoder_table,
+                worker,
+            );
+
+            gpu_caps
+                .iter()
+                .zip(caps.iter())
+                .for_each(|(gpu_cap, cpu_cap)| assert_eq!(gpu_cap, cpu_cap));
+
+            family_caps.push(caps);
+        }
+        memory_trees.push((*family_idx as u32, family_caps));
+    }
+
+    // and inits and teardowns
+    let mut inits_and_teardown_trees = vec![];
+    for witness_chunk in inits_and_teardowns.iter() {
+        let (gpu_caps, _) = {
+            let lde_factor = inits_and_teardowns_precomputation.lde_factor;
+            let log_lde_factor = lde_factor.trailing_zeros();
+            let circuit = &inits_and_teardowns_precomputation.compiled_circuit;
+            let trace_len = circuit.trace_len;
+            let log_domain_size = trace_len.trailing_zeros();
+            let log_tree_cap_size =
+                OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+            let trace = witness_chunk.clone().into();
+            let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::InitsAndTeardowns(trace));
+            let circuit_type = Unrolled(UnrolledCircuitType::InitsAndTeardowns);
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+            transfer.schedule_transfer(prover_context)?;
+            let job = commit_memory(
+                transfer,
+                circuit,
+                None,
+                0,
+                log_lde_factor,
+                log_tree_cap_size,
+                prover_context,
+            )?;
+            job.finish()?
+        };
+
+        let (caps, _) = commit_memory_tree_for_inits_and_teardowns_unrolled_circuit(
+            &inits_and_teardowns_precomputation.compiled_circuit,
+            &witness_chunk.lazy_init_data,
+            &inits_and_teardowns_precomputation.twiddles,
+            &inits_and_teardowns_precomputation.lde_precomputations,
+            worker,
+        );
+
+        gpu_caps
+            .iter()
+            .zip(caps.iter())
+            .for_each(|(gpu_cap, cpu_cap)| assert_eq!(gpu_cap, cpu_cap));
+
+        inits_and_teardown_trees.push(caps);
+    }
+
+    // same for delegation circuits
+    let mut delegation_memory_trees = vec![];
+
+    for (delegation_type, els) in delegation_circuits.iter() {
+        if els.is_empty() {
+            continue;
+        }
+        let idx = delegation_circuits_precomputations
+            .iter()
+            .position(|el| el.0 == *delegation_type as u32)
+            .unwrap();
+        let prec = &delegation_circuits_precomputations[idx].1;
+        let mut per_tree_set = vec![];
+        for el in els.iter() {
+            let (caps, delegation_t) =
+                trace_and_split::commit_memory_tree_for_delegation_circuit_with_gpu_tracer(
+                    &prec.compiled_circuit.compiled_circuit,
+                    el,
+                    &prec.twiddles,
+                    &prec.lde_precomputations,
+                    prec.lde_factor,
+                    prec.tree_cap_size,
+                    worker,
+                );
+            assert_eq!(*delegation_type as u32, delegation_t);
+            per_tree_set.push(caps);
+        }
+
+        delegation_memory_trees.push((*delegation_type as u32, per_tree_set));
+    }
+
+    // commit memory challenges
+    let all_challenges_seed =
+        fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits(
+            &register_final_state,
+            final_pc,
+            final_timestamp,
+            &memory_trees,
+            &inits_and_teardown_trees,
+            &delegation_memory_trees,
+        );
+
+    let external_challenges =
+        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+
+    // now prove one by one
+    for (family_idx, witness_chunks) in family_circuits.into_iter() {
+        if witness_chunks.is_empty() {
+            continue;
+        }
+
+        let precomputation = &unrolled_circuits_precomputations[&family_idx];
+        let UnrolledCircuitWitnessEvalFn::NonMemory {
+            decoder_table,
+            default_pc_value_in_padding,
+            witness_fn,
+        } = precomputation
+            .witness_eval_fn_for_gpu_tracer
+            .as_ref()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+
+        let h_decoder_table = decoder_table
+            .iter()
+            .copied()
+            .map(|d| d.into())
+            .collect_vec();
+        let mut d_decoder_table =
+            prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
+        memory_copy_async(
+            &mut d_decoder_table,
+            &h_decoder_table,
+            prover_context.get_exec_stream(),
+        )?;
+
+        for chunk in witness_chunks.into_iter() {
+            let oracle = NonMemoryCircuitOracle {
+                inner: &chunk.data,
+                decoder_table,
+                default_pc_value_in_padding: *default_pc_value_in_padding,
+            };
+
+            let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
+                &precomputation.compiled_circuit,
+                *witness_fn,
+                precomputation.trace_len - 1,
+                &oracle,
+                &precomputation.table_driver,
+                &worker,
+                A::default(),
+            );
+            let now = std::time::Instant::now();
+            let (_, cpu_proof) =
+                prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
+                    DEFAULT_TRACE_PADDING_MULTIPLE,
+                    A,
+                    DefaultTreeConstructor,
+                >(
+                    &precomputation.compiled_circuit,
+                    &[],
+                    &external_challenges,
+                    witness_trace.clone(),
+                    &[],
+                    &precomputation.setup,
+                    &precomputation.twiddles,
+                    &precomputation.lde_precomputations,
+                    None,
+                    precomputation.lde_factor,
+                    precomputation.tree_cap_size,
+                    NUM_QUERIES,
+                    POW_BITS,
+                    &worker,
+                );
+            println!(
+                "Proving time for unrolled circuit type {} is {:?}",
+                family_idx,
+                now.elapsed()
+            );
+            {
+                let circuit = Arc::new(precomputation.compiled_circuit.clone());
+                let lde_factor = precomputation.lde_factor;
+                let trace_len = circuit.trace_len;
+                let log_lde_factor = lde_factor.trailing_zeros();
+                let log_domain_size = trace_len.trailing_zeros();
+                let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
+                    .total_caps_size_log2 as u32;
+                let setup_row_major = &precomputation.setup.ldes[0].trace;
+                let mut setup_evaluations = Vec::with_capacity_in(
+                    setup_row_major.as_slice().len(),
+                    ConcurrentStaticHostAllocator::default(),
+                );
+                unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+                transpose::transpose(
+                    setup_row_major.as_slice(),
+                    &mut setup_evaluations,
+                    setup_row_major.padded_width,
+                    setup_row_major.len(),
+                );
+                setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+                let setup_evaluations = Arc::new(setup_evaluations);
+                let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    setup_evaluations.clone(),
+                    prover_context,
+                )?;
+                let mut setup = SetupPrecomputations::new(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    setup_trees_and_caps,
+                    prover_context,
+                )?;
+                setup.schedule_transfer(setup_evaluations, prover_context)?;
+                let data =
+                    TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(chunk.into()));
+                let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::from_family_idx::<C>(family_idx),
+                ));
+                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+                transfer.schedule_transfer(prover_context)?;
+                // let external_values = ExternalValues {
+                //     challenges: external_challenges,
+                //     aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+                // };
+                // let job = crate::prover::proof::prove(
+                //     Arc::new(circuit.clone()),
+                //     external_values,
+                //     Some(&d_decoder_table),
+                //     *default_pc_value_in_padding,
+                //     &mut setup,
+                //     transfer,
+                //     &precomputation.lde_precomputations,
+                //     0,
+                //     None,
+                //     lde_factor,
+                //     NUM_QUERIES,
+                //     POW_BITS,
+                //     Some(cpu_proof.pow_nonce),
+                //     RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                //     TREES_CACHE_MODE_FOR_CORRECTNESS,
+                //     prover_context,
+                // )?;
+                // job.finish()?
+                let mut stage_1_output = StageOneOutput::allocate_trace_holders(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    false,
+                    TreesCacheMode::CacheFull,
+                    prover_context,
+                )?;
+                let mut callbacks = Callbacks::new();
+                stage_1_output.generate_witness(
+                    &circuit,
+                    Some(&d_decoder_table),
+                    *default_pc_value_in_padding,
+                    &mut setup,
+                    transfer,
+                    0,
+                    &mut callbacks,
+                    prover_context,
+                )?;
+                stage_1_output.commit_witness(&circuit, &mut callbacks, prover_context)?;
+                let stream = prover_context.get_exec_stream();
+                stream.synchronize()?;
+                drop(callbacks);
+                // let num_witness_columns = witness_trace.num_witness_columns;
+                // let mut d_witness = prover_context
+                //     .alloc(trace_len * num_witness_columns, AllocationPlacement::Bottom)?;
+                // let src = DeviceMatrix::new(
+                //     stage_1_output
+                //         .witness_holder
+                //         .get_evaluations(prover_context)?,
+                //     trace_len,
+                // );
+                // let mut dst = DeviceMatrixMut::new(&mut d_witness, num_witness_columns);
+                // transpose(&src, &mut dst, stream)?;
+                // let mut h_witness = vec![BaseField::ZERO; d_witness.len()];
+                // memory_copy_async(&mut h_witness, &d_witness, stream)?;
+                // stream.synchronize()?;
+                // dbg!(&circuit.executor_family_circuit_next_timestamp_aux_var);
+                // dbg!(&circuit.memory_queries_timestamp_comparison_aux_vars);
+                // dbg!(&circuit.memory_layout);
+                // dbg!(&circuit.witness_layout);
+                // dbg!(circuit_type);
+                // unsafe {
+                //     for row in 0..trace_len - 1 {
+                //         let index = row * num_witness_columns;
+                //         let gpu_row = &h_witness[index..][..num_witness_columns];
+                //         let cpu_row = &witness_trace.exec_trace.get_row(row)[..num_witness_columns];
+                //         assert_eq!(gpu_row, cpu_row, "failed at row {}", row);
+                //         // for col in 0..num_witness_columns {
+                //         //     let index = index + col;
+                //         //     assert_eq!(
+                //         //         h_witness[index], trace[index],
+                //         //         "failed at row {}, col {}",
+                //         //         row, col
+                //         //     );
+                //         // }
+                //     }
+                // }
+                let memory_tree_caps =
+                    get_tree_caps(&stage_1_output.memory_holder.get_tree_caps_accessors());
+                let witness_tree_caps =
+                    get_tree_caps(&stage_1_output.witness_holder.get_tree_caps_accessors());
+                assert_eq!(&cpu_proof.memory_tree_caps, &memory_tree_caps);
+                assert_eq!(&cpu_proof.witness_tree_caps, &witness_tree_caps);
+            };
+        }
+    }
+
+    for (family_idx, witness_chunks) in mem_circuits.into_iter() {
+        if witness_chunks.is_empty() {
+            continue;
+        }
+
+        let precomputation = &unrolled_circuits_precomputations[&family_idx];
+        let UnrolledCircuitWitnessEvalFn::Memory {
+            decoder_table,
+            witness_fn,
+        } = precomputation
+            .witness_eval_fn_for_gpu_tracer
+            .as_ref()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+
+        let h_decoder_table = decoder_table
+            .iter()
+            .copied()
+            .map(|d| d.into())
+            .collect_vec();
+        let mut d_decoder_table =
+            prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
+        memory_copy_async(
+            &mut d_decoder_table,
+            &h_decoder_table,
+            prover_context.get_exec_stream(),
+        )?;
+
+        for chunk in witness_chunks.into_iter() {
+            let oracle = MemoryCircuitOracle {
+                inner: &chunk.data[..],
+                decoder_table,
+            };
+
+            let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
+                &precomputation.compiled_circuit,
+                *witness_fn,
+                precomputation.trace_len - 1,
+                &oracle,
+                &precomputation.table_driver,
+                &worker,
+                A::default(),
+            );
+            let now = std::time::Instant::now();
+            let (_, cpu_proof) =
+                prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
+                    DEFAULT_TRACE_PADDING_MULTIPLE,
+                    A,
+                    DefaultTreeConstructor,
+                >(
+                    &precomputation.compiled_circuit,
+                    &[],
+                    &external_challenges,
+                    witness_trace.clone(),
+                    &[],
+                    &precomputation.setup,
+                    &precomputation.twiddles,
+                    &precomputation.lde_precomputations,
+                    None,
+                    precomputation.lde_factor,
+                    precomputation.tree_cap_size,
+                    NUM_QUERIES,
+                    POW_BITS,
+                    &worker,
+                );
+            println!(
+                "Proving time for unrolled circuit type {} is {:?}",
+                family_idx,
+                now.elapsed()
+            );
+            {
+                let circuit = Arc::new(precomputation.compiled_circuit.clone());
+                let lde_factor = precomputation.lde_factor;
+                let trace_len = circuit.trace_len;
+                let log_lde_factor = lde_factor.trailing_zeros();
+                let log_domain_size = trace_len.trailing_zeros();
+                let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
+                    .total_caps_size_log2 as u32;
+                let setup_row_major = &precomputation.setup.ldes[0].trace;
+                let mut setup_evaluations = Vec::with_capacity_in(
+                    setup_row_major.as_slice().len(),
+                    ConcurrentStaticHostAllocator::default(),
+                );
+                unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+                transpose::transpose(
+                    setup_row_major.as_slice(),
+                    &mut setup_evaluations,
+                    setup_row_major.padded_width,
+                    setup_row_major.len(),
+                );
+                setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+                let setup_evaluations = Arc::new(setup_evaluations);
+                let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    setup_evaluations.clone(),
+                    prover_context,
+                )?;
+                let mut setup = SetupPrecomputations::new(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    setup_trees_and_caps,
+                    prover_context,
+                )?;
+                setup.schedule_transfer(setup_evaluations, prover_context)?;
+                let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(chunk.into()));
+                let circuit_type = Unrolled(UnrolledCircuitType::Memory(
+                    UnrolledMemoryCircuitType::from_family_idx::<C>(family_idx),
+                ));
+                let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+                transfer.schedule_transfer(prover_context)?;
+                // let external_values = ExternalValues {
+                //     challenges: external_challenges,
+                //     aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+                // };
+                // let job = crate::prover::proof::prove(
+                //     Arc::new(circuit.clone()),
+                //     external_values,
+                //     Some(&d_decoder_table),
+                //     *default_pc_value_in_padding,
+                //     &mut setup,
+                //     transfer,
+                //     &precomputation.lde_precomputations,
+                //     0,
+                //     None,
+                //     lde_factor,
+                //     NUM_QUERIES,
+                //     POW_BITS,
+                //     Some(cpu_proof.pow_nonce),
+                //     RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                //     TREES_CACHE_MODE_FOR_CORRECTNESS,
+                //     prover_context,
+                // )?;
+                // job.finish()?
+                let mut stage_1_output = StageOneOutput::allocate_trace_holders(
+                    &circuit,
+                    log_lde_factor,
+                    log_tree_cap_size,
+                    false,
+                    TreesCacheMode::CacheFull,
+                    prover_context,
+                )?;
+                let mut callbacks = Callbacks::new();
+                stage_1_output.generate_witness(
+                    &circuit,
+                    Some(&d_decoder_table),
+                    0,
+                    &mut setup,
+                    transfer,
+                    0,
+                    &mut callbacks,
+                    prover_context,
+                )?;
+                stage_1_output.commit_witness(&circuit, &mut callbacks, prover_context)?;
+                let stream = prover_context.get_exec_stream();
+                stream.synchronize()?;
+                drop(callbacks);
+                // let num_witness_columns = witness_trace.num_witness_columns;
+                // let mut d_witness = prover_context
+                //     .alloc(trace_len * num_witness_columns, AllocationPlacement::Bottom)?;
+                // let src = DeviceMatrix::new(
+                //     stage_1_output
+                //         .witness_holder
+                //         .get_evaluations(prover_context)?,
+                //     trace_len,
+                // );
+                // let mut dst = DeviceMatrixMut::new(&mut d_witness, num_witness_columns);
+                // transpose(&src, &mut dst, stream)?;
+                // let mut h_witness = vec![BaseField::ZERO; d_witness.len()];
+                // memory_copy_async(&mut h_witness, &d_witness, stream)?;
+                // stream.synchronize()?;
+                // dbg!(&circuit.executor_family_circuit_next_timestamp_aux_var);
+                // dbg!(&circuit.memory_queries_timestamp_comparison_aux_vars);
+                // dbg!(&circuit.memory_layout);
+                // dbg!(&circuit.witness_layout);
+                // unsafe {
+                //     for row in 0..trace_len - 1 {
+                //         let index = row * num_witness_columns;
+                //         let gpu_row = &h_witness[index..][..num_witness_columns];
+                //         let cpu_row = &witness_trace.exec_trace.get_row(row)[..num_witness_columns];
+                //         assert_eq!(gpu_row, cpu_row, "failed at row {}", row);
+                //         // for col in 0..num_witness_columns {
+                //         //     let index = index + col;
+                //         //     assert_eq!(
+                //         //         h_witness[index], trace[index],
+                //         //         "failed at row {}, col {}",
+                //         //         row, col
+                //         //     );
+                //         // }
+                //     }
+                // }
+                let memory_tree_caps =
+                    get_tree_caps(&stage_1_output.memory_holder.get_tree_caps_accessors());
+                let witness_tree_caps =
+                    get_tree_caps(&stage_1_output.witness_holder.get_tree_caps_accessors());
+                assert_eq!(&cpu_proof.memory_tree_caps, &memory_tree_caps);
+                assert_eq!(&cpu_proof.witness_tree_caps, &witness_tree_caps);
+            };
+        }
+    }
+
+    // inits and teardowns
+    for witness_chunk in inits_and_teardowns.into_iter() {
+        let witness_trace = evaluate_init_and_teardown_witness::<A>(
+            &inits_and_teardowns_precomputation.compiled_circuit,
+            inits_and_teardowns_precomputation.trace_len - 1,
+            &witness_chunk.lazy_init_data,
+            &worker,
+            A::default(),
+        );
+        let WitnessEvaluationData {
+            aux_data,
+            exec_trace,
+            num_witness_columns,
+            lookup_mapping,
+        } = witness_trace;
+        let witness_trace = WitnessEvaluationDataForExecutionFamily {
+            aux_data: ExecutorFamilyWitnessEvaluationAuxData {},
+            exec_trace,
+            num_witness_columns,
+            lookup_mapping,
+        };
+
+        let (_, cpu_proof) =
+            prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                A,
+                DefaultTreeConstructor,
+            >(
+                &inits_and_teardowns_precomputation.compiled_circuit,
+                &[],
+                &external_challenges,
+                witness_trace.clone(),
+                &aux_data.aux_boundary_data,
+                &inits_and_teardowns_precomputation.setup,
+                &inits_and_teardowns_precomputation.twiddles,
+                &inits_and_teardowns_precomputation.lde_precomputations,
+                None,
+                inits_and_teardowns_precomputation.lde_factor,
+                inits_and_teardowns_precomputation.tree_cap_size,
+                NUM_QUERIES,
+                POW_BITS,
+                &worker,
+            );
+
+        {
+            let circuit = Arc::new(inits_and_teardowns_precomputation.compiled_circuit.clone());
+            let lde_factor = inits_and_teardowns_precomputation.lde_factor;
+            let trace_len = circuit.trace_len;
+            let log_lde_factor = lde_factor.trailing_zeros();
+            let log_domain_size = trace_len.trailing_zeros();
+            let log_tree_cap_size =
+                OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+            let setup_row_major = &inits_and_teardowns_precomputation.setup.ldes[0].trace;
+            let mut setup_evaluations = Vec::with_capacity_in(
+                setup_row_major.as_slice().len(),
+                ConcurrentStaticHostAllocator::default(),
+            );
+            unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+            transpose::transpose(
+                setup_row_major.as_slice(),
+                &mut setup_evaluations,
+                setup_row_major.padded_width,
+                setup_row_major.len(),
+            );
+            setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+            let setup_evaluations = Arc::new(setup_evaluations);
+            let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+                &circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                setup_evaluations.clone(),
+                prover_context,
+            )?;
+            let mut setup = SetupPrecomputations::new(
+                &circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                setup_trees_and_caps,
+                prover_context,
+            )?;
+            setup.schedule_transfer(setup_evaluations, prover_context)?;
+            let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::InitsAndTeardowns(
+                witness_chunk.into(),
+            ));
+            let circuit_type = Unrolled(UnrolledCircuitType::InitsAndTeardowns);
+            let mut transfer = TracingDataTransfer::new(circuit_type, data, prover_context)?;
+            transfer.schedule_transfer(prover_context)?;
+            // let external_values = ExternalValues {
+            //     challenges: external_challenges,
+            //     aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+            // };
+            // let job = crate::prover::proof::prove(
+            //     Arc::new(circuit.clone()),
+            //     external_values,
+            //     Some(&d_decoder_table),
+            //     *default_pc_value_in_padding,
+            //     &mut setup,
+            //     transfer,
+            //     &precomputation.lde_precomputations,
+            //     0,
+            //     None,
+            //     lde_factor,
+            //     NUM_QUERIES,
+            //     POW_BITS,
+            //     Some(cpu_proof.pow_nonce),
+            //     RECOMPUTE_COSETS_FOR_CORRECTNESS,
+            //     TREES_CACHE_MODE_FOR_CORRECTNESS,
+            //     prover_context,
+            // )?;
+            // job.finish()?
+            let mut stage_1_output = StageOneOutput::allocate_trace_holders(
+                &circuit,
+                log_lde_factor,
+                log_tree_cap_size,
+                false,
+                TreesCacheMode::CacheFull,
+                prover_context,
+            )?;
+            let mut callbacks = Callbacks::new();
+            stage_1_output.generate_witness(
+                &circuit,
+                None,
+                0,
+                &mut setup,
+                transfer,
+                0,
+                &mut callbacks,
+                prover_context,
+            )?;
+            stage_1_output.commit_witness(&circuit, &mut callbacks, prover_context)?;
+            let stream = prover_context.get_exec_stream();
+            stream.synchronize()?;
+            drop(callbacks);
+            // let num_witness_columns = witness_trace.num_witness_columns;
+            // let mut d_witness = prover_context
+            //     .alloc(trace_len * num_witness_columns, AllocationPlacement::Bottom)?;
+            // let src = DeviceMatrix::new(
+            //     stage_1_output
+            //         .witness_holder
+            //         .get_evaluations(prover_context)?,
+            //     trace_len,
+            // );
+            // let mut dst = DeviceMatrixMut::new(&mut d_witness, num_witness_columns);
+            // transpose(&src, &mut dst, stream)?;
+            // let mut h_witness = vec![BaseField::ZERO; d_witness.len()];
+            // memory_copy_async(&mut h_witness, &d_witness, stream)?;
+            // stream.synchronize()?;
+            // unsafe {
+            //     for row in 0..trace_len - 1 {
+            //         let index = row * num_witness_columns;
+            //         let gpu_row = &h_witness[index..][..num_witness_columns];
+            //         let cpu_row = &witness_trace.exec_trace.get_row(row)[0..num_witness_columns];
+            //         assert_eq!(gpu_row, cpu_row, "failed at row {}", row);
+            //         // for col in 0..num_witness_columns {
+            //         //     let index = index + col;
+            //         //     assert_eq!(
+            //         //         h_witness[index], trace[index],
+            //         //         "failed at row {}, col {}",
+            //         //         row, col
+            //         //     );
+            //         // }
+            //     }
+            // }
+            let memory_tree_caps =
+                get_tree_caps(&stage_1_output.memory_holder.get_tree_caps_accessors());
+            let witness_tree_caps =
+                get_tree_caps(&stage_1_output.witness_holder.get_tree_caps_accessors());
+            assert_eq!(&cpu_proof.memory_tree_caps, &memory_tree_caps);
+            assert_eq!(&cpu_proof.witness_tree_caps, &witness_tree_caps);
+        };
+    }
+
+    // all the same for delegation circuit
+    let delegation_proving_start = std::time::Instant::now();
+    let mut delegation_proofs_count = 0u32;
+    // commit memory trees
+    for (delegation_type, els) in delegation_circuits.into_iter() {
+        if els.is_empty() {
+            continue;
+        }
+
+        println!(
+            "Producing proofs for delegation circuit type {}, {} proofs in total",
+            delegation_type,
+            els.len()
+        );
+
+        let idx = delegation_circuits_precomputations
+            .iter()
+            .position(|el| el.0 == delegation_type as u32)
+            .unwrap();
+        let prec = &delegation_circuits_precomputations[idx].1;
+
+        for (_circuit_idx, el) in els.iter().enumerate() {
+            delegation_proofs_count += 1;
+            let oracle: DelegationCircuitOracle<'_, A> =
+                DelegationCircuitOracle::<A> { cycle_data: el };
+
+            let witness_trace = evaluate_witness::<DelegationCircuitOracle<'_, A>, A>(
+                &prec.compiled_circuit.compiled_circuit,
+                prec.witness_eval_fn_for_gpu_tracer,
+                prec.compiled_circuit.num_requests_per_circuit,
+                &oracle,
+                &[],
+                &prec.compiled_circuit.table_driver,
+                0,
+                worker,
+                A::default(),
+            );
+
+            // and prove
+            let external_values = ExternalValues {
+                challenges: external_challenges,
+                aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+            };
+
+            assert!(delegation_type < 1 << 12);
+            let (_, _proof) = prover::prover_stages::prove(
+                &prec.compiled_circuit.compiled_circuit,
+                &[],
+                &external_values,
+                witness_trace,
+                &prec.setup,
+                &prec.twiddles,
+                &prec.lde_precomputations,
+                0,
+                Some(delegation_type),
+                prec.lde_factor,
+                prec.tree_cap_size,
+                NUM_QUERIES,
+                POW_BITS,
+                worker,
+            );
+        }
+    }
+
+    if delegation_proofs_count > 0 {
+        println!(
+            "=== Total delegation proving time: {:?} for {} circuits - avg: {:?}",
+            delegation_proving_start.elapsed(),
+            delegation_proofs_count,
+            delegation_proving_start.elapsed() / delegation_proofs_count
+        )
+    }
+
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub(crate) fn compare_row_major_trace<
     T: Copy + std::fmt::Debug + Default + PartialEq,
@@ -1373,4 +2585,41 @@ fn compare_proofs(left: &Proof, right: &Proof) {
         }
     }
     assert_eq!(left.pow_nonce, right.pow_nonce);
+}
+
+fn find_binary_exit_point(binary: &[u8]) -> u32 {
+    assert_eq!(binary.len() % 4, 0);
+
+    let binary: Vec<u32> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let mut candidates = vec![];
+
+    for (start_offset, window) in binary.windows(EXIT_SEQUENCE.len()).enumerate() {
+        if window == EXIT_SEQUENCE {
+            candidates.push(start_offset);
+        }
+    }
+
+    assert_eq!(candidates.len(), 1, "too many candidates for exit sequence");
+    let start = candidates[0];
+    let final_pc = (start + EXIT_SEQUENCE.len() - 1) * size_of::<u32>();
+
+    final_pc as u32
+}
+
+pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
+    let mut bytecode = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    pad_bytecode_for_proving(&mut bytecode);
+
+    bytecode
 }

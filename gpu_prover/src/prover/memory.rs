@@ -1,14 +1,20 @@
+use super::callbacks::Callbacks;
 use super::context::{ProverContext, UnsafeMutAccessor};
 use super::trace_holder::{get_tree_caps, TraceHolder, TreesCacheMode};
-use super::tracing_data::{TracingDataDevice, TracingDataTransfer};
+use super::tracing_data::{TracingDataDevice, TracingDataTransfer, UnrolledTracingDataDevice};
 use super::{device_tracing, BF};
 use crate::device_structures::DeviceMatrixMut;
-use crate::prover::callbacks::Callbacks;
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_main::generate_memory_values_main;
+use crate::witness::memory_unrolled::{
+    generate_memory_values_inits_and_teardowns, generate_memory_values_unrolled_memory,
+    generate_memory_values_unrolled_non_memory,
+};
+use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
@@ -42,6 +48,8 @@ impl<'a> MemoryCommitmentJob<'a> {
 pub fn commit_memory<'a>(
     tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
     circuit: &CompiledCircuitArtifact<BF>,
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    default_pc_value_in_padding: u32,
     log_lde_factor: u32,
     log_tree_cap_size: u32,
     context: &ProverContext,
@@ -77,12 +85,12 @@ pub fn commit_memory<'a>(
     let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
     match data_device {
         TracingDataDevice::Main {
-            setup_and_teardown,
+            inits_and_teardowns,
             trace,
         } => {
             generate_memory_values_main(
                 memory_subtree,
-                &setup_and_teardown,
+                &inits_and_teardowns,
                 &trace,
                 memory,
                 stream,
@@ -91,6 +99,30 @@ pub fn commit_memory<'a>(
         TracingDataDevice::Delegation(trace) => {
             generate_memory_values_delegation(memory_subtree, &trace, memory, stream)?;
         }
+        TracingDataDevice::Unrolled(unrolled) => match unrolled {
+            UnrolledTracingDataDevice::Memory(trace) => {
+                generate_memory_values_unrolled_memory(
+                    memory_subtree,
+                    decoder_table.unwrap(),
+                    &trace,
+                    memory,
+                    stream,
+                )?;
+            }
+            UnrolledTracingDataDevice::NonMemory(trace) => {
+                generate_memory_values_unrolled_non_memory(
+                    memory_subtree,
+                    decoder_table.unwrap(),
+                    default_pc_value_in_padding,
+                    &trace,
+                    memory,
+                    stream,
+                )?;
+            }
+            UnrolledTracingDataDevice::InitsAndTeardowns(trace) => {
+                generate_memory_values_inits_and_teardowns(memory_subtree, &trace, memory, stream)?;
+            }
+        },
     };
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
     let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();

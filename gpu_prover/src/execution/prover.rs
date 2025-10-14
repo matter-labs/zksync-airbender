@@ -1,5 +1,5 @@
 use super::cpu_worker::{
-    get_cpu_worker_func, CpuWorkerMode, CyclesChunk, NonDeterminism, SetupAndTeardownChunk,
+    get_cpu_worker_func, CpuWorkerMode, CyclesChunk, InitsAndTeardownsChunk, NonDeterminism,
 };
 use super::gpu_manager::{GpuManager, GpuWorkBatch};
 use super::gpu_worker::{
@@ -356,6 +356,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                             trace!("BATCH[{batch_id}] PROVER sending cached delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
                             gpu_work_requests_sender.send(request).unwrap();
                         }
+                        CircuitType::Unrolled(_) => todo!(),
                     }
                 }
             }
@@ -423,21 +424,21 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let mut delegation_memory_commitments = HashMap::new();
         let mut main_proofs = HashMap::new();
         let mut delegation_proofs = HashMap::new();
-        let mut setup_and_teardown_chunks = HashMap::new();
+        let mut inits_and_teardowns_chunks = HashMap::new();
         let mut cycles_chunks = HashMap::new();
         let mut delegation_work_sender = Some(gpu_work_requests_sender.clone());
         let send_main_work_request =
             move |circuit_sequence: usize,
-                  setup_and_teardown_chunk: Option<ShuffleRamSetupAndTeardown<_>>,
+                  inits_and_teardowns_chunk: Option<ShuffleRamSetupAndTeardown<_>>,
                   cycles_chunk: CycleTracingData<_>| {
-                let setup_and_teardown = setup_and_teardown_chunk.map(|chunk| chunk.into());
+                let inits_and_teardowns = inits_and_teardowns_chunk.map(|chunk| chunk.into());
                 let trace = MainTraceHost {
                     cycles_traced: cycles_chunk.per_cycle_data.len(),
                     cycle_data: Arc::new(cycles_chunk.per_cycle_data),
                     num_cycles_chunk_size: cycles_per_circuit,
                 };
                 let tracing_data = TracingDataHost::Main {
-                    setup_and_teardown,
+                    inits_and_teardowns,
                     trace,
                 };
                 let main_circuit_type = binary.circuit_type;
@@ -473,18 +474,18 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         let mut send_main_work_request = Some(send_main_work_request);
         for result in worker_results_receiver {
             match result {
-                WorkerResult::SetupAndTeardownChunk(chunk) => {
-                    let SetupAndTeardownChunk {
+                WorkerResult::InitsAndTeardownsChunk(chunk) => {
+                    let InitsAndTeardownsChunk {
                         index,
-                        chunk: setup_and_teardown_chunk,
+                        chunk: inits_and_teardowns_chunk,
                     } = chunk;
                     trace!("BATCH[{batch_id}] PROVER received setup and teardown chunk {index}");
                     if let Some(cycles_chunk) = cycles_chunks.remove(&index) {
                         let send = send_main_work_request.as_ref().unwrap();
-                        send(index, setup_and_teardown_chunk, cycles_chunk);
+                        send(index, inits_and_teardowns_chunk, cycles_chunk);
                         main_work_requests_count += 1;
                     } else {
-                        setup_and_teardown_chunks.insert(index, setup_and_teardown_chunk);
+                        inits_and_teardowns_chunks.insert(index, inits_and_teardowns_chunk);
                     }
                 }
                 WorkerResult::RAMTracingResult {
@@ -499,10 +500,11 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 WorkerResult::CyclesChunk(chunk) => {
                     let CyclesChunk { index, data } = chunk;
                     trace!("BATCH[{batch_id}] PROVER received cycles chunk {index}");
-                    if let Some(setup_and_teardown_chunk) = setup_and_teardown_chunks.remove(&index)
+                    if let Some(inits_and_teardowns_chunk) =
+                        inits_and_teardowns_chunks.remove(&index)
                     {
                         let send = send_main_work_request.as_ref().unwrap();
-                        send(index, setup_and_teardown_chunk, data);
+                        send(index, inits_and_teardowns_chunk, data);
                         main_work_requests_count += 1;
                     } else {
                         cycles_chunks.insert(index, data);
@@ -590,7 +592,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     assert_eq!(result_batch_id, batch_id);
                     match tracing_data {
                         TracingDataHost::Main {
-                            setup_and_teardown,
+                            inits_and_teardowns,
                             trace,
                         } => {
                             let circuit_type = circuit_type.as_main().unwrap();
@@ -601,7 +603,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                             {
                                 trace!("BATCH[{batch_id}] PROVER caching main circuit {circuit_type:?} chunk {circuit_sequence} trace");
                                 let data = TracingDataHost::Main {
-                                    setup_and_teardown,
+                                    inits_and_teardowns,
                                     trace,
                                 };
                                 let entry = ChunksCacheEntry {
@@ -611,10 +613,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                                 };
                                 chunks_cache.as_mut().unwrap().queue.push_back(entry);
                             } else {
-                                if let Some(setup_and_teardown) = setup_and_teardown {
+                                if let Some(inits_and_teardowns) = inits_and_teardowns {
                                     let allocator =
-                                        setup_and_teardown.lazy_init_data.allocator().clone();
-                                    drop(setup_and_teardown);
+                                        inits_and_teardowns.inits_and_teardowns.allocator().clone();
+                                    drop(inits_and_teardowns);
                                     assert_eq!(allocator.get_used_mem_current(), 0);
                                     self.free_allocator_sender.send(allocator).unwrap();
                                 }
@@ -655,6 +657,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                                 .insert(circuit_sequence, merkle_tree_caps)
                                 .is_none());
                         }
+                        TracingDataHost::Unrolled(_) => todo!(),
                     }
                 }
                 WorkerResult::Proof(proof) => {
@@ -669,15 +672,15 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                     assert_eq!(result_batch_id, batch_id);
                     match tracing_data {
                         TracingDataHost::Main {
-                            setup_and_teardown,
+                            inits_and_teardowns,
                             trace,
                         } => {
                             let circuit_type = circuit_type.as_main().unwrap();
                             trace!("BATCH[{batch_id}] PROVER received proof for main circuit {circuit_type:?} chunk {circuit_sequence}");
-                            if let Some(setup_and_teardown) = setup_and_teardown {
+                            if let Some(inits_and_teardowns) = inits_and_teardowns {
                                 let allocator =
-                                    setup_and_teardown.lazy_init_data.allocator().clone();
-                                drop(setup_and_teardown);
+                                    inits_and_teardowns.inits_and_teardowns.allocator().clone();
+                                drop(inits_and_teardowns);
                                 assert_eq!(allocator.get_used_mem_current(), 0);
                                 self.free_allocator_sender.send(allocator).unwrap();
                             }
@@ -685,7 +688,9 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                             drop(trace);
                             assert_eq!(allocator.get_used_mem_current(), 0);
                             self.free_allocator_sender.send(allocator).unwrap();
-                            assert!(main_proofs.insert(circuit_sequence, proof).is_none());
+                            assert!(main_proofs
+                                .insert(circuit_sequence, proof.into_regular().unwrap())
+                                .is_none());
                         }
                         TracingDataHost::Delegation(witness) => {
                             let circuit_type = circuit_type.as_delegation().unwrap();
@@ -698,9 +703,10 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                             assert!(delegation_proofs
                                 .entry(circuit_type)
                                 .or_insert_with(HashMap::new)
-                                .insert(circuit_sequence, proof)
+                                .insert(circuit_sequence, proof.into_regular().unwrap())
                                 .is_none());
                         }
+                        TracingDataHost::Unrolled(_) => todo!(),
                     }
                 }
             };
@@ -715,7 +721,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         }
         assert!(send_main_work_request.is_none());
         assert!(delegation_work_sender.is_none());
-        assert!(setup_and_teardown_chunks.is_empty());
+        assert!(inits_and_teardowns_chunks.is_empty());
         assert!(cycles_chunks.is_empty());
         let final_main_chunks_count = final_main_chunks_count.unwrap();
         assert_ne!(final_main_chunks_count, 0);

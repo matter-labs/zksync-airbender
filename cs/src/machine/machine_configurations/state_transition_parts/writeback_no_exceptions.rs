@@ -101,7 +101,7 @@ pub(crate) fn writeback_no_exception_with_opcodes_in_rom<
             cs.add_shuffle_ram_query(rd_or_mem_store_query);
 
             let new_pc =
-                CommonDiffs::select_final_pc_value(cs, &application_results, default_next_pc);
+                CommonDiffs::select_final_pc_value(cs, &application_results, default_next_pc, None);
 
             let final_state = MinimalStateRegistersInMemory { pc: new_pc };
 

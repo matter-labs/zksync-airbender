@@ -29,7 +29,7 @@ pub struct SetupCache<A: GoodAllocator, B: GoodAllocator> {
     pub delegation_evals: Arc<Vec<(u32, Arc<Vec<Mersenne31Field, B>>)>>,
 }
 
-impl<A: GoodAllocator, B: GoodAllocator> SetupCache<A, B> {
+impl<A: GoodAllocator + 'static, B: GoodAllocator> SetupCache<A, B> {
     pub fn get_or_create_main_circuit(
         &mut self,
         bytecode: &Vec<u32>,

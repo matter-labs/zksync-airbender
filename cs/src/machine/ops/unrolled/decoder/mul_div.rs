@@ -78,7 +78,7 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        let mut repr = 0u8;
+        let mut repr = 0u32;
         let instruction_type;
         // const IS_DIVISION_BIT: usize = 0;
         // const MUL_MULH_MULHSU_DIV_REM: usize = 1;

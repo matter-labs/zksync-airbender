@@ -125,11 +125,12 @@ pub(crate) unsafe fn process_machine_state_assuming_preprocessed_decoder<
         input_state_and_decoder_parts.circuit_family_extra_mask
     {
         let decoder_data = oracle.get_executor_family_data(absolute_row_idx);
-        write_u8_value_into_columns(
-            ColumnSet::new(circuit_family_extra_mask, 1),
-            decoder_data.opcode_family_bits,
-            memory_row,
-        );
+
+        debug_assert!(circuit_family_extra_mask < memory_row.len());
+        unsafe {
+            *memory_row.get_unchecked_mut(circuit_family_extra_mask) =
+                Mersenne31Field(decoder_data.opcode_family_bits);
+        }
     }
 
     if COMPUTE_WITNESS {
@@ -166,11 +167,11 @@ pub(crate) unsafe fn process_machine_state_assuming_preprocessed_decoder<
         if let ColumnAddress::WitnessSubtree(circuit_family_extra_mask) =
             input_state_and_decoder_parts.circuit_family_extra_mask
         {
-            write_u8_value_into_columns(
-                ColumnSet::new(circuit_family_extra_mask, 1),
-                decoder_data.opcode_family_bits,
-                witness_row,
-            );
+            debug_assert!(circuit_family_extra_mask < witness_row.len());
+            unsafe {
+                *witness_row.get_unchecked_mut(circuit_family_extra_mask) =
+                    Mersenne31Field(decoder_data.opcode_family_bits);
+            }
         }
 
         if input_state_and_decoder_parts.decoder_witness_is_in_memory == false {

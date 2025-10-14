@@ -10,47 +10,42 @@ namespace airbender::witness::memory::delegation {
 
 #define MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT 4
 
-struct DelegationMemorySubtree {
-  const DelegationProcessingLayout delegation_processor_layout;
-  const u32 register_and_indirect_accesses_count;
-  const RegisterAndIndirectAccessDescription register_and_indirect_accesses[MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
+struct RegisterAndIndirectAccessDescriptions {
+  const u32 count;
+  const RegisterAndIndirectAccessDescription descriptions[MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
 };
 
-// #define PRINT_THREAD_IDX 0
-// #define PRINT_U16(p, c, v) if (index == PRINT_THREAD_IDX) printf(#p"[%u] <- %u\n", c.offset, v)
-// #define PRINT_U32(p, c, v) if (index == PRINT_THREAD_IDX) printf(#p"[%u] <- %u\n"#p"[%u] <- %u\n", c.offset, v & 0xffff, c.offset + 1, v >> 16)
-// #define PRINT_TS(p, c, v) if (index == PRINT_THREAD_IDX) printf(#p"[%u] <- %u\n"#p"[%u] <- %u\n", c.offset, v.get_low(), c.offset + 1, v.get_high())
+struct DelegationMemorySubtree {
+  const DelegationProcessingLayout delegation_processor_layout;
+  const RegisterAndIndirectAccessDescriptions register_and_indirect_access_descriptions;
+};
 
-#define PRINT_U16(p, c, v)
-#define PRINT_U32(p, c, v)
-#define PRINT_TS(p, c, v)
-
-DEVICE_FORCEINLINE void process_delegation_requests_execution(const DelegationMemorySubtree &subtree, const DelegationTrace &trace,
+DEVICE_FORCEINLINE void process_delegation_requests_execution(const DelegationProcessingLayout &delegation_processor_layout, const DelegationTrace &oracle,
                                                               const matrix_setter<bf, st_modifier::cg> memory, const unsigned index) {
-  const auto [multiplicity, abi_mem_offset_high_column, write_timestamp_columns] = subtree.delegation_processor_layout;
-  const bool execute_delegation_value = trace.get_witness_from_placeholder<bool>({ExecuteDelegation}, index);
+  const auto [multiplicity, abi_mem_offset_high_column, write_timestamp_columns] = delegation_processor_layout;
+  const bool execute_delegation_value = oracle.get_witness_from_placeholder<bool>({ExecuteDelegation}, index);
   write_bool_value(multiplicity, execute_delegation_value, memory);
   PRINT_U16(M, multiplicity, execute_delegation_value);
-  const u16 abi_mem_offset_high_value = trace.get_witness_from_placeholder<u16>({DelegationABIOffset}, index);
+  const u16 abi_mem_offset_high_value = oracle.get_witness_from_placeholder<u16>({DelegationABIOffset}, index);
   write_u16_value(abi_mem_offset_high_column, abi_mem_offset_high_value, memory);
   PRINT_U16(M, abi_mem_offset_high_column, abi_mem_offset_high_value);
-  const TimestampData delegation_write_timestamp_value = trace.get_witness_from_placeholder<TimestampData>({DelegationWriteTimestamp}, index);
+  const TimestampData delegation_write_timestamp_value = oracle.get_witness_from_placeholder<TimestampData>({DelegationWriteTimestamp}, index);
   write_timestamp_value(write_timestamp_columns, delegation_write_timestamp_value, memory);
   PRINT_TS(M, write_timestamp_columns, delegation_write_timestamp_value);
 }
 
 template <bool COMPUTE_WITNESS>
-DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemorySubtree &subtree,
-                                                         const RegisterAndIndirectAccessTimestampComparisonAuxVars &aux_vars, const DelegationTrace &trace,
+DEVICE_FORCEINLINE void process_indirect_memory_accesses(const RegisterAndIndirectAccessDescriptions &register_and_indirect_access_descriptions,
+                                                         const RegisterAndIndirectAccessTimestampComparisonAuxVars &aux_vars, const DelegationTrace &oracle,
                                                          const matrix_setter<bf, st_modifier::cg> memory, const matrix_setter<bf, st_modifier::cg> witness,
                                                          const unsigned index) {
   const TimestampData write_timestamp =
-      COMPUTE_WITNESS ? trace.get_witness_from_placeholder<TimestampData>({DelegationWriteTimestamp}, index) : TimestampData{};
+      COMPUTE_WITNESS ? oracle.get_witness_from_placeholder<TimestampData>({DelegationWriteTimestamp}, index) : TimestampData{};
 #pragma unroll
   for (u32 i = 0; i < MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT; ++i) {
-    if (i == subtree.register_and_indirect_accesses_count)
+    if (i == register_and_indirect_access_descriptions.count)
       break;
-    const auto register_and_indirect_access = &subtree.register_and_indirect_accesses[i];
+    const auto register_and_indirect_access = &register_and_indirect_access_descriptions.descriptions[i];
     const auto [register_tag, register_payload] = register_and_indirect_access->register_access;
     u32 register_index = 0;
     ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> register_read_timestamp_columns = {};
@@ -72,15 +67,15 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
     }
     }
     const TimestampData register_read_timestamp_value =
-        trace.get_witness_from_placeholder<TimestampData>({DelegationRegisterReadTimestamp, register_index}, index);
+        oracle.get_witness_from_placeholder<TimestampData>({DelegationRegisterReadTimestamp, register_index}, index);
     write_timestamp_value(register_read_timestamp_columns, register_read_timestamp_value, memory);
     PRINT_TS(M, register_read_timestamp_columns, register_read_timestamp_value);
-    const u32 register_read_value = trace.get_witness_from_placeholder<u32>({DelegationRegisterReadValue, register_index}, index);
+    const u32 register_read_value = oracle.get_witness_from_placeholder<u32>({DelegationRegisterReadValue, register_index}, index);
     write_u32_value(register_read_value_columns, register_read_value, memory);
     PRINT_U32(M, register_read_value_columns, register_read_value);
     if (register_tag == RegisterWriteAccess) {
       const auto register_write_access_columns = register_payload.register_access_columns_write_access.write_value;
-      const u32 register_write_value = trace.get_witness_from_placeholder<u32>({DelegationRegisterWriteValue, register_index}, index);
+      const u32 register_write_value = oracle.get_witness_from_placeholder<u32>({DelegationRegisterWriteValue, register_index}, index);
       write_u32_value(register_write_access_columns, register_write_value, memory);
       PRINT_U32(M, register_write_access_columns, register_write_value);
     }
@@ -105,7 +100,7 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
       ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp_columns = {};
       ColumnSet<REGISTER_SIZE> read_value_columns = {};
       ColumnSet<1> address_derivation_carry_bit_column = {};
-      Option<IndirectAccessVariableDependency> variable_dependent = {};
+      OptionU32::Option<IndirectAccessVariableDependency> variable_dependent = {};
       switch (tag) {
       case IndirectReadAccess: {
         const auto access = payload.indirect_access_columns_read_access;
@@ -125,14 +120,14 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
       }
       }
       const TimestampData read_timestamp_value =
-          trace.get_witness_from_placeholder<TimestampData>({DelegationIndirectReadTimestamp, {register_index, access_index}}, index);
+          oracle.get_witness_from_placeholder<TimestampData>({DelegationIndirectReadTimestamp, {register_index, access_index}}, index);
       write_timestamp_value(read_timestamp_columns, read_timestamp_value, memory);
       PRINT_TS(M, read_timestamp_columns, read_timestamp_value);
-      const u32 read_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectReadValue, {register_index, access_index}}, index);
+      const u32 read_value_value = oracle.get_witness_from_placeholder<u32>({DelegationIndirectReadValue, {register_index, access_index}}, index);
       write_u32_value(read_value_columns, read_value_value, memory);
       PRINT_U32(M, read_value_columns, read_value_value);
       if (tag == IndirectWriteAccess) {
-        const u32 write_value_value = trace.get_witness_from_placeholder<u32>({DelegationIndirectWriteValue, {register_index, access_index}}, index);
+        const u32 write_value_value = oracle.get_witness_from_placeholder<u32>({DelegationIndirectWriteValue, {register_index, access_index}}, index);
         const auto write_value_columns = payload.indirect_access_columns_write_access.write_value;
         write_u32_value(write_value_columns, write_value_value, memory);
         PRINT_U32(M, write_value_columns, write_value_value);
@@ -143,9 +138,9 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
         write_u16_value(address_derivation_carry_bit_column, carry_bit, memory);
         PRINT_U16(M, address_derivation_carry_bit_column, carry_bit);
       }
-      if (variable_dependent.tag == Some) {
+      if (variable_dependent.tag == OptionU32::Some) {
         const auto dependency = variable_dependent.value;
-        const u16 offset = trace.get_witness_from_placeholder<u16>({DelegationIndirectAccessVariableOffset, dependency.index}, index);
+        const u16 offset = oracle.get_witness_from_placeholder<u16>({DelegationIndirectAccessVariableOffset, dependency.index}, index);
         write_u16_value(dependency.variable, offset, memory);
         PRINT_U16(M, dependency.variable, offset);
       }
@@ -163,29 +158,29 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryS
 
 template <bool COMPUTE_WITNESS>
 DEVICE_FORCEINLINE void generate(const DelegationMemorySubtree &subtree, const RegisterAndIndirectAccessTimestampComparisonAuxVars &aux_vars,
-                                 const DelegationTrace &trace, matrix_setter<bf, st_modifier::cg> memory, matrix_setter<bf, st_modifier::cg> witness,
+                                 const DelegationTrace &oracle, matrix_setter<bf, st_modifier::cg> memory, matrix_setter<bf, st_modifier::cg> witness,
                                  const unsigned count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
     return;
   memory.add_row(gid);
   witness.add_row(gid);
-  process_delegation_requests_execution(subtree, trace, memory, gid);
-  process_indirect_memory_accesses<COMPUTE_WITNESS>(subtree, aux_vars, trace, memory, witness, gid);
+  process_delegation_requests_execution(subtree.delegation_processor_layout, oracle, memory, gid);
+  process_indirect_memory_accesses<COMPUTE_WITNESS>(subtree.register_and_indirect_access_descriptions, aux_vars, oracle, memory, witness, gid);
 }
 
 EXTERN __global__ void ab_generate_memory_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
-                                                                   const __grid_constant__ DelegationTrace trace,
+                                                                   const __grid_constant__ DelegationTrace oracle,
                                                                    const matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-  generate<false>(subtree, {}, trace, memory, memory, count);
+  generate<false>(subtree, {}, oracle, memory, memory, count);
 }
 
 EXTERN __global__ void
 ab_generate_memory_and_witness_values_delegation_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
                                                         const __grid_constant__ RegisterAndIndirectAccessTimestampComparisonAuxVars aux_vars,
-                                                        const __grid_constant__ DelegationTrace trace, const matrix_setter<bf, st_modifier::cg> memory,
+                                                        const __grid_constant__ DelegationTrace oracle, const matrix_setter<bf, st_modifier::cg> memory,
                                                         const matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
-  generate<true>(subtree, aux_vars, trace, memory, witness, count);
+  generate<true>(subtree, aux_vars, oracle, memory, witness, count);
 }
 
 } // namespace airbender::witness::memory::delegation

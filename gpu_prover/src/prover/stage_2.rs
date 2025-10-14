@@ -104,9 +104,9 @@ impl StageTwoOutput {
         );
         let setup_evaluations = setup.trace_holder.get_evaluations(context)?;
         let setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
-        let generic_lookup_mappings = stage_1_output.generic_lookup_mapping.take().unwrap();
+        let generic_lookup_mapping = stage_1_output.generic_lookup_mapping.take().unwrap();
         let d_generic_lookups_args_to_table_entries_map =
-            DeviceMatrix::new(&generic_lookup_mappings, trace_len);
+            DeviceMatrix::new(&generic_lookup_mapping, trace_len);
         let trace_holder = &mut self.trace_holder;
         let evaluations = trace_holder.get_uninit_evaluations_mut();
         let mut d_stage_2_cols = DeviceMatrixMut::new(evaluations, trace_len);
@@ -171,7 +171,7 @@ impl StageTwoOutput {
             stream,
             context.get_device_properties(),
         )?;
-        generic_lookup_mappings.free();
+        generic_lookup_mapping.free();
         d_alloc_e4_scratch.free();
         d_alloc_scratch_for_cub_ops.free();
         if let Some(allocation) = maybe_batch_reduce_intermediates_alloc {

@@ -407,7 +407,7 @@ impl FlattenedLookupExpressionsLayout {
             e4_dst_cols[i] = u8::try_from(e4_dst_col).unwrap();
             i += 1;
         }
-        assert_eq!(timestamp_constant_terms_are_zero, true); // just testing a theory
+        // assert_eq!(timestamp_constant_terms_are_zero, true); // just testing a theory
         Self {
             coeffs,
             col_idxs,

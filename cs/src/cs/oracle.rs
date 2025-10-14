@@ -13,7 +13,7 @@ pub struct ExecutorFamilyDecoderData {
     pub rd_is_zero: bool,
     pub funct3: u8,
     pub funct7: Option<u8>,
-    pub opcode_family_bits: u8,
+    pub opcode_family_bits: u32,
 }
 
 impl Default for ExecutorFamilyDecoderData {

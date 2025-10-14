@@ -67,7 +67,7 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for JumpSltBranchDecoder<SU
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        let mut repr = 0u8;
+        let mut repr = 0u32;
         let instruction_type;
         match (opcode, func3, func7) {
             (OPERATION_JAL, _, _) => {

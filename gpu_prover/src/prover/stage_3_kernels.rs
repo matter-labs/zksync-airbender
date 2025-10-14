@@ -17,7 +17,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use field::{Field, FieldExtension, PrimeField};
-use prover::definitions::{AuxArgumentsBoundaryValues, ExternalValues};
+use prover::definitions::AuxArgumentsBoundaryValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
 use std::alloc::Allocator;
@@ -1427,7 +1427,7 @@ pub(super) fn prepare_async_challenge_data(
     lookup_challenges: &LookupChallenges,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
-    external_values: &ExternalValues,
+    aux_arguments_boundary_values: &[AuxArgumentsBoundaryValues],
     public_inputs: &[BF],
     grand_product_accumulator: E4,
     sum_over_delegation_poly: E4,
@@ -1924,7 +1924,7 @@ pub(super) fn prepare_async_challenge_data(
     );
     boundary_constraints.prepare_async_challenge_data(
         circuit,
-        &[external_values.aux_boundary_values],
+        aux_arguments_boundary_values,
         public_inputs,
         process_shuffle_ram_init,
         h_alphas_for_first_row,
@@ -2338,7 +2338,7 @@ mod tests {
             &lookup_challenges,
             &cached_data,
             &circuit,
-            &external_values,
+            &[external_values.aux_boundary_values],
             &public_inputs,
             stage_2_output.grand_product_accumulator,
             stage_2_output.sum_over_delegation_poly,

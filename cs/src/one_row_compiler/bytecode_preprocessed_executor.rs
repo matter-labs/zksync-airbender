@@ -9,6 +9,21 @@ impl<F: PrimeField> OneRowCompiler<F> {
         max_bytecode_size_in_words: usize,
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
+        self.compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns(
+            circuit_output,
+            max_bytecode_size_in_words,
+            0,
+            trace_len_log2,
+        )
+    }
+
+    pub fn compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        max_bytecode_size_in_words: usize,
+        num_inits_and_teardowns: usize,
+        trace_len_log2: usize,
+    ) -> CompiledCircuitArtifact<F> {
         // our main purposes are:
         // - place variables in particular grid places
         // - select whether they go into witness subtree or memory subtree
@@ -89,6 +104,18 @@ impl<F: PrimeField> OneRowCompiler<F> {
         // and timestamp range checks for them
 
         // we only need to compile timestamp comparison range checks
+
+        let mut range_check_expressions = range_check_expressions;
+        let (shuffle_ram_inits_and_teardowns, lazy_init_aux_set) =
+            Self::compile_inits_and_teardowns(
+                num_inits_and_teardowns,
+                &mut boolean_vars,
+                &mut range_check_expressions,
+                &mut num_variables,
+                &mut memory_tree_offset,
+                &mut all_variables_to_place,
+                &mut layout,
+            );
 
         let mut shuffle_ram_timestamp_range_check_partial_sets = vec![];
         let mut memory_timestamp_comparison_sets = vec![];
@@ -319,7 +346,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         );
 
         let memory_layout = MemorySubtree {
-            shuffle_ram_inits_and_teardowns: vec![],
+            shuffle_ram_inits_and_teardowns,
             shuffle_ram_access_sets,
             delegation_request_layout,
             delegation_processor_layout: None,
@@ -353,7 +380,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 &mut witness_tree_offset,
                 &mut all_variables_to_place,
                 &mut layout,
-                0,
+                memory_layout.shuffle_ram_inits_and_teardowns.len() * 2,
             );
 
         let mut compiled_quadratic_terms = vec![];
@@ -510,7 +537,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup
         );
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts::<_, true>(
             &witness_layout,
             &memory_layout,
             &setup_layout,
@@ -536,6 +563,30 @@ impl<F: PrimeField> OneRowCompiler<F> {
             .copied()
             .unwrap();
 
+        let lazy_init_address_aux_vars: Vec<_> = lazy_init_aux_set
+            .into_iter()
+            .map(|(comparison_aux_vars, intermediate_borrow, final_borrow)| {
+                let address_aux = comparison_aux_vars
+                    .map(|el| layout.get(&el).copied().expect("must be compiled"));
+                let intermediate_borrow = layout
+                    .get(&intermediate_borrow)
+                    .copied()
+                    .expect("must be compiled");
+                let final_borrow = layout
+                    .get(&final_borrow)
+                    .copied()
+                    .expect("must be compiled");
+
+                let lazy_init_address_aux_vars = ShuffleRamAuxComparisonSet {
+                    aux_low_high: address_aux,
+                    intermediate_borrow,
+                    final_borrow,
+                };
+
+                lazy_init_address_aux_vars
+            })
+            .collect();
+
         let result = CompiledCircuitArtifact {
             witness_layout,
             memory_layout,
@@ -547,7 +598,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             public_inputs: Vec::new(),
             scratch_space_size_for_witness_gen,
             variable_mapping: layout,
-            lazy_init_address_aux_vars: Vec::new(),
+            lazy_init_address_aux_vars,
             memory_queries_timestamp_comparison_aux_vars,
             batched_memory_access_timestamp_comparison_aux_vars,
             register_and_indirect_access_timestamp_comparison_aux_vars,

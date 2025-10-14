@@ -241,7 +241,7 @@ pub(crate) unsafe fn evaluate_witness_static_work_for_executor_family<
     );
 }
 
-unsafe fn count_special_multiplicities_for_executor_family(
+pub(crate) unsafe fn count_special_multiplicities_for_executor_family(
     witness_trace_view_row: &mut [Mersenne31Field],
     memory_trace_view_row: &mut [Mersenne31Field],
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
@@ -260,12 +260,13 @@ unsafe fn count_special_multiplicities_for_executor_family(
     #[cfg(feature = "profiling")]
     let t = std::time::Instant::now();
 
-    // here we do NOT need extra mapping - we can just use a value!
-    for range_check_expression in compiled_circuit
+    let trivial_range_check_16_relations = &compiled_circuit
         .witness_layout
-        .range_check_16_lookup_expressions[..num_trivial_relations]
-        .iter()
-    {
+        .range_check_16_lookup_expressions[..num_trivial_relations];
+    assert!(trivial_range_check_16_relations.len() % 2 == 0);
+
+    // here we do NOT need extra mapping - we can just use a value!
+    for range_check_expression in trivial_range_check_16_relations.iter() {
         let LookupExpression::Variable(place) = range_check_expression else {
             unreachable!()
         };
@@ -309,6 +310,28 @@ unsafe fn count_special_multiplicities_for_executor_family(
         );
         let index = value.to_reduced_u32() as usize;
         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
+    }
+
+    // special case for lazy init values
+    for shuffle_ram_inits_and_teardowns in compiled_circuit
+        .memory_layout
+        .shuffle_ram_inits_and_teardowns
+        .iter()
+    {
+        let start = shuffle_ram_inits_and_teardowns
+            .lazy_init_addresses_columns
+            .start();
+        for offset in start..(start + 2) {
+            let value = *memory_trace_view_row.get_unchecked(offset);
+            assert!(
+                value.to_reduced_u32() <= u16::MAX as u32,
+                "invalid value {:?} in range check 16 in lazy init addresses at row {}",
+                absolute_row_idx,
+                value
+            );
+            let index = value.to_reduced_u32() as usize;
+            *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
+        }
     }
 
     // now timestamp related relations - all are non-trivial

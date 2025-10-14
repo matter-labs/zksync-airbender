@@ -1,4 +1,4 @@
-use super::cpu_worker::{CyclesChunk, SetupAndTeardownChunk};
+use super::cpu_worker::{CyclesChunk, InitsAndTeardownsChunk};
 use super::gpu_worker::{MemoryCommitmentResult, ProofResult};
 use crate::circuit_type::DelegationCircuitType;
 use fft::GoodAllocator;
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use trace_and_split::FinalRegisterValue;
 
 pub enum WorkerResult<A: GoodAllocator> {
-    SetupAndTeardownChunk(SetupAndTeardownChunk<A>),
+    InitsAndTeardownsChunk(InitsAndTeardownsChunk<A>),
     RAMTracingResult {
         chunks_traced_count: usize,
         final_register_values: [FinalRegisterValue; 32],

@@ -298,9 +298,10 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if let Some(funct7) = decoder_data.funct7 {
             self.assign_u8(funct7, &entry.funct7.unwrap());
         }
-        self.assign_u8(
+        assert!(entry.opcode_family_bits <= 1 << (F::CHAR_BITS - 1));
+        self.assign_field(
             decoder_data.circuit_family_extra_mask,
-            &entry.opcode_family_bits,
+            &F::from_u64_unchecked(entry.opcode_family_bits as u64),
         );
     }
 }

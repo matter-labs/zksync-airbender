@@ -539,11 +539,11 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
         num_elements: 1usize,
     }),
     intermediate_polys_for_memory_init_teardown: AlignedColumnSet::<4usize> {
-        start: 108usize,
+        start: 120usize,
         num_elements: 1usize,
     },
     intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
-        start: 112usize,
+        start: 108usize,
         num_elements: 3usize,
     },
     intermediate_polys_for_state_permutation: AlignedColumnSet::<4usize> {

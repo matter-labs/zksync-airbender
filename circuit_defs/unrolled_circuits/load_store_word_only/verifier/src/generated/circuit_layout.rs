@@ -359,7 +359,7 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
     },
     delegation_processing_aux_poly: None,
     intermediate_polys_for_memory_init_teardown: AlignedColumnSet::<4usize> {
-        start: 56usize,
+        start: 76usize,
         num_elements: 0usize,
     },
     intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {

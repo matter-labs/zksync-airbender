@@ -15,7 +15,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations};
 use field::FieldExtension;
-use prover::definitions::ExternalValues;
+use prover::definitions::AuxArgumentsBoundaryValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
 use prover::prover_stages::Transcript;
@@ -34,7 +34,7 @@ impl StageThreeOutput {
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         cached_data: &ProverCachedData,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        external_values: ExternalValues,
+        aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
         setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
         stage_2_output: &mut StageTwoOutput,
@@ -93,7 +93,6 @@ impl StageThreeOutput {
             .as_ref()
             .unwrap()
             .get_accessor();
-        let external_values_clone = external_values.clone();
         let circuit_clone = circuit.clone();
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
@@ -140,7 +139,7 @@ impl StageThreeOutput {
                 stage_2_lookup_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
-                &external_values_clone,
+                &aux_boundary_values,
                 public_inputs_accessor.get(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,

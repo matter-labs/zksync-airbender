@@ -30,7 +30,7 @@ struct __align__(8) SingleCycleTracingData {
 struct MainTrace {
   const SingleCycleTracingData *const __restrict__ cycle_data;
 
-  template <typename T> DEVICE_FORCEINLINE T get_witness_from_placeholder(Placeholder, unsigned) const;
+  template <typename T> [[nodiscard]] T get_witness_from_placeholder(Placeholder, unsigned) const;
 };
 
 template <> DEVICE_FORCEINLINE u32 MainTrace::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_step) const {
@@ -167,15 +167,5 @@ DEVICE_FORCEINLINE TimestampData MainTrace::get_witness_from_placeholder<Timesta
     __trap();
   }
 }
-
-struct __align__(16) LazyInitAndTeardown {
-  u32 address;
-  u32 teardown_value;
-  TimestampData teardown_timestamp;
-};
-
-struct ShuffleRamSetupAndTeardown {
-  const LazyInitAndTeardown *const __restrict__ lazy_init_data;
-};
 
 } // namespace airbender::witness::trace::main

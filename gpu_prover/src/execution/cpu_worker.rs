@@ -1,7 +1,8 @@
 use super::messages::WorkerResult;
 use super::tracer::{
-    create_setup_and_teardown_chunker, BoxedMemoryImplWithRom, CycleTracingData, DelegationCounter,
-    DelegationTracingData, DelegationTracingType, ExecutionTracer, RamTracingData,
+    create_inits_and_teardowns_chunker, BoxedMemoryImplWithRom, CycleTracingData,
+    DelegationCounter, DelegationTracingData, DelegationTracingType, ExecutionTracer,
+    RamTracingData,
 };
 use crate::circuit_type::{CircuitType, MainCircuitType};
 use crossbeam_channel::{Receiver, Sender};
@@ -41,7 +42,7 @@ const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = {
 const LOG_ROM_SIZE: u32 = 16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS as u32;
 const RAM_SIZE: usize = 1 << 30;
 
-pub struct SetupAndTeardownChunk<A: GoodAllocator> {
+pub struct InitsAndTeardownsChunk<A: GoodAllocator> {
     pub index: usize,
     pub chunk: Option<ShuffleRamSetupAndTeardown<A>>,
 }
@@ -176,7 +177,7 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
         );
     let mut end_reached = false;
     let mut chunks_traced_count = 0;
-    let mut next_chunk_index_with_no_setup_and_teardown = 0;
+    let mut next_chunk_index_with_no_inits_and_teardowns = 0;
     trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] starting simulation");
     let now = Instant::now();
     for _chunk_index in 0..num_main_chunks_upper_bound {
@@ -194,25 +195,25 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
         chunks_traced_count += 1;
         let touched_ram_cells_count =
             tracer.ram_tracing_data.get_touched_ram_cells_count() as usize;
-        let chunks_needed_for_setup_and_teardowns =
+        let chunks_needed_for_inits_and_teardowns =
             touched_ram_cells_count.div_ceil(cycles_per_chunk);
-        let chunks_diff = chunks_traced_count - next_chunk_index_with_no_setup_and_teardown;
-        if chunks_needed_for_setup_and_teardowns < chunks_diff {
-            trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {next_chunk_index_with_no_setup_and_teardown} does not need setup and teardown");
+        let chunks_diff = chunks_traced_count - next_chunk_index_with_no_inits_and_teardowns;
+        if chunks_needed_for_inits_and_teardowns < chunks_diff {
+            trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {next_chunk_index_with_no_inits_and_teardowns} does not need setup and teardown");
             if skip_set.contains(&(
                 CircuitType::Main(circuit_type),
-                next_chunk_index_with_no_setup_and_teardown,
+                next_chunk_index_with_no_inits_and_teardowns,
             )) {
-                trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {next_chunk_index_with_no_setup_and_teardown} skipped");
+                trace!("BATCH[{batch_id}] CPU_WORKER[{worker_id}] chunk {next_chunk_index_with_no_inits_and_teardowns} skipped");
             } else {
-                let chunk = SetupAndTeardownChunk {
-                    index: next_chunk_index_with_no_setup_and_teardown,
+                let chunk = InitsAndTeardownsChunk {
+                    index: next_chunk_index_with_no_inits_and_teardowns,
                     chunk: None,
                 };
-                let result = WorkerResult::SetupAndTeardownChunk(chunk);
+                let result = WorkerResult::InitsAndTeardownsChunk(chunk);
                 results.send(result).unwrap();
             }
-            next_chunk_index_with_no_setup_and_teardown += 1;
+            next_chunk_index_with_no_inits_and_teardowns += 1;
         }
         if finished {
             let elapsed_ms = now.elapsed().as_secs_f64() * 1000.0;
@@ -243,22 +244,22 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
         ..
     } = ram_tracing_data;
     let memory_final_state = memory.get_final_ram_state();
-    let mut chunker = create_setup_and_teardown_chunker(
+    let mut chunker = create_inits_and_teardowns_chunker(
         &num_touched_ram_cells_in_pages,
         &memory_final_state,
         &ram_words_last_live_timestamps,
         cycles_per_chunk,
     );
-    let setup_and_teardown_chunks_count = chunker.get_chunks_count();
+    let inits_and_teardowns_chunks_count = chunker.get_chunks_count();
     trace!(
-        "BATCH[{batch_id}] CPU_WORKER[{worker_id}] {setup_and_teardown_chunks_count} setup and teardown chunk(s) are needed"
+        "BATCH[{batch_id}] CPU_WORKER[{worker_id}] {inits_and_teardowns_chunks_count} setup and teardown chunk(s) are needed"
     );
     assert_eq!(
         chunks_traced_count,
-        setup_and_teardown_chunks_count + next_chunk_index_with_no_setup_and_teardown
+        inits_and_teardowns_chunks_count + next_chunk_index_with_no_inits_and_teardowns
     );
     let now = Instant::now();
-    for index in next_chunk_index_with_no_setup_and_teardown..chunks_traced_count {
+    for index in next_chunk_index_with_no_inits_and_teardowns..chunks_traced_count {
         if skip_set.contains(&(CircuitType::Main(circuit_type), index)) {
             chunker.skip_next_chunk();
             trace!(
@@ -268,12 +269,12 @@ fn trace_touched_ram<C: MachineConfig, A: GoodAllocator>(
         } else {
             let allocator = free_allocator.recv().unwrap();
             let lazy_init_data = Vec::with_capacity_in(cycles_per_chunk, allocator);
-            let mut setup_and_teardown = ShuffleRamSetupAndTeardown { lazy_init_data };
-            unsafe { setup_and_teardown.lazy_init_data.set_len(cycles_per_chunk) };
-            chunker.populate_next_chunk(&mut setup_and_teardown.lazy_init_data);
-            let chunk = Some(setup_and_teardown);
-            let chunk = SetupAndTeardownChunk { index, chunk };
-            let result = WorkerResult::SetupAndTeardownChunk(chunk);
+            let mut inits_and_teardowns = ShuffleRamSetupAndTeardown { lazy_init_data };
+            unsafe { inits_and_teardowns.lazy_init_data.set_len(cycles_per_chunk) };
+            chunker.populate_next_chunk(&mut inits_and_teardowns.lazy_init_data);
+            let chunk = Some(inits_and_teardowns);
+            let chunk = InitsAndTeardownsChunk { index, chunk };
+            let result = WorkerResult::InitsAndTeardownsChunk(chunk);
             results.send(result).unwrap();
         }
     }

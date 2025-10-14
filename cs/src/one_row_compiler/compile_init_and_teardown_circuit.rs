@@ -14,6 +14,10 @@ impl<F: PrimeField> OneRowCompiler<F> {
         Vec<ShuffleRamInitAndTeardownLayout>,
         Vec<([Variable; REGISTER_SIZE], Variable, Variable)>,
     ) {
+        if num_sets == 0 {
+            return (vec![], vec![]);
+        }
+
         let mut result = Vec::with_capacity(num_sets);
 
         // first we will manually add extra space for constraint that lazy init values are unique
@@ -291,7 +295,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             total_width: witness_tree_offset,
         };
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts::<_, true>(
             &witness_layout,
             &memory_layout,
             &setup_layout,

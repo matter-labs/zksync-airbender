@@ -1,8 +1,10 @@
 #pragma once
 
+#include "column.cuh"
 #include "common.cuh"
 
 using namespace ::airbender::witness;
+using namespace ::airbender::witness::column;
 
 namespace airbender::witness::trace {
 
@@ -13,6 +15,9 @@ struct TimestampData {
   static constexpr unsigned TIMESTAMP_COLUMNS_NUM_BITS = 19;
   static constexpr unsigned TIMESTAMP_COLUMNS_NUM_BITS_MASK = (1u << TIMESTAMP_COLUMNS_NUM_BITS) - 1;
   static constexpr unsigned NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP = 2;
+  static constexpr u32 TOTAL_TIMESTAMP_BITS = TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM;
+  static constexpr TimestampScalar TIMESTAMP_STEP = 1ul << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+  static constexpr TimestampScalar MAX_INITIAL_TIMESTAMP = (1ul << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
 
   u16 limbs[NUM_TIMESTAMP_DATA_LIMBS];
 
@@ -24,7 +29,7 @@ struct TimestampData {
     return result;
   }
 
-  static DEVICE_FORCEINLINE TimestampData from_scalar(TimestampScalar scalar) {
+  static constexpr DEVICE_FORCEINLINE TimestampData from_scalar(const TimestampScalar scalar) {
     TimestampData result{};
     result.limbs[0] = scalar & TIMESTAMP_COLUMNS_NUM_BITS_MASK;
 #pragma unroll
@@ -43,6 +48,14 @@ struct TimestampData {
     const u32 result = t & TIMESTAMP_COLUMNS_NUM_BITS_MASK;
     return {result, borrow};
   }
+
+  DEVICE_FORCEINLINE bool increment() {
+    const TimestampScalar initial_ts = as_scalar();
+    const TimestampScalar final_ts = initial_ts + TIMESTAMP_STEP;
+    const bool intermediate_carry = final_ts >> TIMESTAMP_COLUMNS_NUM_BITS != initial_ts >> TIMESTAMP_COLUMNS_NUM_BITS;
+    *this = from_scalar(final_ts);
+    return intermediate_carry;
+  }
 };
 
 struct RegIndexOrMemWordIndex {
@@ -52,6 +65,17 @@ struct RegIndexOrMemWordIndex {
   DEVICE_FORCEINLINE u32 as_u32_formal_address() const { return is_register() ? value : value << 2; }
 
   DEVICE_FORCEINLINE bool is_register() const { return !(value & IS_RAM_MASK); }
+};
+
+struct __align__(16) InitAndTeardown {
+  u32 address;
+  u32 teardown_value;
+  TimestampData teardown_timestamp;
+};
+
+struct ShuffleRamInitsAndTeardowns {
+  // const u32 count;
+  const InitAndTeardown *const __restrict__ inits_and_teardowns;
 };
 
 } // namespace airbender::witness::trace

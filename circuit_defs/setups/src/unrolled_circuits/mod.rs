@@ -12,6 +12,7 @@ pub use ::mul_div;
 pub use ::mul_div_unsigned;
 pub use ::shift_binary_csr_all_delegations;
 pub use ::shift_binary_csr_blake_only_delegation;
+pub use ::unified_reduced_machine;
 
 mod add_sub_lui_auipc_mop_circuit;
 mod inits_and_teardowns_circuit;
@@ -22,6 +23,7 @@ mod mul_div_circuit;
 mod mul_div_unsigned_circuit;
 mod shift_binary_csr_all_delegations_circuit;
 mod shift_binary_csr_blake_only_delegation_circuit;
+mod unifier_reduced_machine_circuit;
 
 pub use add_sub_lui_auipc_mop_circuit::*;
 pub use inits_and_teardowns_circuit::*;
@@ -32,6 +34,7 @@ pub use mul_div_circuit::*;
 pub use mul_div_unsigned_circuit::*;
 pub use shift_binary_csr_all_delegations_circuit::*;
 pub use shift_binary_csr_blake_only_delegation_circuit::*;
+pub use unifier_reduced_machine_circuit::*;
 
 pub fn get_unrolled_circuits_artifacts_for_machine_type<C: MachineConfig>(
     binary_image: &[u32],

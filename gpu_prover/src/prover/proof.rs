@@ -11,23 +11,51 @@ use super::stage_5::StageFiveOutput;
 use super::trace_holder::{flatten_tree_caps, get_tree_caps, TreesCacheMode};
 use super::tracing_data::TracingDataTransfer;
 use super::{device_tracing, BF};
+use crate::circuit_type::CircuitType;
+use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::{GoodAllocator, LdePrecomputations};
 use field::Mersenne31Field;
 use itertools::Itertools;
-use prover::definitions::{ExternalValues, Transcript, OPTIMAL_FOLDING_PROPERTIES};
+use prover::definitions::{
+    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, Transcript,
+    OPTIMAL_FOLDING_PROPERTIES,
+};
 use prover::prover_stages::cached_data::ProverCachedData;
+use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
 use prover::transcript::Seed;
 use std::sync::Arc;
 
+pub enum ProofType {
+    Regular(Proof),
+    Unrolled(UnrolledModeProof),
+}
+
+impl ProofType {
+    pub fn into_regular(self) -> Option<Proof> {
+        match self {
+            ProofType::Regular(p) => Some(p),
+            ProofType::Unrolled(_) => None,
+        }
+    }
+
+    pub fn into_unrolled(self) -> Option<UnrolledModeProof> {
+        match self {
+            ProofType::Regular(_) => None,
+            ProofType::Unrolled(p) => Some(p),
+        }
+    }
+}
+
 pub struct ProofJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
-    proof: Box<Option<Proof>>,
+    proof: Box<Option<ProofType>>,
     ranges: Vec<device_tracing::Range<'a>>,
 }
 
@@ -36,7 +64,7 @@ impl<'a> ProofJob<'a> {
         self.is_finished_event.query()
     }
 
-    pub fn finish(self) -> CudaResult<(Proof, f32)> {
+    pub fn finish(self) -> CudaResult<(ProofType, f32)> {
         let Self {
             is_finished_event,
             callbacks,
@@ -64,8 +92,12 @@ impl<'a> ProofJob<'a> {
 }
 
 pub fn prove<'a>(
+    circuit_type: CircuitType,
     circuit: Arc<CompiledCircuitArtifact<BF>>,
-    external_values: ExternalValues,
+    external_challenges: ExternalChallenges,
+    aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    default_pc_value_in_padding: u32,
     setup: &mut SetupPrecomputations,
     tracing_data_transfer: TracingDataTransfer<'a, impl GoodAllocator>,
     lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
@@ -90,7 +122,7 @@ pub fn prove<'a>(
     let delegation_processing_type = delegation_processing_type.unwrap_or_default();
     let cached_data_values = ProverCachedData::new(
         &circuit,
-        &external_values.challenges,
+        &external_challenges,
         trace_len,
         circuit_sequence,
         delegation_processing_type,
@@ -137,6 +169,8 @@ pub fn prove<'a>(
     witness_generation_range.start(stream)?;
     stage_1_output.generate_witness(
         &circuit,
+        decoder_table,
+        default_pc_value_in_padding,
         setup,
         tracing_data_transfer,
         circuit_sequence,
@@ -158,7 +192,8 @@ pub fn prove<'a>(
     // seed
     let mut seed = initialize_seed(
         &circuit,
-        external_values.clone(),
+        external_challenges,
+        aux_boundary_values.clone(),
         circuit_sequence,
         delegation_processing_type,
         setup,
@@ -191,7 +226,7 @@ pub fn prove<'a>(
         &circuit,
         &cached_data_values,
         &lde_precomputations,
-        external_values.clone(),
+        aux_boundary_values.clone(),
         setup,
         &mut stage_1_output,
         &mut stage_2_output,
@@ -281,7 +316,9 @@ pub fn prove<'a>(
     context.log_gpu_mem_usage("after queries");
 
     let proof = create_proof(
-        external_values,
+        circuit_type,
+        external_challenges,
+        aux_boundary_values,
         circuit_sequence,
         delegation_processing_type,
         setup,
@@ -332,7 +369,8 @@ pub fn prove<'a>(
 
 fn initialize_seed<'a>(
     circuit: &Arc<CompiledCircuitArtifact<Mersenne31Field>>,
-    external_values: ExternalValues,
+    external_challenges: ExternalChallenges,
+    aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
     circuit_sequence: usize,
     delegation_processing_type: u16,
     setup: &SetupPrecomputations,
@@ -378,9 +416,9 @@ fn initialize_seed<'a>(
         input.push(delegation_processing_type as u32);
         input.extend(public_inputs.iter().map(BF::to_reduced_u32));
         input.extend(setup_tree_caps);
-        input.extend_from_slice(&external_values.challenges.memory_argument.flatten());
+        input.extend_from_slice(&external_challenges.memory_argument.flatten());
         if let Some(delegation_argument_challenges) =
-            external_values.challenges.delegation_argument.as_ref()
+            external_challenges.delegation_argument.as_ref()
         {
             input.extend_from_slice(&delegation_argument_challenges.flatten());
         }
@@ -389,7 +427,7 @@ fn initialize_seed<'a>(
             .shuffle_ram_inits_and_teardowns
             .is_empty()
         {
-            input.extend_from_slice(&external_values.aux_boundary_values.flatten());
+            input.extend(aux_boundary_values.iter().flat_map(|v| v.flatten()));
         }
         input.extend(flatten_tree_caps(&witness_tree_cap_accessors));
         input.extend(flatten_tree_caps(&memory_tree_cap_accessors));
@@ -400,7 +438,9 @@ fn initialize_seed<'a>(
 }
 
 fn create_proof(
-    external_values: ExternalValues,
+    circuit_type: CircuitType,
+    external_challenges: ExternalChallenges,
+    aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
     circuit_sequence: usize,
     delegation_processing_type: u16,
     setup: &SetupPrecomputations,
@@ -413,7 +453,7 @@ fn create_proof(
     queries_output: QueriesOutput,
     callbacks: &mut Callbacks,
     context: &ProverContext,
-) -> CudaResult<Box<Option<Proof>>> {
+) -> CudaResult<Box<Option<ProofType>>> {
     let public_inputs = stage_1_output.public_inputs.unwrap().get_accessor();
     let witness_tree_caps = stage_1_output.witness_holder.get_tree_caps_accessors();
     let memory_tree_caps = stage_1_output.memory_holder.get_tree_caps_accessors();
@@ -440,7 +480,7 @@ fn create_proof(
     let final_monomial_form = stage_5_output.final_monomials.get_accessor();
     let queries = queries_output.get_accessors();
     let pow_nonce = pow_output.nonce.get_accessor();
-    let mut proof = Box::new(Option::<Proof>::None);
+    let mut proof = Box::new(Option::<ProofType>::None);
     let proof_accessor = UnsafeMutAccessor::new(proof.as_mut());
     let create_proof_fn = move || unsafe {
         let public_inputs = public_inputs.get().to_vec();
@@ -473,25 +513,57 @@ fn create_proof(
         let pow_nonce = *pow_nonce.get();
         let circuit_sequence = circuit_sequence as u16;
         let delegation_type = delegation_processing_type;
-        let proof = Proof {
-            external_values,
-            public_inputs,
-            witness_tree_caps,
-            memory_tree_caps,
-            setup_tree_caps,
-            stage_2_tree_caps,
-            memory_grand_product_accumulator,
-            delegation_argument_accumulator,
-            quotient_tree_caps,
-            evaluations_at_random_points,
-            deep_poly_caps,
-            intermediate_fri_oracle_caps,
-            last_fri_step_plain_leaf_values,
-            final_monomial_form,
-            queries,
-            pow_nonce,
-            circuit_sequence,
-            delegation_type,
+        let proof = match circuit_type {
+            CircuitType::Main(_) | CircuitType::Delegation(_) => {
+                let external_values = ExternalValues {
+                    challenges: external_challenges,
+                    aux_boundary_values: aux_boundary_values[0],
+                };
+                let proof = Proof {
+                    external_values,
+                    public_inputs,
+                    witness_tree_caps,
+                    memory_tree_caps,
+                    setup_tree_caps,
+                    stage_2_tree_caps,
+                    memory_grand_product_accumulator,
+                    delegation_argument_accumulator,
+                    quotient_tree_caps,
+                    evaluations_at_random_points,
+                    deep_poly_caps,
+                    intermediate_fri_oracle_caps,
+                    last_fri_step_plain_leaf_values,
+                    final_monomial_form,
+                    queries,
+                    pow_nonce,
+                    circuit_sequence,
+                    delegation_type,
+                };
+                ProofType::Regular(proof)
+            }
+            CircuitType::Unrolled(_) => {
+                let proof = UnrolledModeProof {
+                    external_challenges,
+                    public_inputs,
+                    witness_tree_caps,
+                    memory_tree_caps,
+                    setup_tree_caps,
+                    stage_2_tree_caps,
+                    permutation_grand_product_accumulator: memory_grand_product_accumulator,
+                    delegation_argument_accumulator,
+                    quotient_tree_caps,
+                    evaluations_at_random_points,
+                    deep_poly_caps,
+                    intermediate_fri_oracle_caps,
+                    last_fri_step_plain_leaf_values,
+                    final_monomial_form,
+                    queries,
+                    pow_nonce,
+                    delegation_type,
+                    aux_boundary_values: aux_boundary_values.clone(),
+                };
+                ProofType::Unrolled(proof)
+            }
         };
         proof_accessor.set(Some(proof));
     };

@@ -94,7 +94,7 @@ pub fn evaluate_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAllocator>(
     }
 }
 
-pub(crate) fn get_aux_boundary_data(
+pub fn get_aux_boundary_data(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     cycles: usize,
     lazy_init_data: &[LazyInitAndTeardown],
