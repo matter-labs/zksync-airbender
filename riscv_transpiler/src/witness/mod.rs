@@ -143,8 +143,8 @@ pub type KeccakDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
     2,
     0,
-    {common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS*2},
-    {common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS},
+    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
+    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
 >;
 
 // Holder for destination buffer for one particular delegation type. It may represent only part

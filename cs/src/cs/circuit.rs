@@ -676,7 +676,6 @@ pub trait Circuit<F: PrimeField>: Sized {
         }
     }
 
-
     // more generic version of is_zero_reg, only works with limbs
     fn is_zero_sum(&mut self, sum: Constraint<F>) -> Boolean {
         assert!(sum.degree() <= 1);
@@ -686,20 +685,25 @@ pub trait Circuit<F: PrimeField>: Sized {
 
         let sum_clone = sum.clone();
         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-            let mut sum_value = <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
+            let mut sum_value =
+                <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
             for term in &sum_clone.terms {
                 match term {
                     Term::Constant(c) => {
-                        let c_value = <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(*c);
+                        let c_value =
+                            <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(*c);
                         sum_value.add_assign(&c_value);
                     }
-                    Term::Expression { coeff, inner, degree } => {
+                    Term::Expression {
+                        coeff,
+                        inner,
+                        degree,
+                    } => {
                         assert!(*coeff == F::ONE && *degree == 1);
                         let inner_value = placer.get_field(inner[0]);
                         sum_value.add_assign(&inner_value);
                     }
                 }
-
             }
             let inv_value = sum_value.inverse_or_zero();
             let zflag_value = sum_value.is_zero();
@@ -708,13 +712,8 @@ pub trait Circuit<F: PrimeField>: Sized {
         };
         self.set_values(value_fn);
 
-        self.add_constraint(
-            Constraint::from(inv) * sum.clone()
-                - not_zero_flag.clone(),
-        );
-        self.add_constraint(
-            (Constraint::from(1) - not_zero_flag) * sum,
-        );
+        self.add_constraint(Constraint::from(inv) * sum.clone() - not_zero_flag.clone());
+        self.add_constraint((Constraint::from(1) - not_zero_flag) * sum);
         Boolean::Is(is_zero_flag)
     }
 

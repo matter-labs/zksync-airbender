@@ -73,7 +73,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
     // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    let text_section = include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.text");
+    let text_section =
+        include_bytes!("../../../../riscv_transpiler/examples/keccak_f1600/app.text");
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -272,7 +273,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 NON_DETERMINISM_CSR,
                 BLAKE2S_DELEGATION_CSR_REGISTER as u16,
                 BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
-                KECCAK_SPECIAL5_CSR_REGISTER as u16
+                KECCAK_SPECIAL5_CSR_REGISTER as u16,
             ],
         )
     } else {
@@ -680,7 +681,10 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
         true,
-        &[BLAKE2S_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER],
+        &[
+            BLAKE2S_DELEGATION_CSR_REGISTER,
+            KECCAK_SPECIAL5_CSR_REGISTER,
+        ],
         TableType::SpecialCSRProperties.to_table_id(),
     );
 

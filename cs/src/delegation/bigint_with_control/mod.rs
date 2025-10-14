@@ -756,13 +756,13 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         cs.add_constraint(constraint);
     }
     let all_zeroes = {
-        let first_half = zero_check_inputs[..8].iter().fold(Constraint::from(0), |acc, x| {
-            acc + Term::from(*x)
-        });
+        let first_half = zero_check_inputs[..8]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
         let first_flag = cs.is_zero_sum(first_half);
-        let second_half = zero_check_inputs[8..].iter().fold(Constraint::from(0), |acc, x| {
-            acc + Term::from(*x)
-        });
+        let second_half = zero_check_inputs[8..]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
         let second_flag = cs.is_zero_sum(second_half);
         Boolean::and(&first_flag, &second_flag, cs)
     };
