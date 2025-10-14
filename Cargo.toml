@@ -186,6 +186,12 @@ itertools = { version = "0.14" }
 log = "0.4"
 sha3 = { version = "*", default-features = false }
 
+# [profile.dev]
+# opt-level = 1
+# lto = "fat"
+# codegen-units = 16
+# debug = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"
