@@ -21,6 +21,11 @@ pub mod tracing_data;
 pub mod transfer;
 pub(crate) mod unrolled_prover;
 
+pub(crate) use unrolled_prover::{
+    get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
+    get_stage_2_e4_scratch,
+};
+
 use field::{Mersenne31Complex, Mersenne31Field, Mersenne31Quartic};
 
 type BF = Mersenne31Field;

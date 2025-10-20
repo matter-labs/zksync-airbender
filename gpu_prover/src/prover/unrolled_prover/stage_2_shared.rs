@@ -5,9 +5,11 @@ use crate::device_structures::{
 use crate::field::{BaseField, Ext4Field};
 use crate::ops_complex::transpose;
 use crate::ops_cub::device_reduce::{
+    batch_reduce_with_adaptive_parallelism,
     get_batch_reduce_with_adaptive_parallelism_temp_storage, ReduceOperation,
 };
 use crate::ops_cub::device_scan::{get_scan_temp_storage_bytes, scan, ScanOperation};
+use crate::ops_simple::sub_into_x;
 use crate::prover::arg_utils::*;
 use crate::prover::context::DeviceProperties;
 use crate::utils::WARP_SIZE;
@@ -796,71 +798,6 @@ pub(crate) fn stage2_process_delegations(
     ProcessDelegationsFunction(ab_process_delegations_kernel).launch(&config, &args)
 }
 
-pub(crate) fn stage2_compute_grand_product(
-    circuit: &CompiledCircuitArtifact<BF>,
-    stage_2_e4_cols: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
-    scratch_for_aggregated_entry_invs: &mut DeviceSlice<E4>,
-    scratch_for_cub_ops: &mut DeviceSlice<u8>,
-    grand_product_scratch_bytes: usize,
-    n: usize,
-    unrolled: bool,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    // Data is vectorized E4, so I need to transpose the second-to-last col
-    // to a col of E4 tuples, do the grand product, then transpose back.
-    let (grand_product_src, grand_product_dst) = get_grand_product_src_dst_cols(circuit, unrolled);
-    // sanity check, not essential for correctness
-    assert_eq!(grand_product_dst, grand_product_src + 1);
-    let stride = stage_2_e4_cols.stride();
-    let offset = stage_2_e4_cols.offset();
-    let src_slice_start = 4 * grand_product_src * stride;
-    let (_, rest) = stage_2_e4_cols.slice_mut().split_at_mut(src_slice_start);
-    let (src_slice, rest) = rest.split_at_mut(4 * stride);
-    let grand_product_slice_start_in_rest = 4 * (grand_product_dst - grand_product_src - 1);
-    let (_, rest) = rest.split_at_mut(grand_product_slice_start_in_rest);
-    let (grand_product_slice, _) = rest.split_at_mut(4 * stride);
-    let src_matrix = DeviceMatrixChunk::new(src_slice, stride, offset, n);
-    let mut grand_product = DeviceMatrixChunkMut::new(grand_product_slice, stride, offset, n);
-    // Repurposes aggregated_entry_inv scratch space, which should have
-    // an underlying allocation of size >= 2 * n E4 elements
-    // I think 2 size-n scratch arrays is the best we can do, keeping in mind that device scan
-    // is out-of-place and we don't want to clobber the vectorized second to last column:
-    //   Vectorized e4 second to last column -> nonvectorized e4 scratch ->
-    //   nonvectorized grand product scratch -> vectorized last column
-    let (transposed_scratch_slice, grand_product_e4_scratch_slice) =
-        scratch_for_aggregated_entry_invs.split_at_mut(n);
-    let (grand_product_e4_scratch_slice, _) = grand_product_e4_scratch_slice.split_at_mut(n);
-    let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<BF>() };
-    let mut src_matrix_transposed = DeviceMatrixMut::new(transposed_scratch_slice, 4);
-    transpose(&src_matrix, &mut src_matrix_transposed, stream)?;
-    let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<E4>() };
-    scan(
-        ScanOperation::Product,
-        false,
-        &mut scratch_for_cub_ops[0..grand_product_scratch_bytes],
-        transposed_scratch_slice,
-        grand_product_e4_scratch_slice,
-        stream,
-    )?;
-    let grand_product_e4_scratch_slice =
-        unsafe { grand_product_e4_scratch_slice.transmute_mut::<BF>() };
-    let grand_product_transposed = DeviceMatrix::new(grand_product_e4_scratch_slice, 4);
-    transpose(&grand_product_transposed, &mut grand_product, stream)
-}
-
-pub(crate) fn get_stage_2_e4_scratch(
-    domain_size: usize,
-    circuit: &CompiledCircuitArtifact<BF>,
-) -> usize {
-    max(
-        (1 << 16)
-            + (1 << TIMESTAMP_COLUMNS_NUM_BITS)
-            + circuit.executor_family_decoder_table_size
-            + circuit.total_tables_size,
-        2 * domain_size, // for transposed grand product
-    )
-}
-
 pub(crate) fn get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
     domain_size: usize,
     num_stage_2_bf_cols: usize,
@@ -940,4 +877,188 @@ pub(crate) fn get_stage_2_cub_and_batch_reduce_intermediate_scratch(
 
 pub(crate) fn get_stage_2_col_sums_scratch(num_stage_2_bf_cols: usize) -> usize {
     max(num_stage_2_bf_cols, 4)
+}
+
+pub(crate) fn get_stage_2_e4_scratch(
+    domain_size: usize,
+    circuit: &CompiledCircuitArtifact<BF>,
+) -> usize {
+    max(
+        (1 << 16)
+            + (1 << TIMESTAMP_COLUMNS_NUM_BITS)
+            + circuit.executor_family_decoder_table_size
+            + circuit.total_tables_size,
+        2 * domain_size, // for transposed grand product
+    )
+}
+
+pub(crate) fn stage2_col_sum_adjustments_and_grand_product(
+    circuit: &CompiledCircuitArtifact<BF>,
+    stage_2_bf_cols: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    stage_2_e4_cols: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    scratch_for_aggregated_entry_invs: &mut DeviceSlice<E4>,
+    scratch_for_cub_ops: &mut DeviceSlice<u8>,
+    maybe_batch_reduce_intermediates: &mut Option<&mut DeviceSlice<BF>>,
+    scratch_for_col_sums: &mut DeviceSlice<BF>,
+    num_stage_2_bf_cols: usize,
+    delegation_aux_poly_col: usize,
+    n: usize,
+    handle_delegation_requests: bool,
+    process_delegations: bool,
+    unrolled: bool,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<()> {
+    // BF col sum adjustments
+    assert_eq!(
+        scratch_for_col_sums.len(),
+        get_stage_2_col_sums_scratch(num_stage_2_bf_cols)
+    );
+    let (
+        (
+            bf_args_batch_reduce_scratch_bytes,
+            delegation_aux_batch_reduce_scratch_bytes,
+            grand_product_scratch_bytes,
+        ),
+        (bf_args_batch_reduce_intermediate_elems, delegation_aux_batch_reduce_intermediate_elems),
+    ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
+        n,
+        num_stage_2_bf_cols,
+        handle_delegation_requests,
+        process_delegations,
+        device_properties,
+    )?;
+    assert_eq!(
+        scratch_for_cub_ops.len(),
+        max(
+            max(
+                bf_args_batch_reduce_scratch_bytes,
+                delegation_aux_batch_reduce_scratch_bytes,
+            ),
+            grand_product_scratch_bytes,
+        ),
+    );
+    if bf_args_batch_reduce_intermediate_elems > 0
+        || delegation_aux_batch_reduce_intermediate_elems > 0
+    {
+        assert_eq!(
+            maybe_batch_reduce_intermediates.as_ref().unwrap().len(),
+            max(
+                bf_args_batch_reduce_intermediate_elems,
+                delegation_aux_batch_reduce_intermediate_elems,
+            ),
+        )
+    } else {
+        assert!(maybe_batch_reduce_intermediates.is_none());
+    };
+    let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
+        if bf_args_batch_reduce_intermediate_elems > 0 {
+            Some(
+                &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
+                    [0..bf_args_batch_reduce_intermediate_elems],
+            )
+        } else {
+            None
+        };
+    batch_reduce_with_adaptive_parallelism::<BF>(
+        ReduceOperation::Sum,
+        &mut scratch_for_cub_ops[0..bf_args_batch_reduce_scratch_bytes],
+        maybe_intermediates,
+        stage_2_bf_cols,
+        &mut scratch_for_col_sums[0..num_stage_2_bf_cols],
+        stream,
+        device_properties,
+    )?;
+    let stride = stage_2_bf_cols.stride();
+    let offset = stage_2_bf_cols.offset();
+    let mut last_row =
+        DeviceMatrixChunkMut::new(stage_2_bf_cols.slice_mut(), stride, offset + n - 1, 1);
+    let scratch_for_col_sums_match_last_row_shape =
+        DeviceMatrixChunk::new(&scratch_for_col_sums[0..num_stage_2_bf_cols], 1, 0, 1);
+    sub_into_x(
+        &mut last_row,
+        &scratch_for_col_sums_match_last_row_shape,
+        stream,
+    )?;
+    // Delegation aux poly (E4) col sum adjustment
+    // c0 = 0 adjustment isn't helpful for e4 col LDEs, but the CPU code does it
+    // anyway for the delegation aux poly, because the verifier needs to know
+    // the sum of all elements except the last, and placing the negative sum
+    // into the last element lets us set up convenient constraints to prove
+    // the sum value.
+    if handle_delegation_requests || process_delegations {
+        let start_col = 4 * delegation_aux_poly_col;
+        let stride = stage_2_e4_cols.stride();
+        let offset = stage_2_e4_cols.offset();
+        let slice =
+            &mut (stage_2_e4_cols.slice_mut())[start_col * stride..(start_col + 4) * stride];
+        let delegation_aux_poly_cols = DeviceMatrixChunkMut::new(slice, stride, offset, n);
+        let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
+            if delegation_aux_batch_reduce_intermediate_elems > 0 {
+                Some(
+                    &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
+                        [0..delegation_aux_batch_reduce_intermediate_elems],
+                )
+            } else {
+                None
+            };
+        batch_reduce_with_adaptive_parallelism::<BF>(
+            ReduceOperation::Sum,
+            &mut scratch_for_cub_ops[0..delegation_aux_batch_reduce_scratch_bytes],
+            maybe_intermediates,
+            &delegation_aux_poly_cols,
+            &mut scratch_for_col_sums[0..4],
+            stream,
+            device_properties,
+        )?;
+        let mut last_row = DeviceMatrixChunkMut::new(slice, stride, offset + n - 1, 1);
+        let scratch_for_col_sums_match_last_row_shape =
+            DeviceMatrixChunk::new(&scratch_for_col_sums[0..4], 1, 0, 1);
+        sub_into_x(
+            &mut last_row,
+            &scratch_for_col_sums_match_last_row_shape,
+            stream,
+        )?;
+    }
+    // Grand product
+    // Data is vectorized E4, so I need to transpose the second-to-last col
+    // to a col of E4 tuples, do the grand product, then transpose back.
+    let (grand_product_src, grand_product_dst) = get_grand_product_src_dst_cols(circuit, unrolled);
+    // sanity check, not essential for correctness
+    assert_eq!(grand_product_dst, grand_product_src + 1);
+    let stride = stage_2_e4_cols.stride();
+    let offset = stage_2_e4_cols.offset();
+    let src_slice_start = 4 * grand_product_src * stride;
+    let (_, rest) = stage_2_e4_cols.slice_mut().split_at_mut(src_slice_start);
+    let (src_slice, rest) = rest.split_at_mut(4 * stride);
+    let grand_product_slice_start_in_rest = 4 * (grand_product_dst - grand_product_src - 1);
+    let (_, rest) = rest.split_at_mut(grand_product_slice_start_in_rest);
+    let (grand_product_slice, _) = rest.split_at_mut(4 * stride);
+    let src_matrix = DeviceMatrixChunk::new(src_slice, stride, offset, n);
+    let mut grand_product = DeviceMatrixChunkMut::new(grand_product_slice, stride, offset, n);
+    // Repurposes aggregated_entry_inv scratch space, which should have
+    // an underlying allocation of size >= 2 * n E4 elements
+    // I think 2 size-n scratch arrays is the best we can do, keeping in mind that device scan
+    // is out-of-place and we don't want to clobber the vectorized second to last column:
+    //   Vectorized e4 second to last column -> nonvectorized e4 scratch ->
+    //   nonvectorized grand product scratch -> vectorized last column
+    let (transposed_scratch_slice, grand_product_e4_scratch_slice) =
+        scratch_for_aggregated_entry_invs.split_at_mut(n);
+    let (grand_product_e4_scratch_slice, _) = grand_product_e4_scratch_slice.split_at_mut(n);
+    let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<BF>() };
+    let mut src_matrix_transposed = DeviceMatrixMut::new(transposed_scratch_slice, 4);
+    transpose(&src_matrix, &mut src_matrix_transposed, stream)?;
+    let transposed_scratch_slice = unsafe { transposed_scratch_slice.transmute_mut::<E4>() };
+    scan(
+        ScanOperation::Product,
+        false,
+        &mut scratch_for_cub_ops[0..grand_product_scratch_bytes],
+        transposed_scratch_slice,
+        grand_product_e4_scratch_slice,
+        stream,
+    )?;
+    let grand_product_e4_scratch_slice =
+        unsafe { grand_product_e4_scratch_slice.transmute_mut::<BF>() };
+    let grand_product_transposed = DeviceMatrix::new(grand_product_e4_scratch_slice, 4);
+    transpose(&grand_product_transposed, &mut grand_product, stream)
 }

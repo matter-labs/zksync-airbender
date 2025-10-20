@@ -369,6 +369,13 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     let lde_factor = 2;
     let tree_cap_size = 32;
 
+    use crate::prover_stages::unrolled_prover::UnrolledModeProof;
+    let serialize_to_file_if_not_gpu_comparison = |proof: &UnrolledModeProof, filename: &str| {
+        if maybe_gpu_comparison_hook.is_none() {
+            serialize_to_file(proof, filename);
+        }
+    };
+
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
     // load binary
@@ -834,9 +841,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        if maybe_gpu_comparison_hook.is_none() {
-            serialize_to_file(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
-        }
+        serialize_to_file_if_not_gpu_comparison(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_comparison_hook {
             let gpu_comparison_args = GpuUnrolledComparisonArgs {
@@ -979,7 +984,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file(&proof, "jump_branch_slt_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1130,7 +1135,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             );
         }
 
-        serialize_to_file(&proof, "shift_binop_csrrw_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "shift_binop_csrrw_unrolled_proof.json");
 
         dbg!(proof.delegation_argument_accumulator.unwrap());
 
@@ -1274,9 +1279,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         assert!(proof.delegation_argument_accumulator.is_none());
 
         if SUPPORT_SIGNED {
-            serialize_to_file(&proof, "mul_div_unrolled_proof.json");
+            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unrolled_proof.json");
         } else {
-            serialize_to_file(&proof, "mul_div_unsigned_unrolled_proof.json");
+            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unsigned_unrolled_proof.json");
         };
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
@@ -1423,7 +1428,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file(&proof, "word_only_load_store_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "word_only_load_store_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1570,7 +1575,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file(&proof, "subword_only_load_store_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "subword_only_load_store_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1682,7 +1687,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         println!("Proving time is {:?}", now.elapsed());
 
-        serialize_to_file(&proof, "inits_and_teardowns_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "inits_and_teardowns_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }

@@ -5,9 +5,8 @@ use super::unrolled_prover::stage_2_ram_shared::{
     stage2_process_registers_and_indirect_access_in_delegation,
 };
 use super::unrolled_prover::stage_2_shared::{
-    get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
-    get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal, get_stage_2_e4_scratch,
-    stage2_compute_grand_product, stage2_handle_delegation_requests, stage2_process_delegations,
+    get_stage_2_e4_scratch, stage2_col_sum_adjustments_and_grand_product,
+    stage2_handle_delegation_requests, stage2_process_delegations,
     stage2_process_generic_lookup_entry_invs_and_multiplicity,
     stage2_process_generic_lookup_intermediate_polys, stage2_process_lazy_init_range_checks,
     stage2_process_range_check_16_entry_invs_and_multiplicity,
@@ -17,11 +16,10 @@ use super::unrolled_prover::stage_2_shared::{
     stage2_process_timestamp_range_check_expressions_with_extra_timestamp_contribution,
 };
 use crate::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
+    DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
 };
 use crate::field::{BaseField, Ext4Field};
-use crate::ops_cub::device_reduce::{batch_reduce_with_adaptive_parallelism, ReduceOperation};
-use crate::ops_simple::{set_to_zero, sub_into_x};
+use crate::ops_simple::set_to_zero;
 
 use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -30,7 +28,6 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use field::Field;
 use prover::prover_stages::cached_data::ProverCachedData;
-use std::cmp::max;
 
 type BF = BaseField;
 type E4 = Ext4Field;
@@ -211,6 +208,11 @@ pub fn compute_stage_2_args_on_main_domain(
             .ext_4_field_oracles
             .num_elements()
     );
+    let delegation_aux_poly_col = if handle_delegation_requests || process_delegations {
+        translate_e4_offset(delegation_processing_aux_poly.start())
+    } else {
+        0
+    };
     // overall size checks
     let mut num_expected_bf_args = 0;
     // we assume (and assert later) that the numbers of range check 8 and 16 cols are both even.
@@ -333,7 +335,7 @@ pub fn compute_stage_2_args_on_main_domain(
             memory_cols,
             setup_cols,
             d_stage_2_e4_cols,
-            translate_e4_offset(delegation_processing_aux_poly.start()),
+            delegation_aux_poly_col,
             false,
             log_n,
             stream,
@@ -348,7 +350,7 @@ pub fn compute_stage_2_args_on_main_domain(
             &delegation_processor_layout,
             memory_cols,
             d_stage_2_e4_cols,
-            translate_e4_offset(delegation_processing_aux_poly.start()),
+            delegation_aux_poly_col,
             log_n,
             stream,
         )?;
@@ -514,126 +516,22 @@ pub fn compute_stage_2_args_on_main_domain(
         )?;
     }
 
-    // quick and dirty c0 = 0 adjustment for bf cols
-    assert_eq!(
-        scratch_for_col_sums.len(),
-        get_stage_2_col_sums_scratch(num_stage_2_bf_cols)
-    );
-    let (
-        (
-            bf_args_batch_reduce_scratch_bytes,
-            delegation_aux_batch_reduce_scratch_bytes,
-            grand_product_scratch_bytes,
-        ),
-        (bf_args_batch_reduce_intermediate_elems, delegation_aux_batch_reduce_intermediate_elems),
-    ) = get_stage_2_cub_and_batch_reduce_intermediate_scratch_internal(
-        n,
-        num_stage_2_bf_cols,
-        handle_delegation_requests,
-        process_delegations,
-        device_properties,
-    )?;
-    assert_eq!(
-        scratch_for_cub_ops.len(),
-        max(
-            max(
-                bf_args_batch_reduce_scratch_bytes,
-                delegation_aux_batch_reduce_scratch_bytes,
-            ),
-            grand_product_scratch_bytes,
-        ),
-    );
-    if bf_args_batch_reduce_intermediate_elems > 0
-        || delegation_aux_batch_reduce_intermediate_elems > 0
-    {
-        assert_eq!(
-            maybe_batch_reduce_intermediates.as_ref().unwrap().len(),
-            max(
-                bf_args_batch_reduce_intermediate_elems,
-                delegation_aux_batch_reduce_intermediate_elems,
-            ),
-        )
-    } else {
-        assert!(maybe_batch_reduce_intermediates.is_none());
-    };
-    let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
-        if bf_args_batch_reduce_intermediate_elems > 0 {
-            Some(
-                &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
-                    [0..bf_args_batch_reduce_intermediate_elems],
-            )
-        } else {
-            None
-        };
-    batch_reduce_with_adaptive_parallelism::<BF>(
-        ReduceOperation::Sum,
-        &mut scratch_for_cub_ops[0..bf_args_batch_reduce_scratch_bytes],
-        maybe_intermediates,
-        &stage_2_bf_cols,
-        &mut scratch_for_col_sums[0..num_stage_2_bf_cols],
-        stream,
-        device_properties,
-    )?;
-    let stride = stage_2_bf_cols.stride();
-    let offset = stage_2_bf_cols.offset();
-    let mut last_row =
-        DeviceMatrixChunkMut::new(stage_2_bf_cols.slice_mut(), stride, offset + n - 1, 1);
-    let scratch_for_col_sums_match_last_row_shape =
-        DeviceMatrixChunk::new(&scratch_for_col_sums[0..num_stage_2_bf_cols], 1, 0, 1);
-    sub_into_x(
-        &mut last_row,
-        &scratch_for_col_sums_match_last_row_shape,
-        stream,
-    )?;
-    // c0 = 0 adjustment isn't helpful for e4 col LDEs, but the CPU code does it
-    // anyway for the delegation aux poly, because the verifier needs to know
-    // the sum of all elements except the last, and placing the negative sum
-    // into the last element lets us set up convenient constraints to prove
-    // the sum value.
-    if handle_delegation_requests || process_delegations {
-        let start_col = 4 * translate_e4_offset(delegation_processing_aux_poly.start());
-        let stride = stage_2_e4_cols.stride();
-        let offset = stage_2_e4_cols.offset();
-        let slice =
-            &mut (stage_2_e4_cols.slice_mut())[start_col * stride..(start_col + 4) * stride];
-        let delegation_aux_poly_cols = DeviceMatrixChunkMut::new(slice, stride, offset, n);
-        let maybe_intermediates: Option<&mut DeviceSlice<BF>> =
-            if delegation_aux_batch_reduce_intermediate_elems > 0 {
-                Some(
-                    &mut (maybe_batch_reduce_intermediates.as_mut().unwrap())
-                        [0..delegation_aux_batch_reduce_intermediate_elems],
-                )
-            } else {
-                None
-            };
-        batch_reduce_with_adaptive_parallelism::<BF>(
-            ReduceOperation::Sum,
-            &mut scratch_for_cub_ops[0..delegation_aux_batch_reduce_scratch_bytes],
-            maybe_intermediates,
-            &delegation_aux_poly_cols,
-            &mut scratch_for_col_sums[0..4],
-            stream,
-            device_properties,
-        )?;
-        let mut last_row = DeviceMatrixChunkMut::new(slice, stride, offset + n - 1, 1);
-        let scratch_for_col_sums_match_last_row_shape =
-            DeviceMatrixChunk::new(&scratch_for_col_sums[0..4], 1, 0, 1);
-        sub_into_x(
-            &mut last_row,
-            &scratch_for_col_sums_match_last_row_shape,
-            stream,
-        )?;
-    }
-
-    stage2_compute_grand_product(
+    stage2_col_sum_adjustments_and_grand_product(
         circuit,
+        &mut stage_2_bf_cols,
         &mut stage_2_e4_cols,
         scratch_for_aggregated_entry_invs,
         scratch_for_cub_ops,
-        grand_product_scratch_bytes,
+        maybe_batch_reduce_intermediates,
+        scratch_for_col_sums,
+        num_stage_2_bf_cols,
+        delegation_aux_poly_col,
         n,
+        handle_delegation_requests,
+        process_delegations,
         false,
         stream,
+        device_properties,
     )
 }
 
@@ -641,7 +539,11 @@ pub fn compute_stage_2_args_on_main_domain(
 mod tests {
     use super::*;
     use crate::device_context::DeviceContext;
-    use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
+    use crate::prover::{
+        get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
+        get_stage_2_e4_scratch,
+    };
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;

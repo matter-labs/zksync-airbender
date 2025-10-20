@@ -5,7 +5,7 @@ use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 pub(crate) use super::stage_2_kernels::*;
 use super::trace_holder::{flatten_tree_caps, TraceHolder, TreesCacheMode};
-use super::unrolled_prover::stage_2_shared::{
+use super::{
     get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
     get_stage_2_e4_scratch,
 };
