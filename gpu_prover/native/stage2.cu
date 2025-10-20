@@ -14,6 +14,26 @@ using bf = base_field;
 using e2 = ext2_field;
 using e4 = ext4_field;
 
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_zero_stage_2_last_row_kernel(matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
+                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                         const unsigned num_stage_2_bf_cols,
+                                         const unsigned num_stage_2_e4_cols,
+                                         const unsigned log_n) {
+  const unsigned n = 1u << log_n;
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  stage_2_bf_cols.add_row(n - 1);
+  stage_2_e4_cols.add_row(n - 1);
+
+  // these accesses are fully uncoalesced, but the kernel should be negligible
+  if (gid < num_stage_2_bf_cols)
+    stage_2_bf_cols.set_at_col(gid, bf::zero());
+
+  if (gid < num_stage_2_e4_cols)
+    stage_2_e4_cols.set_at_col(gid, e4::zero());
+}
+
 // ENTRY_WIDTH = 1 logic is special-cased for range check lookups.
 template <typename T, unsigned ENTRY_WIDTH>
 DEVICE_FORCEINLINE void
@@ -354,31 +374,16 @@ EXTERN __launch_bounds__(128, 8) __global__
     void ab_generic_lookup_intermediate_polys_kernel(
                                matrix_getter<unsigned, ld_modifier::cs> generic_lookups_args_to_table_entries_map,
                                vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_generic_lookups,
-                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
                                vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
                                const unsigned generic_args_start,
                                const unsigned num_generic_args,
-                               const unsigned num_stage_2_bf_cols,
-                               const unsigned num_stage_2_e4_cols,
                                const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= n)
+  if (gid >= n - 1)
     return;
 
-  stage_2_bf_cols.add_row(gid);
   stage_2_e4_cols.add_row(gid);
-
-  // For bf cols, the final row is reserved for c0 = 0 adjustments.
-  // Here we take the opportunity to zero the final row for all stage 2 arg cols.
-  if (gid == n - 1) {
-    for (unsigned i = 0; i < num_stage_2_bf_cols; i++)
-      stage_2_bf_cols.set_at_col(i, bf::zero());
-    for (unsigned i = 0; i < num_stage_2_e4_cols; i++)
-      stage_2_e4_cols.set_at_col(i, e4::zero());
-    return;
-  }
-
   generic_lookups_args_to_table_entries_map.add_row(gid);
 
   for (unsigned i = 0; i < num_generic_args; i++) {

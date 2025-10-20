@@ -34,6 +34,18 @@ type BF = BaseField;
 type E4 = Ext4Field;
 
 cuda_kernel!(
+    ZeroStage2LastRow,
+    zero_stage_2_last_row,
+    stage_2_bf_cols: MutPtrAndStride<BF>,
+    stage_2_e4_cols: MutPtrAndStride<BF>,
+    num_stage_2_bf_cols: u32,
+    num_stage_2_e4_cols: u32,
+    log_n: u32,
+);
+
+zero_stage_2_last_row!(ab_zero_stage_2_last_row_kernel);
+
+cuda_kernel!(
     RangeCheckAggregatedEntryInvsAndMultiplicitiesArg,
     range_check_aggregated_entry_invs_and_multiplicities_arg,
     challenges: *const LookupChallenges,
@@ -168,12 +180,9 @@ cuda_kernel!(
     process_generic_lookup_intermediate_polys,
     generic_lookups_args_to_table_entries_map: PtrAndStride<u32>,
     aggregated_entry_invs_for_generic_lookups: *const E4,
-    stage_2_bf_cols: MutPtrAndStride<BF>,
     stage_2_e4_cols: MutPtrAndStride<BF>,
     generic_args_start: u32,
     num_generic_args: u32,
-    num_stage_2_bf_cols: u32,
-    num_stage_2_e4_cols: u32,
     log_n: u32,
 );
 
@@ -206,6 +215,28 @@ cuda_kernel!(
 );
 
 process_delegations!(ab_process_delegations_kernel);
+
+pub(crate) fn stage2_zero_last_row(
+    stage_2_bf_cols: MutPtrAndStride<BF>,
+    stage_2_e4_cols: MutPtrAndStride<BF>,
+    num_stage_2_bf_cols: usize,
+    num_stage_2_e4_cols: usize,
+    log_n: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let max_cols = max(num_stage_2_bf_cols, num_stage_2_e4_cols) as u32;
+    let block_dim = WARP_SIZE * 4;
+    let grid_dim = (max_cols + block_dim - 1) / block_dim;
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = ZeroStage2LastRowArguments::new(
+        stage_2_bf_cols,
+        stage_2_e4_cols,
+        num_stage_2_bf_cols as u32,
+        num_stage_2_e4_cols as u32,
+        log_n,
+    );
+    ZeroStage2LastRowFunction(ab_zero_stage_2_last_row_kernel).launch(&config, &args)
+}
 
 pub(crate) fn stage2_process_range_check_16_trivial_checks<F: Fn(usize) -> usize>(
     circuit: &CompiledCircuitArtifact<BF>,
@@ -461,15 +492,13 @@ pub(crate) fn stage2_process_generic_lookup_intermediate_polys<F: Fn(usize) -> u
     circuit: &CompiledCircuitArtifact<BF>,
     generic_lookups_args_to_table_entries_map: &(impl DeviceMatrixChunkImpl<u32> + ?Sized),
     aggregated_entry_invs_for_generic_lookups: *const E4,
-    stage_2_bf_cols: MutPtrAndStride<BF>,
     stage_2_e4_cols: MutPtrAndStride<BF>,
-    num_stage_2_bf_cols: usize,
-    num_stage_2_e4_cols: usize,
     num_generic_args: usize,
     log_n: u32,
     translate_e4_offset: &F,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert!(num_generic_args > 0);
     assert_eq!(
         generic_lookups_args_to_table_entries_map.rows(),
         (1 << log_n) as usize
@@ -478,12 +507,6 @@ pub(crate) fn stage2_process_generic_lookup_intermediate_polys<F: Fn(usize) -> u
         generic_lookups_args_to_table_entries_map.cols(),
         num_generic_args,
     );
-    // I rely on this kernel to zero the last row, so it needs to run.
-    // If we ever encounter a circuit where num_generic_args == 0, i can refactor.
-    assert!(num_generic_args > 0);
-    // if num_generic_args == 0 {
-    //     return Ok(());
-    // }
     let generic_args_start = translate_e4_offset(
         circuit
             .stage_2_layout
@@ -498,12 +521,9 @@ pub(crate) fn stage2_process_generic_lookup_intermediate_polys<F: Fn(usize) -> u
     let args = ProcessGenericLookupIntermediatePolysArguments::new(
         generic_lookups_args_to_table_entries_map,
         aggregated_entry_invs_for_generic_lookups,
-        stage_2_bf_cols,
         stage_2_e4_cols,
         generic_args_start as u32,
         num_generic_args as u32,
-        num_stage_2_bf_cols as u32,
-        num_stage_2_e4_cols as u32,
         log_n,
     );
     ProcessGenericLookupIntermediatePolysFunction(ab_generic_lookup_intermediate_polys_kernel)

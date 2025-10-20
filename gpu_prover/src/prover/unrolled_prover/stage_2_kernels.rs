@@ -9,7 +9,7 @@ use super::stage_2_shared::{
     stage2_process_range_check_16_entry_invs_and_multiplicity,
     stage2_process_range_check_16_expressions, stage2_process_range_check_16_trivial_checks,
     stage2_process_timestamp_range_check_entry_invs_and_multiplicity,
-    stage2_process_timestamp_range_check_expressions,
+    stage2_process_timestamp_range_check_expressions, stage2_zero_last_row,
 };
 use crate::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -71,7 +71,18 @@ pub fn compute_stage_2_args_on_main_domain(
         .stage_2_layout
         .intermediate_poly_for_decoder_accesses
         .num_elements();
-    assert!(num_intermediate_polys_for_decoder == 1 || num_intermediate_polys_for_decoder == 0);
+    assert!(num_intermediate_polys_for_decoder == 0 || num_intermediate_polys_for_decoder == 1);
+    let num_intermediate_polys_for_state_permutation = circuit
+        .stage_2_layout
+        .intermediate_polys_for_state_permutation
+        .num_elements();
+    assert!(num_intermediate_polys_for_state_permutation == 0 ||
+        num_intermediate_polys_for_state_permutation == 1);
+    let num_intermediate_polys_for_masking = circuit
+        .stage_2_layout
+        .intermediate_polys_for_permutation_masking
+        .num_elements();
+    assert!(num_intermediate_polys_for_masking == 0 || num_intermediate_polys_for_masking == 1);
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
     let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
     assert_eq!(setup_cols.rows(), n);
@@ -191,6 +202,13 @@ pub fn compute_stage_2_args_on_main_domain(
             .multiplicities_columns_for_generic_lookup
             .num_elements(),
     );
+    if num_generic_table_rows > 0 {
+        assert!(num_generic_multiplicities_cols > 0);
+        assert!(num_generic_args > 0);
+    } else {
+        assert_eq!(num_generic_multiplicities_cols, 0);
+        assert_eq!(num_generic_args, 0);
+    };
     assert_eq!(
         generic_lookup_setup_columns_start,
         circuit.setup_layout.generic_lookup_setup_columns.start()
@@ -249,7 +267,9 @@ pub fn compute_stage_2_args_on_main_domain(
             .num_elements();
     }
     num_expected_e4_args += num_memory_args;
-    num_expected_e4_args += 1; // memory grand product
+    num_expected_e4_args += num_intermediate_polys_for_state_permutation;
+    num_expected_e4_args += num_intermediate_polys_for_masking;
+    num_expected_e4_args += 1; // grand product
     assert_eq!(num_stage_2_e4_cols, num_expected_e4_args);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
@@ -274,6 +294,15 @@ pub fn compute_stage_2_args_on_main_domain(
         aggregated_entry_invs_for_generic_lookups.as_mut_ptr();
     let lookup_challenges = lookup_challenges.as_ptr();
     let decoder_table_challenges = decoder_table_challenges.as_ptr();
+
+    stage2_zero_last_row(
+        d_stage_2_bf_cols,
+        d_stage_2_e4_cols,
+        num_stage_2_bf_cols,
+        num_stage_2_e4_cols,
+        log_n,
+        stream,
+    )?;
 
     stage2_process_range_check_16_entry_invs_and_multiplicity(
         lookup_challenges,
@@ -315,21 +344,23 @@ pub fn compute_stage_2_args_on_main_domain(
         )?;
     }
 
-    stage2_process_generic_lookup_entry_invs_and_multiplicity(
-        lookup_challenges,
-        setup_cols,
-        witness_cols,
-        aggregated_entry_invs_for_generic_lookups,
-        d_stage_2_e4_cols,
-        generic_lookup_setup_columns_start,
-        num_generic_multiplicities_cols,
-        num_generic_table_rows,
-        generic_lookup_multiplicities_src_start,
-        generic_lookup_multiplicities_dst_start,
-        log_n,
-        &translate_e4_offset,
-        stream,
-    )?;
+    if num_generic_table_rows > 0 {
+        stage2_process_generic_lookup_entry_invs_and_multiplicity(
+            lookup_challenges,
+            setup_cols,
+            witness_cols,
+            aggregated_entry_invs_for_generic_lookups,
+            d_stage_2_e4_cols,
+            generic_lookup_setup_columns_start,
+            num_generic_multiplicities_cols,
+            num_generic_table_rows,
+            generic_lookup_multiplicities_src_start,
+            generic_lookup_multiplicities_dst_start,
+            log_n,
+            &translate_e4_offset,
+            stream,
+        )?;
+    }
 
     // layout sanity check
     if circuit.memory_layout.delegation_processor_layout.is_none()
@@ -447,19 +478,18 @@ pub fn compute_stage_2_args_on_main_domain(
         )?;
     }
 
-    stage2_process_generic_lookup_intermediate_polys(
-        circuit,
-        generic_lookups_args_to_table_entries_map,
-        aggregated_entry_invs_for_generic_lookups,
-        d_stage_2_bf_cols,
-        d_stage_2_e4_cols,
-        num_stage_2_bf_cols,
-        num_stage_2_e4_cols,
-        num_generic_args,
-        log_n,
-        &translate_e4_offset,
-        stream,
-    )?;
+    if num_generic_table_rows > 0 {
+        stage2_process_generic_lookup_intermediate_polys(
+            circuit,
+            generic_lookups_args_to_table_entries_map,
+            aggregated_entry_invs_for_generic_lookups,
+            d_stage_2_e4_cols,
+            num_generic_args,
+            log_n,
+            &translate_e4_offset,
+            stream,
+        )?;
+    }
 
     // Shuffle ram init/teardown and shuffle ram accesses are distinct things.
     // We expect:

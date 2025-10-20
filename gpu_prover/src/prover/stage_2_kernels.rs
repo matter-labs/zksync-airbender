@@ -14,6 +14,7 @@ use super::unrolled_prover::stage_2_shared::{
     stage2_process_timestamp_range_check_entry_invs_and_multiplicity,
     stage2_process_timestamp_range_check_expressions,
     stage2_process_timestamp_range_check_expressions_with_extra_timestamp_contribution,
+    stage2_zero_last_row,
 };
 use crate::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -264,6 +265,15 @@ pub fn compute_stage_2_args_on_main_domain(
         aggregated_entry_invs_for_generic_lookups.as_mut_ptr();
     let lookup_challenges = lookup_challenges.as_ptr();
 
+    stage2_zero_last_row(
+        d_stage_2_bf_cols,
+        d_stage_2_e4_cols,
+        num_stage_2_bf_cols,
+        num_stage_2_e4_cols,
+        log_n,
+        stream,
+    )?;
+
     stage2_process_range_check_16_entry_invs_and_multiplicity(
         lookup_challenges,
         setup_cols,
@@ -440,10 +450,7 @@ pub fn compute_stage_2_args_on_main_domain(
         circuit,
         generic_lookups_args_to_table_entries_map,
         aggregated_entry_invs_for_generic_lookups,
-        d_stage_2_bf_cols,
         d_stage_2_e4_cols,
-        num_stage_2_bf_cols,
-        num_stage_2_e4_cols,
         num_generic_args,
         log_n,
         &translate_e4_offset,
