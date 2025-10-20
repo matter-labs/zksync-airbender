@@ -49,7 +49,6 @@ pub fn compute_stage_2_args_on_main_domain(
     // decoder_table_challenges: &DeviceVariable<DecoderTableChallenges>,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
-    num_generic_table_rows: usize,
     log_n: u32,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
@@ -57,6 +56,7 @@ pub fn compute_stage_2_args_on_main_domain(
     assert_eq!(REGISTER_SIZE, 2);
     assert_eq!(NUM_TIMESTAMP_COLUMNS_FOR_RAM, 2);
     let n = 1 << log_n;
+    let num_generic_table_rows = circuit.total_tables_size;
     let num_setup_cols = circuit.setup_layout.total_width;
     let num_witness_cols = circuit.witness_layout.total_width;
     let num_memory_cols = circuit.memory_layout.total_width;
@@ -661,7 +661,6 @@ mod tests {
             public_inputs: _,
             twiddles: _,
             lde_precomputations: _,
-            table_driver,
             lookup_mapping,
             log_n,
             circuit_sequence,
@@ -845,7 +844,6 @@ mod tests {
             &d_lookup_challenges[0],
             &cached_data,
             &circuit,
-            table_driver.total_tables_len, // may be > trace_len. that's ok.
             log_n as u32,
             &stream,
             &device_properties,

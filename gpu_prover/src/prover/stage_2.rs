@@ -170,7 +170,6 @@ impl StageTwoOutput {
             &d_lookup_challenges[0],
             cached_data,
             circuit,
-            circuit.total_tables_size,
             log_domain_size,
             stream,
             context.get_device_properties(),

@@ -360,7 +360,6 @@ pub(crate) mod tests {
             public_inputs: _,
             twiddles,
             lde_precomputations: _,
-            table_driver: _,
             lookup_mapping: _,
             log_n,
             circuit_sequence,

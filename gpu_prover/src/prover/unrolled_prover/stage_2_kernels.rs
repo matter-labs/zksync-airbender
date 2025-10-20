@@ -48,7 +48,6 @@ pub fn compute_stage_2_args_on_main_domain(
     decoder_table_challenges: &DeviceVariable<DecoderTableChallenges>,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
-    num_generic_table_rows: usize,
     log_n: u32,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
@@ -56,6 +55,7 @@ pub fn compute_stage_2_args_on_main_domain(
     assert_eq!(REGISTER_SIZE, 2);
     assert_eq!(NUM_TIMESTAMP_COLUMNS_FOR_RAM, 2);
     let n = 1 << log_n;
+    let num_generic_table_rows = circuit.total_tables_size;
     let num_setup_cols = circuit.setup_layout.total_width;
     let num_witness_cols = circuit.witness_layout.total_width;
     let num_memory_cols = circuit.memory_layout.total_width;
@@ -632,38 +632,37 @@ mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_unrolled_test_with_word_specialization_impl, GpuUnrolledComparisonArgs};
     use serial_test::serial;
 
     type BF = BaseField;
     type E4 = Ext4Field;
 
     // CPU witness generation and checks are copied from zksync_airbender prover test.
-    fn comparison_hook(gpu_comparison_args: &GpuComparisonArgs) {
+    fn comparison_hook(gpu_comparison_args: &GpuUnrolledComparisonArgs) {
         let device_properties = DeviceProperties::new().unwrap();
-        let GpuComparisonArgs {
+        let GpuUnrolledComparisonArgs {
             circuit,
             setup,
-            external_values,
+            external_challenges,
+            aux_boundary_values: _,
             public_inputs: _,
             twiddles: _,
             lde_precomputations: _,
-            table_driver,
             lookup_mapping,
             log_n,
-            circuit_sequence,
             delegation_processing_type,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
-        let circuit_sequence = *circuit_sequence;
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values.challenges,
+            &external_challenges,
             domain_size,
-            circuit_sequence,
+            0,
             delegation_processing_type,
         );
         // double-check argument sizes if desired
@@ -847,7 +846,6 @@ mod tests {
             &d_decoder_table_challenges[0],
             &cached_data,
             &circuit,
-            table_driver.total_tables_len, // may be > trace_len. that's ok.
             log_n as u32,
             &stream,
             &device_properties,
@@ -1118,26 +1116,11 @@ mod tests {
         }
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_stage_2_for_main_and_blake() {
-    //     let ctx = DeviceContext::create(12).unwrap();
-    //     run_basic_delegation_test_impl(
-    //         Some(Box::new(comparison_hook)),
-    //         Some(Box::new(comparison_hook)),
-    //     );
-    //     ctx.destroy().unwrap();
-    // }
-
-    // #[test]
-    // #[serial]
-    // #[ignore]
-    // fn test_stage_2_for_main_and_keccak() {
-    //     let ctx = DeviceContext::create(12).unwrap();
-    //     run_keccak_test_impl(
-    //         Some(Box::new(comparison_hook)),
-    //         Some(Box::new(comparison_hook)),
-    //     );
-    //     ctx.destroy().unwrap();
-    // }
+    #[test]
+    #[serial]
+    fn test_unrolled_stage_2_for_main_and_blake() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_with_word_specialization_impl(Some(Box::new(comparison_hook)));
+        ctx.destroy().unwrap();
+    }
 }

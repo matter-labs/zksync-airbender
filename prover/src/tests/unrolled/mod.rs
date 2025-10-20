@@ -18,7 +18,7 @@ use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
 
-mod word_specialized;
+pub mod word_specialized;
 
 pub mod add_sub_lui_auipc_mod {
     use crate::unrolled::NonMemoryCircuitOracle;

@@ -349,7 +349,6 @@ mod tests {
             public_inputs: _,
             twiddles: _,
             lde_precomputations,
-            table_driver: _,
             lookup_mapping: _,
             log_n,
             circuit_sequence,
