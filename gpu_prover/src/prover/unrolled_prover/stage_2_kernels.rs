@@ -76,8 +76,10 @@ pub fn compute_stage_2_args_on_main_domain(
         .stage_2_layout
         .intermediate_polys_for_state_permutation
         .num_elements();
-    assert!(num_intermediate_polys_for_state_permutation == 0 ||
-        num_intermediate_polys_for_state_permutation == 1);
+    assert!(
+        num_intermediate_polys_for_state_permutation == 0
+            || num_intermediate_polys_for_state_permutation == 1
+    );
     let num_intermediate_polys_for_masking = circuit
         .stage_2_layout
         .intermediate_polys_for_permutation_masking
@@ -362,25 +364,6 @@ pub fn compute_stage_2_args_on_main_domain(
         )?;
     }
 
-    // layout sanity check
-    if circuit.memory_layout.delegation_processor_layout.is_none()
-        && circuit.memory_layout.delegation_request_layout.is_none()
-    {
-        assert_eq!(
-            circuit
-                .stage_2_layout
-                .intermediate_polys_for_generic_multiplicities
-                .full_range()
-                .end,
-            circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_argument
-                .start()
-        );
-    } else {
-        assert!(delegation_challenges.delegation_argument_gamma.is_zero() == false);
-    }
-
     if handle_delegation_requests {
         assert!(!process_delegations);
         stage2_handle_delegation_requests(
@@ -460,7 +443,7 @@ pub fn compute_stage_2_args_on_main_domain(
         d_stage_2_e4_cols,
         num_stage_2_bf_cols,
         num_stage_2_e4_cols,
-        true, // expect_constant_terms_are_zero
+        false, // expect_constant_terms_are_zero
         log_n,
         &translate_e4_offset,
         stream,
@@ -820,21 +803,34 @@ mod tests {
             .intermediate_polys_for_generic_lookup
             .start();
         let generic_args_start = translate_e4_offset(raw_col);
-        // check locations of multiplicity args
-        let multiplicities_args_start = cached_data.range_check_16_multiplicities_dst;
-        assert_eq!(
-            multiplicities_args_start + 4,
-            cached_data.timestamp_range_check_multiplicities_dst,
-        );
-        assert_eq!(
-            multiplicities_args_start + 8,
-            cached_data.generic_lookup_multiplicities_dst_start,
-        );
-        let multiplicities_args_start = translate_e4_offset(multiplicities_args_start);
+        // collect locations of multiplicity args
+        let range_check_16_multiplicities_arg_col =
+            translate_e4_offset(cached_data.range_check_16_multiplicities_dst);
+        let timestamp_range_check_multiplicities_arg_col =
+            translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst);
         let num_generic_multiplicities_cols = circuit
             .setup_layout
             .generic_lookup_setup_columns
             .num_elements();
+        let generic_lookup_multiplicities_args_start = if num_generic_multiplicities_cols > 0 {
+            translate_e4_offset(cached_data.generic_lookup_multiplicities_dst_start)
+        } else {
+            0
+        };
+        let num_decoder_multiplicities_cols = circuit
+            .stage_2_layout
+            .intermediate_polys_for_decoder_multiplicities
+            .num_elements();
+        let decoder_multiplicities_arg_col = if num_decoder_multiplicities_cols > 0 {
+            translate_e4_offset(
+                circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_decoder_multiplicities
+                    .start(),
+            )
+        } else {
+            0
+        };
         // one delegation aux poly col
         let delegation_aux_poly_col =
             if cached_data.handle_delegation_requests || cached_data.process_delegations {
@@ -860,6 +856,25 @@ mod tests {
             .intermediate_polys_for_memory_argument
             .start();
         let memory_args_start = translate_e4_offset(raw_col);
+        // collect locations of unrolled-specific args
+        let next = &circuit
+            .stage_2_layout
+            .intermediate_poly_for_decoder_accesses;
+        let intermediate_polys_for_decoder_start = translate_e4_offset(next.start());
+        let num_intermediate_polys_for_decoder = next.num_elements();
+
+        let next = &circuit
+            .stage_2_layout
+            .intermediate_polys_for_state_permutation;
+        let intermediate_polys_for_state_permutation_start = translate_e4_offset(next.start());
+        let num_intermediate_polys_for_state_permutation = next.num_elements();
+
+        let next = &circuit
+            .stage_2_layout
+            .intermediate_polys_for_permutation_masking;
+        let intermediate_polys_for_permutation_masking_start = translate_e4_offset(next.start());
+        let num_intermediate_polys_for_permutation_masking = next.num_elements();
+
         let (_, grand_product_col) = get_grand_product_src_dst_cols(circuit, true);
         let h_stage_2_bf_cols = &h_stage_2_cols[0..num_stage_2_bf_cols * domain_size];
         let start = e4_cols_offset * domain_size;
@@ -967,13 +982,40 @@ mod tests {
                     );
                 }
                 // multiplicities args comparisons
-                let start = multiplicities_args_start;
-                let end = start + 2 + num_generic_multiplicities_cols;
+                let j = range_check_16_multiplicities_arg_col;
+                assert_eq!(
+                    get_vectorized_e4_val(i, j),
+                    src_e4.add(j).read(),
+                    "range check 16 multiplicity e4 failed at row {} col {}",
+                    i,
+                    j,
+                );
+                let j = timestamp_range_check_multiplicities_arg_col;
+                assert_eq!(
+                    get_vectorized_e4_val(i, j),
+                    src_e4.add(j).read(),
+                    "timestamp range check multiplicity e4 failed at row {} col {}",
+                    i,
+                    j,
+                );
+                let start = generic_lookup_multiplicities_args_start;
+                let end = start + num_generic_multiplicities_cols;
                 for j in start..end {
                     assert_eq!(
                         get_vectorized_e4_val(i, j),
                         src_e4.add(j).read(),
-                        "multiplicities args e4 failed at row {} col {}",
+                        "generic lookup multiplicity e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
+                let start = decoder_multiplicities_arg_col;
+                let end = start + num_decoder_multiplicities_cols;
+                for j in start..end {
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "decoder lookup multiplicity e4 failed at row {} col {}",
                         i,
                         j,
                     );
@@ -1015,6 +1057,40 @@ mod tests {
                         j,
                     );
                 }
+                // remaining unrolled-specific arg comparisons
+                let start = intermediate_polys_for_decoder_start;
+                let end = start + num_intermediate_polys_for_decoder;
+                for j in start..end {
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "intermediate polys for decoder e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
+                let start = intermediate_polys_for_state_permutation_start;
+                let end = start + num_intermediate_polys_for_state_permutation;
+                for j in start..end {
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "intermediate polys for state permutation e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
+                let start = intermediate_polys_for_permutation_masking_start;
+                let end = start + num_intermediate_polys_for_permutation_masking;
+                for j in start..end {
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "intermediate polys for permutation masking e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
                 // memory grand product comparison
                 let j = grand_product_col;
                 assert_eq!(
@@ -1029,11 +1105,11 @@ mod tests {
         }
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_unrolled_stage_2_for_main_and_blake() {
-    //     let ctx = DeviceContext::create(12).unwrap();
-    //     run_basic_unrolled_test_with_word_specialization_impl(Some(Box::new(comparison_hook)));
-    //     ctx.destroy().unwrap();
-    // }
+    #[test]
+    #[serial]
+    fn test_unrolled_stage_2_for_main_and_blake() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_with_word_specialization_impl(Some(Box::new(comparison_hook)));
+        ctx.destroy().unwrap();
+    }
 }

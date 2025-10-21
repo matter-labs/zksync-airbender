@@ -1225,33 +1225,26 @@ pub fn get_grand_product_src_dst_cols(
     let grand_product_dst = translate_e4_offset(raw_grand_product_dst);
     if unrolled {
         let mut grand_product_src = usize::MAX;
-        let next = &circuit
-            .stage_2_layout
-            .intermediate_polys_for_permutation_masking;
-        if next.num_elements() > 0 {
-            assert_eq!(next.num_elements(), 1);
-            grand_product_src = translate_e4_offset(next.start());
-        }
-        let next = &circuit
-            .stage_2_layout
-            .intermediate_polys_for_state_permutation;
-        if next.num_elements() > 0 {
-            assert_eq!(next.num_elements(), 1);
-            grand_product_src = translate_e4_offset(next.start());
-        }
-        let next = &circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument;
-        if next.num_elements() > 0 {
-            grand_product_src = translate_e4_offset(next.start());
-            grand_product_src += next.num_elements() - 1;
-        }
-        let next = &circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_init_teardown;
-        if next.num_elements() > 0 {
-            grand_product_src = translate_e4_offset(next.start());
-            grand_product_src += next.num_elements() - 1;
+        let precedence = [
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_permutation_masking,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_state_permutation,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown,
+        ];
+        for next in precedence.iter() {
+            if next.num_elements() > 0 {
+                grand_product_src = translate_e4_offset(next.start());
+                grand_product_src += next.num_elements() - 1;
+                break;
+            }
         }
         assert!(grand_product_src != usize::MAX);
         return (grand_product_src, grand_product_dst);
