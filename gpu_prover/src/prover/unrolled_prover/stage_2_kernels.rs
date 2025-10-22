@@ -190,9 +190,9 @@ pub fn compute_stage_2_args_on_main_domain(
     // cancel some access in another circuit whose timestamp was ranged checked
     // in that other circuit.
     let num_timestamp_multiplicities_cols = circuit
-            .witness_layout
-            .multiplicities_columns_for_timestamp_range_check
-            .num_elements();
+        .witness_layout
+        .multiplicities_columns_for_timestamp_range_check
+        .num_elements();
     assert!(num_timestamp_multiplicities_cols == 0 || num_timestamp_multiplicities_cols == 1);
     assert_eq!(
         num_timestamp_multiplicities_cols,
@@ -263,7 +263,7 @@ pub fn compute_stage_2_args_on_main_domain(
     assert_eq!(num_stage_2_bf_cols, num_expected_bf_args);
     let mut num_expected_e4_args = 0;
     num_expected_e4_args += 1; // range check 16 multiplicities dst
-    num_expected_e4_args += 1; // timestamp range check multiplicities dst
+    num_expected_e4_args += num_timestamp_multiplicities_cols; // timestamp multiplicities dst
     num_expected_e4_args += num_intermediate_polys_for_decoder; // decoder multiplicities dst
     num_expected_e4_args += num_intermediate_polys_for_decoder; // decoder lookup arg
     num_expected_e4_args += num_generic_multiplicities_cols;
@@ -1130,7 +1130,9 @@ mod tests {
         // and comparison_hook from non-unrolled stage_2_kernels for delegation circuits.
         run_basic_unrolled_test_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
-            Some(Box::new(crate::prover::stage_2_kernels::tests::comparison_hook)),
+            Some(Box::new(
+                crate::prover::stage_2_kernels::tests::comparison_hook,
+            )),
         );
         ctx.destroy().unwrap();
     }
