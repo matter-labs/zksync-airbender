@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn get_final_reduced_riscv_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_final_reduced_riscv_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     bytecode: &[u32],
     worker: &Worker,
 ) -> MainCircuitPrecomputations<IWithoutByteAccessIsaConfig, A, B> {
@@ -9,8 +9,7 @@ pub fn get_final_reduced_riscv_circuit_setup<A: GoodAllocator, B: GoodAllocator>
         ::final_reduced_risc_v_machine::get_machine(bytecode, delegation_csrs);
     let table_driver = ::final_reduced_risc_v_machine::get_table_driver(bytecode, delegation_csrs);
 
-    let twiddles: Twiddles<_, A> =
-        Twiddles::new(::final_reduced_risc_v_machine::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(final_reduced_risc_v_machine::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::final_reduced_risc_v_machine::DOMAIN_SIZE,
         ::final_reduced_risc_v_machine::LDE_FACTOR,

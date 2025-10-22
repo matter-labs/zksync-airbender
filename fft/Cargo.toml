@@ -17,6 +17,7 @@ unroll.workspace = true
 seq-macro.workspace = true
 itertools.workspace = true
 rayon = "*"
+type-map = "0.5"
 
 [dev-dependencies]
 criterion = "0.5"

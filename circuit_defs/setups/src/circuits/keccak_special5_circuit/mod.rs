@@ -1,12 +1,12 @@
 use super::*;
 
-pub fn get_keccak_special5_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_keccak_special5_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     worker: &Worker,
 ) -> DelegationCircuitPrecomputations<A, B> {
     let machine: DelegationProcessorDescription = keccak_special5::get_delegation_circuit();
     let table_driver = keccak_special5::get_table_driver();
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(keccak_special5::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(keccak_special5::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         keccak_special5::DOMAIN_SIZE,
         keccak_special5::LDE_FACTOR,

@@ -1,6 +1,9 @@
 use super::*;
 
-pub fn get_riscv_without_signed_mul_div_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_riscv_without_signed_mul_div_circuit_setup<
+    A: GoodAllocator + 'static,
+    B: GoodAllocator,
+>(
     bytecode: &[u32],
     worker: &Worker,
 ) -> MainCircuitPrecomputations<IMStandardIsaConfigWithUnsignedMulDiv, A, B> {
@@ -10,8 +13,7 @@ pub fn get_riscv_without_signed_mul_div_circuit_setup<A: GoodAllocator, B: GoodA
     let table_driver =
         ::machine_without_signed_mul_div::get_table_driver(bytecode, delegation_csrs);
 
-    let twiddles: Twiddles<_, A> =
-        Twiddles::new(::machine_without_signed_mul_div::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(::machine_without_signed_mul_div::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::machine_without_signed_mul_div::DOMAIN_SIZE,
         ::machine_without_signed_mul_div::LDE_FACTOR,
