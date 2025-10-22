@@ -33,15 +33,17 @@ struct DelegationRequestMetadata {
   const unsigned timestamp_col;
   const bf memory_timestamp_high_from_circuit_idx;
   const unsigned delegation_type_col;
-  const unsigned abi_mem_offset_high_col;
   const bf in_cycle_write_idx;
+  const unsigned abi_mem_offset_high_col;
+  const bool has_abi_mem_offset_high;
 };
 
 struct DelegationProcessingMetadata {
   const unsigned multiplicity_col;
   const bf delegation_type;
-  const unsigned abi_mem_offset_high_col;
   const unsigned write_timestamp_col;
+  const unsigned abi_mem_offset_high_col;
+  const bool has_abi_mem_offset_high;
 };
 
 constexpr unsigned NUM_LOOKUP_ARGUMENT_KEY_PARTS = 4;

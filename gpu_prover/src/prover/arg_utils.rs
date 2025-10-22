@@ -86,8 +86,9 @@ pub struct DelegationRequestMetadata {
     pub timestamp_col: u32,
     pub memory_timestamp_high_from_circuit_idx: BF,
     pub delegation_type_col: u32,
-    pub abi_mem_offset_high_col: u32,
     pub in_cycle_write_idx: BF,
+    pub abi_mem_offset_high_col: u32,
+    pub has_abi_mem_offset_high: bool,
 }
 
 #[derive(Clone, Default)]
@@ -95,8 +96,9 @@ pub struct DelegationRequestMetadata {
 pub struct DelegationProcessingMetadata {
     pub multiplicity_col: u32,
     pub delegation_type: BF,
-    pub abi_mem_offset_high_col: u32,
     pub write_timestamp_col: u32,
+    pub abi_mem_offset_high_col: u32,
+    pub has_abi_mem_offset_high: bool,
 }
 
 pub fn get_delegation_metadata(
@@ -123,8 +125,9 @@ pub fn get_delegation_metadata(
             timestamp_col: circuit.setup_layout.timestamp_setup_columns.start() as u32,
             memory_timestamp_high_from_circuit_idx,
             delegation_type_col: layout.delegation_type.start() as u32,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
             in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
+            has_abi_mem_offset_high: true,
         };
         (request_metadata, DelegationProcessingMetadata::default())
     } else if process_delegations {
@@ -133,8 +136,9 @@ pub fn get_delegation_metadata(
         let processing_metadata = DelegationProcessingMetadata {
             multiplicity_col: layout.multiplicity.start() as u32,
             delegation_type,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
             write_timestamp_col: layout.write_timestamp.start() as u32,
+            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
+            has_abi_mem_offset_high: true,
         };
         (DelegationRequestMetadata::default(), processing_metadata)
     } else {

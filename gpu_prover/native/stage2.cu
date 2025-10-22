@@ -61,7 +61,8 @@ aggregated_entry_invs_and_multiplicities_arg_impl(const T *challenges_ptr, matri
     setup_cols.add_col(start_col_in_setup);
   }
 
-  const auto [linearization_challenges, gamma] = *challenges_ptr;
+  const e4 gamma = challenges_ptr->gamma;
+  const e4 *linearization_challenges = challenges_ptr->linearization_challenges;
   for (unsigned i = 0; i < num_multiplicities_cols; i++) {
     if (i == num_multiplicities_cols - 1 && gid >= num_table_rows_tail) {
       stage_2_e4_cols.set(e4::zero());
@@ -170,7 +171,8 @@ EXTERN __launch_bounds__(128, 8) __global__
 
   e4 denom = challenges.gamma;
   denom = e4::add(denom, memory_cols.get_at_col(request_metadata.delegation_type_col));
-  denom = e4::add(denom, e4::mul(challenges.linearization_challenges[0], memory_cols.get_at_col(request_metadata.abi_mem_offset_high_col)));
+  if (request_metadata.has_abi_mem_offset_high)
+    denom = e4::add(denom, e4::mul(challenges.linearization_challenges[0], memory_cols.get_at_col(request_metadata.abi_mem_offset_high_col)));
   denom = e4::add(denom, e4::mul(challenges.linearization_challenges[1], timestamp_low));
   denom = e4::add(denom, e4::mul(challenges.linearization_challenges[2], timestamp_high));
 
@@ -198,7 +200,8 @@ EXTERN __launch_bounds__(128, 8) __global__
 
   e4 denom = challenges.gamma;
   denom = e4::add(denom, processing_metadata.delegation_type);
-  denom = e4::add(denom, e4::mul(challenges.linearization_challenges[0], memory_cols.get_at_col(processing_metadata.abi_mem_offset_high_col)));
+  if (processing_metadata.has_abi_mem_offset_high)
+    denom = e4::add(denom, e4::mul(challenges.linearization_challenges[0], memory_cols.get_at_col(processing_metadata.abi_mem_offset_high_col)));
   denom = e4::add(denom, e4::mul(challenges.linearization_challenges[1], memory_cols.get_at_col(processing_metadata.write_timestamp_col)));
   denom = e4::add(denom, e4::mul(challenges.linearization_challenges[2], memory_cols.get_at_col(processing_metadata.write_timestamp_col + 1)));
 

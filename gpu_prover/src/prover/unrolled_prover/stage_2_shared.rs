@@ -759,13 +759,21 @@ pub(crate) fn stage2_handle_delegation_requests(
         )
     };
 
+    let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+    let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+        layout.abi_mem_offset_high.start() as u32
+    } else {
+        0
+    };
+
     let request_metadata = DelegationRequestMetadata {
         multiplicity_col: layout.multiplicity.start() as u32,
         timestamp_col: timestamp_columns.start() as u32,
         memory_timestamp_high_from_circuit_idx,
         delegation_type_col: layout.delegation_type.start() as u32,
-        abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
         in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+        abi_mem_offset_high_col,
+        has_abi_mem_offset_high,
     };
 
     let block_dim = WARP_SIZE * 4;
@@ -795,15 +803,19 @@ pub(crate) fn stage2_process_delegations(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let delegation_challenges = DelegationChallenges::new(delegation_challenges);
-    // reminder to refactor when we finally get rid of abi_mem_offset_high
-    assert!(layout.abi_mem_offset_high.num_elements() > 0);
+    let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+    let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+        layout.abi_mem_offset_high.start() as u32
+    } else {
+        0
+    };
     let processing_metadata = DelegationProcessingMetadata {
         multiplicity_col: layout.multiplicity.start() as u32,
         delegation_type,
-        abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
         write_timestamp_col: layout.write_timestamp.start() as u32,
+        abi_mem_offset_high_col,
+        has_abi_mem_offset_high,
     };
-
     let block_dim = WARP_SIZE * 4;
     let grid_dim = ((1 << log_n) + block_dim - 1) / block_dim;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
