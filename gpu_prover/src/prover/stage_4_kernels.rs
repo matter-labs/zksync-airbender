@@ -4,7 +4,9 @@ use crate::device_structures::{
 };
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
-use crate::prover::arg_utils::{get_grand_product_src_dst_cols, StateLinkageConstraints};
+use crate::prover::arg_utils::{
+    get_grand_product_src_dst_cols, MAX_LAZY_INIT_TEARDOWN_SETS, StateLinkageConstraints,
+};
 use crate::utils::WARP_SIZE;
 
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -27,7 +29,6 @@ type E4 = Ext4Field;
 const MAX_WITNESS_COLS: usize = 672;
 const MAX_MEMORY_COLS: usize = 256;
 const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
-const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 16;
 
 const DOES_NOT_NEED_Z_OMEGA: u32 = u32::MAX;
 

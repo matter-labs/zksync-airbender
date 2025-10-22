@@ -821,8 +821,12 @@ mod tests {
             .stage_2_layout
             .intermediate_poly_for_timestamp_range_check_multiplicity
             .num_elements();
-        let timestamp_range_check_multiplicities_arg_col =
-            translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst);
+        let timestamp_range_check_multiplicities_arg_col = if num_timestamp_multiplicities_cols > 0
+        {
+            translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst)
+        } else {
+            0
+        };
         let num_generic_multiplicities_cols = circuit
             .setup_layout
             .generic_lookup_setup_columns

@@ -710,7 +710,7 @@ impl Default for FlattenedLookupExpressionsForShuffleRamLayout {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct LazyInitTeardownLayout {
     pub init_address_start: u32,
@@ -724,7 +724,7 @@ pub struct LazyInitTeardownLayout {
     pub e4_arg_col: u32,
 }
 
-pub const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 1;
+pub const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 16;
 
 #[derive(Clone)]
 #[repr(C)]

@@ -250,7 +250,7 @@ struct LazyInitTeardownLayout {
   const unsigned e4_arg_col;
 };
 
-constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 1;
+constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 16;
 
 struct LazyInitTeardownLayouts {
   const LazyInitTeardownLayout layouts[MAX_LAZY_INIT_TEARDOWN_SETS];

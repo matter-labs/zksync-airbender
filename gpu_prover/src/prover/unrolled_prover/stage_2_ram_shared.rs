@@ -124,7 +124,17 @@ pub(crate) fn stage2_process_unrolled_grand_product_contributions<F: Fn(usize) -
     let intermediate_polys_for_permutation_masking = &circuit
         .stage_2_layout
         .intermediate_polys_for_permutation_masking;
-    assert_eq!(intermediate_polys_for_permutation_masking.num_elements(), 1);
+    // lazy init circuit does not use masking
+    if circuit
+        .witness_layout
+        .multiplicities_columns_for_timestamp_range_check
+        .num_elements()
+        == 0
+    {
+        assert_eq!(intermediate_polys_for_permutation_masking.num_elements(), 0);
+    } else {
+        assert_eq!(intermediate_polys_for_permutation_masking.num_elements(), 1);
+    }
     let process_ram_access = intermediate_polys_for_memory_argument.num_elements() > 0;
     let process_mask = intermediate_polys_for_permutation_masking.num_elements() > 0;
     let (shuffle_ram_accesses, ram_access_args_start) = if process_ram_access {
