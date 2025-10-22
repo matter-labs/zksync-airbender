@@ -656,10 +656,6 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let num_memory_args = circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .num_elements();
         let mut d_alloc_setup_cols =
             DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
         let mut d_alloc_trace_cols =
@@ -778,6 +774,10 @@ mod tests {
         let range_check_16_e4_args_start =
             translate_e4_offset(args_metadata.ext_4_field_oracles.start());
         // collect locations of timestamp range check args
+        let num_timestamp_multiplicities_cols = circuit
+            .stage_2_layout
+            .intermediate_poly_for_timestamp_range_check_multiplicity
+            .num_elements();
         let args_metadata = &circuit
             .stage_2_layout
             .intermediate_polys_for_timestamp_range_checks;
@@ -787,9 +787,15 @@ mod tests {
             timestamp_range_check_num_bf_args,
             timestamp_range_check_num_e4_args
         );
-        let timestamp_range_check_bf_args_start = args_metadata.base_field_oracles.start();
-        let timestamp_range_check_e4_args_start =
-            translate_e4_offset(args_metadata.ext_4_field_oracles.start());
+        let (timestamp_range_check_bf_args_start, timestamp_range_check_e4_args_start) =
+            if num_timestamp_multiplicities_cols > 0 {
+                let bf_args_start = args_metadata.base_field_oracles.start();
+                let e4_args_start = translate_e4_offset(args_metadata.ext_4_field_oracles.start());
+                (bf_args_start, e4_args_start)
+            } else {
+                assert_eq!(timestamp_range_check_num_bf_args, 0);
+                (0, 0)
+            };
         // collect locations of lazy init address args
         let lazy_init_lookup_set = cached_data.lazy_init_address_range_check_16;
         assert_eq!(
@@ -809,18 +815,18 @@ mod tests {
                 (0, 0, 0)
             };
         // collect locations of generic args
-        let raw_col = circuit
-            .stage_2_layout
-            .intermediate_polys_for_generic_lookup
-            .start();
-        let generic_args_start = translate_e4_offset(raw_col);
+        let generic_args_start = if num_generic_args > 0 {
+            let raw_col = circuit
+                .stage_2_layout
+                .intermediate_polys_for_generic_lookup
+                .start();
+                translate_e4_offset(raw_col, "3")
+        } else {
+            0
+        };
         // collect locations of multiplicity args
         let range_check_16_multiplicities_arg_col =
-            translate_e4_offset(cached_data.range_check_16_multiplicities_dst);
-        let num_timestamp_multiplicities_cols = circuit
-            .stage_2_layout
-            .intermediate_poly_for_timestamp_range_check_multiplicity
-            .num_elements();
+            translate_e4_offset(cached_data.range_check_16_multiplicities_dst;
         let timestamp_range_check_multiplicities_arg_col = if num_timestamp_multiplicities_cols > 0
         {
             translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst)
@@ -870,29 +876,52 @@ mod tests {
                 .num_elements(),
         );
         let lazy_init_teardown_args_start = translate_e4_offset(raw_col);
-        let raw_col = circuit
+        let num_memory_args = circuit
             .stage_2_layout
             .intermediate_polys_for_memory_argument
-            .start();
-        let memory_args_start = translate_e4_offset(raw_col);
+            .num_elements();
+        let memory_args_start = if num_memory_args > 0 {
+            let raw_col = circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument
+                .start();
+            translate_e4_offset(raw_col)
+        } else {
+            0
+        };
         // collect locations of unrolled-specific args
         let next = &circuit
             .stage_2_layout
             .intermediate_poly_for_decoder_accesses;
-        let intermediate_polys_for_decoder_start = translate_e4_offset(next.start());
         let num_intermediate_polys_for_decoder = next.num_elements();
+        let intermediate_polys_for_decoder_start =
+            if num_intermediate_polys_for_decoder > 0 {
+                translate_e4_offset(next.start())
+            } else {
+                0
+            };
 
         let next = &circuit
             .stage_2_layout
             .intermediate_polys_for_state_permutation;
-        let intermediate_polys_for_state_permutation_start = translate_e4_offset(next.start());
         let num_intermediate_polys_for_state_permutation = next.num_elements();
+        let intermediate_polys_for_state_permutation_start =
+            if num_intermediate_polys_for_state_permutation > 0 {
+                translate_e4_offset(next.start())
+            } else {
+                0
+            };
 
         let next = &circuit
             .stage_2_layout
             .intermediate_polys_for_permutation_masking;
-        let intermediate_polys_for_permutation_masking_start = translate_e4_offset(next.start());
         let num_intermediate_polys_for_permutation_masking = next.num_elements();
+        let intermediate_polys_for_permutation_masking_start =
+            if num_intermediate_polys_for_permutation_masking > 0 {
+                translate_e4_offset(next.start())
+            } else {
+                0
+            };
 
         let (_, grand_product_col) = get_grand_product_src_dst_cols(circuit, true);
         let h_stage_2_bf_cols = &h_stage_2_cols[0..num_stage_2_bf_cols * domain_size];

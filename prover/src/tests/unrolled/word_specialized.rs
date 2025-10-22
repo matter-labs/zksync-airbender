@@ -1946,7 +1946,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                     twiddles: &twiddles,
                     lde_precomputations: &lde_precomputations,
                     lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                    log_n: TRACE_LEN_LOG2,
+                    log_n: trace_len.trailing_zeros() as usize,
                     circuit_sequence: 0,
                     delegation_processing_type: Some(delegation_type),
                     prover_data: &prover_data,
