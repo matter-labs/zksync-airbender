@@ -24,7 +24,6 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
-use field::Field;
 use prover::prover_stages::cached_data::ProverCachedData;
 
 type BF = BaseField;
@@ -185,12 +184,22 @@ pub fn compute_stage_2_args_on_main_domain(
             .num_elements(),
         1,
     );
-    assert_eq!(
-        circuit
+    // Surprisingly, lazy init + teardown circuit has no timestamp range checks!
+    // Init timestamps are hardcoded to 0 (by omitting them from argument entries)
+    // and teardown timestamps don't need to be range checked because they must
+    // cancel some access in another circuit whose timestamp was ranged checked
+    // in that other circuit.
+    let num_timestamp_multiplicities_cols = circuit
             .witness_layout
             .multiplicities_columns_for_timestamp_range_check
+            .num_elements();
+    assert!(num_timestamp_multiplicities_cols == 0 || num_timestamp_multiplicities_cols == 1);
+    assert_eq!(
+        num_timestamp_multiplicities_cols,
+        circuit
+            .stage_2_layout
+            .intermediate_poly_for_timestamp_range_check_multiplicity
             .num_elements(),
-        1,
     );
     let num_generic_multiplicities_cols = circuit
         .setup_layout
@@ -319,18 +328,20 @@ pub fn compute_stage_2_args_on_main_domain(
         stream,
     )?;
 
-    stage2_process_timestamp_range_check_entry_invs_and_multiplicity(
-        lookup_challenges,
-        setup_cols,
-        witness_cols,
-        aggregated_entry_invs_for_timestamp_range_checks,
-        d_stage_2_e4_cols,
-        timestamp_range_check_multiplicities_src,
-        timestamp_range_check_multiplicities_dst,
-        log_n,
-        &translate_e4_offset,
-        stream,
-    )?;
+    if num_timestamp_multiplicities_cols > 0 {
+        stage2_process_timestamp_range_check_entry_invs_and_multiplicity(
+            lookup_challenges,
+            setup_cols,
+            witness_cols,
+            aggregated_entry_invs_for_timestamp_range_checks,
+            d_stage_2_e4_cols,
+            timestamp_range_check_multiplicities_src,
+            timestamp_range_check_multiplicities_dst,
+            log_n,
+            &translate_e4_offset,
+            stream,
+        )?;
+    }
 
     if num_intermediate_polys_for_decoder > 0 {
         stage2_process_executor_family_decoder_entry_invs_and_multiplicity(
@@ -806,6 +817,10 @@ mod tests {
         // collect locations of multiplicity args
         let range_check_16_multiplicities_arg_col =
             translate_e4_offset(cached_data.range_check_16_multiplicities_dst);
+        let num_timestamp_multiplicities_cols = circuit
+            .stage_2_layout
+            .intermediate_poly_for_timestamp_range_check_multiplicity
+            .num_elements();
         let timestamp_range_check_multiplicities_arg_col =
             translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst);
         let num_generic_multiplicities_cols = circuit
@@ -990,14 +1005,16 @@ mod tests {
                     i,
                     j,
                 );
-                let j = timestamp_range_check_multiplicities_arg_col;
-                assert_eq!(
-                    get_vectorized_e4_val(i, j),
-                    src_e4.add(j).read(),
-                    "timestamp range check multiplicity e4 failed at row {} col {}",
-                    i,
-                    j,
-                );
+                if num_timestamp_multiplicities_cols > 0 {
+                    let j = timestamp_range_check_multiplicities_arg_col;
+                    assert_eq!(
+                        get_vectorized_e4_val(i, j),
+                        src_e4.add(j).read(),
+                        "timestamp range check multiplicity e4 failed at row {} col {}",
+                        i,
+                        j,
+                    );
+                }
                 let start = generic_lookup_multiplicities_args_start;
                 let end = start + num_generic_multiplicities_cols;
                 for j in start..end {
@@ -1109,7 +1126,12 @@ mod tests {
     #[serial]
     fn test_unrolled_stage_2_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
-        run_basic_unrolled_test_with_word_specialization_impl(Some(Box::new(comparison_hook)));
+        // Tells the CPU test to use this file's comparison_hook for unrolled ciruits,
+        // and comparison_hook from non-unrolled stage_2_kernels for delegation circuits.
+        run_basic_unrolled_test_with_word_specialization_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(crate::prover::stage_2_kernels::tests::comparison_hook)),
+        );
         ctx.destroy().unwrap();
     }
 }

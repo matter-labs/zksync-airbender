@@ -1,5 +1,5 @@
 use crate::device_structures::{MutPtrAndStride, PtrAndStride};
-use crate::field::{BaseField, Ext4Field};
+use crate::field::BaseField;
 use crate::prover::arg_utils::*;
 use crate::utils::WARP_SIZE;
 

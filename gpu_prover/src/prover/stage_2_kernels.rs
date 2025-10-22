@@ -543,7 +543,7 @@ pub fn compute_stage_2_args_on_main_domain(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::device_context::DeviceContext;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
@@ -561,7 +561,7 @@ mod tests {
     type E4 = Ext4Field;
 
     // CPU witness generation and checks are copied from zksync_airbender prover test.
-    fn comparison_hook(gpu_comparison_args: &GpuComparisonArgs) {
+    pub(crate) fn comparison_hook(gpu_comparison_args: &GpuComparisonArgs) {
         let device_properties = DeviceProperties::new().unwrap();
         let GpuComparisonArgs {
             circuit,
