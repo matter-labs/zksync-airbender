@@ -820,13 +820,13 @@ mod tests {
                 .stage_2_layout
                 .intermediate_polys_for_generic_lookup
                 .start();
-                translate_e4_offset(raw_col, "3")
+            translate_e4_offset(raw_col)
         } else {
             0
         };
         // collect locations of multiplicity args
         let range_check_16_multiplicities_arg_col =
-            translate_e4_offset(cached_data.range_check_16_multiplicities_dst;
+            translate_e4_offset(cached_data.range_check_16_multiplicities_dst);
         let timestamp_range_check_multiplicities_arg_col = if num_timestamp_multiplicities_cols > 0
         {
             translate_e4_offset(cached_data.timestamp_range_check_multiplicities_dst)
@@ -894,12 +894,11 @@ mod tests {
             .stage_2_layout
             .intermediate_poly_for_decoder_accesses;
         let num_intermediate_polys_for_decoder = next.num_elements();
-        let intermediate_polys_for_decoder_start =
-            if num_intermediate_polys_for_decoder > 0 {
-                translate_e4_offset(next.start())
-            } else {
-                0
-            };
+        let intermediate_polys_for_decoder_start = if num_intermediate_polys_for_decoder > 0 {
+            translate_e4_offset(next.start())
+        } else {
+            0
+        };
 
         let next = &circuit
             .stage_2_layout
