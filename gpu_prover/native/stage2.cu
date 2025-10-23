@@ -15,11 +15,8 @@ using e2 = ext2_field;
 using e4 = ext4_field;
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_zero_stage_2_last_row_kernel(matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
-                                         vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                         const unsigned num_stage_2_bf_cols,
-                                         const unsigned num_stage_2_e4_cols,
-                                         const unsigned log_n) {
+    void ab_zero_stage_2_last_row_kernel(matrix_setter<bf, st_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                         const unsigned num_stage_2_bf_cols, const unsigned num_stage_2_e4_cols, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -105,9 +102,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_range_check_aggregated_entry
     // st_modifier::cg because these will be reused by later kernels
     vector_setter<e4, st_modifier::cg> aggregated_entry_invs, const unsigned start_col_in_setup, const unsigned multiplicities_src_cols_start,
     const unsigned multiplicities_dst_cols_start, const unsigned num_multiplicities_cols, const unsigned num_table_rows_tail, const unsigned log_n) {
-  aggregated_entry_invs_and_multiplicities_arg_impl<LookupChallenges, 1>(
-      challenges, witness_cols, setup_cols, stage_2_e4_cols, aggregated_entry_invs, start_col_in_setup, multiplicities_src_cols_start,
-      multiplicities_dst_cols_start, num_multiplicities_cols, num_table_rows_tail, log_n);
+  aggregated_entry_invs_and_multiplicities_arg_impl<LookupChallenges, 1>(challenges, witness_cols, setup_cols, stage_2_e4_cols, aggregated_entry_invs,
+                                                                         start_col_in_setup, multiplicities_src_cols_start, multiplicities_dst_cols_start,
+                                                                         num_multiplicities_cols, num_table_rows_tail, log_n);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__ void ab_decoder_aggregated_entry_invs_and_multiplicities_arg_kernel(
@@ -135,12 +132,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_generic_aggregated_entry_inv
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_handle_delegation_requests_kernel(__grid_constant__ const DelegationChallenges challenges,
                                               __grid_constant__ const DelegationRequestMetadata request_metadata,
-                                              matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                              matrix_getter<bf, ld_modifier::cs> setup_cols,
-                                              vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                              const unsigned delegation_aux_poly_col,
-                                              const bool is_unrolled,
-                                              const unsigned log_n) {
+                                              matrix_getter<bf, ld_modifier::cs> memory_cols, matrix_getter<bf, ld_modifier::cs> setup_cols,
+                                              vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned delegation_aux_poly_col,
+                                              const bool is_unrolled, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -182,10 +176,8 @@ EXTERN __launch_bounds__(128, 8) __global__
 
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_process_delegations_kernel(__grid_constant__ const DelegationChallenges challenges,
-                                       __grid_constant__ const DelegationProcessingMetadata processing_metadata,
-                                       matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                       vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                       const unsigned delegation_aux_poly_col,
+                                       __grid_constant__ const DelegationProcessingMetadata processing_metadata, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                       vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned delegation_aux_poly_col,
                                        const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -210,13 +202,11 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_range_check_16_trivial_checks_kernel(
-                               __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
-                               matrix_getter<bf, ld_modifier::cs> witness_cols,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
-                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const unsigned log_n) {
+    void ab_range_check_16_trivial_checks_kernel(__grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
+                                                 matrix_getter<bf, ld_modifier::cs> witness_cols,
+                                                 vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
+                                                 matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
+                                                 vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -239,16 +229,11 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 }
 
-
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_range_check_expressions_kernel(
-                               __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout expressions,
-                               matrix_getter<bf, ld_modifier::cs> witness_cols,
-                               matrix_getter<bf, ld_modifier::cs> memory_cols,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs,
-                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const unsigned log_n) {
+    void ab_range_check_expressions_kernel(__grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout expressions,
+                                           matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                           vector_getter<e4, ld_modifier::ca> aggregated_entry_invs, matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
+                                           vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -273,17 +258,11 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 }
 
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_range_check_expressions_for_shuffle_ram_kernel(
-                               __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
-                               matrix_getter<bf, ld_modifier::cs> setup_cols,
-                               matrix_getter<bf, ld_modifier::cs> witness_cols,
-                               matrix_getter<bf, ld_modifier::cs> memory_cols,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs,
-                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const bf memory_timestamp_high_from_circuit_idx,
-                               const unsigned log_n) {
+EXTERN __launch_bounds__(128, 8) __global__ void ab_range_check_expressions_for_shuffle_ram_kernel(
+    __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram, matrix_getter<bf, ld_modifier::cs> setup_cols,
+    matrix_getter<bf, ld_modifier::cs> witness_cols, matrix_getter<bf, ld_modifier::cs> memory_cols, vector_getter<e4, ld_modifier::ca> aggregated_entry_invs,
+    matrix_setter<bf, st_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+    const bf memory_timestamp_high_from_circuit_idx, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -311,13 +290,11 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_lazy_init_range_checks_kernel(
-                               __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-                               matrix_getter<bf, ld_modifier::cs> memory_cols,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
-                               matrix_setter<bf, st_modifier::cs> stage_2_bf_cols,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const unsigned log_n) {
+    void ab_lazy_init_range_checks_kernel(__grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
+                                          matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                          vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_range_check_16,
+                                          matrix_setter<bf, st_modifier::cs> stage_2_bf_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                          const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -341,14 +318,10 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_decoder_lookup_intermediate_poly_kernel(
-                               matrix_getter<bf, ld_modifier::cs> memory_cols,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_decoder_lookups,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const unsigned decoder_lookup_arg_col,
-                               const unsigned predicate_col,
-                               const unsigned pc_start_col,
-                               const unsigned log_n) {
+    void ab_decoder_lookup_intermediate_poly_kernel(matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                                    vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_decoder_lookups,
+                                                    vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned decoder_lookup_arg_col,
+                                                    const unsigned predicate_col, const unsigned pc_start_col, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -374,13 +347,10 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_generic_lookup_intermediate_polys_kernel(
-                               matrix_getter<unsigned, ld_modifier::cs> generic_lookups_args_to_table_entries_map,
-                               vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_generic_lookups,
-                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                               const unsigned generic_args_start,
-                               const unsigned num_generic_args,
-                               const unsigned log_n) {
+    void ab_generic_lookup_intermediate_polys_kernel(matrix_getter<unsigned, ld_modifier::cs> generic_lookups_args_to_table_entries_map,
+                                                     vector_getter<e4, ld_modifier::ca> aggregated_entry_invs_for_generic_lookups,
+                                                     vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned generic_args_start,
+                                                     const unsigned num_generic_args, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n - 1)
@@ -397,12 +367,9 @@ EXTERN __launch_bounds__(128, 8) __global__
 }
 
 DEVICE_FORCEINLINE
-void grand_product_lazy_init_contributions(const MemoryChallenges &challenges,
-                                           const LazyInitTeardownLayouts &layouts,
-                                           matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                           vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                           bool &num_over_denom_acc_is_initialized,
-                                           e4 &num_over_denom_acc) {
+void grand_product_lazy_init_contributions(const MemoryChallenges &challenges, const LazyInitTeardownLayouts &layouts,
+                                           matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                           bool &num_over_denom_acc_is_initialized, e4 &num_over_denom_acc) {
   for (unsigned i = 0; i < layouts.num_init_teardown_sets; i++) {
     const auto &layout = layouts.layouts[i];
 
@@ -435,21 +402,17 @@ void grand_product_lazy_init_contributions(const MemoryChallenges &challenges,
   }
 }
 
-template <bool UNROLLED> DEVICE_FORCEINLINE
-void grand_product_ram_access_contributions(const MemoryChallenges &challenges,
-                                            const ShuffleRamAccesses &shuffle_ram_accesses,
-                                            matrix_getter<bf, ld_modifier::cs> memory_or_setup_cols,
-                                            matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                            vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                            const bf memory_timestamp_high_from_circuit_idx,
-                                            const unsigned memory_args_start,
-                                            bool &num_over_denom_acc_is_initialized,
-                                            e4 &num_over_denom_acc) {
+template <bool UNROLLED>
+DEVICE_FORCEINLINE void
+grand_product_ram_access_contributions(const MemoryChallenges &challenges, const ShuffleRamAccesses &shuffle_ram_accesses,
+                                       matrix_getter<bf, ld_modifier::cs> memory_or_setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                       vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const bf memory_timestamp_high_from_circuit_idx,
+                                       const unsigned memory_args_start, bool &num_over_denom_acc_is_initialized, e4 &num_over_denom_acc) {
   // first, compute a couple values common across accesses:
   const bf write_timestamp_for_shuffle_ram_low = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
   const bf write_timestamp_for_shuffle_ram_high = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
-  const bf write_timestamp_high = UNROLLED ? write_timestamp_for_shuffle_ram_high :
-      bf::add(write_timestamp_for_shuffle_ram_high, memory_timestamp_high_from_circuit_idx);
+  const bf write_timestamp_high =
+      UNROLLED ? write_timestamp_for_shuffle_ram_high : bf::add(write_timestamp_for_shuffle_ram_high, memory_timestamp_high_from_circuit_idx);
   const e4 write_timestamp_high_contribution = e4::mul(challenges.timestamp_high_challenge, write_timestamp_high);
 #pragma unroll 1
   for (unsigned i = 0; i < shuffle_ram_accesses.num_accesses; i++) {
@@ -524,13 +487,11 @@ void grand_product_ram_access_contributions(const MemoryChallenges &challenges,
 
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_lazy_init_and_ram_access_kernel(__grid_constant__ const MemoryChallenges challenges,
-                                           __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-                                           __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-                                           matrix_getter<bf, ld_modifier::cs> setup_cols,
-                                           matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                           vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                           const bf memory_timestamp_high_from_circuit_idx,
-                                           const unsigned memory_args_start, const unsigned log_n) {
+                                            __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+                                            __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
+                                            matrix_getter<bf, ld_modifier::cs> setup_cols, matrix_getter<bf, ld_modifier::cs> memory_cols,
+                                            vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const bf memory_timestamp_high_from_circuit_idx,
+                                            const unsigned memory_args_start, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -545,21 +506,18 @@ EXTERN __launch_bounds__(128, 8) __global__
   bool num_over_denom_acc_is_initialized = false;
 
   grand_product_ram_access_contributions<false>(challenges, shuffle_ram_accesses, setup_cols, memory_cols, stage_2_e4_cols,
-                                                memory_timestamp_high_from_circuit_idx, memory_args_start,
-                                                num_over_denom_acc_is_initialized, num_over_denom_acc);
+                                                memory_timestamp_high_from_circuit_idx, memory_args_start, num_over_denom_acc_is_initialized,
+                                                num_over_denom_acc);
 
   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-    grand_product_lazy_init_contributions(challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
-                                          num_over_denom_acc_is_initialized, num_over_denom_acc);
+    grand_product_lazy_init_contributions(challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols, num_over_denom_acc_is_initialized,
+                                          num_over_denom_acc);
 }
 
 DEVICE_FORCEINLINE
-void grand_product_machine_state_contributions(const MachineStateChallenges &challenges,
-                                               const MachineStateLayout &layout,
-                                               matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                               vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                               bool &num_over_denom_acc_is_initialized,
-                                               e4 &num_over_denom_acc) {
+void grand_product_machine_state_contributions(const MachineStateChallenges &challenges, const MachineStateLayout &layout,
+                                               matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
+                                               bool &num_over_denom_acc_is_initialized, e4 &num_over_denom_acc) {
   e4 numerator{challenges.additive_term};
   numerator = e4::add(numerator, memory_cols.get_at_col(layout.final_pc_start));
   const unsigned final_cols[3] = {layout.final_pc_start + 1, layout.final_timestamp_start, layout.final_timestamp_start + 1};
@@ -586,20 +544,12 @@ void grand_product_machine_state_contributions(const MachineStateChallenges &cha
 }
 
 // one kernel handles all cases, to avoid re-reading e4 column
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_unrolled_grand_product_contributions_kernel(__grid_constant__ const MemoryChallenges memory_challenges,
-                                                        __grid_constant__ const MachineStateChallenges machine_state_challenges,
-                                                        __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-                                                        __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-                                                        __grid_constant__ const MachineStateLayout machine_state_layout,
-                                                        matrix_getter<bf, ld_modifier::cs> memory_cols,
-                                                        vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                                        const unsigned ram_access_args_start,
-                                                        const unsigned mask_arg_col,
-                                                        const unsigned execute_col,
-                                                        const bool process_ram_access,
-                                                        const bool process_mask,
-                                                        const unsigned log_n) {
+EXTERN __launch_bounds__(128, 8) __global__ void ab_unrolled_grand_product_contributions_kernel(
+    __grid_constant__ const MemoryChallenges memory_challenges, __grid_constant__ const MachineStateChallenges machine_state_challenges,
+    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+    __grid_constant__ const MachineStateLayout machine_state_layout, matrix_getter<bf, ld_modifier::cs> memory_cols,
+    vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned ram_access_args_start, const unsigned mask_arg_col, const unsigned execute_col,
+    const bool process_ram_access, const bool process_mask, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -613,12 +563,12 @@ EXTERN __launch_bounds__(128, 8) __global__
   bool num_over_denom_acc_is_initialized = false;
 
   if (process_ram_access)
-    grand_product_ram_access_contributions<true>(memory_challenges, shuffle_ram_accesses, memory_cols, memory_cols, stage_2_e4_cols,
-                                                 bf::zero(), ram_access_args_start, num_over_denom_acc_is_initialized, num_over_denom_acc);
+    grand_product_ram_access_contributions<true>(memory_challenges, shuffle_ram_accesses, memory_cols, memory_cols, stage_2_e4_cols, bf::zero(),
+                                                 ram_access_args_start, num_over_denom_acc_is_initialized, num_over_denom_acc);
 
   if (machine_state_layout.process_machine_state)
-    grand_product_machine_state_contributions(machine_state_challenges, machine_state_layout, memory_cols, stage_2_e4_cols,
-                                              num_over_denom_acc_is_initialized, num_over_denom_acc);
+    grand_product_machine_state_contributions(machine_state_challenges, machine_state_layout, memory_cols, stage_2_e4_cols, num_over_denom_acc_is_initialized,
+                                              num_over_denom_acc);
 
   // apply mask
   if (process_mask) {
@@ -633,8 +583,8 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 
   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-    grand_product_lazy_init_contributions(memory_challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
-                                          num_over_denom_acc_is_initialized, num_over_denom_acc);
+    grand_product_lazy_init_contributions(memory_challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols, num_over_denom_acc_is_initialized,
+                                          num_over_denom_acc);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__

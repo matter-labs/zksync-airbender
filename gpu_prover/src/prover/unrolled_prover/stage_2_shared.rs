@@ -465,13 +465,9 @@ pub(crate) fn stage2_process_executor_family_decoder_intermediate_poly<F: Fn(usi
         .intermediate_poly_for_decoder_accesses;
     assert_eq!(decoder_lookup_poly.num_elements(), 1);
     let decoder_lookup_arg_col = translate_e4_offset(decoder_lookup_poly.start());
-
     let intermediate_state_layout = circuit.memory_layout.intermediate_state_layout.unwrap();
-
     let predicate_col = intermediate_state_layout.execute.start();
-
     let pc_start_col = intermediate_state_layout.pc.start();
-
     let block_dim = WARP_SIZE * 4;
     let grid_dim = ((1 << log_n) + block_dim - 1) / block_dim;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -741,7 +737,6 @@ pub(crate) fn stage2_handle_delegation_requests(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let delegation_challenges = DelegationChallenges::new(delegation_challenges);
-
     let (timestamp_columns, memory_timestamp_high_from_circuit_idx) = if is_unrolled {
         assert!(memory_timestamp_high_from_circuit_idx.is_none());
         (
@@ -758,14 +753,12 @@ pub(crate) fn stage2_handle_delegation_requests(
             memory_timestamp_high_from_circuit_idx.unwrap(),
         )
     };
-
     let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
     let abi_mem_offset_high_col = if has_abi_mem_offset_high {
         layout.abi_mem_offset_high.start() as u32
     } else {
         0
     };
-
     let request_metadata = DelegationRequestMetadata {
         multiplicity_col: layout.multiplicity.start() as u32,
         timestamp_col: timestamp_columns.start() as u32,
@@ -775,7 +768,6 @@ pub(crate) fn stage2_handle_delegation_requests(
         abi_mem_offset_high_col,
         has_abi_mem_offset_high,
     };
-
     let block_dim = WARP_SIZE * 4;
     let grid_dim = ((1 << log_n) + block_dim - 1) / block_dim;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);

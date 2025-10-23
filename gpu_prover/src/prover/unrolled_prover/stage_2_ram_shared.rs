@@ -113,7 +113,6 @@ pub(crate) fn stage2_process_unrolled_grand_product_contributions<F: Fn(usize) -
 ) -> CudaResult<()> {
     let memory_challenges = MemoryChallenges::new(memory_challenges);
     let machine_state_challenges = MachineStateChallenges::new(machine_state_challenges);
-
     let intermediate_polys_for_memory_argument = &circuit
         .stage_2_layout
         .intermediate_polys_for_memory_argument;

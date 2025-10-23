@@ -623,6 +623,7 @@ pub(crate) mod tests {
         let mut setup_trace_view = setup.ldes[domain_index].trace.row_view(range.clone());
         let mut lookup_mapping_view = lookup_mapping.row_view(range.clone());
         unsafe {
+            let now = std::time::Instant::now();
             for i in 0..domain_size {
                 let setup_trace_view_row = setup_trace_view.current_row_ref();
                 let trace_view_row = trace_view.current_row_ref();
@@ -643,6 +644,10 @@ pub(crate) mod tests {
                 setup_trace_view.advance_row();
                 trace_view.advance_row();
             }
+            println!(
+                "repacking setup and trace as column major took {:?}",
+                now.elapsed()
+            );
             // Repack lookup_mapping in an array with 1 padding row on the bottom
             // to ensure warp accesses are aligned
             let now = std::time::Instant::now();
@@ -655,7 +660,7 @@ pub(crate) mod tests {
                 }
                 lookup_mapping_view.advance_row();
             }
-            println!("now.elapsed() {:?}", now.elapsed());
+            println!("repacking lookup_mapping took {:?}", now.elapsed());
         }
         let h_lookup_challenges = LookupChallenges::new(
             &prover_data
@@ -1025,7 +1030,7 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_2_for_main_and_blake() {
+    fn test_stage_2_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -1037,7 +1042,7 @@ pub(crate) mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_2_for_main_and_keccak() {
+    fn test_stage_2_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
             Some(Box::new(comparison_hook)),

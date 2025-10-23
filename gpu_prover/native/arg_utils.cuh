@@ -177,8 +177,8 @@ DEVICE_FORCEINLINE void apply_coeff(const unsigned coeff, bf &val) {
 }
 
 template <bool APPLY_CONSTANT_TERMS, typename T>
-DEVICE_FORCEINLINE void eval_a_and_b(bf a_and_b[2], const TEMPORARYFlattenedLookupExpressionsLayout &expressions, unsigned &expression_idx, unsigned &flat_term_idx,
-                                     const T &witness_cols, const T &memory_cols, const bool constant_terms_are_zero) {
+DEVICE_FORCEINLINE void eval_a_and_b(bf a_and_b[2], const TEMPORARYFlattenedLookupExpressionsLayout &expressions, unsigned &expression_idx,
+                                     unsigned &flat_term_idx, const T &witness_cols, const T &memory_cols, const bool constant_terms_are_zero) {
 #pragma unroll
   for (int j = 0; j < 2; j++, expression_idx++) {
     const unsigned lim = flat_term_idx + expressions.num_terms_per_expression[expression_idx];

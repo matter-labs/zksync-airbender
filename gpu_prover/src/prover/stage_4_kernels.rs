@@ -5,7 +5,7 @@ use crate::device_structures::{
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
 use crate::prover::arg_utils::{
-    get_grand_product_src_dst_cols, MAX_LAZY_INIT_TEARDOWN_SETS, StateLinkageConstraints,
+    get_grand_product_src_dst_cols, StateLinkageConstraints, MAX_LAZY_INIT_TEARDOWN_SETS,
 };
 use crate::utils::WARP_SIZE;
 
