@@ -190,6 +190,9 @@ unsafe fn workload() -> ! {
         // This is similar to 4, combine 2 proofs into one, but now we combine N proofs into one.
         // The advantage is in the number of proving rounds you need to do.
         // Option 4 requires O(n) rounds of proving, whilst this requires a single round (time will be closer to O(logn), due to recursion).
+        //
+        // The right way to think about this method is a rolling hash over circuits:
+        // keccak(..., keccak(keccak(output1 || output2), output3), output4, ... outputN)
         6 => {
             let no_circuits = riscv_common::csr_read_word();
             assert!(no_circuits >= 2, "Requires at least two circuits to verify");
@@ -202,6 +205,12 @@ unsafe fn workload() -> ! {
             // verify first proof & keep it's output to ensure all proof come from the same chain
             // NOTE: this could be any other proof, not necessarily the first one.
             let first_output = full_statement_verifier::verify_recursion_layer();
+
+            // we need a rolling hash over all proofs's outputs
+            let mut result = [0u32; 16];
+
+            // chain remains the same, across all proofs
+            result[8..16].copy_from_slice(&first_output[8..16]);
 
             update_from_recursive_circuit_output(&mut hasher, &first_output);
 
@@ -217,14 +226,13 @@ unsafe fn workload() -> ! {
 
                 // build the rolling hash over proofs's outputs
                 update_from_recursive_circuit_output(&mut hasher, &output);
+
+                // TODO: in the future - set the result[7] to be equal to 0.
+                result[0..8].copy_from_slice(&hasher.finalize());
+
+                hasher = Keccak32::new();
+                update_from_recursive_circuit_output(&mut hasher, &result);
             }
-
-            let mut result = [0u32; 16];
-
-            // TODO: in the future - set the result[7] to be equal to 0.
-            result[0..8].copy_from_slice(&hasher.finalize());
-            // chain remains the same
-            result[8..16].copy_from_slice(&first_output[8..16]);
 
             riscv_common::zksync_os_finish_success_extended(&result);
         }
