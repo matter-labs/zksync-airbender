@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn get_main_riscv_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_main_riscv_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     bytecode: &[u32],
     worker: &Worker,
 ) -> MainCircuitPrecomputations<IMStandardIsaConfig, A, B> {
@@ -9,7 +9,7 @@ pub fn get_main_riscv_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
         ::risc_v_cycles::get_machine(bytecode, delegation_csrs);
     let table_driver = ::risc_v_cycles::get_table_driver(bytecode, delegation_csrs);
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(::risc_v_cycles::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(::risc_v_cycles::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::risc_v_cycles::DOMAIN_SIZE,
         ::risc_v_cycles::LDE_FACTOR,

@@ -87,12 +87,7 @@ generate_witness_unrolled_non_memory_kernel!(ab_generate_add_sub_lui_auipc_mop_w
 generate_witness_unrolled_non_memory_kernel!(ab_generate_jump_branch_slt_witness_kernel);
 generate_witness_unrolled_non_memory_kernel!(ab_generate_mul_div_witness_kernel);
 generate_witness_unrolled_non_memory_kernel!(ab_generate_mul_div_unsigned_witness_kernel);
-generate_witness_unrolled_non_memory_kernel!(
-    ab_generate_shift_binary_csr_all_delegations_witness_kernel
-);
-generate_witness_unrolled_non_memory_kernel!(
-    ab_generate_shift_binary_csr_blake_only_delegation_witness_kernel
-);
+generate_witness_unrolled_non_memory_kernel!(ab_generate_shift_binary_csr_witness_kernel);
 
 pub fn generate_witness_values_unrolled_non_memory(
     circuit_type: UnrolledNonMemoryCircuitType,
@@ -135,12 +130,7 @@ pub fn generate_witness_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::JumpBranchSlt => ab_generate_jump_branch_slt_witness_kernel,
         UnrolledNonMemoryCircuitType::MulDiv => ab_generate_mul_div_witness_kernel,
         UnrolledNonMemoryCircuitType::MulDivUnsigned => ab_generate_mul_div_unsigned_witness_kernel,
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsrAllDelegations => {
-            ab_generate_shift_binary_csr_all_delegations_witness_kernel
-        }
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsrBlakeOnlyDelegation => {
-            ab_generate_shift_binary_csr_blake_only_delegation_witness_kernel
-        }
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr => ab_generate_shift_binary_csr_witness_kernel,
     };
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
 }

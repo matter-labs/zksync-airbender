@@ -125,6 +125,23 @@ impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
     }
 }
 
+impl<E: TwoAdicField, A: GoodAllocator + 'static> Twiddles<E, A> {
+    pub fn get(domain_size: usize, worker: &Worker) -> std::sync::Arc<Self> {
+        use std::collections::HashMap;
+        use std::sync::{Arc, LazyLock, Mutex};
+        use type_map::concurrent::TypeMap;
+        static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
+        let mut guard = CACHE.lock().unwrap();
+        let map = guard
+            .entry()
+            .or_insert_with(HashMap::<usize, Arc<Self>>::new);
+        let entry = map
+            .entry(domain_size)
+            .or_insert_with(|| Arc::new(Self::new(domain_size, worker)));
+        entry.clone()
+    }
+}
+
 // All our FFTs are natural ordered values -> bitreversed unscaled monomials -> natural ordered values in other coset,
 // so we put scaling by 1/N and multiplication by powers of coset offset to the second FFT
 pub struct DomainBoundLdePrecomputations<A: GoodAllocator> {

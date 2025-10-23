@@ -138,7 +138,7 @@ fn artifacts_for_unrolled_circuits_params_impl(
 
 pub fn get_unrolled_circuits_setups_for_machine_type<
     C: MachineConfig,
-    A: GoodAllocator,
+    A: GoodAllocator + 'static,
     B: GoodAllocator,
 >(
     binary_image: &[u32],
