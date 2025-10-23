@@ -56,8 +56,10 @@ members = [
     "circuit_defs/unrolled_circuits/inits_and_teardowns",
     "circuit_defs/unrolled_circuits/load_store_word_only",
     "circuit_defs/unrolled_circuits/load_store_subword_only",
-    "circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations",
-    "circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation",
+    "circuit_defs/unrolled_circuits/shift_binary_csr",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine",
+
+    "riscv_transpiler",
 ]
 
 default-members = [
@@ -102,8 +104,8 @@ default-members = [
     "circuit_defs/unrolled_circuits/inits_and_teardowns",
     "circuit_defs/unrolled_circuits/load_store_word_only",
     "circuit_defs/unrolled_circuits/load_store_subword_only",
-    "circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations",
-    "circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation",
+    "circuit_defs/unrolled_circuits/shift_binary_csr",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine",
 ]
 
 [workspace.package]
@@ -149,8 +151,8 @@ load_store_subword_only = { path = "./circuit_defs/unrolled_circuits/load_store_
 load_store_word_only = { path = "./circuit_defs/unrolled_circuits/load_store_word_only" }
 mul_div = { path = "./circuit_defs/unrolled_circuits/mul_div" }
 mul_div_unsigned = { path = "./circuit_defs/unrolled_circuits/mul_div_unsigned" }
-shift_binary_csr_all_delegations = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations" }
-shift_binary_csr_blake_only_delegation = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation" }
+shift_binary_csr = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr" }
+unified_reduced_machine = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine" }
 
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
 setups = { path = "./circuit_defs/setups" }
@@ -163,6 +165,7 @@ poseidon2 = { path = "./poseidon2", default-features = false }
 
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
+riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator" }
@@ -179,6 +182,13 @@ arrayvec = { version = "0.7", default-features = false }
 itertools = { version = "0.14" }
 log = "0.4"
 sha3 = { version = "*", default-features = false }
+
+[profile.dev]
+debug-assertions = true
+opt-level = 1
+lto = "fat"
+codegen-units = 16
+debug = false
 
 [profile.release]
 opt-level = 3

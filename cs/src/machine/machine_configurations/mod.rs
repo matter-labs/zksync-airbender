@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn rom_table_test() {
         let image = [100_000, 200_000, 0];
-        let table = create_table_for_rom_image::<Mersenne31Field, 16>(&image, 15);
+        let table = create_table_for_rom_image::<Mersenne31Field, 4>(&image, 15);
 
         // Now table should have entries:
         // 0 -- 0x86a0 0x1

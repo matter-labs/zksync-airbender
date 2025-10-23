@@ -86,6 +86,8 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
 
 #[cfg(feature = "verifier_binaries")]
 pub mod verifier_binaries {
+    use super::*;
+
     pub const BASE_LAYER_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/base_layer.bin");
     pub const RECURSION_LAYER_VERIFIER: &[u8] =
         include_bytes!("../../tools/verifier/recursion_layer.bin");

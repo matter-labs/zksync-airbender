@@ -22,259 +22,196 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
     width_3_lookups: &[
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(7usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(16usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(29usize)),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[
+                            (
+                                Mersenne31Field(2048u32),
+                                ColumnAddress::MemorySubtree(0usize),
+                            ),
+                            (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(6usize)),
+                        ],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(16usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(29usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
             ],
             table_index: TableIndex::Constant(TableType::KeccakPermutationIndices12),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(7usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(42usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(55usize)),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[
+                            (
+                                Mersenne31Field(2048u32),
+                                ColumnAddress::MemorySubtree(0usize),
+                            ),
+                            (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(6usize)),
+                        ],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(42usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(55usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
             ],
             table_index: TableIndex::Constant(TableType::KeccakPermutationIndices34),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(7usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(68usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::MemorySubtree(81usize)),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[
+                            (
+                                Mersenne31Field(2048u32),
+                                ColumnAddress::MemorySubtree(0usize),
+                            ),
+                            (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(6usize)),
+                        ],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(68usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
+                VerifierCompiledLookupExpression::Expression(
+                    StaticVerifierCompiledDegree1Constraint {
+                        linear_terms: &[(
+                            Mersenne31Field(1u32),
+                            ColumnAddress::MemorySubtree(81usize),
+                        )],
+                        constant_term: Mersenne31Field(0u32),
+                    },
+                ),
             ],
             table_index: TableIndex::Constant(TableType::KeccakPermutationIndices56),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(32usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(33usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(34usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(35usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(36usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(37usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(38usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(38usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(39usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(40usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(41usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(41usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(42usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(43usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(44usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(44usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(45usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(46usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(47usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(47usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(48usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(49usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(50usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(50usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(51usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(52usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(53usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(53usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(54usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(55usize)),
+            ],
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
+        },
+        VerifierCompiledLookupSetDescription {
+            input_columns: [
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(56usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(57usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(58usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(35usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(37usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(65536u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(34usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(38usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(59usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(60usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(61usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(62usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(65536u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(41usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(44usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(63usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(64usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(65536u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(47usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(50usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(65usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(66usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(65536u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(53usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(56usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(66usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(67usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(68usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -282,47 +219,47 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(70usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(71usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(72usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(73usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(74usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(75usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(75usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(76usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(77usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(78usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(78usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(79usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(80usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(81usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(81usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(82usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(83usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(84usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(62usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(84usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(85usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(86usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(87usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -330,7 +267,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(89usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(90usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -338,191 +275,31 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(92usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(93usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(72usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(393216u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(71usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(75usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(94usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(95usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(96usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(393216u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(78usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(81usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(97usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(98usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(393216u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(84usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(87usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(99usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(100usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(786432u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(393216u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(262144u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(90usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(93usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(100usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(101usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(102usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -530,23 +307,23 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(104usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(105usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(106usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(107usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(108usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(109usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(87usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(109usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(110usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(111usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(112usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -554,7 +331,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(114usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(115usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -562,7 +339,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(117usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(118usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -570,7 +347,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(120usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(121usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -578,7 +355,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(123usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(124usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -586,687 +363,87 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(126usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(127usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(106usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(196608u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(655360u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(105usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(109usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(128usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(129usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(196608u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(655360u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(112usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(115usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(130usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(131usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(196608u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(655360u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(118usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(121usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(131usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(132usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(133usize)),
             ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(112usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(196608u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(655360u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(720896u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(458752u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(124usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(127usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(134usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(135usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(136usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(137usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(138usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(138usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(139usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(140usize)),
+            ],
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
+        },
+        VerifierCompiledLookupSetDescription {
+            input_columns: [
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(141usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(142usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(143usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(143usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(144usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(145usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(146usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(146usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(147usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(148usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(149usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(149usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(150usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(151usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(152usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(152usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(153usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(154usize)),
+                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(155usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(155usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(156usize)),
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(157usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
                 VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(158usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(159usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(160usize)),
             ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(139usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(327680u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(138usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(142usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(161usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(162usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(327680u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(145usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(148usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(163usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(164usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(327680u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(151usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(154usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(165usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(166usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(589824u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(327680u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(157usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(160usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(167usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(168usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(169usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(170usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(171usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(173usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(174usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(175usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(176usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(177usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(178usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(179usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(180usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(181usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(182usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(183usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(184usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(185usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(186usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(187usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(188usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(189usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(190usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(191usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(192usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(193usize)),
-            ],
-            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(172usize)),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(171usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(175usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(194usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(195usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(178usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(181usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(196usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(197usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(184usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(187usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(198usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(199usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
-        },
-        VerifierCompiledLookupSetDescription {
-            input_columns: [
-                VerifierCompiledLookupExpression::Expression(
-                    StaticVerifierCompiledDegree1Constraint {
-                        linear_terms: &[
-                            (
-                                Mersenne31Field(983040u32),
-                                ColumnAddress::WitnessSubtree(4usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(94usize),
-                            ),
-                            (
-                                Mersenne31Field(131072u32),
-                                ColumnAddress::WitnessSubtree(57usize),
-                            ),
-                            (
-                                Mersenne31Field(851968u32),
-                                ColumnAddress::WitnessSubtree(58usize),
-                            ),
-                            (
-                                Mersenne31Field(524288u32),
-                                ColumnAddress::WitnessSubtree(59usize),
-                            ),
-                            (
-                                Mersenne31Field(917504u32),
-                                ColumnAddress::WitnessSubtree(60usize),
-                            ),
-                            (
-                                Mersenne31Field(1u32),
-                                ColumnAddress::WitnessSubtree(190usize),
-                            ),
-                            (
-                                Mersenne31Field(256u32),
-                                ColumnAddress::WitnessSubtree(193usize),
-                            ),
-                        ],
-                        constant_term: Mersenne31Field(0u32),
-                    },
-                ),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(200usize)),
-                VerifierCompiledLookupExpression::Variable(ColumnAddress::WitnessSubtree(201usize)),
-            ],
-            table_index: TableIndex::Constant(TableType::RotL),
+            table_index: TableIndex::Variable(ColumnAddress::WitnessSubtree(137usize)),
         },
     ],
     range_check_16_lookup_expressions: &[
@@ -1294,7 +471,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(18usize),
+                    ColumnAddress::WitnessSubtree(20usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(4usize)),
             ],
@@ -1312,7 +489,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(18usize),
+                    ColumnAddress::WitnessSubtree(20usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(5usize)),
             ],
@@ -1326,7 +503,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(19usize),
+                    ColumnAddress::WitnessSubtree(21usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(10usize)),
             ],
@@ -1344,7 +521,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(19usize),
+                    ColumnAddress::WitnessSubtree(21usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(11usize)),
             ],
@@ -1358,7 +535,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(20usize),
+                    ColumnAddress::WitnessSubtree(22usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(14usize)),
             ],
@@ -1376,7 +553,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(20usize),
+                    ColumnAddress::WitnessSubtree(22usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(15usize)),
             ],
@@ -1390,7 +567,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(21usize),
+                    ColumnAddress::WitnessSubtree(23usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(21usize)),
             ],
@@ -1408,7 +585,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(21usize),
+                    ColumnAddress::WitnessSubtree(23usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(22usize)),
             ],
@@ -1422,7 +599,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(22usize),
+                    ColumnAddress::WitnessSubtree(24usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(27usize)),
             ],
@@ -1440,7 +617,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(22usize),
+                    ColumnAddress::WitnessSubtree(24usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(28usize)),
             ],
@@ -1454,7 +631,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(23usize),
+                    ColumnAddress::WitnessSubtree(25usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(34usize)),
             ],
@@ -1472,7 +649,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(23usize),
+                    ColumnAddress::WitnessSubtree(25usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(35usize)),
             ],
@@ -1486,7 +663,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(24usize),
+                    ColumnAddress::WitnessSubtree(26usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(40usize)),
             ],
@@ -1504,7 +681,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(24usize),
+                    ColumnAddress::WitnessSubtree(26usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(41usize)),
             ],
@@ -1518,7 +695,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(25usize),
+                    ColumnAddress::WitnessSubtree(27usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(47usize)),
             ],
@@ -1536,7 +713,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(25usize),
+                    ColumnAddress::WitnessSubtree(27usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(48usize)),
             ],
@@ -1550,7 +727,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(26usize),
+                    ColumnAddress::WitnessSubtree(28usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(53usize)),
             ],
@@ -1568,7 +745,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(26usize),
+                    ColumnAddress::WitnessSubtree(28usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(54usize)),
             ],
@@ -1582,7 +759,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(27usize),
+                    ColumnAddress::WitnessSubtree(29usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(60usize)),
             ],
@@ -1600,7 +777,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(27usize),
+                    ColumnAddress::WitnessSubtree(29usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(61usize)),
             ],
@@ -1614,7 +791,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(28usize),
+                    ColumnAddress::WitnessSubtree(30usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(66usize)),
             ],
@@ -1632,7 +809,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(28usize),
+                    ColumnAddress::WitnessSubtree(30usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(67usize)),
             ],
@@ -1646,7 +823,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(29usize),
+                    ColumnAddress::WitnessSubtree(31usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(73usize)),
             ],
@@ -1664,7 +841,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(29usize),
+                    ColumnAddress::WitnessSubtree(31usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(74usize)),
             ],
@@ -1678,7 +855,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(30usize),
+                    ColumnAddress::WitnessSubtree(32usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(79usize)),
             ],
@@ -1696,7 +873,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(30usize),
+                    ColumnAddress::WitnessSubtree(32usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(80usize)),
             ],
@@ -1710,7 +887,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(524288u32),
-                    ColumnAddress::WitnessSubtree(31usize),
+                    ColumnAddress::WitnessSubtree(33usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(86usize)),
             ],
@@ -1728,7 +905,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                 ),
                 (
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(31usize),
+                    ColumnAddress::WitnessSubtree(33usize),
                 ),
                 (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(87usize)),
             ],
@@ -1738,13 +915,13 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
     offset_for_special_shuffle_ram_timestamps_range_check_expressions: 28usize,
     boolean_vars_columns_range: ColumnSet::<1usize> {
         start: 3usize,
-        num_elements: 29usize,
+        num_elements: 31usize,
     },
     scratch_space_columns_range: ColumnSet::<1usize> {
-        start: 202usize,
-        num_elements: 14usize,
+        start: 159usize,
+        num_elements: 18usize,
     },
-    total_width: 216usize,
+    total_width: 177usize,
 };
 const COMPILED_MEMORY_LAYOUT: CompiledMemorySubtree<'static> = CompiledMemorySubtree {
     shuffle_ram_inits_and_teardowns: &[],
@@ -2178,22 +1355,22 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
     },
     intermediate_polys_for_generic_lookup: AlignedColumnSet::<4usize> {
         start: 76usize,
-        num_elements: 63usize,
+        num_elements: 43usize,
     },
     intermediate_poly_for_decoder_accesses: AlignedColumnSet::<4usize> {
         start: 0usize,
         num_elements: 0usize,
     },
     intermediate_poly_for_range_check_16_multiplicity: AlignedColumnSet::<4usize> {
-        start: 328usize,
+        start: 248usize,
         num_elements: 1usize,
     },
     intermediate_poly_for_timestamp_range_check_multiplicity: AlignedColumnSet::<4usize> {
-        start: 332usize,
+        start: 252usize,
         num_elements: 1usize,
     },
     intermediate_polys_for_generic_multiplicities: AlignedColumnSet::<4usize> {
-        start: 336usize,
+        start: 256usize,
         num_elements: 1usize,
     },
     intermediate_polys_for_decoder_multiplicities: AlignedColumnSet::<4usize> {
@@ -2201,15 +1378,15 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
         num_elements: 0usize,
     },
     delegation_processing_aux_poly: Some(AlignedColumnSet::<4usize> {
-        start: 340usize,
+        start: 260usize,
         num_elements: 1usize,
     }),
     intermediate_polys_for_memory_init_teardown: AlignedColumnSet::<4usize> {
-        start: 344usize,
+        start: 320usize,
         num_elements: 0usize,
     },
     intermediate_polys_for_memory_argument: AlignedColumnSet::<4usize> {
-        start: 344usize,
+        start: 264usize,
         num_elements: 14usize,
     },
     intermediate_polys_for_state_permutation: AlignedColumnSet::<4usize> {
@@ -2221,11 +1398,11 @@ const COMPILED_STAGE_2_LAYOUT: LookupAndMemoryArgumentLayout = LookupAndMemoryAr
         num_elements: 0usize,
     },
     intermediate_poly_for_grand_product: AlignedColumnSet::<4usize> {
-        start: 400usize,
+        start: 320usize,
         num_elements: 1usize,
     },
     ext4_polys_offset: 16usize,
-    total_width: 404usize,
+    total_width: 324usize,
 };
 pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mersenne31Field> =
     VerifierCompiledCircuitArtifact {
@@ -2583,6 +1760,30 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[(
+                    Mersenne31Field(1u32),
+                    ColumnAddress::WitnessSubtree(32usize),
+                    ColumnAddress::WitnessSubtree(32usize),
+                )],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::WitnessSubtree(32usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[(
+                    Mersenne31Field(1u32),
+                    ColumnAddress::WitnessSubtree(33usize),
+                    ColumnAddress::WitnessSubtree(33usize),
+                )],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::WitnessSubtree(33usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
@@ -2609,15 +1810,6 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(7usize),
                         ColumnAddress::MemorySubtree(0usize),
                     ),
-                ],
-                linear_terms: &[(
-                    Mersenne31Field(2147483646u32),
-                    ColumnAddress::MemorySubtree(0usize),
-                )],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(8usize),
@@ -2628,6 +1820,15 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(9usize),
                         ColumnAddress::MemorySubtree(0usize),
                     ),
+                ],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::MemorySubtree(0usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(10usize),
@@ -2641,6 +1842,16 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(12usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(13usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(14usize),
                         ColumnAddress::MemorySubtree(0usize),
                     ),
                 ],
@@ -2655,239 +1866,181 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(3usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483645u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(4usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483642u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(5usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483639u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(6usize),
-                    ),
-                    (
-                        Mersenne31Field(29u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483645u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(5usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483644u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483643u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(5usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483639u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(6usize),
-                    ),
-                    (
-                        Mersenne31Field(9u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483635u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                    (
-                        Mersenne31Field(7u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                ],
-                linear_terms: &[(
-                    Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(202usize),
-                )],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(512u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(11usize),
-                    ),
-                    (
-                        Mersenne31Field(32u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(12usize),
-                    ),
-                    (
-                        Mersenne31Field(32u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(11usize),
-                    ),
-                    (
-                        Mersenne31Field(512u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(12usize),
-                    ),
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(512u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(11usize),
-                    ),
-                    (
-                        Mersenne31Field(32u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::WitnessSubtree(12usize),
-                    ),
-                    (
-                        Mersenne31Field(32u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(11usize),
-                    ),
-                    (
-                        Mersenne31Field(512u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(12usize),
-                    ),
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(512u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(11usize),
-                    ),
-                    (
-                        Mersenne31Field(1056u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(12usize),
+                        ColumnAddress::MemorySubtree(0usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(12usize),
-                        ColumnAddress::WitnessSubtree(202usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(0usize),
                     ),
                 ],
                 linear_terms: &[
-                    (Mersenne31Field(2u32), ColumnAddress::WitnessSubtree(3usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(8u32), ColumnAddress::WitnessSubtree(5usize)),
-                    (
-                        Mersenne31Field(16u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                    ),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(3usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(4usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(6usize)),
                     (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(8usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(9usize)),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
                     (
-                        Mersenne31Field(1024u32),
-                        ColumnAddress::WitnessSubtree(13usize),
-                    ),
-                    (
-                        Mersenne31Field(2048u32),
-                        ColumnAddress::WitnessSubtree(14usize),
-                    ),
-                    (
-                        Mersenne31Field(4096u32),
-                        ColumnAddress::WitnessSubtree(15usize),
-                    ),
-                    (
-                        Mersenne31Field(8192u32),
-                        ColumnAddress::WitnessSubtree(16usize),
-                    ),
-                    (
-                        Mersenne31Field(16384u32),
-                        ColumnAddress::WitnessSubtree(17usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(202usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(10usize),
+                        ColumnAddress::MemorySubtree(0usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::MemorySubtree(9usize),
+                        ColumnAddress::WitnessSubtree(11usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(12usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(13usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(14usize),
+                        ColumnAddress::MemorySubtree(0usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(10usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(11usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(12usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(13usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483608u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483608u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483608u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                    (
+                        Mersenne31Field(19u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (Mersenne31Field(8u32), ColumnAddress::WitnessSubtree(3usize)),
+                    (Mersenne31Field(2u32), ColumnAddress::WitnessSubtree(4usize)),
+                    (Mersenne31Field(3u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (
+                        Mersenne31Field(11u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                    ),
+                    (
+                        Mersenne31Field(12u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                    ),
+                    (Mersenne31Field(6u32), ColumnAddress::WitnessSubtree(8usize)),
+                    (
+                        Mersenne31Field(13u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                    ),
+                    (
+                        Mersenne31Field(8u32),
+                        ColumnAddress::WitnessSubtree(11usize),
+                    ),
+                    (
+                        Mersenne31Field(16u32),
+                        ColumnAddress::WitnessSubtree(12usize),
+                    ),
+                    (
+                        Mersenne31Field(24u32),
+                        ColumnAddress::WitnessSubtree(13usize),
+                    ),
+                    (
+                        Mersenne31Field(32u32),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                    (
+                        Mersenne31Field(64u32),
+                        ColumnAddress::WitnessSubtree(15usize),
+                    ),
+                    (
+                        Mersenne31Field(128u32),
+                        ColumnAddress::WitnessSubtree(16usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(512u32),
+                        ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1024u32),
+                        ColumnAddress::WitnessSubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::MemorySubtree(8usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -2895,60 +2048,60 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[(
                     Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(5usize),
-                    ColumnAddress::WitnessSubtree(8usize),
-                )],
-                linear_terms: &[(
-                    Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(94usize),
-                )],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[(
-                    Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(5usize),
-                    ColumnAddress::WitnessSubtree(9usize),
-                )],
-                linear_terms: &[(
-                    Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(57usize),
-                )],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[(
-                    Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(5usize),
+                    ColumnAddress::WitnessSubtree(7usize),
                     ColumnAddress::WitnessSubtree(10usize),
                 )],
                 linear_terms: &[(
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(58usize),
+                    ColumnAddress::WitnessSubtree(159usize),
                 )],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[(
                     Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(5usize),
+                    ColumnAddress::WitnessSubtree(7usize),
                     ColumnAddress::WitnessSubtree(11usize),
                 )],
                 linear_terms: &[(
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(59usize),
+                    ColumnAddress::WitnessSubtree(160usize),
                 )],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[(
                     Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(5usize),
+                    ColumnAddress::WitnessSubtree(7usize),
                     ColumnAddress::WitnessSubtree(12usize),
                 )],
                 linear_terms: &[(
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(60usize),
+                    ColumnAddress::WitnessSubtree(161usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[(
+                    Mersenne31Field(1u32),
+                    ColumnAddress::WitnessSubtree(7usize),
+                    ColumnAddress::WitnessSubtree(13usize),
+                )],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::WitnessSubtree(162usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[(
+                    Mersenne31Field(1u32),
+                    ColumnAddress::WitnessSubtree(7usize),
+                    ColumnAddress::WitnessSubtree(14usize),
+                )],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::WitnessSubtree(163usize),
                 )],
                 constant_term: Mersenne31Field(0u32),
             },
@@ -2956,33 +2109,33 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(8usize),
-                        ColumnAddress::WitnessSubtree(13usize),
-                    ),
-                    (
-                        Mersenne31Field(2u32),
-                        ColumnAddress::WitnessSubtree(8usize),
-                        ColumnAddress::WitnessSubtree(14usize),
-                    ),
-                    (
-                        Mersenne31Field(4u32),
-                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(10usize),
                         ColumnAddress::WitnessSubtree(15usize),
                     ),
                     (
-                        Mersenne31Field(8u32),
-                        ColumnAddress::WitnessSubtree(8usize),
+                        Mersenne31Field(2u32),
+                        ColumnAddress::WitnessSubtree(10usize),
                         ColumnAddress::WitnessSubtree(16usize),
                     ),
                     (
-                        Mersenne31Field(16u32),
-                        ColumnAddress::WitnessSubtree(8usize),
+                        Mersenne31Field(4u32),
+                        ColumnAddress::WitnessSubtree(10usize),
                         ColumnAddress::WitnessSubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(8u32),
+                        ColumnAddress::WitnessSubtree(10usize),
+                        ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(16u32),
+                        ColumnAddress::WitnessSubtree(10usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                 ],
                 linear_terms: &[(
                     Mersenne31Field(2130771712u32),
-                    ColumnAddress::WitnessSubtree(203usize),
+                    ColumnAddress::WitnessSubtree(164usize),
                 )],
                 constant_term: Mersenne31Field(1612701951u32),
             },
@@ -2994,14 +2147,89 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(17usize),
                     ),
                     (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(19usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(17usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -3011,17 +2239,122 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
                         ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2145779711u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145845247u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(32usize),
+                        ColumnAddress::WitnessSubtree(34usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(38usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3031,27 +2364,92 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(203usize),
+                        ColumnAddress::WitnessSubtree(164usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(17usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(39usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(39usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(9usize),
                         ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -3061,11 +2459,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(33usize),
+                        ColumnAddress::WitnessSubtree(35usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(37usize),
+                        ColumnAddress::WitnessSubtree(39usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3073,160 +2471,144 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(67usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
                         ColumnAddress::MemorySubtree(19usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
+                        Mersenne31Field(2147483391u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(40usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(45usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(43usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(40usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(45usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(19usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(165usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::MemorySubtree(71usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(62usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(165usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(204usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(67usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(61usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(68usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(68usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(62usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(67usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(18usize),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(20usize),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(18usize),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(18usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(36usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(40usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3236,7 +2618,57 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(203usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(41usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -3244,19 +2676,324 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(18usize),
                     ),
                     (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(38usize),
+                    ),
+                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
+                        ColumnAddress::WitnessSubtree(41usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(31usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(31usize),
+                        ColumnAddress::MemorySubtree(18usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
                         ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(38usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2145779711u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145845247u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(164usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(42usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(42usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(31usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -3266,11 +3003,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(42usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(45usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3278,16 +3015,6 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(61usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(64usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
                         ColumnAddress::MemorySubtree(20usize),
@@ -3295,143 +3022,172 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(35usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(40usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        ColumnAddress::WitnessSubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(40usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(20usize),
+                        ColumnAddress::WitnessSubtree(43usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(61usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(46usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(64usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(166usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::MemorySubtree(72usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(61usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(166usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(205usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(61usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(66usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(67usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(67usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(61usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(64usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(23usize),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(25usize),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(23usize),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(23usize),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(43usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(46usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3441,7 +3197,57 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(203usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(41usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(47usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -3449,19 +3255,324 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(23usize),
                     ),
                     (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(41usize),
+                    ),
+                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
+                        ColumnAddress::WitnessSubtree(47usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(36usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(36usize),
+                        ColumnAddress::MemorySubtree(23usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
                         ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(41usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2145779711u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145845247u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(47usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(50usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(164usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(48usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(51usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(48usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(51usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(36usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(48usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -3471,11 +3582,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(48usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(51usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3483,16 +3594,6 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(66usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
                         ColumnAddress::MemorySubtree(25usize),
@@ -3500,143 +3601,182 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(39usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(43usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(52usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(39usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(43usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(25usize),
+                        ColumnAddress::WitnessSubtree(49usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(63usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(52usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(66usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(167usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::MemorySubtree(77usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(63usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(167usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(40usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(206usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(66usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(68usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(61usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(61usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(63usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(66usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(24usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(26usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(24usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(24usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::WitnessSubtree(49usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(51usize),
+                        ColumnAddress::WitnessSubtree(49usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(52usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3646,7 +3786,57 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(203usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(53usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -3654,29 +3844,229 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(24usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
+                        Mersenne31Field(2147418111u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(44usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(53usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
                         ColumnAddress::MemorySubtree(37usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
                         ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(44usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(53usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(53usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(53usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(53usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(53usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(56usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(56usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(56usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(56usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(56usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2145779711u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145845247u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(52usize),
+                        ColumnAddress::WitnessSubtree(53usize),
                     ),
                     (
                         Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(56usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -3684,122 +4074,296 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(68usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(26usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(164usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::WitnessSubtree(54usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(57usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(54usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(37usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(54usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(57usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
                         ColumnAddress::MemorySubtree(26usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(42usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(55usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(58usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(42usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(55usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(58usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(168usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::MemorySubtree(78usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(65usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(168usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(36usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(39usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(42usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(43usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(45usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(46usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(207usize),
+                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(65usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(68usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(55usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
                         ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(62usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
+                        Mersenne31Field(2147483391u32),
                         ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(63usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(58usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(66usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(58usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(66usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(65usize),
-                        ColumnAddress::WitnessSubtree(94usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(68usize),
-                        ColumnAddress::WitnessSubtree(94usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(58usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(55usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(58usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -3810,44 +4374,39 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(19usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
+                        Mersenne31Field(2147418111u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(45usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(30usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(63usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(30usize),
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(30usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(69usize),
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(73usize),
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(30usize),
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -3857,150 +4416,384 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(43usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(204usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(70usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(74usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(96usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(101usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(204usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(95usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(98usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(69usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(32usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(96usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(101usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(204usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(96usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(32usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(97usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(96usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(95usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(99usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(97usize),
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(59usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(63usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(30usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(60usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(64usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(65usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(71usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(32usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(32usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(32usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -4011,44 +4804,49 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(20usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
+                        Mersenne31Field(2147418111u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(46usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                     ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(31usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(31usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(31usize),
-                    ),
-                ],
-                linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(63usize),
                     ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(79usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(31usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -4058,150 +4856,439 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(44usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(205usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(77usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(80usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(95usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(98usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(205usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(97usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(100usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(70usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(33usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(95usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(98usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(205usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(95usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::MemorySubtree(31usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(33usize),
+                        ColumnAddress::MemorySubtree(31usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(31usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(31usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(63usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(96usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(99usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(66usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(69usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(31usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(67usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(60usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(65usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(68usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(71usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(72usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(33usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(33usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(33usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -4212,44 +5299,49 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(25usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
+                        Mersenne31Field(2147418111u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(51usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                     ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(36usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(36usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(36usize),
-                    ),
-                ],
-                linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(66usize),
                     ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(85usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(36usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(72usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(75usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -4259,150 +5351,459 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(49usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(206usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(86usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(97usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(100usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(206usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(99usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(102usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(75usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(38usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(97usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(100usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(206usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(97usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::MemorySubtree(36usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(38usize),
+                        ColumnAddress::MemorySubtree(36usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(36usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(36usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(66usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(95usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(96usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(72usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(75usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(36usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(73usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(73usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(76usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(64usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(68usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(74usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(77usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(77usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(74usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(77usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -4413,44 +5814,49 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::MemorySubtree(26usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
+                        Mersenne31Field(2147418111u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(52usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                     ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(37usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(37usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(37usize),
-                    ),
-                ],
-                linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(69usize),
                     ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(91usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(37usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(78usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(81usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -4460,150 +5866,189 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(50usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(207usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(89usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(92usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(99usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(102usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(207usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(96usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(101usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(76usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(39usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(99usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(102usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(207usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(99usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::MemorySubtree(37usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(39usize),
+                        ColumnAddress::MemorySubtree(37usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(37usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(37usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(69usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(101usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(97usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(100usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(95usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(98usize),
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(78usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(81usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -4611,33 +6056,2053 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(204usize),
+                        ColumnAddress::MemorySubtree(37usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(71usize),
+                        ColumnAddress::WitnessSubtree(79usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(82usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(43usize),
+                        ColumnAddress::WitnessSubtree(168usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(17usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(79usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(82usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(67usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(71usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(80usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(78usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(39usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(39usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(39usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(60usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(61usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(64usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(65usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(67usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(68usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(70usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(71usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(80usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(83usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147287039u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(84usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(85usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(165usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(69usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(90usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(95usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(91usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(94usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(88usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147287039u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(92usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(95usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(166usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(85usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(90usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(93usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(96usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(91usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(97usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(100usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(91usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147287039u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(97usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(100usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(98usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(101usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(167usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(75usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(98usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(101usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(93usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(99usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(102usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(51usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(51usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(86usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(95usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(99usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(102usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(94usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(103usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(106usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(94usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(103usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(103usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(103usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(103usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(103usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147287039u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146697215u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146238463u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146762751u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147024895u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(103usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(106usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(104usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(107usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(168usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(107usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(107usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(107usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(107usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(107usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(104usize),
                     ),
                     (
                         Mersenne31Field(256u32),
@@ -4651,33 +8116,163 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(43usize),
+                        ColumnAddress::WitnessSubtree(172usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(69usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(92usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(96usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
+                        ColumnAddress::WitnessSubtree(105usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(108usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(172usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(204usize),
+                        ColumnAddress::MemorySubtree(52usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(69usize),
+                        ColumnAddress::MemorySubtree(52usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(85usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(89usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(90usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(92usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(93usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(96usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(105usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(105usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(105usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(105usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(105usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(108usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(108usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(108usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(108usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(108usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(104usize),
+                        ColumnAddress::WitnessSubtree(105usize),
                     ),
                     (
                         Mersenne31Field(256u32),
@@ -4689,156 +8284,180 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
+                        Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(169usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(113usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(208usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(128usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::MemorySubtree(69usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(5usize),
                         ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(45usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(129usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(134usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(19usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(129usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        ColumnAddress::MemorySubtree(56usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(208usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(129usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(134usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(133usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(132usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(135usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(133usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(129usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(134usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(205usize),
+                        ColumnAddress::MemorySubtree(56usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(72usize),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(43usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(43usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(18usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(18usize),
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145910783u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145648639u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(109usize),
                     ),
                     (
                         Mersenne31Field(256u32),
@@ -4852,33 +8471,93 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        ColumnAddress::MemorySubtree(56usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(70usize),
+                        ColumnAddress::WitnessSubtree(110usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(114usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
+                        ColumnAddress::WitnessSubtree(169usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(205usize),
+                        ColumnAddress::MemorySubtree(82usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(70usize),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(110usize),
                     ),
                     (
                         Mersenne31Field(256u32),
@@ -4890,122 +8569,141 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(128usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(131usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(209usize),
+                        ColumnAddress::WitnessSubtree(173usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(115usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(120usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(31usize),
+                        ColumnAddress::WitnessSubtree(169usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(46usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(128usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::MemorySubtree(32usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(20usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(128usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::MemorySubtree(58usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(209usize),
+                        ColumnAddress::MemorySubtree(58usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(135usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(128usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(111usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -5013,27 +8711,232 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(206usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(113usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(77usize),
+                        ColumnAddress::WitnessSubtree(116usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(119usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(70usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        ColumnAddress::MemorySubtree(31usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(23usize),
+                        ColumnAddress::MemorySubtree(57usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(23usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(113usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145910783u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145648639u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5053,27 +8956,87 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        ColumnAddress::MemorySubtree(57usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(75usize),
+                        ColumnAddress::WitnessSubtree(117usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(120usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
+                        ColumnAddress::WitnessSubtree(170usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(206usize),
+                        ColumnAddress::MemorySubtree(83usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(75usize),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5091,122 +9054,161 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(133usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(210usize),
+                        ColumnAddress::WitnessSubtree(174usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(110usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(115usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(36usize),
+                        ColumnAddress::WitnessSubtree(118usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(121usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(170usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(51usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::MemorySubtree(33usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(25usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(130usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::MemorySubtree(59usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(210usize),
+                        ColumnAddress::MemorySubtree(59usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(46usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(130usize),
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -5214,27 +9216,232 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(207usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(116usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(78usize),
+                        ColumnAddress::WitnessSubtree(122usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(125usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(75usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::MemorySubtree(36usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(24usize),
+                        ColumnAddress::MemorySubtree(62usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(24usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(116usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(122usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(122usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(122usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(122usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(122usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(125usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(125usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(125usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(125usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(125usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145910783u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145648639u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5254,27 +9461,87 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::MemorySubtree(62usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(76usize),
+                        ColumnAddress::WitnessSubtree(123usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(126usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
+                        ColumnAddress::WitnessSubtree(171usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(207usize),
+                        ColumnAddress::MemorySubtree(88usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(76usize),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(123usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(123usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(123usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(123usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(123usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(126usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(126usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(126usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(126usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(126usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5292,122 +9559,171 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(132usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(135usize),
-                    ),
-                    (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(211usize),
+                        ColumnAddress::WitnessSubtree(175usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(114usize),
                     ),
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(134usize),
+                        ColumnAddress::WitnessSubtree(118usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(37usize),
+                        ColumnAddress::WitnessSubtree(124usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(127usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(171usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(52usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(132usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::MemorySubtree(38usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(26usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(132usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::MemorySubtree(64usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(211usize),
+                        ColumnAddress::MemorySubtree(64usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(51usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(111usize),
+                        ColumnAddress::WitnessSubtree(160usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(162usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(161usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(120usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
-                linear_terms: &[],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(124usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(127usize),
+                    ),
+                ],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
@@ -5415,12 +9731,527 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(208usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147418111u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(119usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(32usize),
+                        ColumnAddress::WitnessSubtree(128usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(131usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147090431u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(37usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(119usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146893823u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145910783u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146369535u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2145648639u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146303999u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146172927u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145976319u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147155967u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(128usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(131usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(129usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(132usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(129usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(132usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(176usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(117usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(121usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(130usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(133usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(39usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(65usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(65usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(52usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(110usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(114usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(115usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(117usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(118usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(121usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(130usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(133usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::WitnessSubtree(173usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(43usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -5430,12 +10261,337 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(43usize),
+                        ColumnAddress::MemorySubtree(69usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(43usize),
+                        ColumnAddress::MemorySubtree(69usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(30usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145714175u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(134usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(69usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(169usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(58usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(71usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(71usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(32usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(19usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483392u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(159usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5455,173 +10611,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(56usize),
+                        ColumnAddress::WitnessSubtree(174usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(30usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(56usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(208usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(137usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(141usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(212usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(56usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(58usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(208usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(45usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(209usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(33usize),
+                        ColumnAddress::MemorySubtree(44usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -5631,12 +10626,397 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        ColumnAddress::MemorySubtree(70usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(44usize),
+                        ColumnAddress::MemorySubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(31usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(138usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145714175u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(170usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(46usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(59usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(72usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(72usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(33usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5656,173 +11036,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(57usize),
+                        ColumnAddress::WitnessSubtree(175usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(31usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(57usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(209usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(144usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(147usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(213usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(57usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(59usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(209usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(46usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(210usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(38usize),
+                        ColumnAddress::MemorySubtree(49usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -5832,12 +11051,417 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        ColumnAddress::MemorySubtree(75usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(49usize),
+                        ColumnAddress::MemorySubtree(75usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(36usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(141usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145714175u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(147usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(150usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(75usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(171usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(148usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(151usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(51usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(64usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(77usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(77usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(38usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(135usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(140usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(149usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(149usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(149usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(149usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(149usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(152usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(152usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(152usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(152usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(152usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -5857,173 +11481,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(62usize),
+                        ColumnAddress::WitnessSubtree(176usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(36usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(210usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(150usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(153usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(214usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(210usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(51usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(211usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(39usize),
+                        ColumnAddress::MemorySubtree(50usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -6033,12 +11496,417 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::MemorySubtree(76usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(50usize),
+                        ColumnAddress::MemorySubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(37usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(144usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147221503u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147352575u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2146500607u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146828287u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146435071u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146631679u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2146107391u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2145714175u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146959359u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2146041855u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2146566143u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(153usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(156usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(172usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                linear_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(154usize),
+                    ),
+                    (
+                        Mersenne31Field(256u32),
+                        ColumnAddress::WitnessSubtree(157usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(3usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(52usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(65usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(78usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(78usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(39usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(136usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(139usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(142usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(143usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(145usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(146usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(155usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(155usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(155usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(155usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(155usize),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(158usize),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(158usize),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(158usize),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(158usize),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483391u32),
+                        ColumnAddress::WitnessSubtree(158usize),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 linear_terms: &[
@@ -6056,971 +11924,6 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(37usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(211usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(156usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(159usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(215usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(162usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(167usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(211usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(52usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(163usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(166usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(165usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(168usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(161usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(164usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(212usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(58usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(69usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(30usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(17usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(169usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(173usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(69usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(56usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(208usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(56usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(170usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(174usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(84usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(17usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(71usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(32usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(19usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(213usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(59usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(70usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(31usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(18usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(176usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(179usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(70usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(57usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(209usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(57usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(177usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(180usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(85usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(18usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(72usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(33usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(20usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(214usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(64usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(75usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(36usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(23usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(182usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(185usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(75usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(210usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(62usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(183usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(186usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(90usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(23usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(77usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(38usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(25usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(194usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(197usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(215usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(65usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(76usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(37usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(24usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(188usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(191usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(76usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(211usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                ],
-                linear_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(189usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
-                        ColumnAddress::WitnessSubtree(192usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(3usize),
-                        ColumnAddress::MemorySubtree(91usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(24usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(78usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(39usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(26usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(57usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(58usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(195usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(59usize),
-                        ColumnAddress::WitnessSubtree(200usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(198usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(60usize),
-                        ColumnAddress::WitnessSubtree(201usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(196usize),
-                    ),
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(94usize),
-                        ColumnAddress::WitnessSubtree(199usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(3usize),
                         ColumnAddress::MemorySubtree(30usize),
@@ -7279,28 +12182,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(82usize),
+                        ColumnAddress::MemorySubtree(30usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(84usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(85usize),
+                        ColumnAddress::MemorySubtree(32usize),
                     ),
                 ],
                 linear_terms: &[],
@@ -7311,12 +12198,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(88usize),
+                        ColumnAddress::MemorySubtree(31usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(90usize),
+                        ColumnAddress::MemorySubtree(33usize),
                     ),
                 ],
                 linear_terms: &[],
@@ -7327,12 +12214,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(89usize),
+                        ColumnAddress::MemorySubtree(36usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(4usize),
-                        ColumnAddress::MemorySubtree(91usize),
+                        ColumnAddress::MemorySubtree(38usize),
                     ),
                 ],
                 linear_terms: &[],
@@ -7342,13 +12229,13 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(82usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(37usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(84usize),
+                        ColumnAddress::WitnessSubtree(4usize),
+                        ColumnAddress::MemorySubtree(39usize),
                     ),
                 ],
                 linear_terms: &[],
@@ -7358,124 +12245,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(83usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(85usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(88usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(90usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(89usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(5usize),
-                        ColumnAddress::MemorySubtree(91usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(43usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(45usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(44usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(46usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(49usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(51usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(50usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(52usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(56usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(58usize),
                     ),
                 ],
@@ -7486,12 +12261,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(57usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(59usize),
                     ),
                 ],
@@ -7502,12 +12277,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(62usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(64usize),
                     ),
                 ],
@@ -7518,12 +12293,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(63usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(65usize),
                     ),
                 ],
@@ -7534,140 +12309,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(17usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(84usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(18usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(85usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(23usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(90usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(24usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                        ColumnAddress::MemorySubtree(91usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(56usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(58usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(57usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(59usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(62usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(64usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(63usize),
-                    ),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(65usize),
-                    ),
-                ],
-                linear_terms: &[],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree2Constraint {
-                quadratic_terms: &[
-                    (
-                        Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(69usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(71usize),
                     ),
                 ],
@@ -7678,12 +12325,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(70usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(72usize),
                     ),
                 ],
@@ -7694,12 +12341,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(75usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(77usize),
                     ),
                 ],
@@ -7710,12 +12357,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(76usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(4usize),
                         ColumnAddress::MemorySubtree(78usize),
                     ),
                 ],
@@ -7726,8 +12373,264 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
-                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
                         ColumnAddress::MemorySubtree(19usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(25usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(26usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(46usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(51usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(52usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(82usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -7743,7 +12646,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(20usize),
+                        ColumnAddress::MemorySubtree(83usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -7759,7 +12662,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(25usize),
+                        ColumnAddress::MemorySubtree(88usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
@@ -7775,11 +12678,395 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(7usize),
-                        ColumnAddress::MemorySubtree(26usize),
+                        ColumnAddress::MemorySubtree(89usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(7usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(23usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(24usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(91usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(43usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(45usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(44usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(46usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(49usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(51usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(50usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(52usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(58usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(59usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(64usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::MemorySubtree(65usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(56usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(58usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(57usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(59usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(62usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(64usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(63usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(65usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(69usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(71usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(70usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(72usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(75usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(77usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(76usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(78usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(82usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(84usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(83usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(85usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(88usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(90usize),
+                    ),
+                ],
+                linear_terms: &[],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::MemorySubtree(89usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
                         ColumnAddress::MemorySubtree(91usize),
                     ),
                 ],
@@ -7789,66 +13076,86 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
         ],
         degree_1_constraints: &[
             StaticVerifierCompiledDegree1Constraint {
-                linear_terms: &[(Mersenne31Field(1u32), ColumnAddress::MemorySubtree(6usize))],
+                linear_terms: &[(Mersenne31Field(1u32), ColumnAddress::MemorySubtree(7usize))],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree1Constraint {
-                linear_terms: &[(Mersenne31Field(1u32), ColumnAddress::MemorySubtree(8usize))],
+                linear_terms: &[(Mersenne31Field(1u32), ColumnAddress::MemorySubtree(9usize))],
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree1Constraint {
                 linear_terms: &[
-                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(3usize)),
-                    (Mersenne31Field(2u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
-                    (Mersenne31Field(8u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(4usize)),
+                    (Mersenne31Field(2u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (Mersenne31Field(3u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (Mersenne31Field(5u32), ColumnAddress::WitnessSubtree(8usize)),
+                    (Mersenne31Field(6u32), ColumnAddress::WitnessSubtree(9usize)),
                     (
-                        Mersenne31Field(16u32),
-                        ColumnAddress::WitnessSubtree(7usize),
-                    ),
-                    (
-                        Mersenne31Field(32u32),
-                        ColumnAddress::WitnessSubtree(8usize),
-                    ),
-                    (
-                        Mersenne31Field(64u32),
-                        ColumnAddress::WitnessSubtree(9usize),
-                    ),
-                    (
-                        Mersenne31Field(128u32),
-                        ColumnAddress::WitnessSubtree(10usize),
-                    ),
-                    (
-                        Mersenne31Field(256u32),
+                        Mersenne31Field(8u32),
                         ColumnAddress::WitnessSubtree(11usize),
                     ),
                     (
-                        Mersenne31Field(512u32),
+                        Mersenne31Field(16u32),
                         ColumnAddress::WitnessSubtree(12usize),
                     ),
                     (
-                        Mersenne31Field(1024u32),
+                        Mersenne31Field(24u32),
                         ColumnAddress::WitnessSubtree(13usize),
                     ),
                     (
-                        Mersenne31Field(2048u32),
+                        Mersenne31Field(32u32),
                         ColumnAddress::WitnessSubtree(14usize),
                     ),
                     (
-                        Mersenne31Field(4096u32),
+                        Mersenne31Field(64u32),
                         ColumnAddress::WitnessSubtree(15usize),
                     ),
                     (
-                        Mersenne31Field(8192u32),
+                        Mersenne31Field(128u32),
                         ColumnAddress::WitnessSubtree(16usize),
                     ),
                     (
-                        Mersenne31Field(16384u32),
+                        Mersenne31Field(256u32),
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
+                        Mersenne31Field(512u32),
+                        ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1024u32),
+                        ColumnAddress::WitnessSubtree(19usize),
+                    ),
+                    (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::MemorySubtree(7usize),
+                        ColumnAddress::MemorySubtree(6usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -7859,19 +13166,107 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         Mersenne31Field(59u32),
                         ColumnAddress::WitnessSubtree(3usize),
                     ),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
                     (
-                        Mersenne31Field(60u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(4usize),
                     ),
                     (
-                        Mersenne31Field(60u32),
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (
+                        Mersenne31Field(61u32),
                         ColumnAddress::WitnessSubtree(7usize),
                     ),
                     (
+                        Mersenne31Field(60u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                    ),
+                    (
+                        Mersenne31Field(60u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                    ),
+                    (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(35usize),
+                        ColumnAddress::WitnessSubtree(37usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(3usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                    ),
+                    (
+                        Mersenne31Field(60u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(9usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(62usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -7880,15 +13275,100 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 linear_terms: &[
                     (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(3usize)),
                     (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(5usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(8usize)),
                     (
                         Mersenne31Field(60u32),
-                        ColumnAddress::WitnessSubtree(6usize),
+                        ColumnAddress::WitnessSubtree(9usize),
                     ),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(7usize)),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(72usize),
+                        ColumnAddress::WitnessSubtree(87usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(163usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(3usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
+                    (
+                        Mersenne31Field(61u32),
+                        ColumnAddress::WitnessSubtree(7usize),
+                    ),
+                    (
+                        Mersenne31Field(60u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                    ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(9usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(112usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (Mersenne31Field(1u32), ColumnAddress::WitnessSubtree(7usize)),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(159usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(160usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(161usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(162usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(163usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),
@@ -7900,43 +13380,14 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
                     (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
                     (
-                        Mersenne31Field(60u32),
+                        Mersenne31Field(61u32),
                         ColumnAddress::WitnessSubtree(7usize),
                     ),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(8usize)),
+                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(9usize)),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(106usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree1Constraint {
-                linear_terms: &[
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(3usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
-                    (
-                        Mersenne31Field(60u32),
-                        ColumnAddress::WitnessSubtree(6usize),
-                    ),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(7usize)),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(139usize),
-                    ),
-                ],
-                constant_term: Mersenne31Field(0u32),
-            },
-            StaticVerifierCompiledDegree1Constraint {
-                linear_terms: &[
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(3usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(4usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(5usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(6usize)),
-                    (Mersenne31Field(4u32), ColumnAddress::WitnessSubtree(7usize)),
-                    (
-                        Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(172usize),
+                        ColumnAddress::WitnessSubtree(137usize),
                     ),
                 ],
                 constant_term: Mersenne31Field(0u32),

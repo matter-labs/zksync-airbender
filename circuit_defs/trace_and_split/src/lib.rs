@@ -14,6 +14,8 @@ use prover::tracers::delegation::DelegationWitness;
 use prover::tracers::main_cycle_optimized::CycleData;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
+use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
+use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
 use setups::prover::fft::*;
 use setups::prover::field::*;
@@ -749,6 +751,103 @@ pub fn commit_memory_tree_for_inits_and_teardowns_unrolled_circuit<A: GoodAlloca
     println!("Memory witness commitment took {:?}", now.elapsed());
 
     (caps, aux_data)
+}
+
+pub fn commit_memory_tree_for_delegation_circuit_with_replayer_format<
+    A: GoodAllocator,
+    D: DelegationAbiDescription,
+    const REG_ACCESSES: usize,
+    const INDIRECT_READS: usize,
+    const INDIRECT_WRITES: usize,
+    const VARIABLE_OFFSETS: usize,
+>(
+    compiled_machine: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<
+        Mersenne31Field,
+    >,
+    witness_chunk: &[riscv_transpiler::witness::DelegationWitness<
+        REG_ACCESSES,
+        INDIRECT_READS,
+        INDIRECT_WRITES,
+        VARIABLE_OFFSETS,
+    >],
+    num_cycles_in_circuit: usize,
+    twiddles: &Twiddles<Mersenne31Complex, A>,
+    lde_precomputations: &LdePrecomputations<A>,
+    lde_factor: usize,
+    _tree_cap_size: usize,
+    worker: &Worker,
+) -> Vec<MerkleTreeCapVarLength> {
+    use setups::prover::prover_stages::stage1::compute_wide_ldes;
+    assert!((num_cycles_in_circuit + 1).is_power_of_two());
+    let trace_len = num_cycles_in_circuit + 1;
+
+    assert!(trace_len.is_power_of_two());
+    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
+
+    let now = std::time::Instant::now();
+    let oracle = DelegationOracle::<D, _, _, _, _> {
+        cycle_data: witness_chunk,
+        marker: core::marker::PhantomData,
+    };
+    let memory_chunk = evaluate_delegation_memory_witness(
+        compiled_machine,
+        num_cycles_in_circuit,
+        &oracle,
+        &worker,
+        A::default(),
+    );
+    println!(
+        "Materializing memory for delegation type {} trace for {} cycles took {:?}",
+        D::DELEGATION_TYPE,
+        num_cycles_in_circuit,
+        now.elapsed()
+    );
+
+    let DelegationMemoryOnlyWitnessEvaluationData { memory_trace } = memory_chunk;
+    // now we should commit to it
+    let width = memory_trace.width();
+    let mut memory_trace = memory_trace;
+    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
+
+    let memory_ldes = compute_wide_ldes(
+        memory_trace,
+        twiddles,
+        lde_precomputations,
+        0,
+        lde_factor,
+        worker,
+    );
+    assert_eq!(memory_ldes.len(), lde_factor);
+
+    // now form a tree
+    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
+    assert!(subtree_cap_size > 0);
+
+    let mut memory_subtrees = Vec::with_capacity(lde_factor);
+    let now = std::time::Instant::now();
+    for domain in memory_ldes.iter() {
+        let memory_tree = DefaultTreeConstructor::construct_for_coset(
+            &domain.trace,
+            subtree_cap_size,
+            true,
+            worker,
+        );
+        memory_subtrees.push(memory_tree);
+    }
+
+    let dump_fn = |caps: &[DefaultTreeConstructor]| {
+        let mut result = Vec::with_capacity(caps.len());
+        for el in caps.iter() {
+            result.push(el.get_cap());
+        }
+
+        result
+    };
+
+    let caps = dump_fn(&memory_subtrees);
+    println!("Memory witness commitment took {:?}", now.elapsed());
+
+    caps
 }
 
 fn flatten_merkle_caps(trees: &[MerkleTreeCapVarLength]) -> Vec<u32> {

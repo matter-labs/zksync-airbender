@@ -253,7 +253,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     // `A` + `B` = `C` + 2^256 * overflow to designate a/b/c
     // if we add: `A` = a, `B` = b + carry, `C` = result
     // if we sub: 2^256 * of + a - b = result, so result + b = a + 2^256 * of, `C` = a, `B` = b + carry, `A` = result
-    // if we sub-negate (opposite order): 2^256 * of + b - a = result, so result + a = b + 2^256 * of, `C` = b + carry, `B` = result, `A` = a
+    // if we sub-negate (opposite order): 2^256 * of + b - a = result, so result + a = b + 2^256 * of, `C` = b, `B` = a + carry, `A` = result
     // if we perform equality check - we do just a subtraction and look at the carry and perform zero-comparisons
     // if we execute memcopy, then `A` = 0, `B` = b + carry, `C` = result
 
@@ -755,8 +755,19 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         constraint -= Term::from(output_var);
         cs.add_constraint(constraint);
     }
-    let zero_flags = zero_check_inputs.map(|el| cs.is_zero(Num::Var(el)));
-    let all_zeroes = Boolean::multi_and(&zero_flags, cs);
+    let all_zeroes = {
+        let first_half = zero_check_inputs[..8]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
+        let first_flag = cs.is_zero_sum(first_half);
+        let second_half = zero_check_inputs[8..]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
+        let second_flag = cs.is_zero_sum(second_half);
+        Boolean::and(&first_flag, &second_flag, cs)
+    };
+    // let zero_flags = zero_check_inputs.map(|el| cs.is_zero(Num::Var(el)));
+    // let all_zeroes = Boolean::multi_and(&zero_flags, cs);
     let values_are_equal_for_perform_eq =
         Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
     let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);

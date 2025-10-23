@@ -28,7 +28,7 @@ prover_examples = {path = "../../circuit_defs/prover_examples"}
 worker = {path = "../../worker"}
 clap = { workspace = true }
 blake2s_u32 = { workspace = true }
-execution_utils = { path = "../../execution_utils"}
+execution_utils = { path = "../../execution_utils", features = ["verifier_binaries"]}
 field = { workspace = true }
 
 risc_v_cycles_verifier = { path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}

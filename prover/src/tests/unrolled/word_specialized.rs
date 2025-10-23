@@ -27,27 +27,30 @@ const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
-unsafe fn read_u32(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> u32 {
+pub(crate) unsafe fn read_u32(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> u32 {
     let low = trace_row[columns.start()].to_reduced_u32();
     let high = trace_row[columns.start() + 1].to_reduced_u32();
 
     (high << 16) | low
 }
 
-unsafe fn read_u16(trace_row: &[Mersenne31Field], columns: ColumnSet<1>) -> u16 {
+pub(crate) unsafe fn read_u16(trace_row: &[Mersenne31Field], columns: ColumnSet<1>) -> u16 {
     let low = trace_row[columns.start()].to_reduced_u32();
 
     low as u16
 }
 
-unsafe fn read_timestamp(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> TimestampScalar {
+pub(crate) unsafe fn read_timestamp(
+    trace_row: &[Mersenne31Field],
+    columns: ColumnSet<2>,
+) -> TimestampScalar {
     let low = trace_row[columns.start()].to_reduced_u32();
     let high = trace_row[columns.start() + 1].to_reduced_u32();
 
     ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
 }
 
-unsafe fn parse_state_permutation_elements(
+pub(crate) unsafe fn parse_state_permutation_elements(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     trace_row: &[Mersenne31Field],
     write_set: &mut BTreeSet<(u32, TimestampScalar)>,
@@ -80,7 +83,7 @@ unsafe fn parse_state_permutation_elements(
     }
 }
 
-unsafe fn parse_shuffle_ram_accesses(
+pub(crate) unsafe fn parse_shuffle_ram_accesses(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     trace_row: &[Mersenne31Field],
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -146,7 +149,7 @@ unsafe fn parse_shuffle_ram_accesses(
     }
 }
 
-unsafe fn parse_delegation_ram_accesses(
+pub(crate) unsafe fn parse_delegation_ram_accesses(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     trace_row: &[Mersenne31Field],
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -206,12 +209,16 @@ unsafe fn parse_delegation_ram_accesses(
             };
 
             for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
-                }
                 assert!(base_offset >= 1 << 21);
-                let offset = indirect.offset_constant();
+                let mut offset = indirect.offset_constant();
                 assert_eq!(offset % 4, 0);
+
+                if let Some((var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
+                    let var_value = read_u16(trace_row, var_column);
+                    let var_offset = var_scale.checked_mul(var_value as u32).unwrap();
+                    offset = offset.checked_add(var_offset).unwrap();
+                }
+
                 let (address, of) = base_offset.overflowing_add(offset);
                 assert!(of == false);
                 assert!(address >= 1 << 21);
@@ -255,6 +262,7 @@ unsafe fn parse_delegation_ram_accesses(
         {
             // register
             {
+                let reg_idx = access.register_access.get_register_index();
                 let read_ts = read_timestamp(
                     trace_row,
                     access.register_access.get_read_timestamp_columns(),
@@ -269,14 +277,16 @@ unsafe fn parse_delegation_ram_accesses(
                 {
                     write_value = read_u32(trace_row, write_columns);
                 }
+                // assert_eq!(reg_idx, 0);
                 assert_eq!(read_ts, 0);
                 assert_eq!(read_value, 0);
                 assert_eq!(write_value, 0);
             }
 
             for indirect in access.indirect_accesses.iter() {
-                if indirect.variable_dependent().is_some() {
-                    todo!();
+                if let Some((_var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
+                    let var_value = read_u16(trace_row, var_column);
+                    assert_eq!(var_value, 0);
                 }
                 let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
                 let read_value = read_u32(trace_row, indirect.get_read_value_columns());
@@ -296,7 +306,7 @@ unsafe fn parse_delegation_ram_accesses(
     }
 }
 
-fn parse_state_permutation_elements_from_full_trace<const N: usize>(
+pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
     write_set: &mut BTreeSet<(u32, TimestampScalar)>,
@@ -314,7 +324,7 @@ fn parse_state_permutation_elements_from_full_trace<const N: usize>(
     }
 }
 
-fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
+pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -332,7 +342,7 @@ fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
     }
 }
 
-fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
+pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationData<N, Global>,
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -842,6 +852,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
+        dbg!(proof.witness_tree_caps[0].cap[0]);
+
         serialize_to_file_if_not_gpu_comparison(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
@@ -990,6 +1002,8 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             );
         }
         assert!(proof.delegation_argument_accumulator.is_none());
+
+        dbg!(proof.witness_tree_caps[0].cap[0]);
 
         serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
 

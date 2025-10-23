@@ -11,8 +11,9 @@ use crate::prover::arg_utils::{
     FlattenedLookupExpressionsForShuffleRamLayout, FlattenedLookupExpressionsLayout,
     RangeCheck16ArgsLayout,
 };
-use crate::prover::context::ProverContext;
+use crate::prover::context::{DeviceAllocation, ProverContext};
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::witness::memory::ShuffleRamInitAndTeardownLayouts;
 use cs::definitions::{split_timestamp, TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
@@ -115,7 +116,7 @@ pub(crate) fn generate_generic_lookup_multiplicities(
 }
 
 cuda_kernel!(GenerateRangeCheckLookupMappings,
-    ab_generate_range_check_lookup_mappings_kernel(
+    ab_generate_range_check_lookup_mapping_kernel(
         setup_cols: PtrAndStride<BF>,
         witness_cols: PtrAndStride<BF>,
         memory_cols: PtrAndStride<BF>,
@@ -125,8 +126,7 @@ cuda_kernel!(GenerateRangeCheckLookupMappings,
         expressions: FlattenedLookupExpressionsLayout,
         expressions_for_shuffle_ram: FlattenedLookupExpressionsForShuffleRamLayout,
         memory_timestamp_high_from_circuit_idx: BF,
-        process_shuffle_ram_init: bool,
-        lazy_init_address_start: u32,
+        init_and_teardown_layouts: ShuffleRamInitAndTeardownLayouts,
         trace_len: u32,
     )
 );
@@ -170,17 +170,8 @@ pub(crate) fn generate_range_check_multiplicities(
         timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram,
     ) = get_timestamp_range_check_lookup_accesses(circuit);
 
-    let (process_shuffle_ram_init, lazy_init_address_start) =
-        if let Some(shuffle_ram_inits_and_teardowns) =
-            circuit.memory_layout.shuffle_ram_inits_and_teardowns.get(0)
-        {
-            let init_address_start = shuffle_ram_inits_and_teardowns
-                .lazy_init_addresses_columns
-                .start();
-            (true, init_address_start)
-        } else {
-            (false, 0)
-        };
+    let inits_and_teardown_layouts: ShuffleRamInitAndTeardownLayouts =
+        (&circuit.memory_layout.shuffle_ram_inits_and_teardowns).into();
     // For convenience, we repurpose some metadata structs used by stage 2 and 3 arguments.
     // These structs compute a bit more layout info than we need for multiplicity counting,
     // but there's no performance impact.
@@ -193,7 +184,7 @@ pub(crate) fn generate_range_check_multiplicities(
     let expressions_layout = if range_check_16_width_1_lookups_access_via_expressions.len() > 0
         || timestamp_range_check_width_1_lookups_access_via_expressions.len() > 0
     {
-        let expect_constant_terms_are_zero = process_shuffle_ram_init;
+        let expect_constant_terms_are_zero = inits_and_teardown_layouts.count != 0;
         FlattenedLookupExpressionsLayout::new(
             &range_check_16_width_1_lookups_access_via_expressions,
             &timestamp_range_check_width_1_lookups_access_via_expressions,
@@ -217,57 +208,38 @@ pub(crate) fn generate_range_check_multiplicities(
             FlattenedLookupExpressionsForShuffleRamLayout::default()
         };
     let stream = context.get_exec_stream();
+    let allocate_and_set_placeholder = |num_cols: usize| -> CudaResult<DeviceAllocation<u32>> {
+        let result = if num_cols == 0 {
+            context.alloc(0, AllocationPlacement::BestFit)
+        } else {
+            let mut alloc = context.alloc(num_cols * trace_len, AllocationPlacement::BestFit)?;
+            let chunk = &mut DeviceMatrixChunkMut::new(&mut alloc, trace_len, trace_len - 1, 1);
+            set_by_val(0xffffffffu32, chunk, stream)?;
+            Ok(alloc)
+        };
+        result
+    };
     // Allocate lookup mapping for range check 16 lookups
     let mut num_range_check_16_explicit_cols =
         2 * explicit_range_check_16_layout.num_dst_cols as usize;
-    if process_shuffle_ram_init {
-        num_range_check_16_explicit_cols += 2; // lazy init address limbs
-    }
+    num_range_check_16_explicit_cols += inits_and_teardown_layouts.count as usize * 2; // lazy init address limbs
     let num_range_check_16_expressions =
         2 * expressions_layout.num_range_check_16_expression_pairs as usize;
     let num_range_check_16_lookup_mapping_cols =
         num_range_check_16_explicit_cols + num_range_check_16_expressions;
-    // A circuit with no range check 16s would be strange
-    assert!(num_range_check_16_lookup_mapping_cols > 0);
-    let mut d_range_check_16_lookup_mapping_alloc = context.alloc(
-        num_range_check_16_lookup_mapping_cols * trace_len,
-        AllocationPlacement::BestFit,
-    )?;
+    let mut d_range_check_16_lookup_mapping_alloc =
+        allocate_and_set_placeholder(num_range_check_16_lookup_mapping_cols)?;
     let mut d_range_check_16_lookup_mapping =
         DeviceMatrixMut::new(&mut d_range_check_16_lookup_mapping_alloc, trace_len);
-    set_by_val(
-        0xffffffffu32,
-        &mut DeviceMatrixChunkMut::new(
-            d_range_check_16_lookup_mapping.slice_mut(),
-            trace_len,
-            trace_len - 1,
-            1,
-        ),
-        stream,
-    )?;
     // Allocate lookup mapping for timestamp lookups
     let mut num_timestamp_lookup_mapping_cols =
         2 * expressions_layout.num_timestamp_expression_pairs as usize;
     num_timestamp_lookup_mapping_cols +=
         2 * expressions_for_shuffle_ram_layout.num_expression_pairs as usize;
-    // A circuit with no range check 16s would be strange
-    assert!(num_timestamp_lookup_mapping_cols > 0);
-    let mut d_timestamp_lookup_mapping_alloc = context.alloc(
-        num_timestamp_lookup_mapping_cols * trace_len,
-        AllocationPlacement::BestFit,
-    )?;
+    let mut d_timestamp_lookup_mapping_alloc =
+        allocate_and_set_placeholder(num_timestamp_lookup_mapping_cols)?;
     let mut d_timestamp_lookup_mapping =
         DeviceMatrixMut::new(&mut d_timestamp_lookup_mapping_alloc, trace_len);
-    set_by_val(
-        0xffffffffu32,
-        &mut DeviceMatrixChunkMut::new(
-            d_timestamp_lookup_mapping.slice_mut(),
-            trace_len,
-            trace_len - 1,
-            1,
-        ),
-        stream,
-    )?;
     let setup_cols = d_setup.as_ptr_and_stride();
     let witness_cols = d_witness.as_ptr_and_stride();
     let memory_cols = d_memory.as_ptr_and_stride();
@@ -289,8 +261,7 @@ pub(crate) fn generate_range_check_multiplicities(
         expressions_layout,
         expressions_for_shuffle_ram_layout,
         memory_timestamp_high_from_circuit_idx,
-        process_shuffle_ram_init,
-        lazy_init_address_start as u32,
+        inits_and_teardown_layouts,
         trace_len as u32,
     );
     GenerateRangeCheckLookupMappingsFunction::default().launch(&config, &args)?;
@@ -305,21 +276,19 @@ pub(crate) fn generate_range_check_multiplicities(
             context,
         )
     };
-    let range_check_16_multiplicities_col = circuit
-        .witness_layout
-        .multiplicities_columns_for_range_check_16
-        .start();
-    finalize_multiplicities(
-        range_check_16_multiplicities_col,
-        &mut d_range_check_16_lookup_mapping,
-    )?;
-
-    let timestamp_range_check_multiplicities_col = circuit
-        .witness_layout
-        .multiplicities_columns_for_timestamp_range_check
-        .start();
-    finalize_multiplicities(
-        timestamp_range_check_multiplicities_col,
-        &mut d_timestamp_lookup_mapping,
-    )
+    if num_range_check_16_lookup_mapping_cols != 0 {
+        let col = circuit
+            .witness_layout
+            .multiplicities_columns_for_range_check_16
+            .start();
+        finalize_multiplicities(col, &mut d_range_check_16_lookup_mapping)?;
+    };
+    if num_timestamp_lookup_mapping_cols != 0 {
+        let col = circuit
+            .witness_layout
+            .multiplicities_columns_for_timestamp_range_check
+            .start();
+        finalize_multiplicities(col, &mut d_timestamp_lookup_mapping)?;
+    };
+    Ok(())
 }

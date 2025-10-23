@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Copies over the verifier template from 'verifier' dir to different circuits directories.
 circuit_names=(
     "risc_v_cycles"
@@ -20,8 +22,8 @@ unrolled_circuit_names=(
     "load_store_word_only"
     "mul_div"
     "mul_div_unsigned"
-    "shift_binary_csr_all_delegations"
-    "shift_binary_csr_blake_only_delegation"
+    "shift_binary_csr"
+    "unified_reduced_machine"
 )
 
 # update the generated files

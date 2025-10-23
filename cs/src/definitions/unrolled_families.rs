@@ -11,3 +11,5 @@ pub const WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS: usize = 1;
 pub const SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS: usize = 1;
 
 pub const MEMORY_FAMILY_NUM_FLAGS: usize = 1;
+
+pub const REDUCED_MACHINE_NUM_FLAGS: usize = 18;

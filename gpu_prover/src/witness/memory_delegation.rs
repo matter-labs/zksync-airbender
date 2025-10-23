@@ -13,16 +13,42 @@ use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
+use std::ops::Deref;
 
 const MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
+pub struct RegisterAndIndirectAccessDescriptions {
+    pub count: u32,
+    pub descriptions:
+        [RegisterAndIndirectAccessDescription; MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT],
+}
+
+impl<T: Deref<Target = [cs::definitions::RegisterAndIndirectAccessDescription]>> From<&T>
+    for RegisterAndIndirectAccessDescriptions
+{
+    fn from(value: &T) -> Self {
+        let len = value.len();
+        assert!(len <= MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT);
+        let count = len as u32;
+        let mut descriptions = [RegisterAndIndirectAccessDescription::default();
+            MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
+        for (src, dst) in value.iter().zip(descriptions.iter_mut()) {
+            *dst = src.clone().into();
+        }
+        Self {
+            count,
+            descriptions,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
 struct DelegationMemorySubtree {
     delegation_processor_layout: DelegationProcessingLayout,
-    register_and_indirect_accesses_count: u32,
-    register_and_indirect_accesses:
-        [RegisterAndIndirectAccessDescription; MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT],
+    register_and_indirect_access_descriptions: RegisterAndIndirectAccessDescriptions,
 }
 
 impl From<&MemorySubtree> for DelegationMemorySubtree {
@@ -32,20 +58,22 @@ impl From<&MemorySubtree> for DelegationMemorySubtree {
         assert!(value.delegation_request_layout.is_none());
         assert!(value.batched_ram_accesses.is_empty());
         let delegation_processor_layout = value.delegation_processor_layout.unwrap().into();
-        let register_and_indirect_accesses_count =
-            value.register_and_indirect_accesses.len() as u32;
-        assert!(
-            register_and_indirect_accesses_count <= MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT as u32
-        );
-        let mut register_and_indirect_accesses = [RegisterAndIndirectAccessDescription::default();
-            MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
-        for (i, value) in value.register_and_indirect_accesses.iter().enumerate() {
-            register_and_indirect_accesses[i] = value.clone().into();
-        }
+        let register_and_indirect_access_descriptions = {
+            let count = value.register_and_indirect_accesses.len() as u32;
+            assert!(count <= MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT as u32);
+            let mut descriptions = [RegisterAndIndirectAccessDescription::default();
+                MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
+            for (i, value) in value.register_and_indirect_accesses.iter().enumerate() {
+                descriptions[i] = value.clone().into();
+            }
+            RegisterAndIndirectAccessDescriptions {
+                count,
+                descriptions,
+            }
+        };
         Self {
             delegation_processor_layout,
-            register_and_indirect_accesses_count,
-            register_and_indirect_accesses,
+            register_and_indirect_access_descriptions,
         }
     }
 }
@@ -105,7 +133,7 @@ pub(crate) fn generate_memory_and_witness_values_delegation(
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
     let subtree = subtree.into();
-    let aux_vars = aux_vars.into();
+    let aux_vars = aux_vars.clone().into();
     let trace = trace.into();
     let memory = memory.as_mut_ptr_and_stride();
     let witness = witness.as_mut_ptr_and_stride();

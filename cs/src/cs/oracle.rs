@@ -4,7 +4,7 @@ use crate::definitions::TimestampScalar;
 
 use super::placeholder::Placeholder;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ExecutorFamilyDecoderData {
     pub imm: u32,
     pub rs1_index: u8,
@@ -13,7 +13,7 @@ pub struct ExecutorFamilyDecoderData {
     pub rd_is_zero: bool,
     pub funct3: u8,
     pub funct7: Option<u8>,
-    pub opcode_family_bits: u8,
+    pub opcode_family_bits: u32,
 }
 
 impl Default for ExecutorFamilyDecoderData {

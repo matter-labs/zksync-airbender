@@ -321,7 +321,7 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     let next_pc_dst_vars = inputs.cycle_end_state.pc;
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        use cs::witness_placer::*;
+        use crate::cs::witness_placer::*;
         let is_jal = placer.get_boolean(is_jal_var);
         let is_jalr = placer.get_boolean(is_jalr_var);
         let is_branches_taken = placer.get_boolean(is_branches_taken_var);

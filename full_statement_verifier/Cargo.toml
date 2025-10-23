@@ -29,8 +29,7 @@ load_store_subword_only_verifier = {path = "../circuit_defs/unrolled_circuits/lo
 load_store_word_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_word_only/verifier", default-features = false}
 mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier", default-features = false}
 mul_div_unsigned_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", default-features = false}
-shift_binary_csr_all_delegations_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr_all_delegations/verifier", default-features = false}
-shift_binary_csr_blake_only_delegation_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr_blake_only_delegation/verifier", default-features = false}
+shift_binary_csr_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", default-features = false}
 
 # poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}
 

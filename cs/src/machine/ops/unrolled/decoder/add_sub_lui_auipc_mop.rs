@@ -82,7 +82,7 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        let mut repr = 0u8;
+        let mut repr = 0u32;
         let instruction_type;
         match (opcode, func3, func7) {
             (OPERATION_OP, 0b000, 0b000_0000) => {

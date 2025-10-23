@@ -7,21 +7,20 @@ use crate::cudart::result::CudaResult;
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::precomputations::Precomputations;
-use crate::prover::proof::{prove, ProofJob};
+use crate::prover::proof::{prove, ProofJob, ProofType};
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::get_aux_arguments_boundary_values;
+use crate::witness::trace::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_count, get_device_properties};
 use fft::GoodAllocator;
 use field::Mersenne31Field;
 use log::{debug, error, info, trace};
 use prover::definitions::{
-    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
+    AuxArgumentsBoundaryValues, ExternalChallenges, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::prover_stages::Proof;
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::mem;
@@ -71,7 +70,7 @@ pub struct ProofResult<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub circuit_sequence: usize,
     pub tracing_data: TracingDataHost<A>,
-    pub proof: Proof,
+    pub proof: ProofType,
 }
 
 pub enum GpuWorkRequest<A: GoodAllocator> {
@@ -216,6 +215,7 @@ fn gpu_worker(
         match circuit_type {
             CircuitType::Main(main) => trace!("GPU_WORKER[{device_id}] transferring setup trace for main circuit {main:?}"),
             CircuitType::Delegation(delegation) => trace!("GPU_WORKER[{device_id}] transferring setup trace for delegation circuit {delegation:?}"),
+            CircuitType::Unrolled(_) => todo!()
         }
         let trace = precomputations.setup_trace.clone();
         setup.schedule_transfer(trace.clone(), &context)?;
@@ -226,6 +226,7 @@ fn gpu_worker(
             CircuitType::Delegation(delegation) => trace!(
                 "GPU_WORKER[{device_id}] generating setup for delegation circuit {delegation:?}"
             ),
+            CircuitType::Unrolled(_) => todo!(),
         }
         setup.ensure_is_extended(&context)?;
         context.get_exec_stream().synchronize()?;
@@ -268,6 +269,7 @@ fn gpu_worker(
             match circuit_type {
                 CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for main circuit {main:?} chunk {circuit_sequence}"),
                 CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for delegation circuit {delegation:?} chunk {circuit_sequence}"),
+                CircuitType::Unrolled(_) => todo!()
             }
             let mut transfer = TracingDataTransfer::new(circuit_type, tracing_data, &context)?;
             transfer.schedule_transfer(&context)?;
@@ -292,6 +294,7 @@ fn gpu_worker(
                             delegation,
                             request.circuit_sequence
                         ),
+                        CircuitType::Unrolled(_) => todo!()
                     }
                     let precomputations = &request.precomputations;
                     let lde_factor = precomputations.lde_precomputations.lde_factor;
@@ -304,6 +307,8 @@ fn gpu_worker(
                     let job = commit_memory(
                         transfer,
                         &precomputations.compiled_circuit,
+                        None, // TODO: decoder table for unrolled
+                        0,    // TODO: default pc value for unrolled
                         log_lde_factor,
                         log_tree_cap_size,
                         &context,
@@ -324,41 +329,51 @@ fn gpu_worker(
                             delegation,
                             request.circuit_sequence
                         ),
+                        CircuitType::Unrolled(_) => todo!()
                     }
                     let precomputations = &request.precomputations;
                     let aux_boundary_values = match &transfer.data_host {
                         TracingDataHost::Main {
-                            setup_and_teardown,
+                            inits_and_teardowns,
                             trace: _,
                         } => {
-                            if let Some(setup_and_teardown) = setup_and_teardown {
+                            if let Some(inits_and_teardowns) = inits_and_teardowns {
+                                let data = &inits_and_teardowns.inits_and_teardowns;
                                 get_aux_arguments_boundary_values(
-                                    &setup_and_teardown.lazy_init_data,
-                                    setup_and_teardown.lazy_init_data.len(),
+                                    &precomputations.compiled_circuit,
+                                    data.len(),
+                                    data,
                                 )
                             } else {
-                                AuxArgumentsBoundaryValues::default()
+                                vec![AuxArgumentsBoundaryValues::default()]
                             }
                         }
-                        TracingDataHost::Delegation(_) => AuxArgumentsBoundaryValues::default(),
+                        TracingDataHost::Delegation(_) => {
+                            vec![AuxArgumentsBoundaryValues::default()]
+                        }
+                        TracingDataHost::Unrolled(_) => todo!(),
                     };
-                    let external_values = ExternalValues {
-                        challenges: request.external_challenges,
-                        aux_boundary_values,
-                    };
+                    let decoder_table = None; // TODO: decoder table for unrolled
+                    let default_pc_value_in_padding = 0; // TODO: default pc value for unrolled
                     let setup = setup.unwrap();
                     let circuit_sequence = match circuit_type {
                         CircuitType::Main(_) => request.circuit_sequence,
                         CircuitType::Delegation(_) => 0,
+                        CircuitType::Unrolled(_) => todo!(),
                     };
                     let delegation_processing_type = match circuit_type {
                         CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
+                        CircuitType::Unrolled(_) => todo!(),
                     };
                     let trees_cache_mode = get_trees_cache_mode(circuit_type, &context);
                     let job = prove(
+                        circuit_type,
                         precomputations.compiled_circuit.clone(),
-                        external_values,
+                        request.external_challenges,
+                        aux_boundary_values,
+                        decoder_table,
+                        default_pc_value_in_padding,
                         &mut setup.borrow_mut(),
                         transfer,
                         &precomputations.lde_precomputations,
@@ -408,6 +423,7 @@ fn gpu_worker(
                             circuit_sequence,
                             commitment_time_ms
                         ),
+                        CircuitType::Unrolled(_) => todo!()
                     }
                     let result = MemoryCommitmentResult {
                         batch_id,
@@ -443,6 +459,7 @@ fn gpu_worker(
                             circuit_sequence,
                             proof_time_ms,
                         ),
+                        CircuitType::Unrolled(_) => todo!()
                     }
                     let result = ProofResult {
                         batch_id,

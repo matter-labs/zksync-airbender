@@ -26,7 +26,7 @@ use prover::unrolled::NonMemoryCircuitOracle;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
 use prover::*;
 use risc_v_simulator::cycle::IMStandardIsaConfig;
-use risc_v_simulator::cycle::IMWithoutSignedMulDivIsaConfig;
+use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
 use risc_v_simulator::cycle::IWithoutByteAccessIsaConfig;
 use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
@@ -61,7 +61,7 @@ pub fn is_reduced_machine_configuration<C: MachineConfig>() -> bool {
 }
 
 pub fn is_machine_without_signed_mul_div_configuration<C: MachineConfig>() -> bool {
-    std::any::TypeId::of::<C>() == std::any::TypeId::of::<IMWithoutSignedMulDivIsaConfig>()
+    std::any::TypeId::of::<C>() == std::any::TypeId::of::<IMStandardIsaConfigWithUnsignedMulDiv>()
 }
 
 pub fn is_final_reduced_machine_configuration<C: MachineConfig>() -> bool {
@@ -177,6 +177,7 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
         witness_fn: fn(&'_ mut SimpleWitnessProxy<'_, MemoryCircuitOracle<'_>>),
         decoder_table: Vec<ExecutorFamilyDecoderData, A>,
     },
+    Unified {},
 }
 
 pub struct UnrolledCircuitPrecomputations<A: GoodAllocator, B: GoodAllocator = Global> {
@@ -312,12 +313,12 @@ pub fn get_delegation_compiled_circuits_for_machine_without_signed_mul_div_confi
 
     assert_eq!(
         machines.len(),
-        IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS.len()
+        IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS.len()
     );
     for i in 0..machines.len() {
         assert_eq!(
             machines[i].0,
-            IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS[i]
+            IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS[i]
         );
     }
 
@@ -390,7 +391,7 @@ pub fn factories_for_unrolled_circuits_base_layer<A: GoodAllocator>() -> (
     let non_mem_fns = vec![
         ::add_sub_lui_auipc_mop::get_tracer_factory,
         ::jump_branch_slt::get_tracer_factory,
-        ::shift_binary_csr_all_delegations::get_tracer_factory,
+        ::shift_binary_csr::get_tracer_factory,
         ::mul_div::get_tracer_factory,
     ];
     let mem_fns = vec![
@@ -407,7 +408,7 @@ pub fn factories_for_unrolled_circuits_base_layer_unsigned_only<A: GoodAllocator
     let non_mem_fns = vec![
         ::add_sub_lui_auipc_mop::get_tracer_factory,
         ::jump_branch_slt::get_tracer_factory,
-        ::shift_binary_csr_all_delegations::get_tracer_factory,
+        ::shift_binary_csr::get_tracer_factory,
         ::mul_div_unsigned::get_tracer_factory,
     ];
     let mem_fns = vec![
@@ -424,7 +425,7 @@ pub fn factories_for_unrolled_circuits_recursion_layer<A: GoodAllocator>() -> (
     let non_mem_fns = vec![
         ::add_sub_lui_auipc_mop::get_tracer_factory,
         ::jump_branch_slt::get_tracer_factory,
-        ::shift_binary_csr_blake_only_delegation::get_tracer_factory,
+        ::shift_binary_csr::get_tracer_factory,
     ];
     let mem_fns = vec![::load_store_word_only::get_tracer_factory as _];
     make_factories_for_unrolled_circuits_impl::<A>(&non_mem_fns, &mem_fns[..])
@@ -452,7 +453,7 @@ pub fn compute_unrolled_circuits_params_base_layer(
     let eval_fns = vec![
         add_sub_lui_auipc_mop_circuit_setup,
         jump_branch_slt_circuit_setup,
-        shift_binary_csr_all_delegations_circuit_setup,
+        shift_binary_csr_circuit_setup,
         mul_div_circuit_setup,
         load_store_word_only_circuit_setup,
         load_store_subword_only_circuit_setup,
@@ -467,7 +468,7 @@ pub fn compute_unrolled_circuits_params_base_layer_unsigned_only(
     let eval_fns = vec![
         add_sub_lui_auipc_mop_circuit_setup,
         jump_branch_slt_circuit_setup,
-        shift_binary_csr_all_delegations_circuit_setup,
+        shift_binary_csr_circuit_setup,
         mul_div_unsigned_circuit_setup,
         load_store_word_only_circuit_setup,
         load_store_subword_only_circuit_setup,
@@ -482,7 +483,7 @@ pub fn compute_unrolled_circuits_params_recursion_layer(
     let eval_fns = vec![
         add_sub_lui_auipc_mop_circuit_setup,
         jump_branch_slt_circuit_setup,
-        shift_binary_csr_blake_only_delegation_circuit_setup,
+        shift_binary_csr_circuit_setup,
         load_store_word_only_circuit_setup,
     ];
     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)

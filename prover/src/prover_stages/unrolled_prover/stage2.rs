@@ -260,10 +260,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
 
     num_batch_inverses += compiled_circuit
         .stage_2_layout
-        .intermediate_polys_for_memory_init_teardown
-        .num_elements();
-    num_batch_inverses += compiled_circuit
-        .stage_2_layout
         .intermediate_polys_for_memory_argument
         .num_elements();
     num_batch_inverses += compiled_circuit
@@ -273,6 +269,10 @@ pub fn prover_stage_2_for_unrolled_circuit<
     num_batch_inverses += compiled_circuit
         .stage_2_layout
         .intermediate_polys_for_permutation_masking
+        .num_elements();
+    num_batch_inverses += compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_init_teardown
         .num_elements();
 
     // Grand product is only accumulated
@@ -520,19 +520,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         let mut denom_acc_value = Mersenne31Quartic::ONE;
 
                         // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
-                        if process_shuffle_ram_init {
-                            use crate::prover_stages::unrolled_prover::stage_2_ram_shared::process_lazy_init_memory_contributions;
-
-                            process_lazy_init_memory_contributions(
-                                memory_trace_row,
-                                stage_2_trace,
-                                compiled_circuit,
-                                &mut numerator_acc_value,
-                                &mut denom_acc_value,
-                                &memory_argument_challenges,
-                                &mut batch_inverses_input,
-                            )
-                        }
 
                         // we assembled P(x) = write init set / read teardown set, or trivial init. Now we add contributions fro
                         // either individual or batched RAM accesses
@@ -608,6 +595,20 @@ pub fn prover_stage_2_for_unrolled_circuit<
                             batch_inverses_input.push(denom_acc_value);
                         }
 
+                        if process_shuffle_ram_init {
+                            use crate::prover_stages::unrolled_prover::stage_2_ram_shared::process_lazy_init_memory_contributions;
+
+                            process_lazy_init_memory_contributions(
+                                memory_trace_row,
+                                stage_2_trace,
+                                compiled_circuit,
+                                &mut numerator_acc_value,
+                                &mut denom_acc_value,
+                                &memory_argument_challenges,
+                                &mut batch_inverses_input,
+                            )
+                        }
+
                         assert_eq!(num_batch_inverses, batch_inverses_input.len());
                         batch_inverse_with_buffer(
                             &mut batch_inverses_input,
@@ -638,18 +639,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                                         .as_mut_unchecked()
                                         .mul_assign(it.next().unwrap());
                                 }
-                            }
-                            for dst in compiled_circuit
-                                .stage_2_layout
-                                .intermediate_polys_for_memory_init_teardown
-                                .iter()
-                            {
-                                stage_2_trace
-                                    .as_mut_ptr()
-                                    .add(dst.start)
-                                    .cast::<Mersenne31Quartic>()
-                                    .as_mut_unchecked()
-                                    .mul_assign(it.next().unwrap());
                             }
                             for dst in compiled_circuit
                                 .stage_2_layout
@@ -687,6 +676,19 @@ pub fn prover_stage_2_for_unrolled_circuit<
                                     .as_mut_unchecked()
                                     .mul_assign(it.next().unwrap());
                             }
+                            for dst in compiled_circuit
+                                .stage_2_layout
+                                .intermediate_polys_for_memory_init_teardown
+                                .iter()
+                            {
+                                stage_2_trace
+                                    .as_mut_ptr()
+                                    .add(dst.start)
+                                    .cast::<Mersenne31Quartic>()
+                                    .as_mut_unchecked()
+                                    .mul_assign(it.next().unwrap());
+                            }
+
                             assert!(it.next().is_none());
 
                             // and accumulate grand product
@@ -945,6 +947,18 @@ pub fn prover_stage_2_for_unrolled_circuit<
             let mut next = Mersenne31Quartic::ONE;
             let src_offset = if compiled_circuit
                 .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown
+                .num_elements()
+                > 0
+            {
+                compiled_circuit
+                    .stage_2_layout
+                    .intermediate_polys_for_memory_init_teardown
+                    .full_range()
+                    .end
+                    - 4
+            } else if compiled_circuit
+                .stage_2_layout
                 .intermediate_polys_for_permutation_masking
                 .num_elements()
                 > 0
@@ -962,18 +976,6 @@ pub fn prover_stage_2_for_unrolled_circuit<
                 compiled_circuit
                     .stage_2_layout
                     .intermediate_polys_for_memory_argument
-                    .full_range()
-                    .end
-                    - 4
-            } else if compiled_circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_init_teardown
-                .num_elements()
-                > 0
-            {
-                compiled_circuit
-                    .stage_2_layout
-                    .intermediate_polys_for_memory_init_teardown
                     .full_range()
                     .end
                     - 4

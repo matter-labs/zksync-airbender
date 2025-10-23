@@ -502,7 +502,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup
         );
 
-        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts(
+        let stage_2_layout = LookupAndMemoryArgumentLayout::from_compiled_parts::<_, true>(
             &witness_layout,
             &memory_layout,
             &setup_layout,

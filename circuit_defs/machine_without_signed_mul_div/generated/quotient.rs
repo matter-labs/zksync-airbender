@@ -7453,46 +7453,6 @@ unsafe fn evaluate_every_row_except_last(
             accumulated_contribution.mul_assign(&quotient_alpha);
             let contribution = {
                 let individual_term = {
-                    let address_low = *(memory.get_unchecked(0usize));
-                    let mut t = memory_argument_linearization_challenges[0usize];
-                    t.mul_assign(&address_low);
-                    let mut numerator = t;
-                    let address_high = *(memory.get_unchecked(1usize));
-                    let mut t = memory_argument_linearization_challenges[1usize];
-                    t.mul_assign(&address_high);
-                    numerator.add_assign(&t);
-                    numerator.add_assign(&memory_argument_gamma);
-                    let mut denom = numerator;
-                    let value_low = *(memory.get_unchecked(2usize));
-                    let mut t = memory_argument_linearization_challenges[4usize];
-                    t.mul_assign(&value_low);
-                    denom.add_assign(&t);
-                    let value_high = *(memory.get_unchecked(3usize));
-                    let mut t = memory_argument_linearization_challenges[5usize];
-                    t.mul_assign_by_base(&value_high);
-                    denom.add_assign(&t);
-                    let timestamp_low = *(memory.get_unchecked(4usize));
-                    let mut t = memory_argument_linearization_challenges[2usize];
-                    t.mul_assign(&timestamp_low);
-                    denom.add_assign(&t);
-                    let timestamp_high = *(memory.get_unchecked(5usize));
-                    let mut t = memory_argument_linearization_challenges[3usize];
-                    t.mul_assign(&timestamp_high);
-                    denom.add_assign(&t);
-                    let accumulator = *(stage_2.get_unchecked(42usize));
-                    let mut individual_term = accumulator;
-                    individual_term.mul_assign(&denom);
-                    individual_term.sub_assign(&numerator);
-                    individual_term
-                };
-                individual_term
-            };
-            accumulated_contribution.add_assign(&contribution);
-        }
-        {
-            accumulated_contribution.mul_assign(&quotient_alpha);
-            let contribution = {
-                let individual_term = {
                     let address_contribution = {
                         let address_low = *(memory.get_unchecked(10usize));
                         let mut address_contribution =
@@ -7532,13 +7492,10 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
-                    let accumulator = *(stage_2.get_unchecked(43usize));
-                    let previous = *(stage_2.get_unchecked(42usize));
+                    let accumulator = *(stage_2.get_unchecked(42usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
-                    let mut t = previous;
-                    t.mul_assign(&numerator);
-                    individual_term.sub_assign(&t);
+                    individual_term.sub_assign(&numerator);
                     individual_term
                 };
                 individual_term
@@ -7593,8 +7550,8 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
-                    let accumulator = *(stage_2.get_unchecked(44usize));
-                    let previous = *(stage_2.get_unchecked(43usize));
+                    let accumulator = *(stage_2.get_unchecked(43usize));
+                    let previous = *(stage_2.get_unchecked(42usize));
                     let mut individual_term = accumulator;
                     individual_term.mul_assign(&denom);
                     let mut t = previous;
@@ -7664,6 +7621,49 @@ unsafe fn evaluate_every_row_except_last(
                     write_timestamp_contribution.add_assign(&t);
                     numerator.add_assign(&write_timestamp_contribution);
                     denom.add_assign(&read_timestamp_contribution);
+                    let accumulator = *(stage_2.get_unchecked(44usize));
+                    let previous = *(stage_2.get_unchecked(43usize));
+                    let mut individual_term = accumulator;
+                    individual_term.mul_assign(&denom);
+                    let mut t = previous;
+                    t.mul_assign(&numerator);
+                    individual_term.sub_assign(&t);
+                    individual_term
+                };
+                individual_term
+            };
+            accumulated_contribution.add_assign(&contribution);
+        }
+        {
+            accumulated_contribution.mul_assign(&quotient_alpha);
+            let contribution = {
+                let individual_term = {
+                    let address_low = *(memory.get_unchecked(0usize));
+                    let mut t = memory_argument_linearization_challenges[0usize];
+                    t.mul_assign(&address_low);
+                    let mut numerator = t;
+                    let address_high = *(memory.get_unchecked(1usize));
+                    let mut t = memory_argument_linearization_challenges[1usize];
+                    t.mul_assign(&address_high);
+                    numerator.add_assign(&t);
+                    numerator.add_assign(&memory_argument_gamma);
+                    let mut denom = numerator;
+                    let value_low = *(memory.get_unchecked(2usize));
+                    let mut t = memory_argument_linearization_challenges[4usize];
+                    t.mul_assign(&value_low);
+                    denom.add_assign(&t);
+                    let value_high = *(memory.get_unchecked(3usize));
+                    let mut t = memory_argument_linearization_challenges[5usize];
+                    t.mul_assign_by_base(&value_high);
+                    denom.add_assign(&t);
+                    let timestamp_low = *(memory.get_unchecked(4usize));
+                    let mut t = memory_argument_linearization_challenges[2usize];
+                    t.mul_assign(&timestamp_low);
+                    denom.add_assign(&t);
+                    let timestamp_high = *(memory.get_unchecked(5usize));
+                    let mut t = memory_argument_linearization_challenges[3usize];
+                    t.mul_assign(&timestamp_high);
+                    denom.add_assign(&t);
                     let accumulator = *(stage_2.get_unchecked(45usize));
                     let previous = *(stage_2.get_unchecked(44usize));
                     let mut individual_term = accumulator;

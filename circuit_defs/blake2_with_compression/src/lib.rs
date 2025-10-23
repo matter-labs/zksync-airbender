@@ -6,6 +6,7 @@ use prover::cs::cs::witness_placer::graph_description::RawExpression;
 use prover::fft::GoodAllocator;
 use prover::field::Mersenne31Field;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+use prover::tracers::oracles::transpiler_oracles::delegation::*;
 use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
@@ -85,6 +86,18 @@ pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<Mersenne31Field, true>,
         SimpleWitnessProxy<'a, DelegationCircuitOracle<'b, _>>,
+    >;
+    (fn_ptr)(proxy);
+}
+
+pub fn witness_eval_fn_for_replayer<'a, 'b>(
+    proxy: &'_ mut SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
+) {
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    let fn_ptr = sealed::evaluate_witness_fn::<
+        ScalarWitnessTypeSet<Mersenne31Field, true>,
+        SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
     >;
     (fn_ptr)(proxy);
 }

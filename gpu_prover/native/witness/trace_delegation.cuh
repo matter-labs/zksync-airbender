@@ -44,7 +44,7 @@ struct DelegationTrace {
   const RegisterOrIndirectReadWriteData *const indirect_writes;
   const RegisterOrIndirectVariableOffsetData *const indirect_offset_variables;
 
-  template <typename T> DEVICE_FORCEINLINE T get_witness_from_placeholder(Placeholder, unsigned) const;
+  template <typename T> [[nodiscard]] T get_witness_from_placeholder(Placeholder, unsigned) const;
 };
 
 template <> DEVICE_FORCEINLINE u32 DelegationTrace::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_row) const {

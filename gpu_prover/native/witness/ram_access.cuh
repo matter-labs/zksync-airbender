@@ -132,7 +132,7 @@ struct IndirectAccessColumnsReadAccess {
   ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
   ColumnSet<REGISTER_SIZE> read_value;
   ColumnSet<1> address_derivation_carry_bit;
-  Option<IndirectAccessVariableDependency> variable_dependent;
+  OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
   u32 offset_constant;
 };
 
@@ -141,7 +141,7 @@ struct IndirectAccessColumnsWriteAccess {
   ColumnSet<REGISTER_SIZE> read_value;
   ColumnSet<REGISTER_SIZE> write_value;
   ColumnSet<1> address_derivation_carry_bit;
-  Option<IndirectAccessVariableDependency> variable_dependent;
+  OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
   u32 offset_constant;
 };
 

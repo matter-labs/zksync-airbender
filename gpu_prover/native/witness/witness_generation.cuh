@@ -7,9 +7,6 @@ using namespace ::airbender::witness::tables;
 
 namespace airbender::witness::generation {
 
-// #define PRINT_ENABLED
-#define PRINT_THREAD_IDX 0
-
 using namespace field;
 
 struct wrapped_f {
@@ -216,14 +213,14 @@ template <class R> struct WitnessProxy {
   const wrapped_f *const __restrict__ generic_lookup_tables;
   const wrapped_f *const __restrict__ memory;
   wrapped_f *const __restrict__ witness;
-  u32 *const __restrict__ lookup_mappings;
+  u32 *const __restrict__ lookup_mapping;
   wrapped_f *const scratch;
   const unsigned stride;
   const unsigned offset;
 
   template <typename T> DEVICE_FORCEINLINE T get_memory_place(const unsigned idx) const {
     const auto value = memory[idx * stride + offset];
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("M[%u] -> %u\n", idx, value.inner.limb);
 #endif
@@ -232,7 +229,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE T get_witness_place(const unsigned idx) const {
     auto value = witness[idx * stride + offset];
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("W[%u] -> %u\n", idx, value.inner.limb);
 #endif
@@ -241,7 +238,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE T get_scratch_place(const unsigned idx) const {
     auto value = scratch[idx];
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("S[%u] -> %u\n", idx, value.inner.limb);
 #endif
@@ -250,7 +247,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE T get_oracle_value(const Placeholder placeholder) const {
     const auto value = oracle.template get_witness_from_placeholder<typename T::innerType>(placeholder, offset);
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("O[%u] -> %u\n", placeholder.tag, static_cast<u32>(value));
 #endif
@@ -259,7 +256,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE void set_memory_place(const unsigned idx, const T &value) const {
     auto f = wrapped_f::from(value);
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("M[%u] <- %u\n", idx, f.inner.limb);
 #endif
@@ -268,7 +265,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE void set_witness_place(const unsigned idx, const T &value) const {
     const auto f = wrapped_f::from(value);
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("W[%u] <- %u\n", idx, f.inner.limb);
 #endif
@@ -277,7 +274,7 @@ template <class R> struct WitnessProxy {
 
   template <typename T> DEVICE_FORCEINLINE void set_scratch_place(const unsigned idx, const T &value) const {
     auto f = wrapped_f::from(value);
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("S[%u] <- %u\n", idx, f.inner.limb);
 #endif
@@ -296,7 +293,7 @@ template <class R> struct WitnessProxy {
     const auto keys = reinterpret_cast<const bf *>(inputs);
     const auto values = reinterpret_cast<bf *>(outputs);
     const u32 index = table_driver.get_index_and_set_values(table_type, keys, values);
-#ifdef PRINT_ENABLED
+#ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX) {
       printf("L[%u] -> %u [", table_id.inner, index);
       for (unsigned i = 0; i < I; ++i)
@@ -315,14 +312,14 @@ template <class R> struct WitnessProxy {
                                  const u32 *offsets) const {
     static_assert(I + O == 3);
     const u32 index = get_lookup_index_and_value<I, O>(inputs, table_id, outputs, offsets);
-    lookup_mappings[lookup_mapping_idx * stride + offset] = index;
+    lookup_mapping[lookup_mapping_idx * stride + offset] = index;
   }
 
   template <unsigned N>
   DEVICE_FORCEINLINE void lookup_enforce(const wrapped_f values[N], const wrapped_u16 table_id, const unsigned lookup_mapping_idx, const u32 *offsets) const {
     static_assert(N == 3);
     const u32 index = get_lookup_index_and_value<N, 0>(values, table_id, nullptr, offsets);
-    lookup_mappings[lookup_mapping_idx * stride + offset] = index;
+    lookup_mapping[lookup_mapping_idx * stride + offset] = index;
   }
 
   template <unsigned I, unsigned O>
@@ -404,6 +401,7 @@ template <class R> struct WitnessProxy {
 
 // clang-format off
 #define INCLUDE_PREFIX ../../../../circuit_defs/ // whitespace! NOLINT
+#define UNROLLED_INCLUDE_PREFIX ../../../../circuit_defs/unrolled_circuits/ // whitespace! NOLINT
 #define INCLUDE_SUFFIX /generated/witness_generation_fn.cuh
 // clang-format on
 #define STRINGIFY(X) STRINGIFY2(X)
@@ -411,16 +409,17 @@ template <class R> struct WitnessProxy {
 #define IDENT(x) x
 #define CAT_3(x, y, z) IDENT(x) IDENT(y) IDENT(z)
 #define CIRCUIT_INCLUDE(NAME) STRINGIFY(CAT_3(INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
+#define UNROLLED_CIRCUIT_INCLUDE(NAME) STRINGIFY(CAT_3(UNROLLED_INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
 #define KERNEL_NAME(NAME) ab_generate_##NAME##_witness_kernel
 #define KERNEL(NAME, ORACLE)                                                                                                                                   \
   EXTERN __global__ void KERNEL_NAME(NAME)(const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables,                   \
                                            const wrapped_f *const __restrict__ memory, wrapped_f *const __restrict__ witness,                                  \
-                                           u32 *const __restrict__ lookup_mappings, const unsigned stride, const unsigned count) {                             \
+                                           u32 *const __restrict__ lookup_mapping, const unsigned stride, const unsigned count) {                             \
     const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;                                                                                                \
     if (gid >= count)                                                                                                                                          \
       return;                                                                                                                                                  \
     SCRATCH                                                                                                                                                    \
-    const WitnessProxy<ORACLE> p = {oracle, generic_lookup_tables, memory, witness, lookup_mappings, scratch, stride, gid};                                    \
+    const WitnessProxy<ORACLE> p = {oracle, generic_lookup_tables, memory, witness, lookup_mapping, scratch, stride, gid};                                    \
     FN_CALL(generate)                                                                                                                                          \
   }
 

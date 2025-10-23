@@ -97,35 +97,6 @@ impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
-pub struct IMWithoutSignedMulDivIsaConfig;
-
-impl MachineConfig for IMWithoutSignedMulDivIsaConfig {
-    const SUPPORT_MUL: bool = true;
-    const SUPPORT_DIV: bool = true;
-    const SUPPORT_SIGNED_MUL: bool = false;
-    const SUPPORT_SIGNED_DIV: bool = false;
-    const SUPPORT_SIGNED_LOAD: bool = true;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = true;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = false;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
-    #[cfg(not(feature = "delegation"))]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-    #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
-        &[
-            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        ];
-}
-
-#[derive(
-    Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
 pub struct IWithoutByteAccessIsaConfigWithDelegation;
 
 impl MachineConfig for IWithoutByteAccessIsaConfigWithDelegation {

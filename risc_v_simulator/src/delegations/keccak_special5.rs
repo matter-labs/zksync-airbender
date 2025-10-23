@@ -1,5 +1,4 @@
 use super::*;
-use crate::cycle::status_registers::TrapReason;
 use common_constants::delegation_types::keccak_special5::*;
 use cs::definitions::{TimestampData, TimestampScalar};
 
@@ -21,95 +20,74 @@ pub fn keccak_special5<
     // read registers first
     let x10 = state.observable.registers[10];
     let x11 = state.observable.registers[11];
-    let control = x10 >> 16;
+    let control = x10 & 0xffff; // just for sanity
     assert!(
-        x10 % (1 << 16) == 0,
-        "input control should have lowest 16 bits null"
+        x10 >> 16 == 0,
+        "control register upper 16 bits should be empty"
     );
     assert!(x11 % 256 == 0, "input pointer is unaligned");
-    assert!(
-        control < 1 << 15,
-        "control parameter should be 15 bits but was {} bits (0b{control:016b})",
-        (control as f32).log2().ceil() as u32
-    );
     assert!(
         x11 >= 1 << 21,
         "state pointer should be in RAM address space but was in ROM"
     );
+    assert!(
+        control < 1 << 11,
+        "control parameter should be 11 bits but was {} bits (0b{control:016b})",
+        (control as f32).log2().ceil() as u32
+    );
 
     // extract control info
-    let (precompile, iteration, round) = {
-        let precompile_bitmask = control & 0b11111;
-        let iteration_bitmask = (control >> 5) & 0b11111;
-        let round = control >> 10;
-        (
-            precompile_bitmask.trailing_zeros(),
-            iteration_bitmask.trailing_zeros() as usize,
-            round as usize,
-        )
-    };
+    let precompile = control & 0b111;
+    let iteration = ((control >> 3) & 0b111) as usize;
+    let round = (control >> 6) as usize;
     assert!(
-        precompile < 5 && iteration < 5 && round < 24,
+        (precompile < 7 && iteration < 5 && round < 24)
+            || (precompile == 0 && iteration < 5 && round <= 24),
         "the control parameters are invalid"
     );
 
     const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
-    const PRECOMPILE_COLUMNMIX: u32 = 1;
-    const PRECOMPILE_THETA_RHO: u32 = 2;
-    const PRECOMPILE_CHI1: u32 = 3;
-    const PRECOMPILE_CHI2: u32 = 4;
+    const PRECOMPILE_COLUMNMIX1: u32 = 1;
+    const PRECOMPILE_COLUMNMIX2: u32 = 2;
+    const PRECOMPILE_THETA: u32 = 3;
+    const PRECOMPILE_RHO: u32 = 4;
+    const PRECOMPILE_CHI1: u32 = 5;
+    const PRECOMPILE_CHI2: u32 = 6;
 
     // update the control register
-    let control_next = match precompile {
-        PRECOMPILE_IOTA_COLUMNXOR => {
-            let iteration_next = (iteration + 1) % 5;
-            let precompile_next = if iteration == 4 {
-                PRECOMPILE_COLUMNMIX
-            } else {
-                precompile
-            };
-            let round_next = round as u32;
-            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
-        }
-        PRECOMPILE_COLUMNMIX => {
-            let iteration_next = iteration;
-            let precompile_next = PRECOMPILE_THETA_RHO;
-            let round_next = round as u32;
-            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
-        }
-        PRECOMPILE_THETA_RHO => {
-            let iteration_next = (iteration + 1) % 5;
-            let precompile_next = if iteration == 4 {
-                PRECOMPILE_CHI1
-            } else {
-                precompile
-            };
-            let round_next = round as u32;
-            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
-        }
-        PRECOMPILE_CHI1 => {
-            let iteration_next = iteration;
-            let precompile_next = PRECOMPILE_CHI2;
-            let round_next = round as u32;
-            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
-        }
-        PRECOMPILE_CHI2 => {
-            let iteration_next = (iteration + 1) % 5;
-            let precompile_next = if iteration == 4 {
-                PRECOMPILE_IOTA_COLUMNXOR
-            } else {
-                PRECOMPILE_CHI1
-            };
-            let round_next = if iteration == 4 {
-                round as u32 + 1
-            } else {
-                round as u32
-            };
-            (1 << precompile_next) | (1 << iteration_next) << 5 | round_next << 10
-        }
-        _ => unreachable!(),
+    let control_next = {
+        let (precompile_next, iteration_next, round_next) = match precompile {
+            PRECOMPILE_IOTA_COLUMNXOR | PRECOMPILE_THETA | PRECOMPILE_RHO => {
+                let precompile_next = if iteration == 4 {
+                    precompile + 1
+                } else {
+                    precompile
+                };
+                let iteration_next = (iteration + 1) % 5;
+                let round_next = round;
+                (precompile_next, iteration_next, round_next)
+            }
+            PRECOMPILE_COLUMNMIX1 | PRECOMPILE_COLUMNMIX2 | PRECOMPILE_CHI1 => {
+                let precompile_next = precompile + 1;
+                let iteration_next = iteration;
+                let round_next = round;
+                (precompile_next, iteration_next, round_next)
+            }
+            PRECOMPILE_CHI2 => {
+                let precompile_next = if iteration == 4 {
+                    PRECOMPILE_IOTA_COLUMNXOR
+                } else {
+                    precompile - 1
+                };
+                let iteration_next = (iteration + 1) % 5;
+                let round_next = if iteration == 4 { round + 1 } else { round };
+                (precompile_next, iteration_next, round_next)
+            }
+            _ => unreachable!(),
+        };
+        precompile_next | (iteration_next as u32) << 3 | (round_next as u32) << 6
     };
-    let x10_next = control_next << 16;
+    let x10_next = control_next;
     state.observable.registers[10] = x10_next;
 
     // extract state indexes (for address r/w)
@@ -163,8 +141,9 @@ pub fn keccak_special5<
                 let idx20 = pi[iteration + 20];
                 [idx0, idx5, idx10, idx15, idx20, idcol]
             }
-            PRECOMPILE_COLUMNMIX => [25, 26, 27, 28, 29, 0],
-            PRECOMPILE_THETA_RHO => {
+            PRECOMPILE_COLUMNMIX1 => [25, 26, 27, 28, 29, 30],
+            PRECOMPILE_COLUMNMIX2 => [25, 26, 27, 28, 29, 30],
+            PRECOMPILE_THETA => {
                 const IDCOLS: [usize; 5] = [29, 25, 26, 27, 28];
                 let pi = &PERMUTATIONS_ADJUSTED[round * 25..]; // indices before applying round permutation
                 let idcol = IDCOLS[iteration];
@@ -174,6 +153,15 @@ pub fn keccak_special5<
                 let idx15 = pi[iteration + 15];
                 let idx20 = pi[iteration + 20];
                 [idx0, idx5, idx10, idx15, idx20, idcol]
+            }
+            PRECOMPILE_RHO => {
+                let pi = &PERMUTATIONS_ADJUSTED[round * 25..]; // indices before applying round permutation
+                let idx0 = pi[iteration];
+                let idx5 = pi[iteration + 5];
+                let idx10 = pi[iteration + 10];
+                let idx15 = pi[iteration + 15];
+                let idx20 = pi[iteration + 20];
+                [idx0, idx5, idx10, idx15, idx20, 25]
             }
             PRECOMPILE_CHI1 => {
                 let pi = &PERMUTATIONS_ADJUSTED[(round + 1) * 25..]; // indices after applying round permutation
@@ -229,7 +217,7 @@ pub fn keccak_special5<
             let [idx0, idx5, idx10, idx15, idx20, idcol] = state_inputs;
             let idx0_new = {
                 let chosen_round_constant = {
-                    const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [
+                    const ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
                         0,
                         1,
                         32898,
@@ -254,6 +242,7 @@ pub fn keccak_special5<
                         9223372039002292353,
                         9223372036854808704,
                         2147483649,
+                        9223372039002292232,
                     ];
                     let round_if_iter0 = if iteration == 0 { round } else { 0 };
                     ROUND_CONSTANTS_ADJUSTED[round_if_iter0]
@@ -269,18 +258,40 @@ pub fn keccak_special5<
                 idx0_new, idx5_new, idx10_new, idx15_new, idx20_new, idcol_new,
             ]
         }
-        PRECOMPILE_COLUMNMIX => {
-            let [i25, i26, i27, i28, i29, i0] = state_inputs;
+        PRECOMPILE_COLUMNMIX1 => {
+            let [i25, i26, i27, i28, i29, i30] = state_inputs;
             let i25_new = i25 ^ i27.rotate_left(1);
-            let i26_new = i26 ^ i28.rotate_left(1);
+            let i26_new = i26;
             let i27_new = i27 ^ i29.rotate_left(1);
-            let i28_new = i28 ^ i25.rotate_left(1);
-            let i29_new = i29 ^ i26.rotate_left(1);
-            let i0_new = i0;
-            [i25_new, i26_new, i27_new, i28_new, i29_new, i0_new]
+            let i28_new = i28;
+            let i29_new = i29;
+            let i30_new = i25.rotate_left(1);
+            [i25_new, i26_new, i27_new, i28_new, i29_new, i30_new]
         }
-        PRECOMPILE_THETA_RHO => {
+        PRECOMPILE_COLUMNMIX2 => {
+            let [i25, i26, i27, i28, i29, i30] = state_inputs;
+            let i25_new = i25;
+            let i26_new = i26 ^ i28.rotate_left(1);
+            let i27_new = i27;
+            let i28_new = i28 ^ i30;
+            let i29_new = i29 ^ i26.rotate_left(1);
+            let i30_new = i30;
+            [i25_new, i26_new, i27_new, i28_new, i29_new, i30_new]
+        }
+        PRECOMPILE_THETA => {
             let [idx0, idx5, idx10, idx15, idx20, idcol] = state_inputs;
+            let idx0_new = idx0 ^ idcol;
+            let idx5_new = idx5 ^ idcol;
+            let idx10_new = idx10 ^ idcol;
+            let idx15_new = idx15 ^ idcol;
+            let idx20_new = idx20 ^ idcol;
+            let idcol_new = idcol;
+            [
+                idx0_new, idx5_new, idx10_new, idx15_new, idx20_new, idcol_new,
+            ]
+        }
+        PRECOMPILE_RHO => {
+            let [idx0, idx5, idx10, idx15, idx20, i25] = state_inputs;
             let [rot_idx0, rot_idx5, rot_idx10, rot_idx15, rot_idx20] = match iteration {
                 0 => [0, 36, 3, 41, 18],
                 1 => [1, 44, 10, 45, 2],
@@ -289,15 +300,13 @@ pub fn keccak_special5<
                 4 => [27, 20, 39, 8, 14],
                 _ => unreachable!(),
             };
-            let idx0_new = (idx0 ^ idcol).rotate_left(rot_idx0);
-            let idx5_new = (idx5 ^ idcol).rotate_left(rot_idx5);
-            let idx10_new = (idx10 ^ idcol).rotate_left(rot_idx10);
-            let idx15_new = (idx15 ^ idcol).rotate_left(rot_idx15);
-            let idx20_new = (idx20 ^ idcol).rotate_left(rot_idx20);
-            let idcol_new = idcol;
-            [
-                idx0_new, idx5_new, idx10_new, idx15_new, idx20_new, idcol_new,
-            ]
+            let idx0_new = idx0.rotate_left(rot_idx0);
+            let idx5_new = idx5.rotate_left(rot_idx5);
+            let idx10_new = idx10.rotate_left(rot_idx10);
+            let idx15_new = idx15.rotate_left(rot_idx15);
+            let idx20_new = idx20.rotate_left(rot_idx20);
+            let i25_new = i25;
+            [idx0_new, idx5_new, idx10_new, idx15_new, idx20_new, i25_new]
         }
         PRECOMPILE_CHI1 => {
             let [idx1, idx2, idx3, idx4, i25, i26] = state_inputs;
@@ -316,7 +325,7 @@ pub fn keccak_special5<
             let idx4_new = idx4 ^ (!idx0 & i26);
             let i25_new = i25;
             let i26_new = i26;
-            let i27_new = idx0_new;
+            let i27_new = i27;
             [idx0_new, idx3_new, idx4_new, i25_new, i26_new, i27_new]
         }
         _ => unreachable!(),

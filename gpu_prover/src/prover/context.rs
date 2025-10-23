@@ -196,7 +196,6 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        // assert_ne!(size, 0);
         let placement = if self.reversed_allocation_placement {
             match placement {
                 AllocationPlacement::BestFit => AllocationPlacement::BestFit,

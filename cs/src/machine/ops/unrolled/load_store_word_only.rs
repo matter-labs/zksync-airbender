@@ -155,7 +155,7 @@ fn apply_word_only_load_store<
 
         // mark as known inputs
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            use cs::witness_placer::*;
+            use crate::cs::witness_placer::*;
             placer.assume_assigned(rs2_or_load_ram_access_query_read_value[0]);
             placer.assume_assigned(rs2_or_load_ram_access_query_read_value[1]);
 
@@ -206,7 +206,7 @@ fn apply_word_only_load_store<
 
         // mark as known inputs
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            use cs::witness_placer::*;
+            use crate::cs::witness_placer::*;
             placer.assume_assigned(rd_or_store_ram_access_query_read_value[0]);
             placer.assume_assigned(rd_or_store_ram_access_query_read_value[1]);
 

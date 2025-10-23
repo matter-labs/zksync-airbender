@@ -44,7 +44,8 @@ impl<A: GoodAllocator> DelegationWitness<A> {
             num_register_accesses_per_delegation: self.num_register_accesses_per_delegation,
             num_indirect_reads_per_delegation: self.num_indirect_reads_per_delegation,
             num_indirect_writes_per_delegation: self.num_indirect_writes_per_delegation,
-            num_indirect_access_variable_offsets_per_delegation: self.num_indirect_access_variable_offsets_per_delegation,
+            num_indirect_access_variable_offsets_per_delegation: self
+                .num_indirect_access_variable_offsets_per_delegation,
             base_register_index: self.base_register_index,
             delegation_type: self.delegation_type,
             indirect_accesses_properties: self.indirect_accesses_properties.clone(),
@@ -57,11 +58,18 @@ impl<A: GoodAllocator> DelegationWitness<A> {
     }
 
     pub(crate) fn skip_n(&mut self, n: usize) {
-            self.write_timestamp = self.write_timestamp[n..].to_vec_in(A::default());
-            self.register_accesses = self.register_accesses[(n * self.num_register_accesses_per_delegation)..].to_vec_in(A::default());
-            self.indirect_reads = self.indirect_reads[(n * self.num_indirect_reads_per_delegation)..].to_vec_in(A::default());
-            self.indirect_writes = self.indirect_writes[(n * self.num_indirect_writes_per_delegation)..].to_vec_in(A::default());
-            self.indirect_offset_variables = self.indirect_offset_variables[(n * self.num_indirect_access_variable_offsets_per_delegation)..].to_vec_in(A::default());
+        self.write_timestamp = self.write_timestamp[n..].to_vec_in(A::default());
+        self.register_accesses = self.register_accesses
+            [(n * self.num_register_accesses_per_delegation)..]
+            .to_vec_in(A::default());
+        self.indirect_reads = self.indirect_reads[(n * self.num_indirect_reads_per_delegation)..]
+            .to_vec_in(A::default());
+        self.indirect_writes = self.indirect_writes
+            [(n * self.num_indirect_writes_per_delegation)..]
+            .to_vec_in(A::default());
+        self.indirect_offset_variables = self.indirect_offset_variables
+            [(n * self.num_indirect_access_variable_offsets_per_delegation)..]
+            .to_vec_in(A::default());
     }
 
     #[inline(always)]

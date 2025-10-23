@@ -5,10 +5,13 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
     id: u32,
 ) -> LookupTable<F, 3> {
     const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
-    const PRECOMPILE_COLUMNMIX: u32 = 1;
-    const PRECOMPILE_THETA_RHO: u32 = 2;
-    const PRECOMPILE_CHI1: u32 = 3;
-    const PRECOMPILE_CHI2: u32 = 4;
+    const PRECOMPILE_COLUMNMIX1: u32 = 1;
+    const PRECOMPILE_COLUMNMIX2: u32 = 2;
+    const PRECOMPILE_THETA: u32 = 3;
+    const PRECOMPILE_RHO: u32 = 4;
+    const PRECOMPILE_CHI1: u32 = 5;
+    const PRECOMPILE_CHI2: u32 = 6;
+
     const PERMUTATIONS_ADJUSTED: [u64; 25 * 25] = {
         let perms = [
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -40,14 +43,14 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
         ];
         let mut i = 0;
         while i < perms.len() {
-            assert!(perms[i] < 30);
+            assert!(perms[i] < 25);
             i += 1;
         }
         perms
     };
-    let mut keys = Vec::with_capacity(1 << 15);
-    for control in 0..1 << 15 {
-        let key = [F::from_u64_unchecked(control), F::ZERO, F::ZERO];
+    let mut keys = Vec::with_capacity(1 << 12);
+    for control_with_exe in 0..1 << 12 {
+        let key = [F::from_u64_unchecked(control_with_exe), F::ZERO, F::ZERO];
         keys.push(key);
     }
     let table_name = format!("Keccak Permutation Indices({I}, {J}) table");
@@ -57,23 +60,19 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
         table_name,
         1,
         |keys| {
-            let control = keys[0].as_u64_reduced();
-            debug_assert!(control < (1 << 15));
+            let control_with_exe = keys[0].as_u64_reduced();
+            debug_assert!(control_with_exe < (1 << 12));
 
-            let precompile = {
-                let precompile_bitmask = control & 0b11111;
-                precompile_bitmask.trailing_zeros()
-            };
-            let iter = {
-                let iter_bitmask = (control >> 5) & 0b11111;
-                iter_bitmask.trailing_zeros() as usize
-            };
-            let round = (control >> 10) as usize;
+            let control = control_with_exe & 0b0111_1111_1111;
+            let exe = (control_with_exe >> 11) == 1;
+            let precompile = control as u32 & 0b111;
+            let iter = (control as usize >> 3) & 0b111;
+            let round = control as usize >> 6;
 
             // debug_assert!(precompile < 5 && (control & (1<<precompile))!=0, "NOT {control:0b} -> p{precompile}");
             // debug_assert!(iter < 5 && ((control >> 5) & (1<<iter))!=0);
             let indices = match precompile {
-                PRECOMPILE_IOTA_COLUMNXOR if iter < 5 && round < 24 => {
+                PRECOMPILE_IOTA_COLUMNXOR if iter < 5 && round <= 24 && exe => {
                     let pi = &PERMUTATIONS_ADJUSTED[round * 25..][..25]; // indices before applying round permutation
                     let idcol = 25 + iter as u64;
                     let idx0 = pi[iter];
@@ -83,8 +82,9 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx20 = pi[iter + 20];
                     [idx0, idx5, idx10, idx15, idx20, idcol]
                 }
-                PRECOMPILE_COLUMNMIX if iter < 5 && round < 24 => [25, 26, 27, 28, 29, 0],
-                PRECOMPILE_THETA_RHO if iter < 5 && round < 24 => {
+                PRECOMPILE_COLUMNMIX1 if iter < 5 && round < 24 => [25, 26, 27, 28, 29, 30],
+                PRECOMPILE_COLUMNMIX2 if iter < 5 && round < 24 => [25, 26, 27, 28, 29, 30],
+                PRECOMPILE_THETA if iter < 5 && round < 24 => {
                     const IDCOLS: [u64; 5] = [29, 25, 26, 27, 28];
                     let pi = &PERMUTATIONS_ADJUSTED[round * 25..][..25]; // indices before applying round permutation
                     let idcol = IDCOLS[iter];
@@ -94,6 +94,15 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     let idx15 = pi[iter + 15];
                     let idx20 = pi[iter + 20];
                     [idx0, idx5, idx10, idx15, idx20, idcol]
+                }
+                PRECOMPILE_RHO if iter < 5 && round < 24 => {
+                    let pi = &PERMUTATIONS_ADJUSTED[round * 25..][..25]; // indices before applying round permutation
+                    let idx0 = pi[iter];
+                    let idx5 = pi[iter + 5];
+                    let idx10 = pi[iter + 10];
+                    let idx15 = pi[iter + 15];
+                    let idx20 = pi[iter + 20];
+                    [idx0, idx5, idx10, idx15, idx20, 25]
                 }
                 PRECOMPILE_CHI1 if iter < 5 && round < 24 => {
                     let pi = &PERMUTATIONS_ADJUSTED[(round + 1) * 25..][..25]; // indices after applying round permutation
@@ -116,7 +125,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                     [idx0, idx3, idx4, 25, 26, 27]
                 }
                 // explicit case of padding - when control == 0
-                64 if iter == 64 && round == 0 => {
+                0 if iter == 0 && round == 0 => {
                     assert_eq!(control, 0);
                     [0, 0, 0, 0, 0, 0]
                 }
@@ -136,7 +145,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
 
 // WARN: if you call this with a wrong round it returns junk!
 pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const ROUND_CONSTANTS_ADJUSTED: [u64; 24] = [
+    const ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
         0,
         1,
         32898,
@@ -161,6 +170,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
         9223372039002292353,
         9223372036854808704,
         2147483649,
+        0x8000000080008008, // last round, adjusted to fictitious 25th round
     ];
     let mut keys = Vec::with_capacity(1 << 16);
     for b in 0..1 << 8 {
@@ -183,7 +193,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
             let round_if_iter0 = (b_control & 0b11111) as usize;
             let u8_position = (b_control >> 5) as usize;
 
-            let b = if round_if_iter0 < 24 {
+            let b = if round_if_iter0 <= 24 {
                 let round_constant = ROUND_CONSTANTS_ADJUSTED[round_if_iter0];
                 let u8_chunks = round_constant.to_le_bytes();
                 u8_chunks[u8_position] as u64

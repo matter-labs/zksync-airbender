@@ -43,6 +43,17 @@ fn apply_subword_only_load_store<
     let is_store = decoder.perform_write();
     let is_load = is_store.toggle();
 
+    if let Some(is_store) = is_store.get_value(cs) {
+        if is_store {
+            println!("STORE");
+        } else {
+            println!("LOAD");
+        }
+    }
+    if let Some(funct3) = cs.get_value(inputs.decoder_data.funct3) {
+        println!("Funct3 = {:03b}", funct3.as_u64_reduced());
+    }
+
     // GET OPERANDS
     let immediate = Register(inputs.decoder_data.imm.map(Num::Var));
     let is_rd_x0 = Boolean::Is(inputs.decoder_data.rd_is_zero);
@@ -52,6 +63,10 @@ fn apply_subword_only_load_store<
         OPCODES_ARE_IN_ROM,
     );
     cs.add_shuffle_ram_query(rs1_mem_query);
+
+    if let Some(rs1_reg) = rs1_reg.get_value_unsigned(cs) {
+        println!("RS1 value = 0x{:08x}", rs1_reg);
+    }
 
     // We need to derive address in any case
     let unclean_addr = get_reg_add_and_overflow(cs, rs1_reg, immediate).0;
@@ -84,6 +99,22 @@ fn apply_subword_only_load_store<
 
     // Below that line the only trap that can happen is an attempt to store into ROM (offsets are irrelevant)
 
+    if let Some(less_than_word_op) = less_than_word_op.get_value(cs) {
+        if less_than_word_op {
+            println!("Less than word operation");
+        } else {
+            println!("Word sized operation");
+        }
+    }
+
+    if let Some(use_high_word_in_mem_ops) = use_high_word_in_mem_ops.get_value(cs) {
+        if use_high_word_in_mem_ops {
+            println!("Use high part for load");
+        } else {
+            println!("Use low part for load");
+        }
+    }
+
     let clean_addr = {
         let unclean_addr_low = unclean_addr.0[0];
         let unclean_addr_high = unclean_addr.0[1];
@@ -92,6 +123,22 @@ fn apply_subword_only_load_store<
         let high = Constraint::from(unclean_addr_high);
         [low, high]
     };
+
+    if let Some(unclean_addr_low) = unclean_addr.0[0].get_value(cs) {
+        println!(
+            "Unaligned address low = 0x{:04x}",
+            unclean_addr_low.as_u64_reduced()
+        );
+    }
+    if let Some(aligned_address_low) = clean_addr[0].get_value(cs) {
+        println!(
+            "Aligned address low = 0x{:04x}",
+            aligned_address_low.as_u64_reduced()
+        );
+    }
+    if let Some(address_high) = clean_addr[1].get_value(cs) {
+        println!("Address high = 0x{:04x}", address_high.as_u64_reduced());
+    }
 
     // For ROM we need 2 outputs:
     // - check high word of the offset, and trap if we try to write
@@ -106,6 +153,14 @@ fn apply_subword_only_load_store<
         )
     };
 
+    if let Some(is_ram_range) = Boolean::Is(is_ram_range).get_value(cs) {
+        if is_ram_range {
+            println!("Use ROM");
+        } else {
+            println!("Use RAM");
+        }
+    }
+
     // We tran if it's a store into ROM
     cs.add_constraint(Term::from(is_store) * (Term::from(1) - Term::from(is_ram_range)));
 
@@ -113,6 +168,17 @@ fn apply_subword_only_load_store<
 
     let load_from_rom = Boolean::and(&is_load, &Boolean::Not(is_ram_range), cs);
     let load_from_ram = Boolean::and(&is_load, &Boolean::Is(is_ram_range), cs);
+
+    if let Some(load_from_rom) = load_from_rom.get_value(cs) {
+        if load_from_rom {
+            println!("Load from ROM");
+        }
+    }
+    if let Some(load_from_ram) = load_from_ram.get_value(cs) {
+        if load_from_ram {
+            println!("Load from RAM");
+        }
+    }
     // Branches below are orthogonal, but before proceeding we will manually create queries for RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
 
     // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we do NOT
@@ -150,7 +216,7 @@ fn apply_subword_only_load_store<
 
         // mark as known inputs
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            use cs::witness_placer::*;
+            use crate::cs::witness_placer::*;
             placer.assume_assigned(rs2_or_load_ram_access_query_read_value[0]);
             placer.assume_assigned(rs2_or_load_ram_access_query_read_value[1]);
 
@@ -165,6 +231,16 @@ fn apply_subword_only_load_store<
 
         rs2_or_load_ram_access_query
     };
+
+    if let Some(rs2_or_mem_read) = Register(
+        rs2_or_load_ram_access_query
+            .read_value
+            .map(|el| Num::Var(el)),
+    )
+    .get_value_unsigned(cs)
+    {
+        println!("RS2 or memory load value = 0x{:08x}", rs2_or_mem_read);
+    }
 
     // same for RD
     let rd_or_store_ram_access_query = {
@@ -201,7 +277,7 @@ fn apply_subword_only_load_store<
 
         // mark as known inputs
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            use cs::witness_placer::*;
+            use crate::cs::witness_placer::*;
             placer.assume_assigned(rd_or_store_ram_access_query_read_value[0]);
             placer.assume_assigned(rd_or_store_ram_access_query_read_value[1]);
 
@@ -222,6 +298,31 @@ fn apply_subword_only_load_store<
 
         rd_or_store_ram_access_query
     };
+
+    if let Some(rd_or_mem_store_read_value) = Register(
+        rd_or_store_ram_access_query
+            .read_value
+            .map(|el| Num::Var(el)),
+    )
+    .get_value_unsigned(cs)
+    {
+        println!(
+            "RD or memory store read value = 0x{:08x}",
+            rd_or_mem_store_read_value
+        );
+    }
+    if let Some(rd_or_mem_store_write_value) = Register(
+        rd_or_store_ram_access_query
+            .write_value
+            .map(|el| Num::Var(el)),
+    )
+    .get_value_unsigned(cs)
+    {
+        println!(
+            "RD or memory store write value = 0x{:08x}",
+            rd_or_mem_store_write_value
+        );
+    }
 
     // // we still need witness for RAM read - and we range-check it, as we may fully copy it into outputs
     // let ram_read_witness = Register::new_from_placeholder(cs, Placeholder::LoadStoreRamValue);
@@ -290,6 +391,19 @@ fn apply_subword_only_load_store<
             Num::Var(rs2_or_load_ram_access_query.read_value[0]),
         );
 
+        if let Some(ram_limb_for_subword_size_ops) = ram_limb_for_subword_size_ops.get_value(cs) {
+            println!(
+                "Selected LOAD half-word = 0x{:04x}",
+                ram_limb_for_subword_size_ops.as_u64_reduced()
+            );
+        }
+        if let Some(offset_low_bits) = cs.get_value(offset_low_bits) {
+            println!(
+                "Offset low bits = 0b{:02b}",
+                offset_low_bits.as_u64_reduced()
+            );
+        }
+
         let [ram_less_than_word_load_low, ram_less_than_word_load_high] = opt_ctx
             .append_lookup_relation_from_linear_terms(
                 cs,
@@ -299,6 +413,15 @@ fn apply_subword_only_load_store<
                 TableType::MemoryLoadHalfwordOrByte.to_num(),
                 load_from_ram,
             );
+
+        if let Some(ram_load_candidate) = Register([
+            Num::Var(ram_less_than_word_load_low),
+            Num::Var(ram_less_than_word_load_high),
+        ])
+        .get_value_unsigned(cs)
+        {
+            println!("RAM load candidate = 0x{:08x}", ram_load_candidate);
+        }
 
         [ram_less_than_word_load_low, ram_less_than_word_load_high]
     };
@@ -386,6 +509,19 @@ fn apply_subword_only_load_store<
     let rd_masked_high = cs.add_variable_from_constraint(
         Term::from(rd_candidate_high) * (Term::from(1) - Term::from(is_rd_x0)),
     );
+
+    if let Some(rd_candidate) =
+        Register([Num::Var(rd_candidate_low), Num::Var(rd_candidate_high)]).get_value_unsigned(cs)
+    {
+        println!("RD candidate = 0x{:08x}", rd_candidate);
+    }
+
+    if let Some(rd_candidate_masked) =
+        Register([Num::Var(rd_masked_low), Num::Var(rd_masked_high)]).get_value_unsigned(cs)
+    {
+        println!("RD candidate = 0x{:08x}", rd_candidate_masked);
+    }
+
     // so if we load, then it must be equal to RD query's write value
     cs.add_constraint(
         (Term::from(rd_masked_low) - Term::from(rd_or_store_ram_access_query.write_value[0]))

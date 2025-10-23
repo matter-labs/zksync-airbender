@@ -307,6 +307,7 @@ pub fn create_memory_load_halfword_or_byte_table<F: PrimeField>(id: u32) -> Look
             let limb_value = input & 0xffff;
             let offset = (input >> 16) & 0b11;
             let funct3 = (input >> 18) & 0b111;
+            let use_low_byte = offset & 1 == 0;
 
             let (low, high) = match (funct3, offset) {
                 (0b010, _) => {
@@ -337,9 +338,9 @@ pub fn create_memory_load_halfword_or_byte_table<F: PrimeField>(id: u32) -> Look
                         (limb_value, 0)
                     }
                 }
-                (0b000, offset) => {
+                (0b000, _) => {
                     // LB, need sign extension
-                    let source = if offset & 1 != 0 {
+                    let source = if use_low_byte {
                         limb_value & 0xff
                     } else {
                         limb_value >> 8
@@ -353,7 +354,7 @@ pub fn create_memory_load_halfword_or_byte_table<F: PrimeField>(id: u32) -> Look
                 }
                 (0b100, _) => {
                     // LBU, no sign extension
-                    let source = if offset & 1 != 0 {
+                    let source = if use_low_byte {
                         limb_value & 0xff
                     } else {
                         limb_value >> 8

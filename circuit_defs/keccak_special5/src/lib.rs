@@ -6,6 +6,7 @@ use prover::cs::cs::witness_placer::graph_description::RawExpression;
 use prover::fft::GoodAllocator;
 use prover::field::Mersenne31Field;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+use prover::tracers::oracles::transpiler_oracles::delegation::*;
 use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
@@ -29,7 +30,7 @@ pub fn get_delegation_circuit() -> DelegationProcessorDescription {
     use cs::one_row_compiler::OneRowCompiler;
 
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    define_keccak_special5_delegation_circuit(&mut cs);
+    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
     let (circuit_output, _) = cs.finalize();
     let table_driver = circuit_output.table_driver.clone();
     let compiler = OneRowCompiler::default();
@@ -56,7 +57,7 @@ pub fn get_ssa_form() -> Vec<Vec<RawExpression<Mersenne31Field>>> {
 
     let mut cs = BasicAssembly::<Mersenne31Field, WitnessGraphCreator<Mersenne31Field>>::new();
     cs.witness_placer = Some(WitnessGraphCreator::<Mersenne31Field>::new());
-    define_keccak_special5_delegation_circuit(&mut cs);
+    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
 
     let witness_placer = cs.witness_placer.unwrap();
     let (_resolution_order, ssa_forms) = witness_placer.compute_resolution_order();
@@ -85,6 +86,18 @@ pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<Mersenne31Field, true>,
         SimpleWitnessProxy<'a, DelegationCircuitOracle<'b, _>>,
+    >;
+    (fn_ptr)(proxy);
+}
+
+pub fn witness_eval_fn_for_replayer<'a, 'b>(
+    proxy: &'_ mut SimpleWitnessProxy<'a, KeccakDelegationOracle<'b>>,
+) {
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    let fn_ptr = sealed::evaluate_witness_fn::<
+        ScalarWitnessTypeSet<Mersenne31Field, true>,
+        SimpleWitnessProxy<'a, KeccakDelegationOracle<'b>>,
     >;
     (fn_ptr)(proxy);
 }

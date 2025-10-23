@@ -1159,4 +1159,19 @@ impl<F: PrimeField> BasicAssembly<F, CSDebugWitnessEvaluator<F>> {
 
         new
     }
+
+    pub fn new_with_oracle_and_preprocessed_decoder<O: Oracle<F> + 'static>(
+        oracle: O,
+        preprocessed_decoder_table: Vec<crate::cs::oracle::ExecutorFamilyDecoderData>,
+    ) -> Self {
+        let mut new = Self::new();
+        new.witness_placer = Some(
+            CSDebugWitnessEvaluator::new_with_oracle_and_preprocessed_decoder(
+                oracle,
+                preprocessed_decoder_table,
+            ),
+        );
+
+        new
+    }
 }

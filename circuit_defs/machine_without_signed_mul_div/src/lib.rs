@@ -5,7 +5,7 @@ use crate::machine::machine_configurations::full_isa_with_delegation_no_exceptio
 use prover::cs::*;
 use prover::fft::GoodAllocator;
 use prover::field::Mersenne31Field;
-use prover::risc_v_simulator::cycle::{IMWithoutSignedMulDivIsaConfig, MachineConfig};
+use prover::risc_v_simulator::cycle::{IMStandardIsaConfigWithUnsignedMulDiv, MachineConfig};
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use prover::*;
 
@@ -18,7 +18,7 @@ pub const MAX_ROM_SIZE: usize = 1 << 21; // bytes
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = (MAX_ROM_SIZE.trailing_zeros() - 16) as usize;
 
 pub const ALLOWED_DELEGATION_CSRS: &[u32] =
-    prover::risc_v_simulator::cycle::IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS;
+    prover::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS;
 
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
@@ -127,14 +127,14 @@ mod sealed {
 pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
     proxy: &'_ mut SimpleWitnessProxy<
         'a,
-        MainRiscVOracle<'b, IMWithoutSignedMulDivIsaConfig, impl GoodAllocator>,
+        MainRiscVOracle<'b, IMStandardIsaConfigWithUnsignedMulDiv, impl GoodAllocator>,
     >,
 ) {
     use prover::cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<Mersenne31Field, true>,
-        SimpleWitnessProxy<'a, MainRiscVOracle<'b, IMWithoutSignedMulDivIsaConfig, _>>,
+        SimpleWitnessProxy<'a, MainRiscVOracle<'b, IMStandardIsaConfigWithUnsignedMulDiv, _>>,
     >;
     (fn_ptr)(proxy);
 }

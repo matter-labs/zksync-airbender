@@ -24,6 +24,7 @@ mod memory;
 mod memory_subword_only;
 mod memory_word_only;
 mod mul_div;
+mod reduced_machine_ops;
 mod shift_binop_csrrw;
 
 pub use self::add_sub_lui_auipc_mop::*;
@@ -33,13 +34,14 @@ pub use self::memory::*;
 pub use self::memory_subword_only::*;
 pub use self::memory_word_only::*;
 pub use self::mul_div::*;
+pub use self::reduced_machine_ops::*;
 pub use self::shift_binop_csrrw::*;
 
 mod decoder_circuit;
 
 pub use decoder_circuit::describe_decoder_cycle;
 
-pub type InstructionFamilyBitmaskRepr = u8;
+pub type InstructionFamilyBitmaskRepr = u32;
 
 pub const NUM_DEFAULT_DECODER_BITS: usize = 1 + (NUM_INSTRUCTION_TYPES - 1); // generic validity flag + maskers for instruction types except R-type
 

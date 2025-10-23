@@ -44,7 +44,9 @@ thread_local! {
     pub(crate) static PROFILING_TABLE: std::cell::RefCell<std::collections::BTreeMap<&'static str, std::time::Duration>> = std::cell::RefCell::new(std::collections::BTreeMap::new());
 }
 
-pub use self::memory_witness::{evaluate_delegation_memory_witness, evaluate_memory_witness};
+pub use self::memory_witness::{
+    evaluate_delegation_memory_witness, evaluate_memory_witness, get_aux_boundary_data,
+};
 
 pub use self::ext_calls::*;
 pub use self::ext_calls_with_gpu_tracers::*;
