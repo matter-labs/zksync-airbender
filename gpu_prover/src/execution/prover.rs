@@ -32,7 +32,7 @@ use prover::risc_v_simulator::abstractions::tracer::{
     RegisterOrIndirectVariableOffsetData,
 };
 use prover::risc_v_simulator::cycle::{
-    IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
+    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfig,
     IWithoutByteAccessIsaConfigWithDelegation,
 };
 use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
@@ -1069,7 +1069,7 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                 self.worker.pool.spawn(func);
             }
             MainCircuitType::MachineWithoutSignedMulDiv => {
-                let func = get_cpu_worker_func::<IMWithoutSignedMulDivIsaConfig, _>(
+                let func = get_cpu_worker_func::<IMStandardIsaConfigWithUnsignedMulDiv, _>(
                     wait_group,
                     batch_id,
                     worker_id,

@@ -5,7 +5,6 @@ use crate::u32_from_field_elems;
 use crate::NonDeterminismCSRSource;
 use crate::DUMP_WITNESS_VAR;
 use common_constants::TimestampScalar;
-use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::TIMESTAMP_STEP;
 use prover::check_satisfied;
@@ -33,7 +32,6 @@ use prover::VectorMemoryImplWithRom;
 use prover::WitnessEvaluationData;
 use prover::WitnessEvaluationDataForExecutionFamily;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
-use risc_v_simulator::cycle::IMStandardIsaConfig;
 use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
 use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
@@ -43,7 +41,6 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::DelegationAbiDescription;
-use setups::inits_and_teardowns;
 use setups::DelegationCircuitPrecomputations;
 use setups::UnrolledCircuitPrecomputations;
 use setups::UnrolledCircuitWitnessEvalFn;
@@ -2097,10 +2094,9 @@ mod test {
     use super::*;
     use crate::bincode_deserialize_from_file;
     use crate::deserialize_from_file;
-    use crate::risc_v_simulator::cycle::IMWithoutSignedMulDivIsaConfig;
+    use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
-    use std::io::Read;
     use std::path::Path;
 
     use crate::cs::one_row_compiler::CompiledCircuitArtifact;
@@ -2201,7 +2197,7 @@ mod test {
         println!("Performing precomputations for circuit families");
         let families_precomps =
             setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
-                IMWithoutSignedMulDivIsaConfig,
+                IMStandardIsaConfigWithUnsignedMulDiv,
                 _,
                 _,
             >(&binary_image, &text_section, &worker);
@@ -2225,7 +2221,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
-        ) = prove_unrolled_execution::<_, IMWithoutSignedMulDivIsaConfig, Global, 5>(
+        ) = prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
             1 << 24,
             &binary_image,
             &text_section,
@@ -2272,7 +2268,7 @@ mod test {
             setups::read_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
         let (families, inits_and_teardowns) =
             setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<
-                IMWithoutSignedMulDivIsaConfig,
+                IMStandardIsaConfigWithUnsignedMulDiv,
             >(&binary_image);
 
         // flatten and set iterator
@@ -2292,7 +2288,7 @@ mod test {
         };
 
         let responses = program_proofs
-            .flatten_into_responses(IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS);
+            .flatten_into_responses(IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS);
         let t: (Vec<UnrolledCircuitSetupParams>, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) = deserialize_from_file("../setups/42c88bf092af93acc4a3bf780b64dc98a36ba03b54d7acd886dbd9b3eff90285_42c88bf092af93acc4a3bf780b64dc98a36ba03b54d7acd886dbd9b3eff90285.json");
         let (setups, inits_and_teardowns_setup) = t;
 
