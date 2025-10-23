@@ -1232,6 +1232,9 @@ pub fn get_grand_product_src_dst_cols(
         let precedence = [
             &circuit
                 .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown,
+            &circuit
+                .stage_2_layout
                 .intermediate_polys_for_permutation_masking,
             &circuit
                 .stage_2_layout
@@ -1239,9 +1242,6 @@ pub fn get_grand_product_src_dst_cols(
             &circuit
                 .stage_2_layout
                 .intermediate_polys_for_memory_argument,
-            &circuit
-                .stage_2_layout
-                .intermediate_polys_for_memory_init_teardown,
         ];
         for next in precedence.iter() {
             if next.num_elements() > 0 {
@@ -1257,9 +1257,21 @@ pub fn get_grand_product_src_dst_cols(
         .stage_2_layout
         .intermediate_polys_for_memory_argument;
     assert!(memory_args.num_elements() > 0);
-    let memory_args_start = translate_e4_offset(memory_args.start());
-    let num_memory_args = memory_args.num_elements();
-    let grand_product_src = memory_args_start + num_memory_args - 1;
+    let mut grand_product_src = usize::MAX;
+    let precedence = [
+        &circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown,
+        memory_args,
+    ];
+    for next in precedence.iter() {
+        if next.num_elements() > 0 {
+            grand_product_src = translate_e4_offset(next.start());
+            grand_product_src += next.num_elements() - 1;
+            break;
+        }
+    }
+    assert!(grand_product_src != usize::MAX);
     (grand_product_src, grand_product_dst)
 }
 

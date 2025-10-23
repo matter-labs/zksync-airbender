@@ -510,7 +510,7 @@ void grand_product_ram_access_contributions(const MemoryChallenges &challenges,
     numerator = e4::add(numerator, write_timestamp_high_contribution);
 
     // flush result
-    if (UNROLLED && !num_over_denom_acc_is_initialized) {
+    if (!num_over_denom_acc_is_initialized) {
       num_over_denom_acc = numerator;
       num_over_denom_acc_is_initialized = true;
     } else {
@@ -544,12 +544,13 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 num_over_denom_acc{};
   bool num_over_denom_acc_is_initialized = false;
 
-  grand_product_lazy_init_contributions(challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
-                                        num_over_denom_acc_is_initialized, num_over_denom_acc);
-
   grand_product_ram_access_contributions<false>(challenges, shuffle_ram_accesses, setup_cols, memory_cols, stage_2_e4_cols,
                                                 memory_timestamp_high_from_circuit_idx, memory_args_start,
                                                 num_over_denom_acc_is_initialized, num_over_denom_acc);
+
+  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
+    grand_product_lazy_init_contributions(challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
+                                          num_over_denom_acc_is_initialized, num_over_denom_acc);
 }
 
 DEVICE_FORCEINLINE
@@ -557,7 +558,7 @@ void grand_product_machine_state_contributions(const MachineStateChallenges &cha
                                                const MachineStateLayout &layout,
                                                matrix_getter<bf, ld_modifier::cs> memory_cols,
                                                vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-                                               const bool num_over_denom_acc_is_initialized,
+                                               bool &num_over_denom_acc_is_initialized,
                                                e4 &num_over_denom_acc) {
   e4 numerator{challenges.additive_term};
   numerator = e4::add(numerator, memory_cols.get_at_col(layout.final_pc_start));
@@ -565,10 +566,11 @@ void grand_product_machine_state_contributions(const MachineStateChallenges &cha
 #pragma unroll
   for (unsigned i = 0; i < 3; i++)
     numerator = e4::add(numerator, e4::mul(challenges.linearization_challenges[i], memory_cols.get_at_col(final_cols[i])));
-  if (num_over_denom_acc_is_initialized) {
-    num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
-  } else {
+  if (!num_over_denom_acc_is_initialized) {
     num_over_denom_acc = numerator;
+    num_over_denom_acc_is_initialized = true;
+  } else {
+    num_over_denom_acc = e4::mul(num_over_denom_acc, numerator);
   }
 
   e4 denom{challenges.additive_term};
@@ -610,30 +612,29 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 num_over_denom_acc{};
   bool num_over_denom_acc_is_initialized = false;
 
-  if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-    grand_product_lazy_init_contributions(memory_challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
-                                          num_over_denom_acc_is_initialized, num_over_denom_acc);
-  }
-
-  if (process_ram_access) {
+  if (process_ram_access)
     grand_product_ram_access_contributions<true>(memory_challenges, shuffle_ram_accesses, memory_cols, memory_cols, stage_2_e4_cols,
                                                  bf::zero(), ram_access_args_start, num_over_denom_acc_is_initialized, num_over_denom_acc);
-  }
 
-  if (machine_state_layout.process_machine_state) {
+  if (machine_state_layout.process_machine_state)
     grand_product_machine_state_contributions(machine_state_challenges, machine_state_layout, memory_cols, stage_2_e4_cols,
                                               num_over_denom_acc_is_initialized, num_over_denom_acc);
-  }
 
   // apply mask
   if (process_mask) {
     const unsigned execute = bf::into_canonical(memory_cols.get_at_col(execute_col)).limb;
     if (execute) {
       stage_2_e4_cols.set_at_col(mask_arg_col, num_over_denom_acc);
+      num_over_denom_acc_is_initialized = true; // just in case
     } else {
       stage_2_e4_cols.set_at_col(mask_arg_col, e4::one());
+      num_over_denom_acc_is_initialized = false; // a funny case, but correct and efficient for the next contribution
     }
   }
+
+  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
+    grand_product_lazy_init_contributions(memory_challenges, lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols,
+                                          num_over_denom_acc_is_initialized, num_over_denom_acc);
 }
 
 EXTERN __launch_bounds__(128, 8) __global__
