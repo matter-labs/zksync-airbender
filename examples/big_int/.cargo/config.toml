@@ -7,8 +7,3 @@ rustflags = [
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
 ]
-
-[toolchain]
-channel = "stable"       # or "1.79.0", "nightly", …
-components = ["rustfmt", "clippy"]
-

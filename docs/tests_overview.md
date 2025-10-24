@@ -16,7 +16,7 @@ Below you will find some of the *main* automated tests covering the arithmetic c
 **Purpose**: Ensure that the full-machine circuit correctly compiles every RISC-V instruction.
 
 How it works:
-1. Runs the reference RISC-V simulator for a *single instruction*  with randomized register/memory state.
+1. Runs the reference RISC-V simulator for a *single instruction* with randomized register/memory state.
 2. Generates a witness for the *same* step using the circuit.
 3. Compares resulting register values, memory reads/writes, PC updates, etc.
 
@@ -96,7 +96,7 @@ cargo test -p fft
 
 ---
 
-## 5. Prover integration ests (`prover_examples`)
+## 5. Prover integration tests (`prover_examples`)
 
 Crate [**`circuit_defs/prover_examples`**](../circuit_defs/prover_examples) contains:
 1. Runs the full staged prover pipeline.
@@ -105,5 +105,3 @@ Crate [**`circuit_defs/prover_examples`**](../circuit_defs/prover_examples) cont
 Because it exercises **all** prover stages together, it's almost an end-to-end check.  It is **slow**.
 
 ---
-
-TODO

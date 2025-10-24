@@ -2,89 +2,54 @@
 
 ZKsync Airbender is a zero-knowledge virtual machine (zkVM) and proving system that generates cryptographic proofs for RISC-V program execution. It serves as the Proving Layer for [ZKsync OS](https://github.com/matter-labs/zksync-os), enabling verifiable computation of blockchain state transitions.
 
-### The ZKsync Architecture Problem
+## The ZKsync Architecture
 
-ZKsync aims to scale Ethereum by moving computation off-chain while maintaining security through zero-knowledge proofs. However, this creates a fundamental challenge:
-
-- **Execution Layer**: We need a fast, efficient system to execute transactions and compute state transitions
-- **Proving Layer**: We need a separate system to generate cryptographic proofs that the execution was correct
-- **Determinism**: Both systems MUST produce identical results to maintain security
-
-Airbender solves this by providing a specialized zkVM that can prove RISC-V program execution:
-
-1. **ZKsync OS** executes transactions and computes state transitions 
-2. **Airbender** proves that the same execution would produce identical results (verifiable, on RISC-V)
-3. **Deterministic execution** ensures both systems produce the same outputs
-
-
+ZKsync scales Ethereum by moving computation off-chain while maintaining security through zero-knowledge proofs. This requires two tightly integrated systems: an execution layer that processes transactions quickly, and a proving layer that generates cryptographic proofs of correctness. The challenge is ensuring both systems produce identical results deterministically.
 ### ZKsync OS: The Execution Layer
-
-[ZKsync OS](https://github.com/matter-labs/zksync-os) is the state transition function for ZKsync. ZKsync OS is implemented as a Rust program that needs to be compiled to two targets:
-- One is compiled to x86 and runs in the sequencer.
-- The second one is compiled to RISC-V and fed as an input to the ZKsync Airbender prover to produce the validity proof of the state transition.
-
-The main goals for ZKsync OS are:
-
-- EVM equivalence: ZKsync OS MUST be able to process EVM transactions, maintaining EVM semantics (including gas model).
-- Customizability: ZKsync OS SHOULD be easily configurable and extensible.
-- Performance targets: ERC20 proof cost ≈ $0.0001 and throughput of 10,000 TPS.
-
+[ZKsync OS](https://github.com/matter-labs/zksync-os) implementing the state transition function as a Rust program compiled to two targets. The x86 version runs in the sequencer for fast transaction processing, while the RISC-V version feeds into Airbender for proof generation. This dual-compilation strategy maintains EVM equivalence while targeting performance goals of $0.0001 per ERC20 transfer and 10,000 transactions per second throughput.
 ### Airbender: The Proving Layer
+Airbender takes the RISC-V binary and generates zero-knowledge proofs that the execution was performed correctly. The key insight is that both systems execute the same code with identical inputs, ensuring deterministic results that can be cryptographically verified without re-execution.
 
-Airbender is the zkVM that proves RISC-V execution, whose role is to verify that the RISC-V execution matches what the x86 sequencer computed:
+## How Proving Works
 
-- **Input**: The ZKsync OS binary compiled to RISC-V.
-- **Output**: Zero-knowledge proof that the execution was correct.
+The proving process begins when ZKsync OS finishes processing a batch of transactions. The same program, now compiled to RISC-V binary. This simulator performs deterministic replay with identical inputs, generating execution traces that feed into the proof system.
 
-### Step-by-Step Process
+Long-running programs are automatically split into chunks of approximately 4 million cycles each. The system can handle up to 2^36 total cycles per program execution. Each chunk is proven independently, with chunks linked together through memory and delegation arguments. This chunking strategy enables parallel proof generation, significantly improving throughput.
 
-1. **Transaction Processing**: ZKsync OS (x86) executes transactions and updates state
-2. **RISC-V Compilation**: The same OS is compiled to RISC-V for proving
-3. **Deterministic Replay**: Airbender executes the RISC-V binary with identical inputs in the simulator (the simulator is an internal RISC-V interpreter (see `risc_v_simulator/` crate)). 
-4. **Proof Generation**: Airbender generates a ZK proof that the execution was correct
-5. **Verification**: Anyone can verify the proof without re-running the computation
+After generating base-layer proofs, Airbender applies recursive compression. The verifier code itself is compiled to RISC-V and proven recursively, reducing multiple proofs into one at each layer. After several iterations, Airbender produces a final recursive proof. This proof is then processed by zkos_wrapper, which converts the proof format and applies additional compression, ultimately producing a single SNARK suitable for on-chain verification. This multi-stage process achieves constant-time verification regardless of the original execution length.
+
+## Proof System Architecture
+
+Airbender builds on STARK technology using the Mersenne31 prime field (2³¹ − 1). This field choice optimally represents 32-bit RISC-V values while enabling efficient arithmetic. The constraint system uses Algebraic Intermediate Representation with polynomial degree capped at 2, keeping proof generation tractable while maintaining security.
+
+Polynomial commitments rely on the FRI protocol, which provides transparency without trusted setup. The combination of Mersenne31 field arithmetic and FRI enables fast proving, especially when accelerated by GPU hardware.
+
+The system has been professionally audited. See the [audit report](../audits/zksync-audit-aug25(Final).pdf) for security analysis.
 
 ## Key Technical Components
 
 ### RISC-V Execution Environment
 
-Airbender provides a bare-metal RISC-V execution environment with:
+Airbender provides a bare-metal RISC-V execution environment operating in machine mode with the RV32IM instruction set. The system uses custom Control Status Registers to enable delegation calls to specialized circuits, allowing heavy operations to be offloaded to optimized precompile circuits.
 
-- **Custom CSR (Control Status Registers)**: For delegation calls to specialized circuits.
-- **No Exception Handling**: Exceptions aren't trapped at runtime; instead, constraint relations make illegal paths unsatisfiable. If an access would be misaligned or illegal, there is no witness that satisfies the polynomial relations, causing proof generation to fail.
-- **Trusted Code Assumption**: Memory accesses are assumed to be properly aligned and within bounds.
-- **Delegation Support**: Precompiles for cryptographic operations .
+Exception handling is intentionally omitted. Instead of trapping illegal operations at runtime, the constraint system makes them unprovable. If code attempts misaligned memory access or executes invalid instructions, the polynomial constraints become unsatisfiable and proof generation fails. This trusted code model simplifies the circuit dramatically while ensuring only well-formed programs can be proven.
 
 ### Delegation System
 
-Airbender supports "delegations" - specialized precompiles that handle complex operations:
+Complex cryptographic operations are handled through specialized delegation circuits. When the RISC-V program needs heavy computation like hashing or 256-bit arithmetic, it triggers a delegation via CSR `0x7c0` with a specific delegation type identifier. The BigInt delegation provides U256 operations for EVM-style arithmetic, elliptic curve cryptography, and modular exponentiation. The BLAKE2 delegation accelerates hash computations used in Merkle trees and commitments. A non-determinism oracle at the same CSR address supplies external input data to programs during execution.
 
-- **Big Integer Operations**: U256 arithmetic with custom CSR `0x7ca`.
-- **Cryptographic Hashing**: BLAKE2s with custom CSR `0x7c7`.
-- **Non-deterministic Data**: External oracle access via CSR `0x7c0`.
+These delegations integrate seamlessly with the main circuit through the unified memory argument. Register reads, writes, and memory accesses in delegation circuits participate in the same consistency checks as regular RISC-V operations. From the verification perspective, delegations are proven in separate circuits that can be parallelized with the main execution proofs.
 
-### Multi-Machine Support
+### Machine Configurations
 
-Different execution modes for different use cases:
-
-- **Full ISA**: Complete RISC-V instruction set support.
-- **Minimal Machine**: Optimized subset for specific workloads.
-- **Delegation-Enabled**: Support for custom precompiles and external data.
+Airbender offers multiple machine configurations optimized for different use cases. The full ISA configuration supports the complete RV32IM instruction set including signed multiplication and division, suitable for proving general-purpose kernel code like ZKsync OS. Minimal machines strip out byte-level memory operations and complex arithmetic, reducing circuit size for recursion layers where the verifier code has simpler requirements.
 
 ## Getting Started
 
-1. **Write Programs**: Use the [Writing Programs guide](./writing_programs.md) to create RISC-V programs.
-2. **Build and Test**: Compile to RISC-V binary and test with the simulator.
-3. **Generate Proofs**: Follow the [End-to-end guide](./end_to_end.md) to prove execution.
-4. **Integrate**: Use the generated proofs in your ZKsync application.
+New users should begin with the [Writing Programs guide](./writing_programs.md) to understand how RISC-V programs are structured for Airbender. After writing your program, compile it to a RISC-V binary and test execution using the built-in simulator. Once satisfied with correctness, follow the [End-to-end guide](./end_to_end.md) to generate proofs and integrate them into your ZKsync application.
 
-## Further Reading
+For understanding specialized operations, consult the [Delegation Circuits documentation](./delegation_circuits.md). To learn about different machine configurations and their tradeoffs, see [Machine Configuration](./machine_configuration.md). The [Tutorial](./tutorial.md) provides step-by-step instructions for your first proving workflow.
 
-- [Writing Programs for Airbender](./writing_programs.md) - How to create RISC-V programs.
-- [End-to-End Proving](./end_to_end.md) - Complete proving workflow.
-- [Delegation Circuits](./delegation_circuits.md) - Understanding precompiles.
-- [ZKsync OS Repository](https://github.com/matter-labs/zksync-os) - The execution layer.
+Deeper technical understanding comes from the [Philosophy and Logic](./philosophy_and_logic.md) document, which explains core architectural decisions. The [Circuit Overview](./circuit_overview.md) details the constraint system design, while [Repository Layout](./repo_layout.md) helps navigate the codebase. For contributing to Airbender development, start with [CONTRIBUTING.md](../CONTRIBUTING.md).
 
----
-
-*This overview provides the high-level understanding needed to work with Airbender. For technical implementation details, see the specific guides linked above.*
+The [ZKsync OS repository](https://github.com/matter-labs/zksync-os) contains the execution layer that Airbender proves. Understanding both systems together gives the complete picture of ZKsync's architecture.

@@ -304,8 +304,6 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         debug_assert!(lagrange_value_ptr.is_aligned());
                         let lagrange_value = lagrange_value_ptr.read();
 
-                        // TODO: make unrolled function for everything below where traces are wide
-
                         // first at Z
                         // setup, then witness, then memory, then stage 2 base, then stage 2 ext, then quotient
                         {
@@ -596,8 +594,6 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                         let mut alphas_src = alphas_for_z.as_ptr();
                         let mut deep_poly_accumulator = Mersenne31Quartic::ZERO;
-
-                        // TODO: make unrolled function for everything below where traces are wide
 
                         // first at Z
                         // setup, then witness, then memory, then stage 2 base, then stage 2 ext, then quotient

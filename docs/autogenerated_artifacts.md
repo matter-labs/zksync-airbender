@@ -10,13 +10,13 @@ In this repository, "each circuit" refers to a concrete proving/verification tar
 
 The automation currently handles the following circuit names (see `recreate_verifiers.sh`):
 
-- `risc_v_cycles` — cycles logging circuit for the RISC-V machine
-- `reduced_risc_v_machine` — reduced-mode RISC-V machine circuit
+- `risc_v_cycles` — machine for proving full RISC‑V cycles
+- `reduced_risc_v_machine` — stripped-down RISC-V machine for recursion
 - `reduced_risc_v_log_23_machine` — reduced machine variant for log_23 recursion
 - `final_reduced_risc_v_machine` — final-stage reduced machine circuit used in recursion pipelines
 - `machine_without_signed_mul_div` — machine variant without signed multiply/divide
-- `blake2_with_compression` — delegation circuit for BLAKE2 with compression
-- `bigint_with_control` — delegation circuit for big integer operations with explicit control
+- `blake2_with_compression` — reference circuit for BLAKE2 hashing (exact scope depends on ABI)
+- `bigint_with_control` — reference circuit for 256‑bit arithmetic primitives (scope depends on ABI)
 
 Each has its own directory under `circuit_defs/<circuit>/`, with a `generated/` subfolder that contains that circuit’s `circuit_layout.rs`, `quotient.rs`, layout JSON, and witness generation functions (`witness_generation_fn.rs`). When you recreate verifiers, the template verifier is copied and stamped for each of these circuits.
 

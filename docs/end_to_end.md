@@ -54,7 +54,7 @@ Where `bin` is your RISC-V binary, and `input-file` (optional) is any input data
 
 ### GPU - 32GB VRAM
 
-Having 32GB VRAM allows you to also run the final proof on a GPU. (TODO: Add instructions)
+Having 32GB VRAM allows you to also run the final proof on a GPU.
 
 After a while, you'll end up with a single 'final' file in the output dir, called `final_program_proof.json`
 
