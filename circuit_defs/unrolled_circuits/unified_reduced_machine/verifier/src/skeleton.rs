@@ -1,3 +1,5 @@
+use verifier_common::blake2s_u32::AlignedArray64;
+
 use super::*;
 
 #[derive(Debug, Clone)]
@@ -59,12 +61,12 @@ pub struct QueryValues<
     const NUM_FRI_STEPS: usize, // we will still bind it here
 > {
     pub query_index: u32,
-    pub setup_leaf: [Mersenne31Field; LEAF_SIZE_SETUP],
-    pub witness_leaf: [Mersenne31Field; LEAF_SIZE_WITNESS_TREE],
-    pub memory_leaf: [Mersenne31Field; LEAF_SIZE_MEMORY_TREE],
-    pub stage_2_leaf: [Mersenne31Field; LEAF_SIZE_STAGE_2],
-    pub quotient_leaf: [Mersenne31Field; LEAF_SIZE_QUOTIENT],
-    pub fri_oracles_leafs: [Mersenne31Field; TOTAL_FRI_LEAFS_SIZES],
+    pub setup_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_SETUP>,
+    pub witness_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_WITNESS_TREE>,
+    pub memory_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_MEMORY_TREE>,
+    pub stage_2_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_STAGE_2>,
+    pub quotient_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_QUOTIENT>,
+    pub fri_oracles_leafs: AlignedArray64<Mersenne31Field, TOTAL_FRI_LEAFS_SIZES>,
 }
 
 #[cfg(test)]

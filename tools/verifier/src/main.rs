@@ -133,7 +133,7 @@ unsafe fn workload() -> ! {
 // This verifier can handle any circuit and any layer.
 // It uses the first word in the input to determine which circuit to verify.
 unsafe fn workload() -> ! {
-    use reduced_keccak::Keccak32;
+    // use reduced_keccak::Keccak32;
 
     let metadata = riscv_common::csr_read_word();
 
@@ -143,56 +143,56 @@ unsafe fn workload() -> ! {
             let output = full_statement_verifier::verify_base_layer();
             riscv_common::zksync_os_finish_success_extended(&output);
         }
-        1 => {
-            let output = full_statement_verifier::verify_recursion_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
-        // 2 used to be final layer, but we don't have that anymore.
-        3 => {
-            full_statement_verifier::RISC_V_VERIFIER_PTR(
-                &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
-                &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
-            );
-            riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
-        }
-        // Combine 2 proofs into one.
-        4 => {
-            // First - verify both proofs (keep reading from the CSR).
-            let output1 = full_statement_verifier::verify_recursion_layer();
-            let output2 = full_statement_verifier::verify_recursion_layer();
-            // Proving chains must be equal.
-            for i in 8..16 {
-                assert_eq!(output1[i], output2[i], "Proving chains must be equal");
-            }
+        // 1 => {
+        //     let output = full_statement_verifier::verify_recursion_layer();
+        //     riscv_common::zksync_os_finish_success_extended(&output);
+        // }
+        // // 2 used to be final layer, but we don't have that anymore.
+        // 3 => {
+        //     full_statement_verifier::RISC_V_VERIFIER_PTR(
+        //         &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
+        //         &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
+        //     );
+        //     riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
+        // }
+        // // Combine 2 proofs into one.
+        // 4 => {
+        //     // First - verify both proofs (keep reading from the CSR).
+        //     let output1 = full_statement_verifier::verify_recursion_layer();
+        //     let output2 = full_statement_verifier::verify_recursion_layer();
+        //     // Proving chains must be equal.
+        //     for i in 8..16 {
+        //         assert_eq!(output1[i], output2[i], "Proving chains must be equal");
+        //     }
 
-            // The first 8 words of the result are the hash of the two outputs.
-            // This way, to verify the combined proof, we can check that it matches
-            // the rolling hash of the public inputs.
-            let mut hasher = Keccak32::new();
-            // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-            // and we'll actually shift them all by 1.
-            // So our output is the keccak(input1[0..8]>>32, input2[0..8]>>32)
+        //     // The first 8 words of the result are the hash of the two outputs.
+        //     // This way, to verify the combined proof, we can check that it matches
+        //     // the rolling hash of the public inputs.
+        //     let mut hasher = Keccak32::new();
+        //     // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
+        //     // and we'll actually shift them all by 1.
+        //     // So our output is the keccak(input1[0..8]>>32, input2[0..8]>>32)
 
-            // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-            hasher.update(&[0u32]); // 0 after shift
-            for i in 0..7 {
-                hasher.update(&[output1[i]]);
-            }
-            hasher.update(&[0u32]); // 0 after shift
-            for i in 0..7 {
-                hasher.update(&[output2[i]]);
-            }
-            let mut result = [0u32; 16];
-            // TODO: in the future - set the result[7] to be equal to 0.
-            result[0..8].copy_from_slice(&hasher.finalize());
-            result[8..16].copy_from_slice(&output1[8..16]);
+        //     // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+        //     hasher.update(&[0u32]); // 0 after shift
+        //     for i in 0..7 {
+        //         hasher.update(&[output1[i]]);
+        //     }
+        //     hasher.update(&[0u32]); // 0 after shift
+        //     for i in 0..7 {
+        //         hasher.update(&[output2[i]]);
+        //     }
+        //     let mut result = [0u32; 16];
+        //     // TODO: in the future - set the result[7] to be equal to 0.
+        //     result[0..8].copy_from_slice(&hasher.finalize());
+        //     result[8..16].copy_from_slice(&output1[8..16]);
 
-            riscv_common::zksync_os_finish_success_extended(&result);
-        }
-        5 => {
-            let output = full_statement_verifier::verify_recursion_log_23_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
+        //     riscv_common::zksync_os_finish_success_extended(&result);
+        // }
+        // 5 => {
+        //     let output = full_statement_verifier::verify_recursion_log_23_layer();
+        //     riscv_common::zksync_os_finish_success_extended(&output);
+        // }
         // Unknown metadata.
         _ => {
             riscv_common::zksync_os_finish_error();

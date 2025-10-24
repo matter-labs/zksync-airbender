@@ -61,19 +61,19 @@ pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) ->
 fn csr_trigger_delegation(
     states_ptr: *mut u32,
     input_ptr: *const u32,
-    round_mask: u32,
     control_mask: u32,
-) {
+) -> u32 {
+    let mut control_mask = control_mask;
     unsafe {
         core::arch::asm!(
             "csrrw x0, 0x7c7, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
-            in("x12") round_mask,
-            in("x13") control_mask,
+            inlateout("x12") control_mask,
             options(nostack, preserves_flags)
-        )
+        );
     }
+    control_mask
 }
 
 const MODULUS: u32 = 1_000_000_000;
@@ -175,8 +175,8 @@ unsafe fn workload() -> ! {
         };
         input_buffer.data[0] = hashed_b;
 
-        const NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER: u32 = 0b000;
-        const NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER: u32 = 0b001;
+        const NORMAL_MODE_FULL_ROUNDS_CONTROL_REGISTER: u32 = 0b000;
+        const NORMAL_MODE_REDUCED_ROUNDS_CONTROL_REGISTER: u32 = 0b001;
 
         // This is some Blake initialization magic.
         state.ext_state[12] = state.t ^ EXTENDED_IV[12];
@@ -184,25 +184,23 @@ unsafe fn workload() -> ! {
 
         // Now we have to call the 'precompile' - blake requires us to actually call it 10 times.
         let mut round_bitmask = 1;
+        let mut control_bitmask = ((round_bitmask << 3) | NORMAL_MODE_FULL_ROUNDS_CONTROL_REGISTER) << 16;
         for _round_idx in 0..9 {
             // We are passing the pointer to the state, but the code inside is actually reading
             // other fields from the BlakeState too (including input_buffer and round bitmask).
             // That's why we're in the 'unsafe' block.
-            csr_trigger_delegation(
+
+            control_bitmask = csr_trigger_delegation(
                 ((&mut state) as *mut BlakeState).cast::<u32>(),
                 input_buffer.data.as_ptr(),
-                round_bitmask,
-                NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                control_bitmask,
             );
-            // Every time, we're pushing the bitmask, that is used internally to figure out which round it is.
-            round_bitmask <<= 1;
         }
         // final one with final xor
-        csr_trigger_delegation(
+        control_bitmask = csr_trigger_delegation(
             ((&mut state) as *mut BlakeState).cast::<u32>(),
             input_buffer.data.as_ptr(),
-            round_bitmask,
-            NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
+            control_bitmask,
         );
 
         hashed_b = state.state[0];

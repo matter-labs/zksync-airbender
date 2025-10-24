@@ -15,7 +15,7 @@ pub fn blake2_round_function_with_extended_control<
     MMU: MMUImplementation<M, TR, C>,
     C: MachineConfig,
 >(
-    state: &mut RiscV32State<C>,
+    risc_v_state: &mut RiscV32State<C>,
     memory_source: &mut M,
     tracer: &mut TR,
     _mmu: &mut MMU,
@@ -25,13 +25,12 @@ pub fn blake2_round_function_with_extended_control<
     assert_eq!(rs1_value, 0, "aligned memory access is unused");
 
     // read registers first
-    let x10 = state.observable.registers[10];
-    let x11 = state.observable.registers[11];
-    let x12 = state.observable.registers[12];
-    let x13 = state.observable.registers[13];
+    let x10 = risc_v_state.observable.registers[10];
+    let x11 = risc_v_state.observable.registers[11];
+    let x12 = risc_v_state.observable.registers[12];
 
     assert!(x10 % 128 == 0, "input pointer is unaligned");
-    assert!(x11 % 4 == 0, "input pointer is unaligned");
+    assert!(x11 % 64 == 0, "input pointer is unaligned");
 
     // self-check so that we do not touch ROM
     assert!(x10 >= 1 << 21);
@@ -74,20 +73,27 @@ pub fn blake2_round_function_with_extended_control<
         .unwrap()
         .map(|el| el.read_value);
 
-    let control_register = x13;
+    let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
     let mode_compression =
-        control_register & TEST_IF_COMPRESSION_MODE_MASK == TEST_IF_COMPRESSION_MODE_MASK;
-    let last_round = control_register & TEST_IF_LAST_ROUND_MASK == TEST_IF_LAST_ROUND_MASK;
+        control_bitmask & TEST_IF_COMPRESSION_MODE_MASK == TEST_IF_COMPRESSION_MODE_MASK;
+    let reduced_rounds = control_bitmask & TEST_IF_REDUCE_ROUNDS_MASK == TEST_IF_REDUCE_ROUNDS_MASK;
     let compression_mode_node_is_right =
-        control_register & TEST_IF_INPUT_IS_RIGHT_NODE_MASK == TEST_IF_INPUT_IS_RIGHT_NODE_MASK;
+        control_bitmask & TEST_IF_INPUT_IS_RIGHT_NODE_MASK == TEST_IF_INPUT_IS_RIGHT_NODE_MASK;
 
-    let permutation_bitmask = x12;
+    let permutation_bitmask = x12 >> (16 + BLAKE2S_NUM_CONTROL_BITS);
     assert!(
         permutation_bitmask.is_power_of_two(),
         "permutation bitmask must be a bitmask, but got 0b{:b}",
         permutation_bitmask
     );
     let permutation_index = permutation_bitmask.trailing_zeros() as usize;
+    let last_round = (permutation_index == 9) || (reduced_rounds && (permutation_index == 6));
+
+    // update control register
+    let shifted_permutation_bitmask = (permutation_bitmask << 1) & ((1 << BLAKE2S_MAX_ROUNDS) - 1);
+    let updated_x12 =
+        (control_bitmask | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
+    risc_v_state.observable.registers[12] = updated_x12;
 
     if mode_compression {
         if permutation_index == 0 {
@@ -175,12 +181,7 @@ pub fn blake2_round_function_with_extended_control<
         },
         RegisterOrIndirectReadWriteData {
             read_value: x12,
-            write_value: x12,
-            timestamp: TimestampData::EMPTY,
-        },
-        RegisterOrIndirectReadWriteData {
-            read_value: x13,
-            write_value: x13,
+            write_value: updated_x12,
             timestamp: TimestampData::EMPTY,
         },
     ];

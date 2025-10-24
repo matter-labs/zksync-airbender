@@ -67,7 +67,6 @@ pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>
     let x10 = read_register::<C, 3>(state, 10);
     let x11 = read_register::<C, 3>(state, 11);
     let x12 = read_register::<C, 3>(state, 12);
-    let x13 = read_register::<C, 3>(state, 13);
 
     assert!(x10 >= 1 << 21);
     assert!(x11 >= 1 << 21);
@@ -75,17 +74,18 @@ pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>
     assert!(x10 != x11);
 
     assert!(x10 % 128 == 0, "input pointer is unaligned");
-    assert!(x11 % 4 == 0, "input pointer is unaligned");
+    assert!(x11 % 64 == 0, "input pointer is unaligned");
 
     let write_ts = state.timestamp | 3;
 
     let mut state_accesses: [u32; BLAKE2S_X10_NUM_WRITES] = peek_read_words(x10, ram);
     let input: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] = read_words(x11, ram, snapshotter, write_ts);
 
-    blake2_round_function_impl(&mut state_accesses, input, x12, x13);
+    let updated_x12 = blake2_round_function_impl(&mut state_accesses, input, x12);
 
     // write back
     write_back_words(x10, ram, snapshotter, write_ts, &state_accesses);
+    write_register::<C, 3>(state, 12, &mut (updated_x12 as u32));
 
     state.counters.bump_blake2_round_function();
 }
@@ -95,8 +95,7 @@ pub(crate) fn blake2_round_function_impl(
     state_accesses: &mut [u32; BLAKE2S_X10_NUM_WRITES],
     input: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
     x12: u32,
-    x13: u32,
-) {
+) -> u32 {
     unsafe {
         let (blake_state, extended_state) =
             state_accesses.split_at_mut_unchecked(BLAKE2S_STATE_WIDTH_IN_U32_WORDS);
@@ -110,20 +109,28 @@ pub(crate) fn blake2_round_function_impl(
                 .cast::<[u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS]>()
                 .as_mut_unchecked();
 
-        let control_register = x13;
+        let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
         let mode_compression =
-            control_register & TEST_IF_COMPRESSION_MODE_MASK == TEST_IF_COMPRESSION_MODE_MASK;
-        let last_round = control_register & TEST_IF_LAST_ROUND_MASK == TEST_IF_LAST_ROUND_MASK;
+            control_bitmask & TEST_IF_COMPRESSION_MODE_MASK == TEST_IF_COMPRESSION_MODE_MASK;
+        let reduced_rounds =
+            control_bitmask & TEST_IF_REDUCE_ROUNDS_MASK == TEST_IF_REDUCE_ROUNDS_MASK;
         let compression_mode_node_is_right =
-            control_register & TEST_IF_INPUT_IS_RIGHT_NODE_MASK == TEST_IF_INPUT_IS_RIGHT_NODE_MASK;
+            control_bitmask & TEST_IF_INPUT_IS_RIGHT_NODE_MASK == TEST_IF_INPUT_IS_RIGHT_NODE_MASK;
 
-        let permutation_bitmask = x12;
+        let permutation_bitmask = x12 >> (16 + BLAKE2S_NUM_CONTROL_BITS);
         assert!(
             permutation_bitmask.is_power_of_two(),
             "permutation bitmask must be a bitmask, but got 0b{:b}",
             permutation_bitmask
         );
         let permutation_index = permutation_bitmask.trailing_zeros() as usize;
+        let last_round = (permutation_index == 9) || (reduced_rounds && (permutation_index == 6));
+
+        // update control register
+        let shifted_permutation_bitmask =
+            (permutation_bitmask << 1) & ((1 << BLAKE2S_MAX_ROUNDS) - 1);
+        let updated_x12 =
+            (control_bitmask | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
 
         if mode_compression {
             if permutation_index == 0 {
@@ -173,5 +180,6 @@ pub(crate) fn blake2_round_function_impl(
                 blake_state[i] ^= extended_state[i] ^ extended_state[i + 8];
             }
         }
+        updated_x12
     }
 }

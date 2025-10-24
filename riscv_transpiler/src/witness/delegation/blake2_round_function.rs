@@ -116,4 +116,4 @@ impl DelegationAbiDescription for Blake2sRoundFunctionAbiDescription {
     // ];
 }
 
-pub type Blake2sRoundFunctionDelegationWitness = DelegationWitness<4, 16, 24, 0>;
+pub type Blake2sRoundFunctionDelegationWitness = DelegationWitness<3, 16, 24, 0>;
