@@ -5,7 +5,7 @@
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use prover::cs::cs::circuit::Circuit;
 use prover::cs::cs::oracle::ExecutorFamilyDecoderData;
-use prover::cs::machine::ops::unrolled::compile_unrolled_circuit_state_transition;
+use prover::cs::machine::ops::unrolled::compile_unified_circuit_state_transition;
 use prover::cs::machine::ops::unrolled::{DecoderTableEntry, ReducedMachineDecoder};
 use prover::cs::*;
 use prover::fft::GoodAllocator;
@@ -41,7 +41,7 @@ pub fn get_circuit_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize
     assert!(bytecode.len() <= num_bytecode_words);
     use prover::cs::machine::ops::unrolled::reduced_machine_ops::*;
 
-    compile_unrolled_circuit_state_transition(
+    compile_unified_circuit_state_transition(
         &|cs| {
             reduced_machine_table_addition_fn(cs);
 
