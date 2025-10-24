@@ -2,26 +2,39 @@ name: Update verifiers
 
 on:
   pull_request:
-    types: [ synchronize, opened ]
-
 
 permissions:
-  contents: write
-  packages: read
-  actions: read
-  pull-requests: write
+  contents: read
 
 jobs:
   update_verifiers:
-    runs-on: [ matterlabs-ci-runner-highmem ]
+    runs-on: matterlabs-ci-runner-highmem
+    env:
+      COMMIT_MESSAGE: "chore: auto-update verifier binaries"
     steps:
-      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - name: Get last commit message via GitHub API
+        id: commit
+        run: |
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          MESSAGE=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA} \
+            | jq -r .commit.message)
+          echo message="${MESSAGE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout repo
+        if: ${{ !contains(steps.commit.outputs.message, env.COMMIT_MESSAGE) }}
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }} # use PAT to trigger CI
 
       - name: Build fresh verifiers
+        if: ${{ !contains(steps.commit.outputs.message, env.COMMIT_MESSAGE) }}
         run: |
           tools/reproduce/reproduce.sh
 
       - name: Fail if any files were modified
+        if: ${{ !contains(steps.commit.outputs.message, env.COMMIT_MESSAGE) }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -35,6 +48,6 @@ jobs:
             git fetch origin ${{ github.head_ref }}
             git checkout ${{ github.head_ref }}
             git stash pop || echo "Nothing to pop"
-            git commit -a -m "chore: auto-update verifier binaries"
+            git commit -a -m "${COMMIT_MESSAGE}"
             git push origin HEAD:${{ github.head_ref }}
           fi

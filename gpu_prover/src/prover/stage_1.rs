@@ -271,7 +271,7 @@ impl StageOneOutput {
         )?;
         let mut public_inputs =
             unsafe { context.alloc_host_uninit_slice(circuit.public_inputs.len()) };
-        let unsage_public_inputs = public_inputs.get_mut_accessor();
+        let unsafe_public_inputs = public_inputs.get_mut_accessor();
         let circuit_clone = circuit.clone();
         let function = move || unsafe {
             let mut first_row_public_inputs = vec![];
@@ -293,7 +293,7 @@ impl StageOneOutput {
                     }
                 }
             }
-            let public_inputs = unsage_public_inputs.get_mut();
+            let public_inputs = unsafe_public_inputs.get_mut();
             let mut iter = public_inputs.iter_mut();
             iter.set_from(first_row_public_inputs);
             iter.set_from(one_before_last_row_public_inputs);

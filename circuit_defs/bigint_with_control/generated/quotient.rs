@@ -1147,7 +1147,7 @@ unsafe fn evaluate_every_row_except_last(
                         let mut a = *(witness.get_unchecked(37usize));
                         let b = *(witness.get_unchecked(41usize));
                         a.mul_assign(&b);
-                        individual_term.sub_assign(&a);
+                        individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(37usize));

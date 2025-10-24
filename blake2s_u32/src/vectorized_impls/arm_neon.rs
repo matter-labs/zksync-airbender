@@ -128,25 +128,25 @@ impl State {
         use core::arch::aarch64::vld1q_u32;
 
         Self([
-            vld1q_u32(&EXNTENDED_CONFIGURED_IV[0] as *const u32),
-            vld1q_u32(&EXNTENDED_CONFIGURED_IV[4] as *const u32),
-            vld1q_u32(&EXNTENDED_CONFIGURED_IV[8] as *const u32),
-            vld1q_u32(&EXNTENDED_CONFIGURED_IV[12] as *const u32),
+            vld1q_u32(&EXTENDED_CONFIGURED_IV[0] as *const u32),
+            vld1q_u32(&EXTENDED_CONFIGURED_IV[4] as *const u32),
+            vld1q_u32(&EXTENDED_CONFIGURED_IV[8] as *const u32),
+            vld1q_u32(&EXTENDED_CONFIGURED_IV[12] as *const u32),
         ])
     }
 
     #[inline(always)]
     unsafe fn partial_reset(&mut self) {
         use core::arch::aarch64::vld1q_u32;
-        self.0[0] = vld1q_u32(&EXNTENDED_CONFIGURED_IV[0] as *const u32);
-        self.0[1] = vld1q_u32(&EXNTENDED_CONFIGURED_IV[4] as *const u32);
+        self.0[0] = vld1q_u32(&EXTENDED_CONFIGURED_IV[0] as *const u32);
+        self.0[1] = vld1q_u32(&EXTENDED_CONFIGURED_IV[4] as *const u32);
     }
 
     #[inline(always)]
     unsafe fn reset_for_round(&mut self, t: u32, is_last_round: bool) {
         use core::arch::aarch64::vld1q_u32;
-        self.0[2] = vld1q_u32(&EXNTENDED_CONFIGURED_IV[8] as *const u32);
-        let el = vld1q_u32(&EXNTENDED_CONFIGURED_IV[12] as *const u32);
+        self.0[2] = vld1q_u32(&EXTENDED_CONFIGURED_IV[8] as *const u32);
+        let el = vld1q_u32(&EXTENDED_CONFIGURED_IV[12] as *const u32);
         let xor_in = vld1q_u32(&[t, 0, (is_last_round as u32) * 0xffffffff, 0] as *const u32);
         use core::arch::aarch64::veorq_u32;
         let el = veorq_u32(el, xor_in);
