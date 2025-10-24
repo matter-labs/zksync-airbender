@@ -35,7 +35,10 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static, B: Good
         );
 
     #[cfg(feature = "witness_eval_fn")]
-    let witness_eval_fn = Some(UnrolledCircuitWitnessEvalFn::Unified {});
+    let witness_eval_fn = Some(UnrolledCircuitWitnessEvalFn::Unified {
+        witness_fn: ::unified_reduced_machine::witness_eval_fn_for_gpu_tracer,
+        decoder_table: witness_gen_data,
+    });
 
     #[cfg(not(feature = "witness_eval_fn"))]
     let witness_eval_fn = None;

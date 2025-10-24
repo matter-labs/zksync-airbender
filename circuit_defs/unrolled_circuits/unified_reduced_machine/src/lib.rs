@@ -194,16 +194,18 @@ mod sealed {
         WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
         WitnessComputationalU8, WitnessMask,
     };
-    use prover::unrolled::MemoryCircuitOracle;
+    use prover::unrolled::UnifiedRiscvCircuitOracle;
     use prover::witness_proxy::WitnessProxy;
     use prover::SimpleWitnessProxy;
 
     include!("../generated/witness_generation_fn.rs");
 
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
+    ) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
+            SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
         >;
         (fn_ptr)(proxy);
     }
@@ -211,7 +213,7 @@ mod sealed {
 
 #[cfg(feature = "witness_eval_fn")]
 pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
-    proxy: &'_ mut SimpleWitnessProxy<'a, prover::unrolled::MemoryCircuitOracle<'b>>,
+    proxy: &'_ mut SimpleWitnessProxy<'a, prover::unrolled::UnifiedRiscvCircuitOracle<'b>>,
 ) {
     self::sealed::witness_eval_fn(proxy)
 }

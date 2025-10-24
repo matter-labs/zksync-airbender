@@ -19,6 +19,7 @@ use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::unrolled::NonMemoryCircuitOracle;
+use prover::unrolled::UnifiedRiscvCircuitOracle;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
 use prover::*;
 use risc_v_simulator::cycle::IMStandardIsaConfig;
@@ -177,7 +178,10 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
         witness_fn: fn(&'_ mut SimpleWitnessProxy<'_, MemoryCircuitOracle<'_>>),
         decoder_table: Vec<ExecutorFamilyDecoderData, A>,
     },
-    Unified {},
+    Unified {
+        witness_fn: fn(&'_ mut SimpleWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>>),
+        decoder_table: Vec<ExecutorFamilyDecoderData, A>,
+    },
 }
 
 pub struct UnrolledCircuitPrecomputations<A: GoodAllocator, B: GoodAllocator = Global> {
