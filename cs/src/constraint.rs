@@ -1,8 +1,8 @@
 //! Polynomial algebra for expressing constraints.
 //!
-//! Term: the atomic piece of a polynomial either a constant or a single monomial 
-//! coeff * x1 * x2 * ... . 
-//! Terms follow the usual polynomial laws: multiplication is associativeand distributes over addition. 
+//! Term: the atomic piece of a polynomial either a constant or a single monomial
+//! coeff * x1 * x2 * ... .
+//! Terms follow the usual polynomial laws: multiplication is associativeand distributes over addition.
 //! We keep terms normalized.
 //! Constraint: a sum of Term that we keep at most quadratic after normalization.
 //! Performing arithmetic on constraints automatically combines like terms and asserts that the final degree does
@@ -304,7 +304,7 @@ impl<F: PrimeField> Term<F> {
         assert!(self.contains_var(variable));
         match self {
             Term::Constant(_) => {
-                panic!("it's a constant term"); 
+                panic!("it's a constant term");
             }
             Term::Expression { coeff, .. } => *coeff,
         }
@@ -829,7 +829,7 @@ impl<F: PrimeField> std::ops::Mul for Term<F> {
     type Output = Constraint<F>;
 
     /// Multiplies two terms, producing a single term constraint.
-    /// Panics if the product degree exceeds TERM_INNER_CAPACITY. 
+    /// Panics if the product degree exceeds TERM_INNER_CAPACITY.
     /// The caller is expected to ensure that any subsequent use inside a Constraint remains <= quadratic after normalization.
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {

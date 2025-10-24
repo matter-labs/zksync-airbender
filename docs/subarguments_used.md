@@ -33,7 +33,7 @@ Now, one step at a time, we modify the argument: First, we allow dynamic init. N
     - Next address is higher than the current address.
     - Or current address, corresponding teardown timestamp, and teardown value are `0`.
 
-This way, pre-padding with addresses equal to `0` allows not to tie rhe number of addresses to the number of cycles, and the contribution of such initializations in case of padding cancels each other in read/write sets.
+This way, pre-padding with addresses equal to `0` allows not to tie the number of addresses to the number of cycles, and the contribution of such initializations in case of padding cancels each other in read/write sets.
 
 Then, we keep in mind that `init + write set` is a permutation of `teardown + read set` and go over pieces of the `(address, value, timestamp)` tuple:
 - Write timestamps are coming from setup, so whenever the prover provides read timestamps, we do not need to range-check them - if the permutation holds, then read timestamps are range-checked automatically.

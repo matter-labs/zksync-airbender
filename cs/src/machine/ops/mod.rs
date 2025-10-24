@@ -1,4 +1,3 @@
-
 //! Instruction-level algebraic circuits
 //! ===================================
 //!
@@ -7,26 +6,9 @@
 //! MachineOp trait, making it connected to the high-level machine compiler.
 //! Tables for expensive logic: byte-wise ops, multiplication, division
 //! and other non-linear behaviour rely on pre-computed lookup tables (look at
-//! TableType::*). 
+//! TableType::*).
 //! OptimizationContext – gadgets which deduplicates identical lookups and aggregates
 //!   multibyte relations to lower constraint cost.
-//!
-//! Folder map
-//! ----------
-//! | File                       | Instruction subset handled                                |
-//! |----------------------------|-----------------------------------------------------------|
-//! | `add_sub.rs`               | ADD, ADDI, SUB                                            |
-//! | `binops.rs`                | AND, OR, XOR (+ immediate forms)                          |
-//! | `shift.rs`                 | SLL, SRL, SRA (+ immediates)                              |
-//! | `mul_div.rs`               | MUL, MULH, DIV, REM, …                                    |
-//! | `load.rs` / `store.rs`     | All LB/LH/LW/LBU/LHU and SB/SH/SW variants                |
-//! | `lui_auipc.rs`             | LUI and AUIPC                                             |
-//! | `jump.rs`                  | JAL / JALR                                                |
-//! | `csr.rs`                   | CSR* instructions                                         |
-//! | `conditional.rs`           | Branches: BEQ, BNE, BLT(U), BGE(U)                        |
-//! | `mop.rs`                   | Memory ordering primitives.                               |
-//! ---------------------------------------------------------------------------
-
 use super::*;
 
 pub mod add_sub;

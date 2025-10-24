@@ -69,8 +69,8 @@ pub unsafe fn verify(
 /// geometry + constraints (but not setup), and returns the values needed to verify chunking
 /// of the statement being proven if needed. Internally if `proof_state_dst` is Some, then
 /// the function assumes that it runs as a part of the chain of proofs of the same "flavour", and enforces some invariants.
-/// It is designed to be run within RISC-V environment (it loads the proofs from the CSR).
-// If you want to run it outside of RISC-V environment, make sure to set `verifier_in_rust` feature flag.
+/// It is designed to be run within riscV environment (it loads the proofs from the CSR).
+// If you want to run it outside of riscV environment, make sure to set `verifier_in_rust` feature flag.
 #[allow(invalid_value)]
 #[allow(unreachable_code)]
 #[inline(never)]

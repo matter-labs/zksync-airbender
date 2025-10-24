@@ -152,7 +152,7 @@ impl Boolean {
     }
 
     /// Decompose an integer into its little-endian binary representation.
-    /// Internally, a single linear constraint: sum_{i=0}^{N-1} b_i 2^i = full_bitmask 
+    /// Internally, a single linear constraint: sum_{i=0}^{N-1} b_i 2^i = full_bitmask
     /// ensures correctness, and witness generation simply reads the input value and assigns
     /// each bit.
     pub fn split_into_bitmask<F: PrimeField, CS: Circuit<F>, const N: usize>(
@@ -1058,7 +1058,7 @@ impl<F: PrimeField> Register<F> {
 ///
 /// A Register already stores its value as two 16-bit limbs.
 /// Some older gadgets, however, need direct access to the four 8-bit chunks —
-/// for instance when performing per-byte look-ups or range checks. 
+/// for instance when performing per-byte look-ups or range checks.
 pub struct RegisterDecomposition<F: PrimeField> {
     pub u16_limbs: [Num<F>; 2],
     pub u8_decomposition: [Num<F>; 4],

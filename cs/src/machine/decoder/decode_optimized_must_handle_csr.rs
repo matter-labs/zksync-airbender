@@ -1,4 +1,4 @@
-//! Optimized RISC-V instruction decoder 
+//! Optimized RISC-V instruction decoder
 //!
 //! This decoder extracts instruction fields and opcode-format information while
 //! avoiding creation of unnecessary explicit variables. Whenever possible it

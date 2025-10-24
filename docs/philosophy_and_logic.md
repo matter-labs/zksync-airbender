@@ -55,7 +55,7 @@ As such, ZKsync users are unlikely to be especially affected by or concerned wit
 
 Currently, the version of the system presented in the `main` branch is over-generalized. For example, every cycle contains decoder logic, where the opcode (as `u32`) is parsed to understand what instruction we execute this cycle (or trap == unprovable circuit) otherwise. 
 
-We do not currently support bytecode located in the RAM region of memory, or any other form of dynamic bytecode loading for execution. This would be required if untrusted native RISC-V bytecode were supported, which in turn would also require *U-mode* support. Instead, we model the text section in ROM as a lookup bwtween PC and the fully decoded bytecode information in circuits. There are some other places with similar inefficiencies.
+We do not currently support bytecode located in the RAM region of memory, or any other form of dynamic bytecode loading for execution. This would be required if untrusted native RISC-V bytecode were supported, which in turn would also require *U-mode* support. Instead, we model the text section in ROM as a lookup between PC and the fully decoded bytecode information in circuits. There are some other places with similar inefficiencies.
 
 In one of the branches, there is another approach for state transition design, largely inspired by our RAM argument. We can model every cycle as a state transition that maps internal machine state (in our case, it's just PC and timestamp) into another state (potentially touching memory along the way), with the initial state (initial write set) being `(0, INITIAL_TS)`. 
 
