@@ -216,10 +216,6 @@ impl FlattenedGenericConstraintsMetadata {
             constraint_idx += 1;
         }
 
-        println!("explicit_coeff_idx {}", explicit_coeff_idx);
-        println!("flat_term_idx {}", flat_term_idx);
-        println!("flat_col_idx {}", flat_col_idx);
-
         // double-check that we accounted for all constraints, terms, and cols
         assert_eq!(
             constraint_idx,
@@ -1277,8 +1273,8 @@ impl StaticMetadata {
             .intermediate_polys_for_memory_argument
             .start();
         let memory_args_start = translate_e4_offset(raw_memory_args_start);
-
-
+        // lazy init padding constraints (limbs are zero if "final borrow" is zero)
+        // go before shuffle ram accesses, but don't use any helpers.
         let shuffle_ram_accesses = if process_shuffle_ram_init {
             let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
             let write_timestamp_in_setup_start =
@@ -1298,7 +1294,7 @@ impl StaticMetadata {
                 num_helpers_expected += 1;
             }
         }
-
+        // for lazy init memory accumulator contributions
         assert_eq!(
             circuit
                 .stage_2_layout
@@ -1311,12 +1307,9 @@ impl StaticMetadata {
             .intermediate_polys_for_memory_init_teardown
             .start();
         let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
-        // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
-        // for lazy init memory accumulator contributions
         for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
             num_helpers_expected += 7;
         }
-
         for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
             num_helpers_expected += 5;
             for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
@@ -1790,7 +1783,10 @@ pub(super) fn prepare_async_challenge_data(
             helpers.push(*alpha.clone().mul_assign(&challenge));
         }
     }
-
+    // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
+    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
+        alpha_offset += 6;
+    }
     for i in 0..shuffle_ram_accesses.num_accesses as usize {
         let access = &shuffle_ram_accesses.accesses[i];
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
@@ -1818,7 +1814,6 @@ pub(super) fn prepare_async_challenge_data(
                 .every_row_except_last
                 .sub_assign(&numerator_constant);
         }
-
         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
         if !access.is_register_only {
             helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
@@ -1833,20 +1828,11 @@ pub(super) fn prepare_async_challenge_data(
                 .mul_assign_by_base(&decompression_factor_inv),
         );
         if i > 0 {
-            helpers.push(
-                *numerator_constant
-                    .mul_assign_by_base(&decompression_factor_inv),
-                    // .mul_assign(&alpha)
-            );
+            helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
         }
     }
-
-    // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
-    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-        alpha_offset += 6;
-    }
     // for lazy init memory accumulator contributions
-    for i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
+    for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
         alpha_offset += 1;
         let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
@@ -1863,7 +1849,6 @@ pub(super) fn prepare_async_challenge_data(
                 .mul_assign_by_base(&decompression_factor_inv),
         );
     }
-
     let mut flat_indirect_idx = 0;
     for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
         let register_access = &register_and_indirect_accesses.register_accesses[i];
@@ -2436,7 +2421,7 @@ mod tests {
     fn test_stage_3_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
-            None, // Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
         ctx.destroy().unwrap();
@@ -2448,7 +2433,7 @@ mod tests {
     fn test_stage_3_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
-            None, // Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
         ctx.destroy().unwrap();
