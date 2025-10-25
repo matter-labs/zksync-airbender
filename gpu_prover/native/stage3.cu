@@ -18,9 +18,9 @@ using e4 = ext4_field;
 /// These values are hand-picked, so that the biggest circuit (bigint) fits.
 /// What is here must match values from stage_3_kernels.rs
 constexpr unsigned MAX_NON_BOOLEAN_CONSTRAINTS = 192;
-constexpr unsigned MAX_TERMS = 1824;
-constexpr unsigned MAX_EXPLICIT_COEFFS = 632;
-constexpr unsigned MAX_FLAT_COL_IDXS = 3488;
+constexpr unsigned MAX_TERMS = 2208;
+constexpr unsigned MAX_EXPLICIT_COEFFS = 928;
+constexpr unsigned MAX_FLAT_COL_IDXS = 4192;
 constexpr uint8_t COEFF_IS_ONE = 0x00;
 constexpr uint8_t COEFF_IS_MINUS_ONE = 0x01;
 // constexpr uint8_t COEFF_IS_EXPLICIT = 0x02; // technically unused, "default" case
@@ -631,12 +631,16 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
       // adjusted constant contributions
       denom = e4::add(denom, (helpers++).get());
-      numerator = e4::add(numerator, (helpers++).get());
-
       const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
 
-      acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+      if (i == 0) {
+        acc_linear = e4::sub(acc_linear, numerator);
+      } else {
+        numerator = e4::add(numerator, (helpers++).get());
+        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+      }
+
       e4_arg_prev = e4_arg;
     }
 
@@ -686,14 +690,14 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
 
-      if (i == 0) {
-        acc_linear = e4::sub(acc_linear, numerator);
-        e4_arg_prev = e4_arg;
-      } else {
+      // if (i == 0) {
+      //   acc_linear = e4::sub(acc_linear, numerator);
+      //   e4_arg_prev = e4_arg;
+      // } else {
         numerator = e4::add(numerator, alpha_times_gamma_adjusted);
         acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
         e4_arg_prev = e4_arg;
-      }
+      // }
     }
 
     alphas += lazy_init_teardown_layouts.num_init_teardown_sets;

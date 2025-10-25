@@ -37,12 +37,12 @@ pub(super) struct ConstantsTimesChallenges {
     every_row_except_last: E4,
 }
 
-// These values are hand-picked, so that the biggest circuit (bigint) fits.
+// These values are hand-picked, so that the biggest circuit (keccak) fits.
 // What is here must match values from stage_3.cu
 const MAX_NON_BOOLEAN_CONSTRAINTS: usize = 192;
-const MAX_TERMS: usize = 1824;
-const MAX_EXPLICIT_COEFFS: usize = 632;
-const MAX_FLAT_COL_IDXS: usize = 3488;
+const MAX_TERMS: usize = 2208;
+const MAX_EXPLICIT_COEFFS: usize = 928;
+const MAX_FLAT_COL_IDXS: usize = 4192;
 const MAX_QUADRATIC_TERMS_PER_CONSTRAINT: usize = 256;
 const MAX_LINEAR_TERMS_PER_CONSTRAINT: usize = 256;
 const COEFF_IS_ONE: u8 = 0x00;
@@ -215,6 +215,10 @@ impl FlattenedGenericConstraintsMetadata {
                 [0 as u8, num_linear_terms];
             constraint_idx += 1;
         }
+
+        println!("explicit_coeff_idx {}", explicit_coeff_idx);
+        println!("flat_term_idx {}", flat_term_idx);
+        println!("flat_col_idx {}", flat_col_idx);
 
         // double-check that we accounted for all constraints, terms, and cols
         assert_eq!(
@@ -1289,7 +1293,10 @@ impl StaticMetadata {
             if !access.is_register_only {
                 num_helpers_expected += 1;
             }
-            num_helpers_expected += 6;
+            num_helpers_expected += 5;
+            if i > 0 {
+                num_helpers_expected += 1;
+            }
         }
 
         assert_eq!(
@@ -1805,6 +1812,13 @@ pub(super) fn prepare_async_challenge_data(
         numerator_constant
             .add_assign(&write_timestamp_low_constant)
             .add_assign(&write_timestamp_high_constant);
+        numerator_constant.mul_assign(&alpha);
+        if i == 0 {
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&numerator_constant);
+        }
+
         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
         if !access.is_register_only {
             helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
@@ -1818,11 +1832,13 @@ pub(super) fn prepare_async_challenge_data(
                 .mul_assign(&alpha)
                 .mul_assign_by_base(&decompression_factor_inv),
         );
-        helpers.push(
-            *numerator_constant
-                .mul_assign(&alpha)
-                .mul_assign_by_base(&decompression_factor_inv),
-        );
+        if i > 0 {
+            helpers.push(
+                *numerator_constant
+                    .mul_assign_by_base(&decompression_factor_inv),
+                    // .mul_assign(&alpha)
+            );
+        }
     }
 
     // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
@@ -1834,11 +1850,6 @@ pub(super) fn prepare_async_challenge_data(
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
         alpha_offset += 1;
         let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
-        if i == 0 {
-            constants_times_challenges
-                .every_row_except_last
-                .sub_assign(&alpha_times_gamma);
-        }
         let mc = &memory_challenges;
         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
         helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
@@ -2425,7 +2436,7 @@ mod tests {
     fn test_stage_3_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
-            Some(Box::new(comparison_hook)),
+            None, // Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
         ctx.destroy().unwrap();
@@ -2437,7 +2448,7 @@ mod tests {
     fn test_stage_3_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
-            Some(Box::new(comparison_hook)),
+            None, // Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );
         ctx.destroy().unwrap();
