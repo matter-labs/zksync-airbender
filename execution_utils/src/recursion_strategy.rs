@@ -34,7 +34,8 @@ impl RecursionStrategy {
 
         let continue_first_layer = match self {
             RecursionStrategy::UseReducedLog23Machine => {
-                proof_metadata.reduced_proof_count > 2
+                // For now, count both (as we try using log23 machine in 1st layer too).
+                (proof_metadata.reduced_proof_count + proof_metadata.reduced_log_23_proof_count) > 2
                     || proof_metadata
                         .delegation_proof_count
                         .iter()
