@@ -18,9 +18,9 @@ using e4 = ext4_field;
 /// These values are hand-picked, so that the biggest circuit (bigint) fits.
 /// What is here must match values from stage_3_kernels.rs
 constexpr unsigned MAX_NON_BOOLEAN_CONSTRAINTS = 192;
-constexpr unsigned MAX_TERMS = 1824;
-constexpr unsigned MAX_EXPLICIT_COEFFS = 632;
-constexpr unsigned MAX_FLAT_COL_IDXS = 3488;
+constexpr unsigned MAX_TERMS = 2208;
+constexpr unsigned MAX_EXPLICIT_COEFFS = 928;
+constexpr unsigned MAX_FLAT_COL_IDXS = 4192;
 constexpr uint8_t COEFF_IS_ONE = 0x00;
 constexpr uint8_t COEFF_IS_MINUS_ONE = 0x01;
 // constexpr uint8_t COEFF_IS_EXPLICIT = 0x02; // technically unused, "default" case
@@ -552,8 +552,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     e4 denom = (helpers++).get();
     denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_setup_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_setup_col + 1)));
+    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col)));
+    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col + 1)));
     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
   }
@@ -572,7 +572,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   }
 
   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-    // First enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
+    // Enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
 
@@ -592,49 +592,11 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       enforce_val_zero_if_pred_zero(final_borrow, timestamp_high, alphas, acc_quadratic, acc_linear);
     }
 
-    // Now enforce lazy init contributions to global memory accumulator
-    // TODO: try interleaving this with the above to avoid redundant loads
+    // Enforce access contributions to global memory accumulator
     e4 e4_arg_prev{};
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-
-      const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-      const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-      const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
-      const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
-      const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
-      const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
-
-      e4 numerator = e4::mul((helpers++).get(), address_low);
-      numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
-
-      e4 denom{numerator};
-      denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
-      denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
-      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
-      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
-
-      const e4 alpha_times_gamma_adjusted = (helpers++).get();
-      denom = e4::add(denom, alpha_times_gamma_adjusted);
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
-      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-      if (i == 0) {
-        acc_linear = e4::sub(acc_linear, numerator);
-        e4_arg_prev = e4_arg;
-      } else {
-        numerator = e4::add(numerator, alpha_times_gamma_adjusted);
-        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-        e4_arg_prev = e4_arg;
-      }
-    }
-
-    alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
-
-    // Now enforce access contributions to global memory accumulator
     // Some write timestamp limb contributions are common across accesses:
-    const bf write_timestamp_in_setup_low = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_in_setup_start);
-    const bf write_timestamp_in_setup_high = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_in_setup_start + 1);
+    const bf write_timestamp_for_shuffle_ram_low = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
+    const bf write_timestamp_for_shuffle_ram_high = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
 #pragma unroll 1
     for (unsigned i = 0; i < shuffle_ram_accesses.num_accesses; i++) {
       const auto &access = shuffle_ram_accesses.accesses[i];
@@ -683,19 +645,56 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_start + 1);
       denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
 
-      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_in_setup_low));
-      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_in_setup_high));
+      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_for_shuffle_ram_low));
+      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_for_shuffle_ram_high));
 
       // adjusted constant contributions
       denom = e4::add(denom, (helpers++).get());
-      numerator = e4::add(numerator, (helpers++).get());
-
       const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
 
+      if (i == 0) {
+        acc_linear = e4::sub(acc_linear, numerator);
+      } else {
+        numerator = e4::add(numerator, (helpers++).get());
+        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+      }
+
+      e4_arg_prev = e4_arg;
+    }
+
+    // Enforce lazy init contributions to global memory accumulator
+    // TODO: try interleaving this with the above to avoid redundant loads
+    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+
+      const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+      const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+      const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
+      const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
+      const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
+      const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
+
+      e4 numerator = e4::mul((helpers++).get(), address_low);
+      numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
+
+      e4 denom{numerator};
+      denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
+      denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
+      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
+      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
+
+      const e4 alpha_times_gamma_adjusted = (helpers++).get();
+      denom = e4::add(denom, alpha_times_gamma_adjusted);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
+      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+
+      numerator = e4::add(numerator, alpha_times_gamma_adjusted);
       acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
       e4_arg_prev = e4_arg;
     }
+
+    alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
   }
 
   if (process_registers_and_indirect_access) {

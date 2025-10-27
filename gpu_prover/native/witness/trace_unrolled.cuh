@@ -20,7 +20,7 @@ struct ExecutorFamilyDecoderData {
   const bool rd_is_zero;
   const u8 funct3;
   const OptionU8::Option<u8> funct7;
-  const u8 opcode_family_bits;
+  const u32 opcode_family_bits;
 };
 
 static constexpr u16 MEM_LOAD_TRACE_DATA_MARKER = 0;

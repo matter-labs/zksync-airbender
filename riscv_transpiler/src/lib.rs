@@ -14,3 +14,6 @@ pub mod ir;
 pub mod replayer;
 pub mod vm;
 pub mod witness;
+
+#[cfg(test)]
+mod tests;

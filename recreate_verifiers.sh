@@ -22,8 +22,7 @@ unrolled_circuit_names=(
     "load_store_word_only"
     "mul_div"
     "mul_div_unsigned"
-    "shift_binary_csr_all_delegations"
-    "shift_binary_csr_blake_only_delegation"
+    "shift_binary_csr"
     "unified_reduced_machine"
 )
 

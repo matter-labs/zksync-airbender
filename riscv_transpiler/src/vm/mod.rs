@@ -16,7 +16,7 @@ pub use self::ram_with_rom_region::RamWithRomRegion;
 pub use self::replay_snapshotter::*;
 pub use self::simple_tape::SimpleTape;
 
-pub trait Counters: 'static + Clone + Copy + Debug {
+pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq {
     fn bump_bigint(&mut self);
     fn bump_blake2_round_function(&mut self);
     fn bump_keccak_special5(&mut self);
@@ -79,7 +79,7 @@ pub trait RAM {
     ) -> (TimestampScalar, u32);
 }
 
-pub trait InstructionTape {
+pub trait InstructionTape: Send + Sync {
     fn read_instruction(&self, pc: u32) -> Instruction;
 }
 
@@ -216,10 +216,10 @@ impl<C: Counters> VM<C> {
                             binary::and::<C, S, R, true>(state, ram, snapshotter, instr)
                         }
                         InstructionName::Or => {
-                            binary::and::<C, S, R, false>(state, ram, snapshotter, instr)
+                            binary::or::<C, S, R, false>(state, ram, snapshotter, instr)
                         }
                         InstructionName::Ori => {
-                            binary::and::<C, S, R, true>(state, ram, snapshotter, instr)
+                            binary::or::<C, S, R, true>(state, ram, snapshotter, instr)
                         }
                         InstructionName::Sll => {
                             shifts::sll::<C, S, R, false>(state, ram, snapshotter, instr)

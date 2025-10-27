@@ -192,6 +192,7 @@ mod lde_tests;
 
 pub use delegation_test::run_basic_delegation_test_impl;
 pub use keccak_test::run_keccak_test_impl;
+pub use unrolled::word_specialized::run_basic_unrolled_test_with_word_specialization_impl;
 
 // NOTE: For some reason tryint to add generic tree constructor to GPU arguments just makes resolver crazy,
 // it starts to complaint about `ROM_ADDRESS_SPACE_SECOND_WORD_BITS` being not a constant but unconstraint const generic,
@@ -206,10 +207,28 @@ pub struct GpuComparisonArgs<'a> {
     pub public_inputs: &'a Vec<Mersenne31Field>,
     pub twiddles: &'a Twiddles<Mersenne31Complex, Global>,
     pub lde_precomputations: &'a LdePrecomputations<Global>,
-    pub table_driver: &'a TableDriver<Mersenne31Field>,
     pub lookup_mapping: RowMajorTrace<u32, DEFAULT_TRACE_PADDING_MULTIPLE, Global>,
     pub log_n: usize,
     pub circuit_sequence: usize,
+    pub delegation_processing_type: Option<u16>,
+    pub prover_data: &'a ProverData<DEFAULT_TRACE_PADDING_MULTIPLE, Global, DefaultTreeConstructor>,
+}
+
+// Imitates unrolled proving API by splitting external_values into external_challenges
+// and a slice of aux_boundary_values. When we eventually unify the proving API,
+// we can unify the two gpu comparison arg structs the same way.
+#[allow(unused)]
+pub struct GpuUnrolledComparisonArgs<'a> {
+    pub circuit: &'a CompiledCircuitArtifact<Mersenne31Field>,
+    pub setup:
+        &'a SetupPrecomputations<DEFAULT_TRACE_PADDING_MULTIPLE, Global, DefaultTreeConstructor>,
+    pub external_challenges: &'a ExternalChallenges,
+    pub aux_boundary_values: &'a [AuxArgumentsBoundaryValues],
+    pub public_inputs: &'a Vec<Mersenne31Field>,
+    pub twiddles: &'a Twiddles<Mersenne31Complex, Global>,
+    pub lde_precomputations: &'a LdePrecomputations<Global>,
+    pub lookup_mapping: RowMajorTrace<u32, DEFAULT_TRACE_PADDING_MULTIPLE, Global>,
+    pub log_n: usize,
     pub delegation_processing_type: Option<u16>,
     pub prover_data: &'a ProverData<DEFAULT_TRACE_PADDING_MULTIPLE, Global, DefaultTreeConstructor>,
 }

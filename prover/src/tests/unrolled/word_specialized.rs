@@ -367,7 +367,8 @@ fn run_basic_unrolled_test_with_word_specialization() {
 }
 
 pub fn run_basic_unrolled_test_with_word_specialization_impl(
-    maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
+    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn(&GpuUnrolledComparisonArgs)>>,
+    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
@@ -378,6 +379,13 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
     let tree_cap_size = 32;
+
+    use crate::prover_stages::unrolled_prover::UnrolledModeProof;
+    let serialize_to_file_if_not_gpu_comparison = |proof: &UnrolledModeProof, filename: &str| {
+        if maybe_gpu_unrolled_comparison_hook.is_none() {
+            serialize_to_file(proof, filename);
+        }
+    };
 
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
@@ -805,11 +813,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -846,7 +854,24 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
         dbg!(proof.witness_tree_caps[0].cap[0]);
 
-        serialize_to_file(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
+
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &add_sub_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -939,11 +964,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -980,7 +1005,24 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
         dbg!(proof.witness_tree_caps[0].cap[0]);
 
-        serialize_to_file(&proof, "jump_branch_slt_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
+
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &jump_branch_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1089,11 +1131,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -1131,7 +1173,24 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             );
         }
 
-        serialize_to_file(&proof, "shift_binop_csrrw_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "shift_binop_csrrw_unrolled_proof.json");
+
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &shift_binop_csrrw_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
 
         dbg!(proof.delegation_argument_accumulator.unwrap());
 
@@ -1235,11 +1294,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -1274,10 +1333,27 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &mul_div_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
+
         if SUPPORT_SIGNED {
-            serialize_to_file(&proof, "mul_div_unrolled_proof.json");
+            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unrolled_proof.json");
         } else {
-            serialize_to_file(&proof, "mul_div_unsigned_unrolled_proof.json");
+            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unsigned_unrolled_proof.json");
         };
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
@@ -1385,11 +1461,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -1424,7 +1500,25 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file(&proof, "word_only_load_store_unrolled_proof.json");
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &word_load_store_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
+
+
+        serialize_to_file_if_not_gpu_comparison(&proof, "word_only_load_store_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1532,11 +1626,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -1571,7 +1665,24 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file(&proof, "subword_only_load_store_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "subword_only_load_store_unrolled_proof.json");
+
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &subword_load_store_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &[],
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1652,11 +1763,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             &worker,
         );
 
-        // let lookup_mapping_for_gpu = if maybe_delegator_gpu_comparison_hook.is_some() {
-        //     Some(witness.lookup_mapping.clone())
-        // } else {
-        //     None
-        // };
+        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            Some(full_trace.lookup_mapping.clone())
+        } else {
+            None
+        };
 
         println!("Trying to prove");
 
@@ -1683,7 +1794,24 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
         println!("Proving time is {:?}", now.elapsed());
 
-        serialize_to_file(&proof, "inits_and_teardowns_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(&proof, "inits_and_teardowns_unrolled_proof.json");
+
+        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+                circuit: &inits_and_teardowns_circuit,
+                setup: &setup,
+                external_challenges: &external_challenges,
+                aux_boundary_values: &aux_data.aux_boundary_data,
+                public_inputs: &vec![],
+                twiddles: &twiddles,
+                lde_precomputations: &lde_precomputations,
+                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                log_n: TRACE_LEN_LOG2,
+                delegation_processing_type: None,
+                prover_data: &prover_data,
+            };
+            gpu_comparison_hook(&gpu_comparison_args);
+        }
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
@@ -1794,11 +1922,11 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 &worker,
             );
 
-            // let lookup_mapping_for_gpu = if maybe_delegated_gpu_comparison_hook.is_some() {
-            //     Some(witness.witness.lookup_mapping.clone())
-            // } else {
-            //     None
-            // };
+            let lookup_mapping_for_gpu = if maybe_gpu_delegation_comparison_hook.is_some() {
+                Some(full_witness.lookup_mapping.clone())
+            } else {
+                None
+            };
 
             let now = std::time::Instant::now();
             let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
@@ -1823,30 +1951,22 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 now.elapsed()
             );
 
-            // if let Some(ref gpu_comparison_hook) = maybe_delegated_gpu_comparison_hook {
-            //     let log_n = work_type.trace_len.trailing_zeros();
-            //     assert_eq!(work_type.trace_len, 1 << log_n);
-            //     let dummy_public_inputs = Vec::<Mersenne31Field>::new();
-            //     let gpu_comparison_args = GpuComparisonArgs {
-            //         circuit: &work_type.compiled_circuit,
-            //         setup: &setup,
-            //         external_values: &external_values,
-            //         public_inputs: &dummy_public_inputs,
-            //         twiddles: &twiddles,
-            //         lde_precomputations: &lde_precomputations,
-            //         table_driver: &work_type.table_driver,
-            //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-            //         log_n: log_n as usize,
-            //         circuit_sequence: 0,
-            //         delegation_processing_type: Some(delegation_type),
-            //         prover_data: &prover_data,
-            //     };
-            //     gpu_comparison_hook(&gpu_comparison_args);
-            // }
-
-            // if !for_gpu_comparison {
-            //     serialize_to_file(&proof, "blake2s_delegator_proof");
-            // }
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_delegation_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &circuit,
+                    setup: &setup,
+                    external_values: &external_values,
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: trace_len.trailing_zeros() as usize,
+                    circuit_sequence: 0,
+                    delegation_processing_type: Some(delegation_type),
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
 
             dbg!(prover_data.stage_2_result.grand_product_accumulator);
             dbg!(prover_data.stage_2_result.sum_over_delegation_poly);

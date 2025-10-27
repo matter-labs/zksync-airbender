@@ -74,23 +74,13 @@ pub(crate) fn mul_div_unsigned_circuit_layout() -> (
     )
 }
 
-pub(crate) fn shift_binary_csr_all_delegations_circuit_layout() -> (
+pub(crate) fn shift_binary_csr_circuit_layout() -> (
     CompiledCircuitArtifact<Mersenne31Field>,
     Vec<Vec<RawExpression<Mersenne31Field>>>,
 ) {
     (
-        setups::shift_binary_csr_all_delegations::get_circuit(&dummy_bytecode()),
-        setups::shift_binary_csr_all_delegations::dump_ssa_form(&dummy_bytecode()),
-    )
-}
-
-pub(crate) fn shift_binary_csr_blake_only_delegation_circuit_layout() -> (
-    CompiledCircuitArtifact<Mersenne31Field>,
-    Vec<Vec<RawExpression<Mersenne31Field>>>,
-) {
-    (
-        setups::shift_binary_csr_blake_only_delegation::get_circuit(&dummy_bytecode()),
-        setups::shift_binary_csr_blake_only_delegation::dump_ssa_form(&dummy_bytecode()),
+        setups::shift_binary_csr::get_circuit(&dummy_bytecode()),
+        setups::shift_binary_csr::dump_ssa_form(&dummy_bytecode()),
     )
 }
 

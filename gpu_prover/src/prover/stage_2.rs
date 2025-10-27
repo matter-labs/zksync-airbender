@@ -5,6 +5,10 @@ use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 pub(crate) use super::stage_2_kernels::*;
 use super::trace_holder::{flatten_tree_caps, TraceHolder, TreesCacheMode};
+use super::{
+    get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
+    get_stage_2_e4_scratch,
+};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
@@ -166,7 +170,6 @@ impl StageTwoOutput {
             &d_lookup_challenges[0],
             cached_data,
             circuit,
-            circuit.total_tables_size,
             log_domain_size,
             stream,
             context.get_device_properties(),

@@ -13,6 +13,7 @@ categories.workspace = true
 common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 risc_v_cycles = { workspace = true }
+riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"]}
 serde = { workspace = true }

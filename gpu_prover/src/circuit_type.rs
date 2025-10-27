@@ -10,8 +10,7 @@ use setups::{
     is_machine_without_signed_mul_div_configuration, is_reduced_machine_configuration,
     jump_branch_slt, keccak_special5, load_store_subword_only, load_store_word_only,
     machine_without_signed_mul_div, mul_div, mul_div_unsigned, reduced_risc_v_log_23_machine,
-    reduced_risc_v_machine, risc_v_cycles, shift_binary_csr_all_delegations,
-    shift_binary_csr_blake_only_delegation,
+    reduced_risc_v_machine, risc_v_cycles, shift_binary_csr,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -452,8 +451,7 @@ pub enum UnrolledNonMemoryCircuitType {
     JumpBranchSlt,
     MulDiv,
     MulDivUnsigned,
-    ShiftBinaryCsrAllDelegations,
-    ShiftBinaryCsrBlakeOnlyDelegation,
+    ShiftBinaryCsr,
 }
 
 impl UnrolledNonMemoryCircuitType {
@@ -463,10 +461,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::DOMAIN_SIZE,
             Self::MulDiv => mul_div::DOMAIN_SIZE,
             Self::MulDivUnsigned => mul_div_unsigned::DOMAIN_SIZE,
-            Self::ShiftBinaryCsrAllDelegations => shift_binary_csr_all_delegations::DOMAIN_SIZE,
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::DOMAIN_SIZE
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::DOMAIN_SIZE,
         }
     }
 
@@ -476,10 +471,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::LDE_FACTOR,
             Self::MulDiv => mul_div::LDE_FACTOR,
             Self::MulDivUnsigned => mul_div_unsigned::LDE_FACTOR,
-            Self::ShiftBinaryCsrAllDelegations => shift_binary_csr_all_delegations::LDE_FACTOR,
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::LDE_FACTOR
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::LDE_FACTOR,
         }
     }
 
@@ -489,12 +481,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::LDE_SOURCE_COSETS,
             Self::MulDiv => mul_div::LDE_SOURCE_COSETS,
             Self::MulDivUnsigned => mul_div_unsigned::LDE_SOURCE_COSETS,
-            Self::ShiftBinaryCsrAllDelegations => {
-                shift_binary_csr_all_delegations::LDE_SOURCE_COSETS
-            }
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::LDE_SOURCE_COSETS
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::LDE_SOURCE_COSETS,
         }
     }
 
@@ -504,10 +491,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::TREE_CAP_SIZE,
             Self::MulDiv => mul_div::TREE_CAP_SIZE,
             Self::MulDivUnsigned => mul_div_unsigned::TREE_CAP_SIZE,
-            Self::ShiftBinaryCsrAllDelegations => shift_binary_csr_all_delegations::TREE_CAP_SIZE,
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::TREE_CAP_SIZE
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::TREE_CAP_SIZE,
         }
     }
 
@@ -517,10 +501,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::FAMILY_IDX,
             Self::MulDiv => mul_div::FAMILY_IDX,
             Self::MulDivUnsigned => mul_div_unsigned::FAMILY_IDX,
-            Self::ShiftBinaryCsrAllDelegations => shift_binary_csr_all_delegations::FAMILY_IDX,
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::FAMILY_IDX
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::FAMILY_IDX,
         }
     }
 
@@ -530,10 +511,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => jump_branch_slt::NUM_CYCLES,
             Self::MulDiv => mul_div::NUM_CYCLES,
             Self::MulDivUnsigned => mul_div_unsigned::NUM_CYCLES,
-            Self::ShiftBinaryCsrAllDelegations => shift_binary_csr_all_delegations::NUM_CYCLES,
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::NUM_CYCLES
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::NUM_CYCLES,
         }
     }
 
@@ -543,12 +521,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => &[],
             Self::MulDiv => &[],
             Self::MulDivUnsigned => &[],
-            Self::ShiftBinaryCsrAllDelegations => {
-                shift_binary_csr_all_delegations::ALLOWED_DELEGATION_CSRS
-            }
-            Self::ShiftBinaryCsrBlakeOnlyDelegation => {
-                shift_binary_csr_blake_only_delegation::ALLOWED_DELEGATION_CSRS
-            }
+            Self::ShiftBinaryCsr => shift_binary_csr::ALLOWED_DELEGATION_CSRS,
         }
     }
 
@@ -562,7 +535,7 @@ impl UnrolledNonMemoryCircuitType {
                 add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
                 jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
                 mul_div::FAMILY_IDX => Self::MulDiv,
-                shift_binary_csr_all_delegations::FAMILY_IDX => Self::ShiftBinaryCsrAllDelegations,
+                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic!(
                     "unknown/unsupported unrolled non-memory family idx {} for configuration {}",
                     family_idx,
@@ -574,7 +547,7 @@ impl UnrolledNonMemoryCircuitType {
                 add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
                 jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
                 mul_div_unsigned::FAMILY_IDX => Self::MulDivUnsigned,
-                shift_binary_csr_all_delegations::FAMILY_IDX => Self::ShiftBinaryCsrAllDelegations,
+                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic!(
                     "unknown/unsupported unrolled non-memory family idx {} for configuration {}",
                     family_idx,
@@ -585,9 +558,7 @@ impl UnrolledNonMemoryCircuitType {
             match family_idx {
                 add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
                 jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
-                shift_binary_csr_blake_only_delegation::FAMILY_IDX => {
-                    Self::ShiftBinaryCsrBlakeOnlyDelegation
-                }
+                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic!(
                     "unknown/unsupported unrolled non-memory family idx {} for configuration {}",
                     family_idx,

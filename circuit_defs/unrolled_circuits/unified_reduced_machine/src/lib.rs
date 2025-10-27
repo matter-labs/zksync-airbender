@@ -5,7 +5,7 @@
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use prover::cs::cs::circuit::Circuit;
 use prover::cs::cs::oracle::ExecutorFamilyDecoderData;
-use prover::cs::machine::ops::unrolled::compile_unrolled_circuit_state_transition;
+use prover::cs::machine::ops::unrolled::compile_unified_circuit_state_transition;
 use prover::cs::machine::ops::unrolled::{DecoderTableEntry, ReducedMachineDecoder};
 use prover::cs::*;
 use prover::fft::GoodAllocator;
@@ -41,7 +41,7 @@ pub fn get_circuit_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize
     assert!(bytecode.len() <= num_bytecode_words);
     use prover::cs::machine::ops::unrolled::reduced_machine_ops::*;
 
-    compile_unrolled_circuit_state_transition(
+    compile_unified_circuit_state_transition(
         &|cs| {
             reduced_machine_table_addition_fn(cs);
 
@@ -186,6 +186,7 @@ pub fn get_decoder_table_for_rom_bound<
 #[cfg(feature = "witness_eval_fn")]
 mod sealed {
     use crate::field::Mersenne31Field;
+    use prover::cs::cs::placeholder::Placeholder;
     use prover::cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
     use prover::cs::cs::witness_placer::WitnessTypeSet;
     use prover::cs::cs::witness_placer::{
@@ -193,16 +194,18 @@ mod sealed {
         WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
         WitnessComputationalU8, WitnessMask,
     };
-    use prover::unrolled::MemoryCircuitOracle;
+    use prover::unrolled::UnifiedRiscvCircuitOracle;
     use prover::witness_proxy::WitnessProxy;
     use prover::SimpleWitnessProxy;
 
     include!("../generated/witness_generation_fn.rs");
 
-    pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
+    ) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>,
+            SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
         >;
         (fn_ptr)(proxy);
     }
@@ -210,7 +213,7 @@ mod sealed {
 
 #[cfg(feature = "witness_eval_fn")]
 pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
-    proxy: &'_ mut SimpleWitnessProxy<'a, prover::unrolled::MemoryCircuitOracle<'b>>,
+    proxy: &'_ mut SimpleWitnessProxy<'a, prover::unrolled::UnifiedRiscvCircuitOracle<'b>>,
 ) {
     self::sealed::witness_eval_fn(proxy)
 }

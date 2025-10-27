@@ -20,7 +20,7 @@ use crate::ops_complex::BatchInv;
 use crate::ops_cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
 };
-use crate::prover::arg_utils::get_grand_product_col;
+use crate::prover::arg_utils::get_grand_product_src_dst_cols;
 use crate::utils::{GetChunksCount, WARP_SIZE};
 
 type BF = BaseField;
@@ -259,7 +259,7 @@ pub fn batch_barycentric_eval(
         eval_at_z_omega_offset += 1;
     }
     col_offset += num_memory_cols + num_stage_2_bf_cols;
-    let memory_grand_product_offset = get_grand_product_col(circuit);
+    let (_, memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, false);
     map[col_offset + memory_grand_product_offset] = eval_at_z_omega_offset as u32;
     assert_eq!(eval_at_z_omega_offset + 1, num_evals_total);
     let (block_dim, grid_dim) = get_batch_partial_reduce_grid_block(n as u32, row_chunk_size);
@@ -349,7 +349,6 @@ mod tests {
             public_inputs: _,
             twiddles: _,
             lde_precomputations,
-            table_driver: _,
             lookup_mapping: _,
             log_n,
             circuit_sequence,

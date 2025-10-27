@@ -146,8 +146,7 @@ use crate::unrolled_layouts::{
     add_sub_lui_auipc_mop_circuit_layout, inits_and_teardowns_circuit_layout,
     jump_branch_slt_circuit_layout, load_store_subword_only_circuit_layout,
     load_store_word_only_circuit_layout, mul_div_circuit_layout, mul_div_unsigned_circuit_layout,
-    shift_binary_csr_all_delegations_circuit_layout,
-    shift_binary_csr_blake_only_delegation_circuit_layout, unified_reduced_machine_circuit_layout,
+    shift_binary_csr_circuit_layout, unified_reduced_machine_circuit_layout,
 };
 
 const ALL_LAYOUTS: &[(
@@ -205,14 +204,7 @@ const ALL_UNROLLED_LAYOUTS: &[(
     (load_store_word_only_circuit_layout, "load_store_word_only"),
     (mul_div_circuit_layout, "mul_div"),
     (mul_div_unsigned_circuit_layout, "mul_div_unsigned"),
-    (
-        shift_binary_csr_all_delegations_circuit_layout,
-        "shift_binary_csr_all_delegations",
-    ),
-    (
-        shift_binary_csr_blake_only_delegation_circuit_layout,
-        "shift_binary_csr_blake_only_delegation",
-    ),
+    (shift_binary_csr_circuit_layout, "shift_binary_csr"),
     (
         unified_reduced_machine_circuit_layout,
         "unified_reduced_machine",

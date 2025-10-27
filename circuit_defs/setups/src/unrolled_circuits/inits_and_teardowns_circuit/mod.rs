@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     binary_image: &[u32],
     _bytecode: &[u32],
     worker: &Worker,
@@ -10,7 +10,7 @@ pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
     >(binary_image);
     let table_driver = ::inits_and_teardowns::get_table_driver(binary_image);
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(::inits_and_teardowns::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(::inits_and_teardowns::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::inits_and_teardowns::DOMAIN_SIZE,
         ::inits_and_teardowns::LDE_FACTOR,

@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsCounters {
     pub non_determinism_reads: usize,
     pub blake_calls: usize,
@@ -33,7 +33,7 @@ impl Counters for DelegationsCounters {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndFamiliesCounters {
     pub non_determinism_reads: usize,
     pub blake_calls: usize,
@@ -102,7 +102,7 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SimpleSnapshot<C: Counters> {
     pub state: State<C>,
     pub last_zero_address_read_timestamp: TimestampScalar,
@@ -112,7 +112,7 @@ pub struct SimpleSnapshot<C: Counters> {
     pub memory_reads_end: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PartialSnapshot {
     pub last_zero_address_read_timestamp: TimestampScalar,
     pub non_determinism_reads_offset: usize,

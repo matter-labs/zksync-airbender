@@ -4,7 +4,9 @@ use crate::device_structures::{
 };
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
-use crate::prover::arg_utils::{get_grand_product_col, StateLinkageConstraints};
+use crate::prover::arg_utils::{
+    get_grand_product_src_dst_cols, StateLinkageConstraints, MAX_LAZY_INIT_TEARDOWN_SETS,
+};
 use crate::utils::WARP_SIZE;
 
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -27,7 +29,6 @@ type E4 = Ext4Field;
 const MAX_WITNESS_COLS: usize = 672;
 const MAX_MEMORY_COLS: usize = 256;
 const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
-const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 16;
 
 const DOES_NOT_NEED_Z_OMEGA: u32 = u32::MAX;
 
@@ -267,7 +268,7 @@ pub fn compute_deep_quotient_on_main_domain(
     let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
     assert_eq!(num_terms_total, scratch_e4.len());
     // prepare data matrix args
-    let stage_2_memory_grand_product_offset = get_grand_product_col(circuit);
+    let (_, stage_2_memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, false);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();
@@ -360,7 +361,6 @@ pub(crate) mod tests {
             public_inputs: _,
             twiddles,
             lde_precomputations: _,
-            table_driver: _,
             lookup_mapping: _,
             log_n,
             circuit_sequence,

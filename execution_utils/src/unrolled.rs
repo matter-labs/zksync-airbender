@@ -100,7 +100,7 @@ mod test {
     use crate::unrolled::prover::VectorMemoryImplWithRom;
     use risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use risc_v_simulator::cycle::IMWithoutSignedMulDivIsaConfig;
+    use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::cycle::MachineConfig;
     use std::alloc::Global;
 
@@ -117,17 +117,20 @@ mod test {
         let rom_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let proofs = prove_unrolled_for_machine_configuration::<IMWithoutSignedMulDivIsaConfig>(
-            &binary_image,
-            &text_section,
-            cycles_bound,
-            non_determinism_source,
-            rom_bound,
-            &worker,
-        );
+        let proofs =
+            prove_unrolled_for_machine_configuration::<IMStandardIsaConfigWithUnsignedMulDiv>(
+                &binary_image,
+                &text_section,
+                cycles_bound,
+                non_determinism_source,
+                rom_bound,
+                &worker,
+            );
+
+        println!("Proving completed, prepairing to verify");
 
         let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
-            IMWithoutSignedMulDivIsaConfig,
+            IMStandardIsaConfigWithUnsignedMulDiv,
         >(&binary_image, &text_section, proofs);
 
         assert!(is_valid);
@@ -146,7 +149,9 @@ mod test {
         let rom_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let proofs = prove_unrolled_for_machine_configuration::<IMWithoutSignedMulDivIsaConfig>(
+        let proofs = prove_unrolled_with_replayer_for_machine_configuration::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
             &binary_image,
             &text_section,
             cycles_bound,
@@ -155,10 +160,10 @@ mod test {
             &worker,
         );
 
-        println!("Proving completed, running verifier now");
+        println!("Proving completed, prepairing to verify");
 
         let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
-            IMWithoutSignedMulDivIsaConfig,
+            IMStandardIsaConfigWithUnsignedMulDiv,
         >(&binary_image, &text_section, proofs);
 
         assert!(is_valid);
@@ -224,6 +229,68 @@ mod test {
         )
     }
 
+    pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
+        binary_image: &[u32],
+        text_section: &[u32],
+        cycles_bound: usize,
+        non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource<
+            riscv_transpiler::vm::RamWithRomRegion<5>,
+        >,
+        ram_bound: usize,
+        worker: &prover::worker::Worker,
+    ) -> (
+        BTreeMap<u8, Vec<UnrolledModeProof>>,
+        Vec<UnrolledModeProof>,
+        Vec<(u32, Vec<Proof>)>,
+        [FinalRegisterValue; 32],
+        (u32, TimestampScalar),
+    ) {
+        println!("Performing precomputations for circuit families");
+        let families_precomps =
+            setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
+                C,
+                Global,
+                Global,
+            >(binary_image, &text_section, &worker);
+
+        println!("Performing precomputations for inits and teardowns");
+        let inits_and_teardowns_precomps =
+            setups::unrolled_circuits::inits_and_teardowns_circuit_setup(
+                &binary_image,
+                &text_section,
+                worker,
+            );
+
+        println!("Performing precomputations for delegation circuits");
+        let delegation_precomputations = setups::all_delegation_circuits_precomputations(worker);
+
+        let (
+            main_proofs,
+            inits_and_teardowns_proofs,
+            delegation_proofs,
+            register_final_state,
+            (final_pc, final_timestamp),
+        ) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<C, Global, 5>(
+            cycles_bound,
+            &binary_image,
+            &text_section,
+            non_determinism,
+            &families_precomps,
+            &inits_and_teardowns_precomps,
+            &delegation_precomputations,
+            ram_bound,
+            worker,
+        );
+
+        (
+            main_proofs,
+            inits_and_teardowns_proofs,
+            delegation_proofs,
+            register_final_state,
+            (final_pc, final_timestamp),
+        )
+    }
+
     pub fn verify_unrolled_base_layer_for_machine_configuration<C: MachineConfig>(
         binary_image: &[u32],
         text_section: &[u32],
@@ -263,6 +330,10 @@ mod test {
             recursion_chain_preimage: None,
         };
 
+        for (k, v) in program_proofs.circuit_families_proofs.iter() {
+            println!("{} proofs for family {}", v.len(), k);
+        }
+
         let responses = program_proofs.flatten_into_responses(C::ALLOWED_DELEGATION_CSRS);
 
         let families_setups = setups::compute_unrolled_circuits_params_for_machine_configuration::<C>(
@@ -281,6 +352,8 @@ mod test {
         } else {
             panic!("Unknown configuration {:?}", std::any::type_name::<C>());
         };
+
+        println!("Running the verifier");
 
         let result = std::thread::Builder::new()
                 .name("verifier thread".to_string())

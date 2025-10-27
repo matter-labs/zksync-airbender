@@ -1,5 +1,5 @@
 [package]
-name = "shift_binary_csr_blake_only_delegation_verifier"
+name = "shift_binary_csr_verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -54,8 +54,7 @@ add_library(gpu_prover_native STATIC
         witness/circuits/reduced_risc_v_machine.cu
         witness/circuits/reduced_risc_v_log_23_machine.cu
         witness/circuits/risc_v_cycles.cu
-        witness/circuits/shift_binary_csr_all_delegations.cu
-        witness/circuits/shift_binary_csr_blake_only_delegation.cu
+        witness/circuits/shift_binary_csr.cu
         witness/circuits/template_delegation.cuh
         witness/circuits/template_main.cuh
         witness/circuits/template_unrolled_memory.cuh

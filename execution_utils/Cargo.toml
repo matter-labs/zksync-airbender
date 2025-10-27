@@ -13,6 +13,7 @@ categories.workspace = true
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 riscv_common = { workspace = true }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
+riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true }
 clap = { workspace = true }

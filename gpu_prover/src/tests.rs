@@ -16,7 +16,7 @@ use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 use fft::{adjust_to_zero_c0_var_length, GoodAllocator, LdePrecomputations, Twiddles};
-use field::{Field, Mersenne31Complex, Mersenne31Field};
+use field::{Mersenne31Complex, Mersenne31Field};
 use itertools::Itertools;
 use prover::definitions::{
     AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
@@ -29,7 +29,7 @@ use prover::risc_v_simulator::abstractions::non_determinism::{
 };
 use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::risc_v_simulator::cycle::{
-    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv, IMWithoutSignedMulDivIsaConfig,
+    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv,
     IWithoutByteAccessIsaConfigWithDelegation,
 };
 use prover::risc_v_simulator::delegations::DelegationsCSRProcessor;
@@ -56,9 +56,6 @@ use prover::{
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType::Unrolled;
-use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
-use crate::field::BaseField;
-use crate::ops_complex::transpose;
 use crate::prover::callbacks::Callbacks;
 use crate::prover::proof::prove;
 use crate::prover::stage_1::StageOneOutput;
@@ -268,7 +265,7 @@ fn test_prove_unrolled_fibonacci() -> CudaResult<()> {
     println!("Performing precomputations for circuit families");
     let families_precomps =
         setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
-            IMWithoutSignedMulDivIsaConfig,
+            IMStandardIsaConfigWithUnsignedMulDiv,
             _,
             _,
         >(&binary_image, &text_section, &worker);
@@ -285,7 +282,7 @@ fn test_prove_unrolled_fibonacci() -> CudaResult<()> {
 
     let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-    prove_unrolled_execution::<_, IMWithoutSignedMulDivIsaConfig, Global, 5>(
+    prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
         1 << 24,
         &binary_image,
         &text_section,

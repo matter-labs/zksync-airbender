@@ -100,8 +100,7 @@ dependencies = [
  "reduced_risc_v_log_23_machine_verifier",
  "reduced_risc_v_machine_verifier",
  "risc_v_cycles_verifier",
- "shift_binary_csr_all_delegations_verifier",
- "shift_binary_csr_blake_only_delegation_verifier",
+ "shift_binary_csr_verifier",
  "verifier_common",
 ]
 

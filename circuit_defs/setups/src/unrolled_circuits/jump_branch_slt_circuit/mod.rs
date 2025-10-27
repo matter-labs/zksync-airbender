@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn jump_branch_slt_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn jump_branch_slt_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     binary_image: &[u32],
     bytecode: &[u32],
     worker: &Worker,
@@ -14,7 +14,7 @@ pub fn jump_branch_slt_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
     use prover::cs::machine::ops::unrolled::materialize_flattened_decoder_table;
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(::jump_branch_slt::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(::jump_branch_slt::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::jump_branch_slt::DOMAIN_SIZE,
         ::jump_branch_slt::LDE_FACTOR,

@@ -16,3 +16,6 @@ blake2s_u32 = { workspace = true }
 ruint = { version = "1.16" }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
 worker = { workspace = true }
+
+[dev-dependencies]
+lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }

@@ -21,26 +21,44 @@ struct DelegationChallenges {
   const e4 gamma;
 };
 
+constexpr unsigned NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES = 3;
+
+struct MachineStateChallenges {
+  const e4 linearization_challenges[NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES];
+  const e4 additive_term;
+};
+
 struct DelegationRequestMetadata {
   const unsigned multiplicity_col;
-  const unsigned timestamp_setup_col;
+  const unsigned timestamp_col;
   const bf memory_timestamp_high_from_circuit_idx;
   const unsigned delegation_type_col;
-  const unsigned abi_mem_offset_high_col;
   const bf in_cycle_write_idx;
+  const unsigned abi_mem_offset_high_col;
+  const bool has_abi_mem_offset_high;
 };
 
 struct DelegationProcessingMetadata {
   const unsigned multiplicity_col;
   const bf delegation_type;
-  const unsigned abi_mem_offset_high_col;
   const unsigned write_timestamp_col;
+  const unsigned abi_mem_offset_high_col;
+  const bool has_abi_mem_offset_high;
 };
 
 constexpr unsigned NUM_LOOKUP_ARGUMENT_KEY_PARTS = 4;
 
 struct LookupChallenges {
   const e4 linearization_challenges[NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1];
+  const e4 gamma;
+};
+
+constexpr unsigned REGISTER_SIZE = 2;
+constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH = 2 + 1 + 1 + 1 + 1 + REGISTER_SIZE + 1 + 1;
+constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES = EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH - 1;
+
+struct DecoderTableChallenges {
+  const e4 linearization_challenges[EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES];
   const e4 gamma;
 };
 
@@ -75,6 +93,18 @@ constexpr unsigned MAX_EXPRESSION_PAIRS = 84;
 constexpr unsigned MAX_EXPRESSIONS = 2 * MAX_EXPRESSION_PAIRS;
 constexpr unsigned MAX_TERMS_PER_EXPRESSION = 4;
 constexpr unsigned MAX_EXPRESSION_TERMS = MAX_TERMS_PER_EXPRESSION * MAX_EXPRESSIONS;
+
+// Temporary for stage 2 refactor, until I can also use it for stage 3.
+struct TEMPORARYFlattenedLookupExpressionsLayout {
+  const unsigned coeffs[MAX_EXPRESSION_TERMS];
+  const u16 col_idxs[MAX_EXPRESSION_TERMS];
+  const bf constant_terms[MAX_EXPRESSIONS];
+  const u8 num_terms_per_expression[MAX_EXPRESSIONS];
+  const u8 bf_dst_cols[MAX_EXPRESSION_PAIRS];
+  const u8 e4_dst_cols[MAX_EXPRESSION_PAIRS];
+  const unsigned num_expression_pairs;
+  const bool constant_terms_are_zero;
+};
 
 struct FlattenedLookupExpressionsLayout {
   const unsigned coeffs[MAX_EXPRESSION_TERMS];
@@ -147,6 +177,27 @@ DEVICE_FORCEINLINE void apply_coeff(const unsigned coeff, bf &val) {
 }
 
 template <bool APPLY_CONSTANT_TERMS, typename T>
+DEVICE_FORCEINLINE void eval_a_and_b(bf a_and_b[2], const TEMPORARYFlattenedLookupExpressionsLayout &expressions, unsigned &expression_idx,
+                                     unsigned &flat_term_idx, const T &witness_cols, const T &memory_cols, const bool constant_terms_are_zero) {
+#pragma unroll
+  for (int j = 0; j < 2; j++, expression_idx++) {
+    const unsigned lim = flat_term_idx + expressions.num_terms_per_expression[expression_idx];
+    a_and_b[j] = get_witness_or_memory(expressions.col_idxs[flat_term_idx], witness_cols, memory_cols);
+    apply_coeff(expressions.coeffs[flat_term_idx], a_and_b[j]);
+    flat_term_idx++;
+    for (; flat_term_idx < lim; flat_term_idx++) {
+      bf val = get_witness_or_memory(expressions.col_idxs[flat_term_idx], witness_cols, memory_cols);
+      apply_coeff(expressions.coeffs[flat_term_idx], val);
+      a_and_b[j] = bf::add(a_and_b[j], val);
+    }
+    if (APPLY_CONSTANT_TERMS && !constant_terms_are_zero) {
+      a_and_b[j] = bf::add(a_and_b[j], expressions.constant_terms[expression_idx]);
+    }
+  }
+}
+
+// Temporary to support stage 3 while im refactoring stage 2
+template <bool APPLY_CONSTANT_TERMS, typename T>
 DEVICE_FORCEINLINE void eval_a_and_b(bf a_and_b[2], const FlattenedLookupExpressionsLayout &expressions, unsigned &expression_idx, unsigned &flat_term_idx,
                                      const T &witness_cols, const T &memory_cols, const bool constant_terms_are_zero) {
 #pragma unroll
@@ -199,12 +250,22 @@ struct LazyInitTeardownLayout {
   const unsigned e4_arg_col;
 };
 
-constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 1;
+constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 16;
 
 struct LazyInitTeardownLayouts {
   const LazyInitTeardownLayout layouts[MAX_LAZY_INIT_TEARDOWN_SETS];
   const unsigned num_init_teardown_sets;
+  const unsigned grand_product_contributions_start;
   const bool process_shuffle_ram_init;
+};
+
+struct MachineStateLayout {
+  const unsigned initial_pc_start;
+  const unsigned initial_timestamp_start;
+  const unsigned final_pc_start;
+  const unsigned final_timestamp_start;
+  const unsigned arg_col;
+  const bool process_machine_state;
 };
 
 constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
@@ -222,7 +283,7 @@ struct ShuffleRamAccess {
 struct ShuffleRamAccesses {
   const ShuffleRamAccess accesses[MAX_SHUFFLE_RAM_ACCESSES];
   const unsigned num_accesses;
-  const unsigned write_timestamp_in_setup_start;
+  const unsigned write_timestamp_start;
 };
 
 struct RegisterAccess {

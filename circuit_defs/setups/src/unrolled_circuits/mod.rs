@@ -10,8 +10,7 @@ pub use ::load_store_subword_only;
 pub use ::load_store_word_only;
 pub use ::mul_div;
 pub use ::mul_div_unsigned;
-pub use ::shift_binary_csr_all_delegations;
-pub use ::shift_binary_csr_blake_only_delegation;
+pub use ::shift_binary_csr;
 pub use ::unified_reduced_machine;
 
 mod add_sub_lui_auipc_mop_circuit;
@@ -21,8 +20,7 @@ mod load_store_subword_only_circuit;
 mod load_store_word_only_circuit;
 mod mul_div_circuit;
 mod mul_div_unsigned_circuit;
-mod shift_binary_csr_all_delegations_circuit;
-mod shift_binary_csr_blake_only_delegation_circuit;
+mod shift_binary_csr_circuit;
 mod unifier_reduced_machine_circuit;
 
 pub use add_sub_lui_auipc_mop_circuit::*;
@@ -32,8 +30,7 @@ pub use load_store_subword_only_circuit::*;
 pub use load_store_word_only_circuit::*;
 pub use mul_div_circuit::*;
 pub use mul_div_unsigned_circuit::*;
-pub use shift_binary_csr_all_delegations_circuit::*;
-pub use shift_binary_csr_blake_only_delegation_circuit::*;
+pub use shift_binary_csr_circuit::*;
 pub use unifier_reduced_machine_circuit::*;
 
 pub fn get_unrolled_circuits_artifacts_for_machine_type<C: MachineConfig>(
@@ -55,8 +52,8 @@ pub fn get_unrolled_circuits_artifacts_for_machine_type<C: MachineConfig>(
                     ::jump_branch_slt::get_circuit,
                 ),
                 (
-                    ::shift_binary_csr_all_delegations::FAMILY_IDX,
-                    ::shift_binary_csr_all_delegations::get_circuit,
+                    ::shift_binary_csr::FAMILY_IDX,
+                    ::shift_binary_csr::get_circuit,
                 ),
                 (::mul_div::FAMILY_IDX, ::mul_div::get_circuit),
                 (
@@ -79,8 +76,8 @@ pub fn get_unrolled_circuits_artifacts_for_machine_type<C: MachineConfig>(
                     ::jump_branch_slt::get_circuit,
                 ),
                 (
-                    ::shift_binary_csr_all_delegations::FAMILY_IDX,
-                    ::shift_binary_csr_all_delegations::get_circuit,
+                    ::shift_binary_csr::FAMILY_IDX,
+                    ::shift_binary_csr::get_circuit,
                 ),
                 (
                     ::mul_div_unsigned::FAMILY_IDX,
@@ -106,8 +103,8 @@ pub fn get_unrolled_circuits_artifacts_for_machine_type<C: MachineConfig>(
                     ::jump_branch_slt::get_circuit,
                 ),
                 (
-                    ::shift_binary_csr_blake_only_delegation::FAMILY_IDX,
-                    ::shift_binary_csr_blake_only_delegation::get_circuit,
+                    ::shift_binary_csr::FAMILY_IDX,
+                    ::shift_binary_csr::get_circuit,
                 ),
                 (
                     ::load_store_word_only::FAMILY_IDX,
@@ -141,7 +138,7 @@ fn artifacts_for_unrolled_circuits_params_impl(
 
 pub fn get_unrolled_circuits_setups_for_machine_type<
     C: MachineConfig,
-    A: GoodAllocator,
+    A: GoodAllocator + 'static,
     B: GoodAllocator,
 >(
     binary_image: &[u32],
@@ -152,7 +149,7 @@ pub fn get_unrolled_circuits_setups_for_machine_type<
         vec![
             add_sub_lui_auipc_mop_circuit_setup,
             jump_branch_slt_circuit_setup,
-            shift_binary_csr_all_delegations_circuit_setup,
+            shift_binary_csr_circuit_setup,
             mul_div_circuit_setup,
             load_store_word_only_circuit_setup,
             load_store_subword_only_circuit_setup,
@@ -161,7 +158,7 @@ pub fn get_unrolled_circuits_setups_for_machine_type<
         vec![
             add_sub_lui_auipc_mop_circuit_setup,
             jump_branch_slt_circuit_setup,
-            shift_binary_csr_all_delegations_circuit_setup,
+            shift_binary_csr_circuit_setup,
             mul_div_unsigned_circuit_setup,
             load_store_word_only_circuit_setup,
             load_store_subword_only_circuit_setup,
@@ -170,7 +167,7 @@ pub fn get_unrolled_circuits_setups_for_machine_type<
         vec![
             add_sub_lui_auipc_mop_circuit_setup,
             jump_branch_slt_circuit_setup,
-            shift_binary_csr_blake_only_delegation_circuit_setup,
+            shift_binary_csr_circuit_setup,
             load_store_word_only_circuit_setup,
         ]
     } else {

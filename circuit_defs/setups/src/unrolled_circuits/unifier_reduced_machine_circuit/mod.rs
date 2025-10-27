@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     binary_image: &[u32],
     bytecode: &[u32],
     worker: &Worker,
@@ -14,7 +14,7 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator, B: GoodAllocator>
     use prover::cs::machine::ops::unrolled::materialize_flattened_decoder_table;
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(::unified_reduced_machine::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(::unified_reduced_machine::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::unified_reduced_machine::DOMAIN_SIZE,
         ::unified_reduced_machine::LDE_FACTOR,
@@ -35,7 +35,10 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator, B: GoodAllocator>
         );
 
     #[cfg(feature = "witness_eval_fn")]
-    let witness_eval_fn = Some(UnrolledCircuitWitnessEvalFn::Unified {});
+    let witness_eval_fn = Some(UnrolledCircuitWitnessEvalFn::Unified {
+        witness_fn: ::unified_reduced_machine::witness_eval_fn_for_gpu_tracer,
+        decoder_table: witness_gen_data,
+    });
 
     #[cfg(not(feature = "witness_eval_fn"))]
     let witness_eval_fn = None;

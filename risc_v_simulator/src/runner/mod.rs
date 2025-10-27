@@ -144,13 +144,11 @@ pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
 }
 
 fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    dbg!(path.as_ref());
     let mut file = std::fs::File::open(path).expect("must open provided file");
     let mut buffer = vec![];
     std::io::Read::read_to_end(&mut file, &mut buffer).expect("must read the file");
 
     assert_eq!(buffer.len() % 4, 0);
-    dbg!(buffer.len() / 4);
 
     buffer
 }

@@ -1,12 +1,12 @@
 use super::*;
 
-pub fn get_blake2_with_compression_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_blake2_with_compression_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     worker: &Worker,
 ) -> DelegationCircuitPrecomputations<A, B> {
     let machine: DelegationProcessorDescription = blake2_with_compression::get_delegation_circuit();
     let table_driver = blake2_with_compression::get_table_driver();
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(blake2_with_compression::DOMAIN_SIZE, &worker);
+    let twiddles = Twiddles::get(blake2_with_compression::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         blake2_with_compression::DOMAIN_SIZE,
         blake2_with_compression::LDE_FACTOR,

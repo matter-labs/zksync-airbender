@@ -8,7 +8,7 @@ use field::Mersenne31Field;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::prover_stages::SetupPrecomputations;
 use prover::risc_v_simulator::cycle::{
-    IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
+    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfig,
     IWithoutByteAccessIsaConfigWithDelegation, MachineConfig,
 };
 use prover::trace_holder::RowMajorTrace;
@@ -70,7 +70,7 @@ pub fn get_main_circuit_precomputations(
             )
         }
         MainCircuitType::MachineWithoutSignedMulDiv => {
-            let csrs = IMWithoutSignedMulDivIsaConfig::ALLOWED_DELEGATION_CSRS;
+            let csrs = IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS;
             (
                 machine_without_signed_mul_div::get_machine(bytecode, csrs),
                 machine_without_signed_mul_div::get_table_driver(bytecode, csrs),

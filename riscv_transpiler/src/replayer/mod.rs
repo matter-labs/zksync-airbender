@@ -179,12 +179,8 @@ impl<C: Counters> ReplayerVM<C> {
                         InstructionName::Andi => {
                             binary::and::<C, R, true>(state, ram, instr, tracer)
                         }
-                        InstructionName::Or => {
-                            binary::and::<C, R, false>(state, ram, instr, tracer)
-                        }
-                        InstructionName::Ori => {
-                            binary::and::<C, R, true>(state, ram, instr, tracer)
-                        }
+                        InstructionName::Or => binary::or::<C, R, false>(state, ram, instr, tracer),
+                        InstructionName::Ori => binary::or::<C, R, true>(state, ram, instr, tracer),
                         InstructionName::Sll => {
                             shifts::sll::<C, R, false>(state, ram, instr, tracer)
                         }
