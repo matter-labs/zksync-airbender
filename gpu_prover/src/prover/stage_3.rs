@@ -4,6 +4,7 @@ use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
+use super::stage_3_utils::*;
 use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
