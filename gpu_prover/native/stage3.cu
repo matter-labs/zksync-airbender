@@ -281,16 +281,16 @@ DEVICE_FORCEINLINE void enforce_width_1_e4_arg_construction(const bf a, const bf
   acc_quadratic = e4::add(acc_quadratic, quadratic_term);
 }
 
-template <typename T>
-DEVICE_FORCEINLINE void enforce_range_check_expressions_with_constant_terms(const T &expressions, unsigned &i, unsigned &expression_idx,
-                                                                            unsigned &flat_term_idx, const matrix_getter<bf, ld_modifier::cg> &witness_cols,
+DEVICE_FORCEINLINE void enforce_range_check_expressions_with_constant_terms(const TEMPORARYFlattenedLookupExpressionsLayout &expressions,
+                                                                            const matrix_getter<bf, ld_modifier::cg> &witness_cols,
                                                                             const matrix_getter<bf, ld_modifier::cg> &memory_cols,
                                                                             const matrix_getter<bf, ld_modifier::cg> &stage_2_bf_cols,
                                                                             const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols,
-                                                                            const unsigned expression_pair_bound, vector_getter<e4, ld_modifier::ca> &alphas,
+                                                                            vector_getter<e4, ld_modifier::ca> &alphas,
                                                                             vector_getter<e4, ld_modifier::ca> &helpers, e4 &acc_linear, e4 &acc_quadratic) {
+  unsigned expression_idx{0}, flat_term_idx{0};
 #pragma unroll
-  for (; i < expression_pair_bound; i++) {
+  for (unsigned i = 0; i < expressions.num_expression_pairs; i++) {
     bf a_and_b[2];
     eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, false);
     const bf a = a_and_b[0]; // not including constant contribution
@@ -305,6 +305,29 @@ DEVICE_FORCEINLINE void enforce_range_check_expressions_with_constant_terms(cons
     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
     enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
   }
+}
+
+DEVICE_FORCEINLINE void enforce_range_check_expressions(const TEMPORARYFlattenedLookupExpressionsLayout &expressions,
+                                                        const matrix_getter<bf, ld_modifier::cg> &witness_cols,
+                                                        const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                        const matrix_getter<bf, ld_modifier::cg> &stage_2_bf_cols,
+                                                        const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols,
+                                                        vector_getter<e4, ld_modifier::ca> &alphas,
+                                                        vector_getter<e4, ld_modifier::ca> &helpers, e4 &acc_linear, e4 &acc_quadratic) {
+    if (expressions.constant_terms_are_zero) {
+#pragma unroll
+      for (unsigned i{0}, expression_idx{0}, flat_term_idx{0}; i < expressions.num_expression_pairs; i++) {
+        bf a_and_b[2];
+        eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, true);
+        const bf bf_arg = stage_2_bf_cols.get_at_col(expressions.bf_dst_cols[i]);
+        enforce_width_1_bf_arg_construction(a_and_b[0], a_and_b[1], bf_arg, alphas, helpers, acc_linear, acc_quadratic);
+        enforce_width_1_e4_arg_construction(a_and_b[0], a_and_b[1], bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols,
+                                            alphas, helpers, acc_linear, acc_quadratic);
+      }
+    } else {
+      enforce_range_check_expressions_with_constant_terms(expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols,
+                                                          alphas, helpers, acc_linear, acc_quadratic);
+    }
 }
 
 struct MultiplicitiesLayout {
@@ -374,7 +397,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const unsigned memory_args_start, const unsigned memory_grand_product_col, __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
     __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses, const bool process_registers_and_indirect_access,
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
-    __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
+    __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout range_check_16_expressions,
+    __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout timestamp_range_check_expressions,
     __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
     __grid_constant__ const NonDelegatedWidth3LookupsLayout width_3_lookups_layout,
     __grid_constant__ const MultiplicitiesLayout range_check_16_multiplicities_layout,
@@ -462,23 +486,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       enforce_width_1_e4_arg_construction(a, b, bf_arg, range_check_16_layout.e4_args_start + i, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
     }
 
-    unsigned i{0}, expression_idx{0}, flat_term_idx{0};
-
-    if (expressions.range_check_16_constant_terms_are_zero) {
-#pragma unroll
-      for (; i < expressions.num_range_check_16_expression_pairs; i++) {
-        bf a_and_b[2];
-        eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, true);
-        const bf bf_arg = stage_2_bf_cols.get_at_col(expressions.bf_dst_cols[i]);
-        enforce_width_1_bf_arg_construction(a_and_b[0], a_and_b[1], bf_arg, alphas, helpers, acc_linear, acc_quadratic);
-        enforce_width_1_e4_arg_construction(a_and_b[0], a_and_b[1], bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
-                                            acc_quadratic);
-      }
-    } else {
-      enforce_range_check_expressions_with_constant_terms(expressions, i, expression_idx, flat_term_idx, witness_cols, memory_cols, stage_2_bf_cols,
-                                                          stage_2_e4_cols, expressions.num_range_check_16_expression_pairs, alphas, helpers, acc_linear,
-                                                          acc_quadratic);
-    }
+    enforce_range_check_expressions(range_check_16_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                    acc_quadratic);
 
     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
@@ -489,22 +498,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       enforce_width_1_e4_arg_construction(a, b, bf_arg, lazy_init_teardown_layout.e4_arg_col, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
     }
 
-    if (expressions.timestamp_constant_terms_are_zero) {
-      const unsigned expression_pair_bound = i + expressions.num_timestamp_expression_pairs;
-#pragma unroll
-      for (; i < expression_pair_bound; i++) {
-        bf a_and_b[2];
-        eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, true);
-        const bf bf_arg = stage_2_bf_cols.get_at_col(expressions.bf_dst_cols[i]);
-        enforce_width_1_bf_arg_construction(a_and_b[0], a_and_b[1], bf_arg, alphas, helpers, acc_linear, acc_quadratic);
-        enforce_width_1_e4_arg_construction(a_and_b[0], a_and_b[1], bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
-                                            acc_quadratic);
-      }
-    } else {
-      const unsigned expression_pair_bound = i + expressions.num_timestamp_expression_pairs;
-      enforce_range_check_expressions_with_constant_terms(expressions, i, expression_idx, flat_term_idx, witness_cols, memory_cols, stage_2_bf_cols,
-                                                          stage_2_e4_cols, expression_pair_bound, alphas, helpers, acc_linear, acc_quadratic);
-    }
+    enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers,
+                                    acc_linear, acc_quadratic);
 
     // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
     // I could use enforce_range_check_expressions_with_constant_terms here too.
@@ -996,7 +991,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
     // validate col sums for range check 16 lookup e4 args
     {
-      const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + expressions.num_range_check_16_expression_pairs;
+      const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
       for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
         acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
       // TODO: Fix for unrolled circuits
@@ -1009,10 +1004,10 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     // validate col sums for timestamp range check e4 args
     if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
       e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
-      const unsigned num_timestamp_e4_args = expressions.num_timestamp_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
+      const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
       // This start location and the contiguity of e4 args cols are checked on the Rust side.
-      const unsigned start_e4_col = (expressions.num_timestamp_expression_pairs > 0) ? expressions.e4_dst_cols[expressions.num_range_check_16_expression_pairs]
-                                                                                     : expressions_for_shuffle_ram.e4_dst_cols[0];
+      const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
+          timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
       for (unsigned i = 0; i < num_timestamp_e4_args; i++)
         acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
       acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());

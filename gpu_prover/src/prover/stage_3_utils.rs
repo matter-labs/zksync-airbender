@@ -5,7 +5,6 @@ use cs::definitions::{
     NUM_LOOKUP_ARGUMENT_KEY_PARTS,
 };
 use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};
-use era_cudart::result::CudaResult;
 use field::{Field, FieldExtension, PrimeField};
 use prover::definitions::AuxArgumentsBoundaryValues;
 use std::alloc::Allocator;

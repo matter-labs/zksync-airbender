@@ -88,7 +88,8 @@ cuda_kernel!(
     process_registers_and_indirect_access: bool,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
     range_check_16_layout: RangeCheck16ArgsLayout,
-    expressions_layout: FlattenedLookupExpressionsLayout,
+    range_check_16_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
+    timestamp_range_check_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
     expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
     width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
@@ -120,7 +121,8 @@ pub struct StaticMetadata {
     delegated_width_3_lookups_layout: DelegatedWidth3LookupsLayout,
     non_delegated_width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
     range_check_16_layout: RangeCheck16ArgsLayout,
-    expressions_layout: FlattenedLookupExpressionsLayout,
+    range_check_16_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
+    timestamp_range_check_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
     expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
     generic_lookup_multiplicities_layout: MultiplicitiesLayout,
     state_linkage_constraints: StateLinkageConstraints,
@@ -289,28 +291,42 @@ impl StaticMetadata {
         } else {
             RegisterAndIndirectAccesses::default()
         };
+
         let range_check_16_layout = RangeCheck16ArgsLayout::new(
             circuit,
             &range_check_16_width_1_lookups_access,
             &range_check_16_width_1_lookups_access_via_expressions,
             &translate_e4_offset,
         );
-        let expressions_layout = if range_check_16_width_1_lookups_access_via_expressions.len() > 0
-            || timestamp_range_check_width_1_lookups_access_via_expressions.len() > 0
-        {
-            let expect_constant_terms_are_zero = process_shuffle_ram_init;
-            // Timestamp constant terms are probably always zero.
-            FlattenedLookupExpressionsLayout::new(
-                &range_check_16_width_1_lookups_access_via_expressions,
-                &timestamp_range_check_width_1_lookups_access_via_expressions,
-                num_stage_2_bf_cols,
-                num_stage_2_e4_cols,
-                expect_constant_terms_are_zero,
-                &translate_e4_offset,
-            )
-        } else {
-            FlattenedLookupExpressionsLayout::default()
-        };
+
+        let range_check_16_expressions_layout =
+            if range_check_16_width_1_lookups_access_via_expressions.len() > 0 {
+                // Timestamp constant terms are probably always zero.
+                TEMPORARYFlattenedLookupExpressionsLayout::new(
+                    &range_check_16_width_1_lookups_access_via_expressions,
+                    num_stage_2_bf_cols,
+                    num_stage_2_e4_cols,
+                    process_shuffle_ram_init, // expect_constant_terms_are_zero
+                    &translate_e4_offset,
+                )
+            } else {
+                TEMPORARYFlattenedLookupExpressionsLayout::default()
+            };
+
+        let timestamp_range_check_expressions_layout =
+            if timestamp_range_check_width_1_lookups_access_via_expressions.len() > 0 {
+                // Timestamp constant terms are probably always zero.
+                TEMPORARYFlattenedLookupExpressionsLayout::new(
+                    &timestamp_range_check_width_1_lookups_access_via_expressions,
+                    num_stage_2_bf_cols,
+                    num_stage_2_e4_cols,
+                    true, // expect_constant_terms_are_zero
+                    &translate_e4_offset,
+                )
+            } else {
+                TEMPORARYFlattenedLookupExpressionsLayout::default()
+            };
+
         let expressions_for_shuffle_ram_layout =
             if timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram.len()
                 > 0
@@ -324,6 +340,7 @@ impl StaticMetadata {
             } else {
                 FlattenedLookupExpressionsForShuffleRamLayout::default()
             };
+
         // 32-bit lazy init addresses are treated as a pair of range check 16 cols
         let lazy_init_teardown_layouts = if process_shuffle_ram_init {
             assert!(circuit.lazy_init_address_aux_vars.len() > 0);
@@ -346,7 +363,7 @@ impl StaticMetadata {
         // and timestamp range check expressions for shuffle ram
         // in the same order challenges are assigned in the CPU code.
         let mut bound = range_check_16_width_1_lookups_access.len();
-        if expressions_layout.range_check_16_constant_terms_are_zero {
+        if range_check_16_expressions_layout.constant_terms_are_zero {
             bound += range_check_16_width_1_lookups_access_via_expressions.len();
         }
         // bare (non-expression) range check 16s, plus range check 16 expressions if
@@ -355,8 +372,8 @@ impl StaticMetadata {
             num_helpers_expected += 2;
         }
         // range check 16 expressions, if constant terms are present
-        if !expressions_layout.range_check_16_constant_terms_are_zero {
-            for _ in 0..expressions_layout.num_range_check_16_expression_pairs {
+        if !range_check_16_expressions_layout.constant_terms_are_zero {
+            for _ in 0..range_check_16_expressions_layout.num_expression_pairs {
                 num_helpers_expected += 2;
             }
         }
@@ -365,12 +382,12 @@ impl StaticMetadata {
             num_helpers_expected += 2;
         }
         // timestamp range check expressions
-        if expressions_layout.timestamp_constant_terms_are_zero {
-            for _ in 0..expressions_layout.num_timestamp_expression_pairs {
+        if timestamp_range_check_expressions_layout.constant_terms_are_zero {
+            for _ in 0..timestamp_range_check_expressions_layout.num_expression_pairs {
                 num_helpers_expected += 2;
             }
         } else {
-            for _ in 0..expressions_layout.num_timestamp_expression_pairs {
+            for _ in 0..timestamp_range_check_expressions_layout.num_expression_pairs {
                 num_helpers_expected += 2;
             }
         }
@@ -508,7 +525,7 @@ impl StaticMetadata {
         assert_eq!(
             num_range_check_16_e4_args,
             (range_check_16_layout.num_dst_cols
-                + expressions_layout.num_range_check_16_expression_pairs) as usize,
+                + range_check_16_expressions_layout.num_expression_pairs) as usize,
         );
         assert_eq!(
             translate_e4_offset(args_metadata.ext_4_field_oracles.start()),
@@ -524,7 +541,7 @@ impl StaticMetadata {
             let num_timestamp_range_check_e4_args =
                 args_metadata.ext_4_field_oracles.num_elements();
             let num_non_shuffle_ram_args =
-                expressions_layout.num_timestamp_expression_pairs as usize;
+                timestamp_range_check_expressions_layout.num_expression_pairs as usize;
             let num_shuffle_ram_args =
                 expressions_for_shuffle_ram_layout.num_expression_pairs as usize;
             assert_eq!(num_timestamp_range_check_e4_args, args_metadata.num_pairs);
@@ -532,11 +549,10 @@ impl StaticMetadata {
                 num_timestamp_range_check_e4_args,
                 num_non_shuffle_ram_args + num_shuffle_ram_args,
             );
-            let offset = expressions_layout.num_range_check_16_expression_pairs as usize;
             for (i, dst) in args_metadata.ext_4_field_oracles.iter().enumerate() {
                 if i < num_non_shuffle_ram_args {
                     assert_eq!(
-                        expressions_layout.e4_dst_cols[i + offset] as usize,
+                        timestamp_range_check_expressions_layout.e4_dst_cols[i] as usize,
                         translate_e4_offset(dst.start),
                     );
                 } else {
@@ -561,7 +577,8 @@ impl StaticMetadata {
             delegated_width_3_lookups_layout,
             non_delegated_width_3_lookups_layout,
             range_check_16_layout,
-            expressions_layout,
+            range_check_16_expressions_layout,
+            timestamp_range_check_expressions_layout,
             expressions_for_shuffle_ram_layout,
             generic_lookup_multiplicities_layout,
             state_linkage_constraints,
@@ -603,7 +620,8 @@ pub(super) fn prepare_async_challenge_data(
         flat_generic_constraints_metadata,
         delegated_width_3_lookups_layout,
         non_delegated_width_3_lookups_layout,
-        expressions_layout,
+        range_check_16_expressions_layout,
+        timestamp_range_check_expressions_layout,
         expressions_for_shuffle_ram_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
@@ -721,7 +739,7 @@ pub(super) fn prepare_async_challenge_data(
     // and timestamp range check expressions for shuffle ram
     // in the same order challenges are assigned in the CPU code.
     let mut bound = range_check_16_width_1_lookups_access.len();
-    if expressions_layout.range_check_16_constant_terms_are_zero {
+    if range_check_16_expressions_layout.constant_terms_are_zero {
         bound += range_check_16_width_1_lookups_access_via_expressions.len();
     }
     // bare (non-expression) range check 16s, plus range check 16 expressions if
@@ -782,11 +800,11 @@ pub(super) fn prepare_async_challenge_data(
             }
         };
     // range check 16 expressions, if constant terms are present
-    if !expressions_layout.range_check_16_constant_terms_are_zero {
-        let num_pairs = expressions_layout.num_range_check_16_expression_pairs as usize;
+    if !range_check_16_expressions_layout.constant_terms_are_zero {
+        let num_pairs = range_check_16_expressions_layout.num_expression_pairs as usize;
         stash_helpers_for_expressions_with_constant_terms(
             num_pairs as usize,
-            &expressions_layout.constant_terms[0..2 * num_pairs],
+            &range_check_16_expressions_layout.constant_terms[0..2 * num_pairs],
             &mut alpha_offset,
             helpers,
             constants_times_challenges,
@@ -809,8 +827,8 @@ pub(super) fn prepare_async_challenge_data(
         alpha_offset += 1;
     }
     // timestamp range check expressions
-    if expressions_layout.timestamp_constant_terms_are_zero {
-        for _ in 0..expressions_layout.num_timestamp_expression_pairs as usize {
+    if timestamp_range_check_expressions_layout.constant_terms_are_zero {
+        for _ in 0..timestamp_range_check_expressions_layout.num_expression_pairs as usize {
             alpha_offset += 1;
             let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
             helpers.push(*alpha.clone().mul_assign(&lookup_gamma));
@@ -826,12 +844,10 @@ pub(super) fn prepare_async_challenge_data(
             alpha_offset += 1;
         }
     } else {
-        let num_pairs = expressions_layout.num_timestamp_expression_pairs as usize;
-        let start = 2 * expressions_layout.num_range_check_16_expression_pairs as usize;
-        let end = start + 2 * num_pairs;
+        let num_pairs = timestamp_range_check_expressions_layout.num_expression_pairs as usize;
         stash_helpers_for_expressions_with_constant_terms(
             num_pairs,
-            &expressions_layout.constant_terms[start..end],
+            &timestamp_range_check_expressions_layout.constant_terms[0..2 * num_pairs],
             &mut alpha_offset,
             helpers,
             constants_times_challenges,
@@ -1188,7 +1204,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegated_width_3_lookups_layout,
         non_delegated_width_3_lookups_layout,
         range_check_16_layout,
-        expressions_layout,
+        range_check_16_expressions_layout,
+        timestamp_range_check_expressions_layout,
         expressions_for_shuffle_ram_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
@@ -1309,7 +1326,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         process_registers_and_indirect_access,
         register_and_indirect_accesses,
         range_check_16_layout,
-        expressions_layout,
+        range_check_16_expressions_layout,
+        timestamp_range_check_expressions_layout,
         expressions_for_shuffle_ram_layout,
         non_delegated_width_3_lookups_layout,
         range_check_16_multiplicities_layout,
