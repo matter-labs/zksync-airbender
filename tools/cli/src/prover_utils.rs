@@ -64,6 +64,7 @@ pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
     // TODO: hardcoded for now.
     let num_instances = 500;
     // Let's use v23 circuits everywhere.
+    let recursion_mode = RecursionStrategy::UseReducedLog23MachineInBothLayers;
 
     let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
     let mut gpu_state = Some(GpuSharedState::new(&binary, recursion_circuit_type));
@@ -85,18 +86,14 @@ pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
             &mut total_proof_time,
         );
 
-        let recursion_mode = RecursionStrategy::UseReducedLog23Machine;
-
-        let (_recursion_proof_list, _recursion_proof_metadata) =
-            create_recursion_proofs_with_machine(
-                proof_list,
-                proof_metadata,
-                recursion_mode,
-                &None,
-                &Machine::ReducedLog23,
-                &mut gpu_state,
-                &mut total_proof_time,
-            );
+        let (_recursion_proof_list, _recursion_proof_metadata) = create_recursion_proofs(
+            proof_list,
+            proof_metadata,
+            recursion_mode,
+            &None,
+            &mut gpu_state,
+            &mut total_proof_time,
+        );
         // Currently we don't store the final proofs (as this is mostly for performance testing).
         println!(
             "**** {} Total time on production critical path {:.3}s ****",
@@ -263,6 +260,7 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
 #[cfg(feature = "gpu")]
 pub struct GpuSharedState {
     pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
+    pub recursion_circuit_type: MainCircuitType,
 }
 
 #[cfg(feature = "gpu")]
@@ -294,7 +292,10 @@ impl GpuSharedState {
             bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
         };
         let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
-        Self { prover }
+        Self {
+            prover,
+            recursion_circuit_type,
+        }
     }
 }
 
@@ -554,26 +555,6 @@ pub fn create_recursion_proofs(
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
-    create_recursion_proofs_with_machine(
-        proof_list,
-        proof_metadata,
-        recursion_mode,
-        tmp_dir,
-        &Machine::Reduced,
-        gpu_shared_state,
-        total_proof_time,
-    )
-}
-
-pub fn create_recursion_proofs_with_machine(
-    proof_list: ProofList,
-    proof_metadata: ProofMetadata,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    machine: &Machine,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
-) -> (ProofList, ProofMetadata) {
     assert!(
         proof_metadata.basic_proof_count > 0,
         "Recursion proofs can be created only for basic proofs.",
@@ -583,6 +564,27 @@ pub fn create_recursion_proofs_with_machine(
     let mut recursion_level = 0;
     let mut current_proof_list = proof_list;
     let mut current_proof_metadata = proof_metadata.clone();
+
+    let machine = if recursion_mode == RecursionStrategy::UseReducedLog23MachineInBothLayers {
+        &Machine::ReducedLog23
+    } else {
+        &Machine::Reduced
+    };
+
+    // Small sanity check, to make sure that GPU state matches the chosen machine.
+    #[cfg(feature = "gpu")]
+    if let Some(gpu_shared_state) = gpu_shared_state {
+        if machine == &Machine::ReducedLog23 {
+            assert!(
+                gpu_shared_state.recursion_circuit_type
+                    == MainCircuitType::ReducedRiscVLog23Machine
+            );
+        } else {
+            assert!(
+                gpu_shared_state.recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
+            );
+        }
+    }
 
     loop {
         if recursion_mode.skip_first_layer() {
