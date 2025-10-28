@@ -1,3 +1,14 @@
+//! Instruction-level algebraic circuits
+//! ===================================
+//!
+//! This `ops` module contains one circuit implementation per RISC-V instruction
+//! family.  Each sub-module exposes a type that implements the
+//! MachineOp trait, making it connected to the high-level machine compiler.
+//! Tables for expensive logic: byte-wise ops, multiplication, division
+//! and other non-linear behaviour rely on pre-computed lookup tables (look at
+//! TableType::*).
+//! OptimizationContext – gadgets which deduplicates identical lookups and aggregates
+//!   multibyte relations to lower constraint cost.
 use super::*;
 
 pub mod add_sub;

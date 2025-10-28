@@ -1,3 +1,21 @@
+//! Optimized RISC-V instruction decoder
+//!
+//! This decoder extracts instruction fields and opcode-format information while
+//! avoiding creation of unnecessary explicit variables. Whenever possible it
+//! carries values as linear constraints and only materializes variables that
+//! must exist for circuit logic. This is especially useful when CSR
+//! handling is performed later, so we can defer checks until the CSR stage and
+//! keep the decode phase cheap.
+//!
+//! High level overview:
+//! - Split the 32-bit instruction into chunks used by different formats.
+//! - Assign witnesses for small chunks which are range-checked with fixed tables.
+//! - Build rs1, rs2, rd as explicit value or linear constraints.
+//! - Construct funct7 and funct12.
+//! - Perform a table lookup over [opcode | funct3 | funct7] to a bitmask
+//!   of instruction format and variant flags R/I/S/B/U/J.
+//! - Build a sign-extended immediate from dependent chunks.
+//!
 use one_row_compiler::LookupInput;
 
 use super::*;
@@ -23,6 +41,12 @@ pub struct OptimizedDecoderOutput<F: PrimeField> {
 }
 
 impl OptimizedDecoder {
+    /// Decode a 32-bit instruction into fields, immediate, and opcode format flags.
+    /// Returns:
+    /// - is_invalid a boolean flag from the opcode lookup that marks an invalid encoding.
+    /// - OptimizedDecoderOutput the structured decode result (rs1/rs2/rd/imm/funct fields).
+    /// - [Boolean; NUM_INSTRUCTION_TYPES]: orthogonal format flags in order [R,I,S,B,U,J].
+    /// - Vec<Boolean>: extra variant bits returned by the opcode table.
     pub fn decode<F: PrimeField, CS: Circuit<F>>(
         inputs: &DecoderInput<F>,
         circuit: &mut CS,
@@ -70,6 +94,9 @@ impl OptimizedDecoder {
         let imm10_5_var = imm10_5.get_variable();
         let sign_bit_var = sign_bit.get_variable().unwrap();
 
+        // Assign witnesses by slicing low/high 16-bit halves of the instruction.
+        // We take care to only materialize the small chunks we need, leaving
+        // imm11, rs2_low to be reconstructed as linear constraints.
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             use crate::cs::witness_placer::*;
 
@@ -248,6 +275,7 @@ impl OptimizedDecoder {
         ));
 
         // chunk 5 is just higher part of the immediate
+        // This encodes sign-extension for all formats. For U format we take insn_high entirely.
         let imm_high = Num::Var(circuit.add_variable_from_constraint(
             Term::from(j_insn) * (Term::from(sign_bit) * Term::from(0xfff0) + Term::from(rs1_high))
                 + Term::from(u_insn) * Term::from(inputs.instruction.0[1])
@@ -285,6 +313,11 @@ impl OptimizedDecoder {
     }
 
     #[track_caller]
+    /// Perform a table lookup for [opcode | funct3 | funct7] and expose the resulting bitmask as boolean variables.
+    /// The first bit indicates invalid opcode, the next NUM_INSTRUCTION_TYPES bits are the orthogonal format flags [R,I,S,B,U,J],
+    /// and the remaining bits are variant selected by splitting.
+    /// The splitting is realized by connecting two linear constraints to fixed-table lookups that return two 16-bit masks.
+    /// We then expose the requested number of bits from those masks as booleans.
     fn opcode_lookup<F: PrimeField, CS: Circuit<F>>(
         opcode: Num<F>,
         funct3: Num<F>,
@@ -393,6 +426,9 @@ impl OptimizedDecoder {
         (is_invalid, format_bits, other_bits)
     }
 
+    /// Choose source operands based on the decoded instruction format and return a
+    /// linear flag indicating whether the destination register should be
+    /// written in the current instruction.
     pub fn select_src1_and_src2_values<F: PrimeField, C: Circuit<F>>(
         cs: &mut C,
         opcode_format_bits: &[Boolean; NUM_INSTRUCTION_TYPES],

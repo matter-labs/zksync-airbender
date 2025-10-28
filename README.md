@@ -9,10 +9,22 @@ This repository contains the RISC-V compilation and proving tools for the ZKsync
 The most recent documentation can be found here:
 
 - [In-repo docs](./docs/README.md)
+  - [Overview](./docs/overview.md)
+  - [Writing Programs](./docs/writing_programs.md)
   - [RISC-V Prover - Tutorial](./docs/tutorial.md)
-  - [Philosophy and logic](./docs/philosophy_and_logic.md)
-  - [Subarguments used](./docs/subarguments_used.md)
+  - [End-to-End Guide](./docs/end_to_end.md)
+  - [Philosophy and Logic](./docs/philosophy_and_logic.md)
+  - [Circuit Overview](./docs/circuit_overview.md)
+  - [Machine Configuration](./docs/machine_configuration.md)
+  - [Delegation Circuits](./docs/delegation_circuits.md)
+  - [AIR-style Constraints](./docs/air_constraints.md)
+  - [Instruction Gadgets](./docs/instruction_gadgets.md)
+  - [Circuit Entry Points](./docs/circuit_entry_points.md)
+  - [Subarguments Used](./docs/subarguments_used.md)
   - [Code Repository Layout](./docs/repo_layout.md)
+  - [RISC-V Simulator - Supported Instructions](./docs/simulator_supported_instructions.md)
+  - [GPU Acceleration](./docs/gpu.md)
+  - [Test Suites](./docs/tests_overview.md)
 
 ## How to run it
 
@@ -48,7 +60,7 @@ Details on third-party notices can be found in [NOTICE.md](./NOTICE.md), in `ACK
 - [Twitter for Developers](https://twitter.com/zkSyncDevs)
 - [Discord](https://join.zksync.dev/)
 - [Mirror](https://zksync.mirror.xyz/)
-- [Youtube](https://www.youtube.com/@zkSync-era)
+- [YouTube](https://www.youtube.com/@zkSync-era)
 
 ## Contribution
 

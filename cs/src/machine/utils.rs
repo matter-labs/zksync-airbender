@@ -216,8 +216,6 @@ pub(crate) fn read_from_shuffle_ram_or_bytecode_no_decomposition_with_ctx<
         Term::from(is_ram_range) * Term::from(address_aligned_high.get_variable()),
     );
 
-    // TODO: it is linear, so we can postpone making a variable towards merging
-
     let is_register = cs.add_variable_from_constraint_allow_explicit_linear(
         Term::from(1) - Term::from(is_ram_range),
     );

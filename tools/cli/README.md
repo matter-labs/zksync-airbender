@@ -1,6 +1,6 @@
 # CLI tool
 
-With this CLI you can run riscV code, generate the proofs and verify them.
+With this CLI you can run RISC-V code, generate the proofs and verify them.
 
 TL;DR:
 
@@ -19,9 +19,9 @@ You can also:
 * verify proofs
 * create a SNARK (WIP)
 
-## Running riscV binary.
+## Running RISC-V binary.
 
-You can run the riscV binary on the emulator, to see the expected outputs and number of used cycles.
+You can run the RISC-V binary on the emulator, to see the expected outputs and number of used cycles.
 
 ```
 cargo run  run  --bin ../../examples/basic_fibonacci/app.bin 
@@ -42,7 +42,7 @@ To generate the proof, simply run the command below. It will run your binary, an
 cargo run --release prove  --bin ../../examples/basic_fibonacci/app.bin --output_dir output/
 ```
 
-where the .bin file is the riscV compiled file. You can see more instructions on how to create such file in the basic_fibonacci dir.
+where the .bin file is the RISC-V compiled file. You can see more instructions on how to create such file in the basic_fibonacci dir.
 
 **Compilation times** - you might want to use `--profile cli` to minimise the compilation time, as --release might take a long time to compile the veirfication code, and --dev might be generating a proof for a really long time.
 
@@ -103,7 +103,7 @@ cargo run generate-vk --bin ../../examples/dynamic_fibonacci/app.bin
 
 To see the verification key for your binary, and then you can compare it with the one that is printed during proof verification.
 
-**WARNING** verification key depends on multiple factors: your binary, riscV circuit and delegation circuits. Any change to those, and the verification key will change.
+**WARNING** verification key depends on multiple factors: your binary, RISC-V circuit and delegation circuits. Any change to those, and the verification key will change.
 
 ## Recursion
 

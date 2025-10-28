@@ -87,7 +87,6 @@ impl CsrRegisters {
             Self::Mcause => 0x342,
             Self::Mtval => 0x343,
             Self::Mip => 0x344,
-            // TODO: double check please
             Self::Mcustom => 0x7c0,
             Self::Invalid => 0x00,
         };

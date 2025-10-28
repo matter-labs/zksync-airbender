@@ -30,7 +30,7 @@ Trace execution to get cycle count and output:
 cargo run --release run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles 40000000
 ```
 
-`--cycles 40000000` tells the CLI tool to trace and prove up to 40m RiscV cycles.
+`--cycles 40000000` tells the CLI tool to trace and prove up to 40m RISC-V cycles.
 
 Prove on GPU (with recursion):
 ```

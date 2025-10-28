@@ -1,6 +1,6 @@
-# ZKsyncOS
+# ZKsync OS
 
-This directory contains a binary built from ZKsyncOS repo.
+This directory contains a binary built from ZKsync OS repo.
 
 In the future, we should have a proper release pipeline there, so this will no longer be needed.
 

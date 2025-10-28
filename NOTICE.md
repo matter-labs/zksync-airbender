@@ -31,6 +31,6 @@ Substantial modifications have been made; see per‑file headers and git history
 1. <https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf>  
 2. <https://eprint.iacr.org/2023/824.pdf> (circle group LDE with compression)  
 3. <https://www.robinscheibler.org/2013/02/13/real-fft.html> (Two for one FFT)  
-4. [Our NTT math overview](../gpu_prover/src/ntt/two-for-one.pdf)
+4. [Our NTT math overview](gpu_prover/src/ntt/two-for-one.pdf)
 5. <https://eprint.iacr.org/2023/1115> (Memory: Two shuffles make a RAM)  
 

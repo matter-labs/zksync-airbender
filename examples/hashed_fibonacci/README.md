@@ -1,10 +1,10 @@
 # ZK prover example
 
-Hashed fibonacci reads values `n`  and `h` (in hex) from an input file, computes the n-th fibonacci number % 10_000, then applies Blake hash `h` times.
+Hashed fibonacci reads values `n`  and `h` (in hex) from an input file, computes the n-th fibonacci number % 10_000, then applies BLAKE2 hash `h` times.
 
-This example shows how you can use delegation circuits (here - blake for hashing).
+This example shows how you can use delegation circuits (here - BLAKE2 for hashing).
 
-`input.txt` contains example inputs (`n = 0000000f` = 15 fibonacci iterations, `h = 00000001` = 1 blake iteration).
+`input.txt` contains example inputs (`n = 0000000f` = 15 fibonacci iterations, `h = 00000001` = 1 BLAKE2 iteration).
 
 You can try it with the [tools/cli](../../tools/cli) runner as shown below.
 
