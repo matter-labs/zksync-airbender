@@ -168,14 +168,7 @@ unsafe fn workload() -> ! {
                 assert_eq!(output1[i], output2[i], "Proving chains must be equal");
             }
 
-            // // The first 8 words of the result are the hash of the two outputs.
-            // // This way, to verify the combined proof, we can check that it matches
-            // // the rolling hash of the public inputs.
-            // let mut hasher = Keccak32::new();
-
-            // update_from_recursive_circuit_output(&mut hasher, &output1);
-            // update_from_recursive_circuit_output(&mut hasher, &output2);
-
+            // merge the inputs together
             let value = merge_recursive_circuit_output(
                 output1[0..8]
                     .try_into()
@@ -187,6 +180,7 @@ unsafe fn workload() -> ! {
             let mut result = [0u32; 16];
             // TODO: in the future - set the result[7] to be equal to 0.
             result[0..8].copy_from_slice(&value);
+            // same VK, can be either output1 or output2
             result[8..16].copy_from_slice(&output1[8..16]);
 
             riscv_common::zksync_os_finish_success_extended(&result);
