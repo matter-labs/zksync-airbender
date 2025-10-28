@@ -111,7 +111,7 @@ impl<
                             VARIABLE_OFFSETS_T,
                         >>()
                         .write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -227,7 +227,7 @@ impl<
                         >>()
                         .as_mut_unchecked()
                         .write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -283,7 +283,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY>
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -336,7 +336,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, F
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -395,7 +395,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -447,7 +447,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMI
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -493,7 +493,7 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
                 first
                     .as_mut_ptr()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -515,7 +515,7 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
                 first
                     .as_mut_ptr()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));

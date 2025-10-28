@@ -1253,7 +1253,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             );
                         }
                     } else if funct3 & ZICSR_MASK != 0 {
-                        // We do not support stanard CSRs yet
+                        // We do not support standard CSRs yet
                         assert!(Config::SUPPORT_STANDARD_CSRS == false);
                         assert!(Config::SUPPORT_ONLY_CSRRW);
 
@@ -1264,7 +1264,7 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         // read
                         match csr_number {
                             NON_DETERMINISM_CSR => {
-                                // to imporve oracle usability we can try to avoid read
+                                // to improve oracle usability we can try to avoid read
                                 // if we intend to write, so check oracle config
                                 rd_value = if ND::SHOULD_MOCK_READS_BEFORE_WRITES {
                                     // all our oracle accesses are implemented via CSRRW
