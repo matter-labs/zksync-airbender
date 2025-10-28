@@ -25,10 +25,7 @@ use prover::{
     prover_stages::Proof,
     risc_v_simulator::{
         abstractions::non_determinism::QuasiUARTSource,
-        cycle::{
-            IMStandardIsaConfig, IWithoutByteAccessIsaConfig,
-            IWithoutByteAccessIsaConfigWithDelegation,
-        },
+        cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
         runner::run_simple_with_entry_point_and_non_determimism_source_for_config,
         sim::SimulatorConfig,
     },
@@ -329,6 +326,7 @@ fn main() {
             cli_lib::prover_utils::multi_prove(bin, all_inputs);
             #[cfg(not(feature = "gpu"))]
             {
+                let _ = bin;
                 panic!("MultiProve is only available with GPU feature enabled.");
             }
         }
