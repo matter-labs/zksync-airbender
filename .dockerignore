@@ -5,6 +5,7 @@ tools/verifier/target
 !Cargo.toml
 
 !blake2s_u32
+!common_constants
 !circuit_defs
 !cs
 !examples
