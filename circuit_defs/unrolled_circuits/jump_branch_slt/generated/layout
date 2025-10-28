@@ -1649,7 +1649,7 @@
   "executor_family_circuit_next_timestamp_aux_var": {
     "WitnessSubtree": 27
   },
-  "executor_family_decoder_table_size": 524288,
+  "executor_family_decoder_table_size": 1048576,
   "trace_len": 16777216,
   "table_offsets": [
     0,

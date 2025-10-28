@@ -1,9 +1,8 @@
 use clap::ValueEnum;
 use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
-use execution_utils::Machine;
-use execution_utils::{
+pub use execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
+    get_padded_binary, Machine, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
 };
 use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
@@ -56,6 +55,58 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
         .collect();
 
     numbers
+}
+
+#[cfg(feature = "gpu")]
+pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
+    let binary = load_binary_from_path(bin_path);
+
+    // TODO: hardcoded for now.
+    let num_instances = 500;
+    // Let's use v23 circuits everywhere.
+    let recursion_mode = RecursionStrategy::UseReducedLog23MachineInBothLayers;
+
+    let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
+    let mut gpu_state = Some(GpuSharedState::new(&binary, recursion_circuit_type));
+
+    let mut gpu_state = gpu_state.as_mut();
+
+    let mut final_results = vec![];
+
+    for (i, non_determinism_data) in input_files.into_iter().enumerate() {
+        let mut total_proof_time = Some(0f64);
+
+        let (proof_list, proof_metadata) = create_proofs_internal(
+            &binary,
+            non_determinism_data,
+            &Machine::Standard,
+            num_instances,
+            None,
+            &mut gpu_state,
+            &mut total_proof_time,
+        );
+
+        let (_recursion_proof_list, _recursion_proof_metadata) = create_recursion_proofs(
+            proof_list,
+            proof_metadata,
+            recursion_mode,
+            &None,
+            &mut gpu_state,
+            &mut total_proof_time,
+        );
+        // Currently we don't store the final proofs (as this is mostly for performance testing).
+        println!(
+            "**** {} Total time on production critical path {:.3}s ****",
+            i,
+            total_proof_time.unwrap(),
+        );
+        final_results.push(total_proof_time.unwrap());
+    }
+
+    println!("**** Multi-prove summary ****");
+    for (i, time) in final_results.iter().enumerate() {
+        println!("Input {}: total proof time {:.3}s", i, time);
+    }
 }
 
 pub fn create_proofs(
@@ -209,6 +260,7 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
 #[cfg(feature = "gpu")]
 pub struct GpuSharedState {
     pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
+    pub recursion_circuit_type: MainCircuitType,
 }
 
 #[cfg(feature = "gpu")]
@@ -240,7 +292,10 @@ impl GpuSharedState {
             bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
         };
         let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
-        Self { prover }
+        Self {
+            prover,
+            recursion_circuit_type,
+        }
     }
 }
 
@@ -510,6 +565,27 @@ pub fn create_recursion_proofs(
     let mut current_proof_list = proof_list;
     let mut current_proof_metadata = proof_metadata.clone();
 
+    let machine = if recursion_mode == RecursionStrategy::UseReducedLog23MachineInBothLayers {
+        &Machine::ReducedLog23
+    } else {
+        &Machine::Reduced
+    };
+
+    // Small sanity check, to make sure that GPU state matches the chosen machine.
+    #[cfg(feature = "gpu")]
+    if let Some(gpu_shared_state) = gpu_shared_state {
+        if machine == &Machine::ReducedLog23 {
+            assert!(
+                gpu_shared_state.recursion_circuit_type
+                    == MainCircuitType::ReducedRiscVLog23Machine
+            );
+        } else {
+            assert!(
+                gpu_shared_state.recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
+            );
+        }
+    }
+
     loop {
         if recursion_mode.skip_first_layer() {
             println!("Skipping recursion.");
@@ -525,7 +601,7 @@ pub fn create_recursion_proofs(
         (current_proof_list, current_proof_metadata) = create_proofs_internal(
             &binary,
             non_determinism_data,
-            &Machine::Reduced,
+            machine,
             current_proof_metadata.total_proofs(),
             Some(current_proof_metadata.create_prev_metadata()),
             gpu_shared_state,
