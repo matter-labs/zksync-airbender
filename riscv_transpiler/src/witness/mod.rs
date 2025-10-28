@@ -1,5 +1,6 @@
 pub mod delegation;
 
+use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
 use std::mem::MaybeUninit;
 
 pub use self::delegation::{DelegationAbiDescription, DelegationWitness};
@@ -126,27 +127,27 @@ impl<
 
 pub type BigintDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type BlakeDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
     { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type KeccakDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
 
 pub struct UninitDelegationDestinationHolder<
@@ -242,27 +243,27 @@ impl<
 
 pub type UninitBigintDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type UninitBlakeDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    { BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type UninitKeccakDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
 
 // Holder for destination buffer for one particular delegation type. It may represent only part
@@ -651,23 +652,23 @@ impl<
 }
 
 pub type BigintDelegationDestinationHolderConstructor = DelegationDestinationHolderConstructor<
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type BlakeDelegationDestinationHolderConstructor = DelegationDestinationHolderConstructor<
-    { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    { BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type KeccakDelegationDestinationHolderConstructor<'a> = DelegationDestinationHolderConstructor<
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;

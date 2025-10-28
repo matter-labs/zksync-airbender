@@ -854,7 +854,10 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
 
         dbg!(proof.witness_tree_caps[0].cap[0]);
 
-        serialize_to_file_if_not_gpu_comparison(&proof, "add_sub_lui_auipc_mop_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(
+            &proof,
+            "add_sub_lui_auipc_mop_unrolled_proof.json",
+        );
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
             let gpu_comparison_args = GpuUnrolledComparisonArgs {
@@ -1517,7 +1520,6 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             gpu_comparison_hook(&gpu_comparison_args);
         }
 
-
         serialize_to_file_if_not_gpu_comparison(&proof, "word_only_load_store_unrolled_proof.json");
 
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
@@ -1665,7 +1667,10 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         }
         assert!(proof.delegation_argument_accumulator.is_none());
 
-        serialize_to_file_if_not_gpu_comparison(&proof, "subword_only_load_store_unrolled_proof.json");
+        serialize_to_file_if_not_gpu_comparison(
+            &proof,
+            "subword_only_load_store_unrolled_proof.json",
+        );
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
             let gpu_comparison_args = GpuUnrolledComparisonArgs {

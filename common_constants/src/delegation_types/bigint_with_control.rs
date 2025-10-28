@@ -34,5 +34,11 @@ pub unsafe fn bigint_csr_trigger_delegation(
     mask
 }
 
+pub const NUM_BIGINT_REGISTER_ACCESSES: usize = 3;
+pub const NUM_BIGINT_VARIABLE_OFFSETS: usize = 0;
+
+pub const BIGINT_X10_NUM_WRITES: usize = 8;
+pub const BIGINT_X11_NUM_READS: usize = 8;
+
 pub const BIGINT_TOTAL_RAM_ACCESSES: usize = 8 * 2;
 pub const BIGINT_BASE_ABI_REGISTER: u32 = 10;

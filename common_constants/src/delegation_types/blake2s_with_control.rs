@@ -25,6 +25,9 @@ pub unsafe fn blake2s_csr_trigger_delegation(
     control_mask
 }
 
+pub const NUM_BLAKE2S_REGISTER_ACCESSES: usize = 3;
+pub const NUM_BLAKE2S_VARIABLE_OFFSETS: usize = 0;
+
 pub const BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b000) << 16;
 pub const BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b001) << 16;
 pub const BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS: u32 = 0b010 << 16;
