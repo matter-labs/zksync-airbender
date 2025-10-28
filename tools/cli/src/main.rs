@@ -708,7 +708,7 @@ fn run_binary(
     };
 
     if !reached_end {
-        println!("WARNING: execution did not finished; most likely ran out of cycles!");
+        println!("WARNING: execution did not finish; most likely ran out of cycles!");
     }
 
     // our convention is to return 32 bytes placed into registers x10-x17
