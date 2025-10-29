@@ -243,7 +243,7 @@ unsafe fn workload() -> ! {
             let mut result = [0u32; 16];
 
             // same VK used across all proofs
-            result.copy_from_slice(&first_output);
+            result[8..16].copy_from_slice(&first_output[8..16]);
 
             // get rolling hash value and make it the output
             result[0..8].copy_from_slice(&rolling_hash);
@@ -311,25 +311,4 @@ unsafe fn workload() -> ! {
 #[inline(never)]
 fn main() -> ! {
     unsafe { workload() }
-}
-
-#[cfg(any(
-    feature = "universal_circuit",
-    feature = "universal_circuit_no_delegation"
-))]
-/// Used in hashing proofs for verification.
-/// Keccak-256 implementation, but hashes specifically to be compatible with our SNARK.
-/// First 8 [0 -> 8) words represent the actual output of the circuit, which is what we need to hash.
-/// Last 8 [8 -> 16) words represent the the verification key.
-/// Verification Key stays the same across all circuits (already checked above).
-fn update_from_recursive_circuit_output(hasher: &mut Keccak32, output: &[u32; 16]) {
-    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-    // and we'll actually shift them all by 1.
-    // So our output is the keccak(input_1[0..8]>>32, input_2[0..8]>>32, ..., input_n[0..8]>>32)
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-    hasher.update(&[0u32]);
-
-    for val in &output[0..7] {
-        hasher.update(&[*val]);
-    }
 }
