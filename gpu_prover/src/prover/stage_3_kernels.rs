@@ -354,6 +354,7 @@ impl StaticMetadata {
             assert_eq!(circuit.lazy_init_address_aux_vars.len(), 0);
             LazyInitTeardownLayouts::default()
         };
+
         // Parse metadata to figure out how many "helper" values we expect
         // the later (async) call to prepare_async_challenge_data must create.
         // prepare_async_challenge data will use this value as a double-check.
@@ -419,27 +420,43 @@ impl StaticMetadata {
                 num_helpers_expected += non_delegated_layout.num_helpers_used as usize;
                 (delegated_layout, non_delegated_layout)
             };
-        let range_check_16_multiplicities_layout = MultiplicitiesLayout {
-            src_cols_start: range_check_16_multiplicities_src as u32,
-            dst_cols_start: translate_e4_offset(range_check_16_multiplicities_dst) as u32,
-            setup_cols_start: range_check_16_setup_column as u32,
-            num_dst_cols: num_range_check_16_multiplicities_cols as u32,
-        };
+
+        let range_check_16_multiplicities_layout = if num_range_check_16_multiplicities_cols > 0 {
+            MultiplicitiesLayout {
+                src_cols_start: range_check_16_multiplicities_src as u32,
+                dst_cols_start: translate_e4_offset(range_check_16_multiplicities_dst) as u32,
+                setup_cols_start: range_check_16_setup_column as u32,
+                num_dst_cols: num_range_check_16_multiplicities_cols as u32,
+            }
+        } else {
+            MultiplicitiesLayout::default()
+        }
         num_helpers_expected += num_range_check_16_multiplicities_cols;
-        let timestamp_range_check_multiplicities_layout = MultiplicitiesLayout {
-            src_cols_start: timestamp_range_check_multiplicities_src as u32,
-            dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
-            setup_cols_start: timestamp_range_check_setup_column as u32,
-            num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
-        };
+
+        let timestamp_range_check_multiplicities_layout =
+            if num_timestamp_range_check_multiplicities_cols > 0 {
+            MultiplicitiesLayout {
+                src_cols_start: timestamp_range_check_multiplicities_src as u32,
+                dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
+                setup_cols_start: timestamp_range_check_setup_column as u32,
+                num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
+            } else {
+                MultiplicitiesLayout::default()
+            };
         num_helpers_expected += num_timestamp_range_check_multiplicities_cols;
-        let generic_lookup_multiplicities_layout = MultiplicitiesLayout {
-            src_cols_start: generic_lookup_multiplicities_src_start as u32,
-            dst_cols_start: translate_e4_offset(generic_lookup_multiplicities_dst_start) as u32,
-            setup_cols_start: generic_lookup_setup_columns_start as u32,
-            num_dst_cols: num_generic_multiplicities_cols as u32,
+
+        let generic_lookup_multiplicities_layout = if num_generic_multiplicities_cols > 0 {
+            MultiplicitiesLayout {
+                src_cols_start: generic_lookup_multiplicities_src_start as u32,
+                dst_cols_start: translate_e4_offset(generic_lookup_multiplicities_dst_start) as u32,
+                setup_cols_start: generic_lookup_setup_columns_start as u32,
+                num_dst_cols: num_generic_multiplicities_cols as u32,
+            }
+        } else {
+            MultiplicitiesLayout::default()
         };
         num_helpers_expected += num_generic_multiplicities_cols * NUM_LOOKUP_ARGUMENT_KEY_PARTS;
+
         if handle_delegation_requests {
             num_helpers_expected += 1 + delegation_challenges.linearization_challenges.len();
         }

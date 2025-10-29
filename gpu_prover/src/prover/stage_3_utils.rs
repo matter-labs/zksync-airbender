@@ -612,6 +612,17 @@ impl MultiplicitiesLayout {
     }
 }
 
+impl Default for MultiplicitiesLayout {
+    pub fn default() -> Self {
+        Self {
+            src_cols_start: 0,
+            dst_cols_start: 0,
+            setup_cols_start: 0,
+            num_dst_cols: 0,
+        }
+    }
+}
+
 const MAX_PUBLIC_INPUTS_FIRST_ROW: usize = 2;
 const MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW: usize = 2;
 const MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW: usize =
