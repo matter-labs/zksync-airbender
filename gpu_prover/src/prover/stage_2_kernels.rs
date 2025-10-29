@@ -566,7 +566,8 @@ pub(crate) mod tests {
         let GpuComparisonArgs {
             circuit,
             setup,
-            external_values,
+            external_challenges,
+            aux_boundary_values: _,
             public_inputs: _,
             twiddles: _,
             lde_precomputations: _,
@@ -577,12 +578,12 @@ pub(crate) mod tests {
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
-        let circuit_sequence = *circuit_sequence;
+        let circuit_sequence = circuit_sequence.unwrap_or(0);
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values.challenges,
+            &external_challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,

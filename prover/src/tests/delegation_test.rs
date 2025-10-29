@@ -24,7 +24,7 @@ pub fn run_basic_delegation_test_impl(
     let lde_factor = 2;
     let tree_cap_size = 32;
 
-    let worker = Worker::new_with_num_threads(1);
+    let worker = Worker::new_with_num_threads(32);
     // let worker = Worker::new_with_num_threads(2);
     // let worker = Worker::new_with_num_threads(4);
     // let worker = Worker::new_with_num_threads(8);
@@ -337,13 +337,14 @@ pub fn run_basic_delegation_test_impl(
         let gpu_comparison_args = GpuComparisonArgs {
             circuit: &compiled_machine,
             setup: &setup,
-            external_values: &external_values,
+            external_challenges: &external_values.challenges,
+            aux_boundary_values: &[external_values.aux_boundary_values],
             public_inputs: &public_inputs,
             twiddles: &twiddles,
             lde_precomputations: &lde_precomputations,
             lookup_mapping: lookup_mapping_for_gpu.unwrap(),
             log_n: log_n as usize,
-            circuit_sequence: 0,
+            circuit_sequence: Some(0),
             delegation_processing_type: None,
             prover_data: &prover_data,
         };
@@ -440,13 +441,14 @@ pub fn run_basic_delegation_test_impl(
                 let gpu_comparison_args = GpuComparisonArgs {
                     circuit: &work_type.compiled_circuit,
                     setup: &setup,
-                    external_values: &external_values,
+                    external_challenges: &external_values.challenges,
+                    aux_boundary_values: &[external_values.aux_boundary_values],
                     public_inputs: &dummy_public_inputs,
                     twiddles: &twiddles,
                     lde_precomputations: &lde_precomputations,
                     lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                     log_n: log_n as usize,
-                    circuit_sequence: 0,
+                    circuit_sequence: None,
                     delegation_processing_type: Some(delegation_type),
                     prover_data: &prover_data,
                 };

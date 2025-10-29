@@ -613,7 +613,7 @@ impl MultiplicitiesLayout {
 }
 
 impl Default for MultiplicitiesLayout {
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             src_cols_start: 0,
             dst_cols_start: 0,

@@ -430,16 +430,17 @@ impl StaticMetadata {
             }
         } else {
             MultiplicitiesLayout::default()
-        }
+        };
         num_helpers_expected += num_range_check_16_multiplicities_cols;
 
         let timestamp_range_check_multiplicities_layout =
             if num_timestamp_range_check_multiplicities_cols > 0 {
-            MultiplicitiesLayout {
-                src_cols_start: timestamp_range_check_multiplicities_src as u32,
-                dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
-                setup_cols_start: timestamp_range_check_setup_column as u32,
-                num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
+                MultiplicitiesLayout {
+                    src_cols_start: timestamp_range_check_multiplicities_src as u32,
+                    dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
+                    setup_cols_start: timestamp_range_check_setup_column as u32,
+                    num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
+                }
             } else {
                 MultiplicitiesLayout::default()
             };
@@ -1379,7 +1380,10 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use fft::materialize_powers_serial_starting_with_one;
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_delegation_test_impl, run_basic_unrolled_test_with_word_specialization_impl,
+        run_keccak_test_impl, GpuComparisonArgs,
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -1389,7 +1393,8 @@ mod tests {
         let GpuComparisonArgs {
             circuit,
             setup,
-            external_values,
+            external_challenges,
+            aux_boundary_values,
             public_inputs,
             twiddles,
             lde_precomputations,
@@ -1400,7 +1405,7 @@ mod tests {
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
-        let circuit_sequence = *circuit_sequence;
+        let circuit_sequence = circuit_sequence.unwrap_or(0);
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
         let stage_1_output = &prover_data.stage_1_result;
@@ -1414,7 +1419,7 @@ mod tests {
 
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values.challenges,
+            &external_challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
@@ -1534,7 +1539,7 @@ mod tests {
             &lookup_challenges,
             &cached_data,
             &circuit,
-            &[external_values.aux_boundary_values],
+            aux_boundary_values,
             &public_inputs,
             stage_2_output.grand_product_accumulator,
             stage_2_output.sum_over_delegation_poly,
@@ -1614,7 +1619,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_3_for_main_and_blake() {
+    fn test_stage_3_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -1626,9 +1631,21 @@ mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_3_for_main_and_keccak() {
+    fn test_stage_3_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_stage_3_unrolled_for_main_and_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

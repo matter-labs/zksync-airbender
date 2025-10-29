@@ -543,7 +543,7 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use prover::tests::{
-        run_basic_unrolled_test_with_word_specialization_impl, GpuUnrolledComparisonArgs,
+        run_basic_unrolled_test_with_word_specialization_impl, GpuComparisonArgs,
     };
     use serial_test::serial;
 
@@ -551,9 +551,9 @@ mod tests {
     type E4 = Ext4Field;
 
     // CPU witness generation and checks are copied from zksync_airbender prover test.
-    fn comparison_hook(gpu_comparison_args: &GpuUnrolledComparisonArgs) {
+    fn comparison_hook(gpu_comparison_args: &GpuComparisonArgs) {
         let device_properties = DeviceProperties::new().unwrap();
-        let GpuUnrolledComparisonArgs {
+        let GpuComparisonArgs {
             circuit,
             setup,
             external_challenges,
@@ -563,17 +563,19 @@ mod tests {
             lde_precomputations: _,
             lookup_mapping,
             log_n,
+            circuit_sequence,
             delegation_processing_type,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
+        assert!(circuit_sequence.is_none());
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
         let cached_data = ProverCachedData::new(
             &circuit,
             &external_challenges,
             domain_size,
-            0,
+            0, // circuit_sequence
             delegation_processing_type,
         );
         // double-check argument sizes if desired
