@@ -163,25 +163,9 @@ unsafe fn workload() -> ! {
             // First - verify both proofs (keep reading from the CSR).
             let output1 = full_statement_verifier::verify_recursion_layer();
             let output2 = full_statement_verifier::verify_recursion_layer();
-            // Proving chains must be equal.
-            for i in 8..16 {
-                assert_eq!(output1[i], output2[i], "Proving chains must be equal");
-            }
 
             // merge the inputs together
-            let value = merge_recursive_circuit_output(
-                output1[0..8]
-                    .try_into()
-                    .expect("failed to get input from proof"),
-                output2[0..8]
-                    .try_into()
-                    .expect("failed to get input from proof"),
-            );
-            let mut result = [0u32; 16];
-            // TODO: in the future - set the result[7] to be equal to 0.
-            result[0..8].copy_from_slice(&value);
-            // same VK, can be either output1 or output2
-            result[8..16].copy_from_slice(&output1[8..16]);
+            let result = merge_recursive_circuit_output(output1, output2);
 
             riscv_common::zksync_os_finish_success_extended(&result);
         }
@@ -200,55 +184,24 @@ unsafe fn workload() -> ! {
             let no_circuits = riscv_common::csr_read_word();
             assert!(no_circuits >= 2, "Requires at least two circuits to verify");
 
-            // verify first proof & keep it's output to ensure all proof come from the same chain
-            // the outputs are as follows:
+            // verify first proof & use it as the seed for the rolling hash
+            //
+            // the proof's outputs are as follows:
             // output[0..8] - the actual output of the circuit
-            // output[8..16] - the verification key (should be the same across all proofs)
-            // merging is done over inputs [0..8], whilst key is copied straight into the output
-            // NOTE: this could be any other proof, not necessarily the first one.
-            let first_output = full_statement_verifier::verify_recursion_layer();
-
-            // verify second proof & merge with the first one
-            let second_output = full_statement_verifier::verify_recursion_layer();
-
-            // we need a rolling hash over all proofs's outputs, starting with first 2
-            let mut rolling_hash = merge_recursive_circuit_output(
-                first_output[0..8]
-                    .try_into()
-                    .expect("failed to get input from proof"),
-                second_output[0..8]
-                    .try_into()
-                    .expect("failed to get input from proof"),
-            );
+            // output[8..16] - the verification key (should be the same across all proofs, checked inside merge_recursive_circuit_output)
+            // merging is done over inputs [0..8], whilst key is not modified (being copied over and over)
+            let mut rolling_hash = full_statement_verifier::verify_recursion_layer();
 
             // iterate over remaining circuits
-            for _ in 2..no_circuits {
+            for _ in 1..no_circuits {
                 // verify proof
                 let output = full_statement_verifier::verify_recursion_layer();
 
-                // Proving chains must be equal.
-                for i in 8..16 {
-                    assert_eq!(first_output[i], output[i], "Proving chains must be equal");
-                }
-
-                // build the rolling hash over the remaining proofs' outputs
-                rolling_hash = merge_recursive_circuit_output(
-                    rolling_hash,
-                    output[0..8]
-                        .try_into()
-                        .expect("failed to get input from proof"),
-                );
+                // build the rolling hash over the remaining proofs' outputs (ensuring they belong to same proving chain)
+                rolling_hash = merge_recursive_circuit_output(rolling_hash, output);
             }
 
-            let mut result = [0u32; 16];
-
-            // same VK used across all proofs
-            result[8..16].copy_from_slice(&first_output[8..16]);
-
-            // get rolling hash value and make it the output
-            result[0..8].copy_from_slice(&rolling_hash);
-
-            riscv_common::zksync_os_finish_success_extended(&result);
+            riscv_common::zksync_os_finish_success_extended(&rolling_hash);
         }
         // Unknown metadata.
         _ => {
@@ -263,7 +216,16 @@ unsafe fn workload() -> ! {
 ))]
 /// Merges proof outputs from two recursive circuits into one output.
 /// TL;DR; Keccaks the two outputs together.
-fn merge_recursive_circuit_output(first: [u32; 8], second: [u32; 8]) -> [u32; 8] {
+///
+/// Note, a proof is structured as follows:
+/// - first 8 u32s are the actual proof output
+/// - last 8 u32s are the verification key identifier (proving chain)
+fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 16] {
+    // Proving chain must be equal
+    for i in 8..16 {
+        assert_eq!(first[i], second[i], "Proving chains must be equal");
+    }
+
     // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
     // and we'll actually shift them all by 1.
 
@@ -276,14 +238,19 @@ fn merge_recursive_circuit_output(first: [u32; 8], second: [u32; 8]) -> [u32; 8]
     }
 
     // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-
     hasher.update(&[0u32]);
 
     for val in &second[0..7] {
         hasher.update(&[*val]);
     }
 
-    hasher.finalize()
+    let mut result = [0u32; 16];
+    // merged outputs
+    result[0..8].copy_from_slice(&hasher.finalize());
+    // same vk
+    result[8..16].copy_from_slice(&first[8..16]);
+
+    result
 }
 
 #[cfg(feature = "verifier_tests")]
