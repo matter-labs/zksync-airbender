@@ -437,7 +437,8 @@ impl StaticMetadata {
             if num_timestamp_range_check_multiplicities_cols > 0 {
                 MultiplicitiesLayout {
                     src_cols_start: timestamp_range_check_multiplicities_src as u32,
-                    dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst) as u32,
+                    dst_cols_start: translate_e4_offset(timestamp_range_check_multiplicities_dst)
+                        as u32,
                     setup_cols_start: timestamp_range_check_setup_column as u32,
                     num_dst_cols: num_timestamp_range_check_multiplicities_cols as u32,
                 }
@@ -1374,7 +1375,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
 mod tests {
     use super::*;
     use crate::device_context::DeviceContext;
-    use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use crate::device_structures::DeviceMatrixMut;
+    use crate::ops_complex::transpose;
     use std::alloc::Global;
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
@@ -1432,8 +1434,6 @@ mod tests {
         print_size::<BoundaryConstraints>("BoundaryConstraints");
         print_sizes();
 
-        // Repackage row-major data as column-major for GPU
-        let range = 0..domain_size;
         let num_setup_cols = circuit.setup_layout.total_width;
         let num_witness_cols = circuit.witness_layout.total_width;
         let num_memory_cols = circuit.memory_layout.total_width;
@@ -1449,9 +1449,14 @@ mod tests {
         println!("Time to construct AlphaPowersLayout {:?}", duration);
         assert!(duration < std::time::Duration::from_micros(50));
 
-        let mut h_setup_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_setup_cols];
-        let mut h_trace_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_trace_cols];
-        let mut h_stage_2_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_stage_2_cols];
+        let h_setup = &setup.ldes[domain_index].trace;
+        let h_setup_slice = h_setup.as_slice();
+        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
+
+        let h_trace = &prover_data.stage_1_result.ldes[domain_index].trace;
+        let h_trace_slice = h_trace.as_slice();
+        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
+
         let mut h_quotient: Vec<BF> = vec![BF::ZERO; 4 * domain_size];
         let mut h_alpha_powers: Vec<E4> = materialize_powers_serial_starting_with_one::<_, Global>(
             stage_3_output.quotient_alpha,
@@ -1463,45 +1468,15 @@ mod tests {
             BETA_POWERS_COUNT,
         );
 
-        // imitating access patterns in zksync_airbender's prover_stages/stage4.rs
-        let mut setup_trace_view = setup.ldes[domain_index].trace.row_view(range.clone());
-        let mut trace_view = stage_1_output.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut stage_2_trace_view = stage_2_output.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        unsafe {
-            for i in 0..domain_size {
-                let setup_trace_view_row = setup_trace_view.current_row_ref();
-                let trace_view_row = trace_view.current_row_ref();
-                let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
-                {
-                    let mut src = setup_trace_view_row.as_ptr();
-                    for j in 0..num_setup_cols {
-                        h_setup_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let mut src = trace_view_row.as_ptr();
-                    for j in 0..num_trace_cols {
-                        h_trace_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let mut src = stage_2_trace_view_row.as_ptr();
-                    for j in 0..num_stage_2_cols {
-                        h_stage_2_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                setup_trace_view.advance_row();
-                trace_view.advance_row();
-                stage_2_trace_view.advance_row();
-            }
-        }
+        let h_setup = &setup.ldes[domain_index].trace;
+        let h_trace = &stage_1_output.ldes[domain_index].trace;
+        let h_stage_2 = &stage_2_output.ldes[domain_index].trace;
+        let h_setup_slice = h_setup.as_slice();
+        let h_trace_slice = h_trace.as_slice();
+        let h_stage_2_slice = h_stage_2.as_slice();
+        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
+        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
+        assert_eq!(h_stage_2_slice.len(), domain_size * h_stage_2.padded_width);
         let mut h_helpers = Vec::with_capacity(MAX_HELPER_VALUES);
         let mut h_constants_times_challenges = ConstantsTimesChallenges::default();
         let lookup_challenges = LookupChallenges::new(
@@ -1519,12 +1494,17 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let mut d_alloc_setup_cols =
+        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
+        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
+        let mut d_stage_2_row_major = DeviceAllocation::<BF>::alloc(h_stage_2_slice.len()).unwrap();
+
+        let mut d_setup_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
-        let mut d_alloc_trace_cols =
+        let mut d_trace_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
-        let mut d_alloc_stage_2_cols =
+        let mut d_stage_2_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
+
         let mut d_alpha_powers =
             DeviceAllocation::<E4>::alloc(alpha_powers_layout.precomputation_size).unwrap();
         let mut d_beta_powers = DeviceAllocation::alloc(BETA_POWERS_COUNT).unwrap();
@@ -1546,9 +1526,9 @@ mod tests {
             &mut h_helpers,
             &mut h_constants_times_challenges,
         );
-        memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_stage_2_cols, &h_stage_2_cols, &stream).unwrap();
+        memory_copy_async(&mut d_setup_row_major, &h_setup_slice, &stream).unwrap();
+        memory_copy_async(&mut d_trace_row_major, &h_trace_slice, &stream).unwrap();
+        memory_copy_async(&mut d_stage_2_row_major, &h_stage_2_slice, &stream).unwrap();
         memory_copy_async(&mut d_alpha_powers, &h_alpha_powers, &stream).unwrap();
         memory_copy_async(&mut d_beta_powers, &h_beta_powers, &stream).unwrap();
         memory_copy_async(&mut d_helpers, &h_helpers, &stream).unwrap();
@@ -1558,8 +1538,22 @@ mod tests {
             &stream,
         )
         .unwrap();
-        let d_setup_cols = DeviceMatrix::new(&d_alloc_setup_cols, domain_size);
-        let d_trace_cols = DeviceMatrix::new(&d_alloc_trace_cols, domain_size);
+        let d_setup_row_major_matrix =
+            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
+        let d_trace_row_major_matrix =
+            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
+        let d_stage_2_row_major_matrix = DeviceMatrixChunk::new(
+            &d_stage_2_row_major,
+            h_stage_2.padded_width,
+            0,
+            num_stage_2_cols,
+        );
+        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
+        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_stage_2_column_major, domain_size);
+        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
+        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
+        transpose(&d_stage_2_row_major_matrix, &mut d_stage_2_cols, &stream).unwrap();
         let slice = d_trace_cols.slice();
         let stride = d_trace_cols.stride();
         let offset = d_trace_cols.offset();
@@ -1575,7 +1569,6 @@ mod tests {
             offset,
             domain_size,
         );
-        let d_stage_2_cols = DeviceMatrix::new(&d_alloc_stage_2_cols, domain_size);
         let mut d_quotient = DeviceMatrixMut::new(&mut d_alloc_quotient, domain_size);
         compute_stage_3_composition_quotient_on_coset(
             &cached_data,

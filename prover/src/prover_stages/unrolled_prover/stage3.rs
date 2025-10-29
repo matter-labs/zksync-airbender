@@ -417,371 +417,371 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             &range_check_16_width_1_lookups_access_via_expressions_ref[..]
                         );
 
-                        // // special case for range check over lazy init address columns
-                        // if process_shuffle_ram_init {
-                        //     evaluate_memory_init_teardown_range_checks(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &lookup_argument_gamma,
-                        //         &lookup_argument_two_gamma,
-                        //     );
-                        // }
+                        // special case for range check over lazy init address columns
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_range_checks(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &lookup_argument_gamma,
+                                &lookup_argument_two_gamma,
+                            );
+                        }
 
-                        // // now remainders
-                        // // Acc(x) * (witness(x) + gamma) - 1
-                        // if let Some(_remainder_for_range_check_16) =
-                        //     compiled_circuit.stage_2_layout.remainder_for_range_check_16
-                        // {
-                        //     todo!();
-                        // }
+                        // now remainders
+                        // Acc(x) * (witness(x) + gamma) - 1
+                        if let Some(_remainder_for_range_check_16) =
+                            compiled_circuit.stage_2_layout.remainder_for_range_check_16
+                        {
+                            todo!();
+                        }
 
-                        // // then timestamp related range checks. We do them together, but in some cases we add extra contribution from
-                        // // circuit index
+                        // then timestamp related range checks. We do them together, but in some cases we add extra contribution from
+                        // circuit index
 
-                        // evaluate_timestamp_range_check_expressions(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &lookup_argument_gamma,
-                        //     &lookup_argument_two_gamma,
-                        //     &timestamp_range_check_width_1_lookups_access_via_expressions_ref[..],
-                        //     &timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref[..],
-                        //     &memory_timestamp_high_from_circuit_idx,
-                        // );
+                        evaluate_timestamp_range_check_expressions(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &lookup_argument_gamma,
+                            &lookup_argument_two_gamma,
+                            &timestamp_range_check_width_1_lookups_access_via_expressions_ref[..],
+                            &timestamp_range_check_width_1_lookups_access_via_expressions_for_shuffle_ram_ref[..],
+                            &memory_timestamp_high_from_circuit_idx,
+                        );
 
-                        // if compiled_circuit
-                        //     .memory_layout
-                        //     .intermediate_state_layout.is_some() {
+                        if compiled_circuit
+                            .memory_layout
+                            .intermediate_state_layout.is_some() {
 
-                        //     evaluate_decoder_table_access(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &stage_2_output.decoder_table_linearization_challenges,
-                        //         &stage_2_output.decoder_table_gamma,
-                        //     );
-                        // }
+                            evaluate_decoder_table_access(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &stage_2_output.decoder_table_linearization_challenges,
+                                &stage_2_output.decoder_table_gamma,
+                            );
+                        }
 
-                        // // width-3 generic lookup
-                        // evaluate_width_3_lookups(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &lookup_argument_linearization_challenges,
-                        //     &lookup_argument_linearization_challenges_without_table_id,
-                        //     &lookup_argument_gamma,
-                        // );
+                        // width-3 generic lookup
+                        evaluate_width_3_lookups(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &lookup_argument_linearization_challenges,
+                            &lookup_argument_linearization_challenges_without_table_id,
+                            &lookup_argument_gamma,
+                        );
 
-                        // // now multiplicities
-                        // if compiled_circuit.stage_2_layout
-                        //     .intermediate_poly_for_range_check_16_multiplicity.num_elements() > 0 {
-                        //         evaluate_width_1_range_check_multiplicity(
-                        //             compiled_circuit,
-                        //             witness_trace_view_row,
-                        //             memory_trace_view_row,
-                        //             setup_trace_view_row,
-                        //             stage_2_trace_view_row,
-                        //             &tau_in_domain,
-                        //             &tau_in_domain_by_half,
-                        //             absolute_row_idx,
-                        //             is_last_row,
-                        //             &mut quotient_term,
-                        //             &mut other_challenges_ptr,
-                        //             &lookup_argument_gamma,
-                        //             compiled_circuit.stage_2_layout
-                        //                 .intermediate_poly_for_range_check_16_multiplicity
-                        //                 .start(),
-                        //                 range_check_16_multiplicities_src,
-                        //                 range_check_16_setup_column,
-                        //         );
-                        // }
+                        // now multiplicities
+                        if compiled_circuit.stage_2_layout
+                            .intermediate_poly_for_range_check_16_multiplicity.num_elements() > 0 {
+                                evaluate_width_1_range_check_multiplicity(
+                                    compiled_circuit,
+                                    witness_trace_view_row,
+                                    memory_trace_view_row,
+                                    setup_trace_view_row,
+                                    stage_2_trace_view_row,
+                                    &tau_in_domain,
+                                    &tau_in_domain_by_half,
+                                    absolute_row_idx,
+                                    is_last_row,
+                                    &mut quotient_term,
+                                    &mut other_challenges_ptr,
+                                    &lookup_argument_gamma,
+                                    compiled_circuit.stage_2_layout
+                                        .intermediate_poly_for_range_check_16_multiplicity
+                                        .start(),
+                                        range_check_16_multiplicities_src,
+                                        range_check_16_setup_column,
+                                );
+                        }
 
-                        // if compiled_circuit.stage_2_layout
-                        //     .intermediate_poly_for_timestamp_range_check_multiplicity.num_elements() > 0 {
-                        //     evaluate_width_1_range_check_multiplicity(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &lookup_argument_gamma,
-                        //         compiled_circuit.stage_2_layout
-                        //             .intermediate_poly_for_timestamp_range_check_multiplicity
-                        //             .start(),
-                        //         timestamp_range_check_multiplicities_src,
-                        //         timestamp_range_check_setup_column,
-                        //     );
-                        // }
+                        if compiled_circuit.stage_2_layout
+                            .intermediate_poly_for_timestamp_range_check_multiplicity.num_elements() > 0 {
+                            evaluate_width_1_range_check_multiplicity(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &lookup_argument_gamma,
+                                compiled_circuit.stage_2_layout
+                                    .intermediate_poly_for_timestamp_range_check_multiplicity
+                                    .start(),
+                                timestamp_range_check_multiplicities_src,
+                                timestamp_range_check_setup_column,
+                            );
+                        }
 
-                        // if compiled_circuit.witness_layout
-                        //     .multiplicities_columns_for_decoder_in_executor_families.num_elements() > 0 {
-                        //         evaluate_decoder_lookup_multiplicity(
-                        //             compiled_circuit,
-                        //             witness_trace_view_row,
-                        //             memory_trace_view_row,
-                        //             setup_trace_view_row,
-                        //             stage_2_trace_view_row,
-                        //             &tau_in_domain,
-                        //             &tau_in_domain_by_half,
-                        //             absolute_row_idx,
-                        //             is_last_row,
-                        //             &mut quotient_term,
-                        //             &mut other_challenges_ptr,
-                        //             &stage_2_output.decoder_table_linearization_challenges,
-                        //             &stage_2_output.decoder_table_gamma,
-                        //         );
-                        // }
+                        if compiled_circuit.witness_layout
+                            .multiplicities_columns_for_decoder_in_executor_families.num_elements() > 0 {
+                                evaluate_decoder_lookup_multiplicity(
+                                    compiled_circuit,
+                                    witness_trace_view_row,
+                                    memory_trace_view_row,
+                                    setup_trace_view_row,
+                                    stage_2_trace_view_row,
+                                    &tau_in_domain,
+                                    &tau_in_domain_by_half,
+                                    absolute_row_idx,
+                                    is_last_row,
+                                    &mut quotient_term,
+                                    &mut other_challenges_ptr,
+                                    &stage_2_output.decoder_table_linearization_challenges,
+                                    &stage_2_output.decoder_table_gamma,
+                                );
+                        }
 
-                        // // generic lookup
-                        // evaluate_width_3_lookups_multiplicity(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &lookup_argument_linearization_challenges,
-                        //     &lookup_argument_gamma,
-                        // );
+                        // generic lookup
+                        evaluate_width_3_lookups_multiplicity(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &lookup_argument_linearization_challenges,
+                            &lookup_argument_gamma,
+                        );
 
-                        // // write timestamps come from cycle itself, and are used for multiple things below
-                        // let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {
-                        //     let write_timestamp_low = *memory_trace_view_row
-                        //         .get_unchecked(intermediate_state_layout.timestamp.start());
-                        //     let write_timestamp_high = *memory_trace_view_row
-                        //         .get_unchecked(
-                        //             intermediate_state_layout.timestamp.start() + 1,
-                        //         );
+                        // write timestamps come from cycle itself, and are used for multiple things below
+                        let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {
+                            let write_timestamp_low = *memory_trace_view_row
+                                .get_unchecked(intermediate_state_layout.timestamp.start());
+                            let write_timestamp_high = *memory_trace_view_row
+                                .get_unchecked(
+                                    intermediate_state_layout.timestamp.start() + 1,
+                                );
 
-                        //     (write_timestamp_low, write_timestamp_high)
-                        // } else {
-                        //     (Mersenne31Field::ZERO, Mersenne31Field::ZERO)
-                        // };
+                            (write_timestamp_low, write_timestamp_high)
+                        } else {
+                            (Mersenne31Field::ZERO, Mersenne31Field::ZERO)
+                        };
 
-                        // // either process set equality for delegation requests or processings
-                        // if handle_delegation_requests {
-                        //     evaluate_delegation_requests(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &delegation_request_layout,
-                        //         &delegation_challenges,
-                        //         write_timestamp_low,
-                        //         write_timestamp_high,
-                        //         &delegation_requests_timestamp_extra_contribution,
-                        //     );
-                        // }
+                        // either process set equality for delegation requests or processings
+                        if handle_delegation_requests {
+                            evaluate_delegation_requests(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &delegation_request_layout,
+                                &delegation_challenges,
+                                write_timestamp_low,
+                                write_timestamp_high,
+                                &delegation_requests_timestamp_extra_contribution,
+                            );
+                        }
 
-                        // if process_delegations {
-                        //     panic!("Please use another prover function for such circuit types");
-                        // }
+                        if process_delegations {
+                            panic!("Please use another prover function for such circuit types");
+                        }
 
-                        // if process_shuffle_ram_init {
-                        //     evaluate_memory_init_teardown_padding(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //     );
-                        // }
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_padding(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                            );
+                        }
 
-                        // // and now we work with memory multiplicative accumulators
-                        // // Numerator is write set, denom is read set
+                        // and now we work with memory multiplicative accumulators
+                        // Numerator is write set, denom is read set
 
-                        // // NOTE: it'll be multiplied by tau^H/2 eventually, so we must give an inverse instead of one
-                        // let initial = Mersenne31Quartic::from_base(tau_in_domain_by_half_inv);
-                        // let mut permutation_argument_src = &initial as *const Mersenne31Quartic;
+                        // NOTE: it'll be multiplied by tau^H/2 eventually, so we must give an inverse instead of one
+                        let initial = Mersenne31Quartic::from_base(tau_in_domain_by_half_inv);
+                        let mut permutation_argument_src = &initial as *const Mersenne31Quartic;
 
-                        // // first lazy init from read set / lazy teardown
+                        // first lazy init from read set / lazy teardown
 
-                        // // and memory grand product accumulation identities
+                        // and memory grand product accumulation identities
 
-                        // // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
+                        // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
 
-                        // // Note on multiplication by tau^H/2: numerator and denominator are degree 1
+                        // Note on multiplication by tau^H/2: numerator and denominator are degree 1
 
-                        // // we assembled P(x) = write init set / read teardown set
+                        // we assembled P(x) = write init set / read teardown set
 
-                        // // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
+                        // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
 
-                        // evaluate_memory_queries_accumulation(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &memory_argument_challenges,
-                        //     &tau_in_domain_by_half_inv,
-                        //     &mut permutation_argument_src,
-                        //     &Mersenne31Quartic::ZERO,
-                        //     write_timestamp_low,
-                        //     write_timestamp_high,
-                        // );
+                        evaluate_memory_queries_accumulation(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &memory_argument_challenges,
+                            &tau_in_domain_by_half_inv,
+                            &mut permutation_argument_src,
+                            &Mersenne31Quartic::ZERO,
+                            write_timestamp_low,
+                            write_timestamp_high,
+                        );
 
-                        // // Same for batched RAM accesses
-                        // if process_batch_ram_access {
-                        //     unreachable!("deprecated");
-                        // }
+                        // Same for batched RAM accesses
+                        if process_batch_ram_access {
+                            unreachable!("deprecated");
+                        }
 
-                        // // Same for registers and indirects
-                        // if process_registers_and_indirect_access {
-                        //     panic!("Please use another prover function for such circuit types");
-                        // }
+                        // Same for registers and indirects
+                        if process_registers_and_indirect_access {
+                            panic!("Please use another prover function for such circuit types");
+                        }
 
-                        // if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
-                        //     evaluate_machine_state_permutation_assuming_no_decoder(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &machine_state_argument_challenges,
-                        //         &mut permutation_argument_src,
-                        //     );
-                        // }
+                        if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
+                            evaluate_machine_state_permutation_assuming_no_decoder(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &machine_state_argument_challenges,
+                                &mut permutation_argument_src,
+                            );
+                        }
 
-                        // // maybe we should mask
-                        // if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {
-                        //     evaluate_permutation_masking(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &mut permutation_argument_src,
-                        //     );
-                        // }
+                        // maybe we should mask
+                        if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {
+                            evaluate_permutation_masking(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &mut permutation_argument_src,
+                            );
+                        }
 
-                        // if process_shuffle_ram_init {
-                        //     evaluate_memory_init_teardown_accumulation(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &memory_argument_challenges,
-                        //         &mut permutation_argument_src,
-                        //     )
-                        // }
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_accumulation(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &memory_argument_challenges,
+                                &mut permutation_argument_src,
+                            )
+                        }
 
-                        // // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)
-                        // {
-                        //     let mut previous = permutation_argument_src.read();
-                        //     previous.mul_assign_by_base(&tau_in_domain_by_half);
+                        // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)
+                        {
+                            let mut previous = permutation_argument_src.read();
+                            previous.mul_assign_by_base(&tau_in_domain_by_half);
 
-                        //     let accumulator_this_row = stage_2_trace_view_row
-                        //         .as_ptr()
-                        //         .add(offset_for_grand_product_poly)
-                        //         .cast::<Mersenne31Quartic>()
-                        //         .read();
-                        //     let accumulator_next_row = stage_2_trace_view_next_row
-                        //         .as_ptr()
-                        //         .add(offset_for_grand_product_poly)
-                        //         .cast::<Mersenne31Quartic>()
-                        //         .read();
+                            let accumulator_this_row = stage_2_trace_view_row
+                                .as_ptr()
+                                .add(offset_for_grand_product_poly)
+                                .cast::<Mersenne31Quartic>()
+                                .read();
+                            let accumulator_next_row = stage_2_trace_view_next_row
+                                .as_ptr()
+                                .add(offset_for_grand_product_poly)
+                                .cast::<Mersenne31Quartic>()
+                                .read();
 
-                        //     let mut term_contribution = accumulator_next_row;
-                        //     let mut t = accumulator_this_row;
-                        //     t.mul_assign(&previous);
-                        //     term_contribution.sub_assign(&t);
-                        //     // we are linear over accumulators
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            let mut term_contribution = accumulator_next_row;
+                            let mut t = accumulator_this_row;
+                            t.mul_assign(&previous);
+                            term_contribution.sub_assign(&t);
+                            // we are linear over accumulators
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
 
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row == false {
-                        //             assert_eq!(
-                        //                 term_contribution,
-                        //                 Mersenne31Quartic::ZERO,
-                        //                 "unsatisfied at memory accumulation grand product at row {}",
-                        //                 absolute_row_idx,
-                        //             );
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext4(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            if DEBUG_QUOTIENT {
+                                if is_last_row == false {
+                                    assert_eq!(
+                                        term_contribution,
+                                        Mersenne31Quartic::ZERO,
+                                        "unsatisfied at memory accumulation grand product at row {}",
+                                        absolute_row_idx,
+                                    );
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext4(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
                         let divisor = divisors_trace_view_row
                             .as_ptr()
@@ -1010,15 +1010,15 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         // Horner rule for separation of divisors
                         let mut quotient_term = every_row_except_last_contribution;
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&every_row_except_last_two_contribution);
+                        quotient_term.add_assign(&every_row_except_last_two_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&first_row_contribution);
+                        quotient_term.add_assign(&first_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&one_before_last_row_contribution);
+                        quotient_term.add_assign(&one_before_last_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&last_row_contribution);
+                        quotient_term.add_assign(&last_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&last_row_and_zero_contribution);
+                        quotient_term.add_assign(&last_row_and_zero_contribution);
 
                         quotient_dst.write(quotient_term);
 
