@@ -38,7 +38,8 @@ pub fn generate_constants_for_binary(
                         (&UNIVERSAL_CIRCUIT_VERIFIER, Machine::ReducedLog23),
                     )
                 }
-                RecursionStrategy::UseReducedLog23MachineOnly => {
+                RecursionStrategy::UseReducedLog23MachineOnly
+                | RecursionStrategy::UseReducedLog23MachineInBothLayers => {
                     generate_params_and_register_values(
                         &[
                             (&base_layer_bin, Machine::Standard),
@@ -71,7 +72,8 @@ pub fn generate_constants_for_binary(
 
                     (universal_circuit_log_23_verifier_vk().params, aux_values)
                 }
-                RecursionStrategy::UseReducedLog23MachineOnly => {
+                RecursionStrategy::UseReducedLog23MachineOnly
+                | RecursionStrategy::UseReducedLog23MachineInBothLayers => {
                     let aux_values = compute_chain_encoding(vec![
                         [0u32; 8],
                         base_params,

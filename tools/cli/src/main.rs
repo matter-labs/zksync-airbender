@@ -25,10 +25,7 @@ use prover::{
     prover_stages::Proof,
     risc_v_simulator::{
         abstractions::non_determinism::QuasiUARTSource,
-        cycle::{
-            IMStandardIsaConfig, IWithoutByteAccessIsaConfig,
-            IWithoutByteAccessIsaConfigWithDelegation,
-        },
+        cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
         runner::run_simple_with_entry_point_and_non_determimism_source_for_config,
         sim::SimulatorConfig,
     },
@@ -106,6 +103,14 @@ enum Commands {
         /// If true, use GPU for proving.
         #[arg(long)]
         gpu: bool,
+    },
+    /// Prove data from multiple files in one go.
+    /// Mostly used for performance testing, so it has limited set of options for now.
+    MultiProve {
+        #[arg(short, long)]
+        bin: String,
+        #[arg(long)]
+        input_file: Vec<String>,
     },
     /// Run the 'final' step of proving (for example on the output from ZKSmith)
     ProveFinal {
@@ -309,6 +314,21 @@ fn main() {
                 tmp_dir,
                 gpu.clone(),
             );
+        }
+        Commands::MultiProve { bin, input_file } => {
+            let mut all_inputs = vec![];
+            for input in input_file {
+                let input_data = fs::read_to_string(input).unwrap().trim().to_string();
+                let input_u32 = u32_from_hex_string(&input_data);
+                all_inputs.push(input_u32);
+            }
+            #[cfg(feature = "gpu")]
+            cli_lib::prover_utils::multi_prove(bin, all_inputs);
+            #[cfg(not(feature = "gpu"))]
+            {
+                let _ = bin;
+                panic!("MultiProve is only available with GPU feature enabled.");
+            }
         }
         Commands::ProveFinal {
             input,

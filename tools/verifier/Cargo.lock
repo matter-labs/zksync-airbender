@@ -323,16 +323,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "shift_binary_csr_all_delegations_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "shift_binary_csr_blake_only_delegation_verifier"
+name = "shift_binary_csr_verifier"
 version = "0.1.0"
 dependencies = [
  "field",

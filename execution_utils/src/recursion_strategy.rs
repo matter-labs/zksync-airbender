@@ -18,6 +18,8 @@ pub enum RecursionStrategy {
     UseReducedLog23MachineMultiple,
     /// Skips 1st layer and does reduced 2^23 + delegation (at least two repetitions)
     UseReducedLog23MachineOnly,
+    /// Does reduced 2^23 + delegation in both layers.
+    UseReducedLog23MachineInBothLayers,
 }
 
 impl RecursionStrategy {
@@ -34,6 +36,7 @@ impl RecursionStrategy {
 
         let continue_first_layer = match self {
             RecursionStrategy::UseReducedLog23Machine => {
+                // For now, count both (as we try using log23 machine in 1st layer too).
                 proof_metadata.reduced_proof_count > 2
                     || proof_metadata
                         .delegation_proof_count
@@ -46,6 +49,14 @@ impl RecursionStrategy {
                         .delegation_proof_count
                         .iter()
                         .any(|(_, x)| *x > M)
+            }
+            RecursionStrategy::UseReducedLog23MachineInBothLayers => {
+                // For now, count both (as we try using log23 machine in 1st layer too).
+                (proof_metadata.reduced_proof_count + proof_metadata.reduced_log_23_proof_count) > 2
+                    || proof_metadata
+                        .delegation_proof_count
+                        .iter()
+                        .any(|(_, x)| *x > 1)
             }
             RecursionStrategy::UseReducedLog23MachineOnly => false,
         };
@@ -67,6 +78,7 @@ impl RecursionStrategy {
                 false
             }
             RecursionStrategy::UseReducedLog23MachineMultiple
+            | RecursionStrategy::UseReducedLog23MachineInBothLayers
             | RecursionStrategy::UseReducedLog23MachineOnly => {
                 proof_metadata.reduced_log_23_proof_count > 1
                     || proof_metadata
@@ -90,6 +102,7 @@ impl RecursionStrategy {
         match self {
             RecursionStrategy::UseReducedLog23Machine
             | RecursionStrategy::UseReducedLog23MachineMultiple
+            | RecursionStrategy::UseReducedLog23MachineInBothLayers
             | RecursionStrategy::UseReducedLog23MachineOnly => {
                 get_padded_binary(crate::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER)
             }
