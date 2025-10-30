@@ -99,7 +99,7 @@ impl StageThreeOutput {
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
         let static_metadata =
-            StaticMetadata::new(tau, omega_inv, cached_data, &circuit, log_domain_size);
+            StaticMetadata::new(tau, omega_inv, cached_data, &circuit, false, log_domain_size);
         let static_metadata_clone = static_metadata.clone();
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =

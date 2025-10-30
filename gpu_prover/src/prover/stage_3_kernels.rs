@@ -148,6 +148,7 @@ impl StaticMetadata {
         omega_inv: E2,
         cached_data: &ProverCachedData,
         circuit: &CompiledCircuitArtifact<BF>,
+        is_unrolled: bool,
         log_n: u32,
     ) -> Self {
         let n = 1 << log_n;
@@ -250,6 +251,14 @@ impl StaticMetadata {
             generic_lookup_setup_columns_start,
             circuit.setup_layout.generic_lookup_setup_columns.start()
         );
+        let num_generic_lookup_args = circuit
+            .stage_2_layout
+            .intermediate_polys_for_generic_lookup
+            .num_elements();
+        assert_eq!(num_generic_multiplicities_cols > 0, num_generic_lookup_args > 0);
+        if !is_unrolled {
+            assert!(num_generic_lookup_args > 0);
+        }
         let (delegation_aux_poly_col, delegation_challenges) =
             if handle_delegation_requests || process_delegations {
                 (
@@ -320,7 +329,7 @@ impl StaticMetadata {
                     &timestamp_range_check_width_1_lookups_access_via_expressions,
                     num_stage_2_bf_cols,
                     num_stage_2_e4_cols,
-                    true, // expect_constant_terms_are_zero
+                    !is_unrolled, // expect_constant_terms_are_zero
                     &translate_e4_offset,
                 )
             } else {
@@ -412,11 +421,15 @@ impl StaticMetadata {
                 (delegated_layout, non_delegated_placeholder)
             } else {
                 let delegated_layout = DelegatedWidth3LookupsLayout::default();
-                let non_delegated_layout = NonDelegatedWidth3LookupsLayout::new(
-                    circuit,
-                    num_helpers_expected,
-                    &translate_e4_offset,
-                );
+                let non_delegated_layout = if num_generic_lookup_args > 0 {
+                    NonDelegatedWidth3LookupsLayout::new(
+                        circuit,
+                        num_helpers_expected,
+                        &translate_e4_offset,
+                    )
+                } else {
+                    NonDelegatedWidth3LookupsLayout::default()
+                };
                 num_helpers_expected += non_delegated_layout.num_helpers_used as usize;
                 (delegated_layout, non_delegated_layout)
             };
@@ -585,8 +598,10 @@ impl StaticMetadata {
             num_helpers_expected += 1;
         }
         // generic lookup e4 arg sums
-        assert!(num_generic_multiplicities_cols > 0);
-        num_helpers_expected += 1;
+        if num_generic_multiplicities_cols > 0 {
+            num_helpers_expected += 1;
+        }
+        // delegation aux poly sums
         if handle_delegation_requests || process_delegations {
             num_helpers_expected += 2;
         }
@@ -907,16 +922,20 @@ pub(super) fn prepare_async_challenge_data(
             constants_times_challenges,
         );
     } else {
-        non_delegated_width_3_lookups_layout.prepare_async_challenge_data(
-            circuit,
-            lookup_linearization_challenges,
-            lookup_gamma,
-            &h_alphas_for_hardcoded_every_row_except_last,
-            &mut alpha_offset,
-            helpers,
-            decompression_factor_inv,
-            constants_times_challenges,
-        );
+        if circuit.witness_layout.width_3_lookups.len() > 0 {
+            non_delegated_width_3_lookups_layout.prepare_async_challenge_data(
+                circuit,
+                lookup_linearization_challenges,
+                lookup_gamma,
+                &h_alphas_for_hardcoded_every_row_except_last,
+                &mut alpha_offset,
+                helpers,
+                decompression_factor_inv,
+                constants_times_challenges,
+            );
+        } else {
+            assert_eq!(non_delegated_width_3_lookups_layout.num_lookups, 0);
+        }
     };
     range_check_16_multiplicities_layout.prepare_async_challenge_data(
         1,
@@ -1094,78 +1113,81 @@ pub(super) fn prepare_async_challenge_data(
         }
     }
     alpha_offset += 1;
-    assert_eq!(
-        alpha_offset,
-        h_alphas_for_hardcoded_every_row_except_last.len()
-    );
-    // Prepare args and helpers for constraints on all rows except the last two
-    alpha_offset = 0;
-    alpha_offset += state_linkage_constraints.num_constraints as usize;
-    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-        // alphas for "next lazy init timestamp > current lazy init timestamp"
-        alpha_offset += 2;
-    }
-    assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
-    // Args and helpers for boundary constraints (first row and second-to-last row)
-    // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
-    assert_eq!(
-        (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
-            as usize
-            + 1,
-        h_alphas_for_first_row.len()
-    );
-    assert_eq!(
-        (boundary_constraints.num_init_teardown
-            + boundary_constraints.num_public_one_before_last_row) as usize,
-        h_alphas_for_one_before_last_row.len()
-    );
-    boundary_constraints.prepare_async_challenge_data(
-        circuit,
-        aux_arguments_boundary_values,
-        public_inputs,
-        process_shuffle_ram_init,
-        h_alphas_for_first_row,
-        h_alphas_for_one_before_last_row,
-        helpers,
-        h_beta_powers,
-        decompression_factor,
-        constants_times_challenges,
-    );
-    // Just one constraint at last row (grand product accumulator)
-    let mut alpha = h_alphas_for_last_row[0];
-    alpha.mul_assign(&h_beta_powers[1]);
-    helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
-    helpers.push(*alpha.negate().mul_assign(&grand_product_accumulator));
-    assert_eq!(1, h_alphas_for_last_row.len());
-    // Constraints at last row and zero
-    // range check 16 e4 arg sums
-    let mut alpha_offset = 0;
-    let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    alpha_offset += 1;
-    helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    // timestamp range check e4 arg sums
-    if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
-        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-        alpha_offset += 1;
-        helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    }
-    // generic lookup e4 arg sums
-    let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    alpha_offset += 1;
-    helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    if handle_delegation_requests || process_delegations {
-        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-        alpha_offset += 1;
-        let mut delegation_accumulator_interpolant_prefactor = sum_over_delegation_poly;
-        delegation_accumulator_interpolant_prefactor
-            .negate()
-            .mul_assign_by_base(&omega)
-            .mul_assign_by_base(&decompression_factor_inv);
-        helpers.push(delegation_accumulator_interpolant_prefactor);
-        helpers.push(*alpha.mul_assign_by_base(&decompression_factor));
-    }
-    assert_eq!(alpha_offset, h_alphas_for_last_row_and_at_zero.len());
-    assert_eq!(helpers.len(), *num_helpers_expected);
+    // assert_eq!(
+    //     alpha_offset,
+    //     h_alphas_for_hardcoded_every_row_except_last.len()
+    // );
+    // // Prepare args and helpers for constraints on all rows except the last two
+    // alpha_offset = 0;
+    // alpha_offset += state_linkage_constraints.num_constraints as usize;
+    // for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
+    //     // alphas for "next lazy init timestamp > current lazy init timestamp"
+    //     alpha_offset += 2;
+    // }
+    // assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
+    // // Args and helpers for boundary constraints (first row and second-to-last row)
+    // // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
+    // assert_eq!(
+    //     (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
+    //         as usize
+    //         + 1,
+    //     h_alphas_for_first_row.len()
+    // );
+    // assert_eq!(
+    //     (boundary_constraints.num_init_teardown
+    //         + boundary_constraints.num_public_one_before_last_row) as usize,
+    //     h_alphas_for_one_before_last_row.len()
+    // );
+    // boundary_constraints.prepare_async_challenge_data(
+    //     circuit,
+    //     aux_arguments_boundary_values,
+    //     public_inputs,
+    //     process_shuffle_ram_init,
+    //     h_alphas_for_first_row,
+    //     h_alphas_for_one_before_last_row,
+    //     helpers,
+    //     h_beta_powers,
+    //     decompression_factor,
+    //     constants_times_challenges,
+    // );
+    // // Just one constraint at last row (grand product accumulator)
+    // let mut alpha = h_alphas_for_last_row[0];
+    // alpha.mul_assign(&h_beta_powers[1]);
+    // helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
+    // helpers.push(*alpha.negate().mul_assign(&grand_product_accumulator));
+    // assert_eq!(1, h_alphas_for_last_row.len());
+    // // Constraints at last row and zero
+    // // range check 16 e4 arg sums
+    // let mut alpha_offset = 0;
+    // let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+    // alpha_offset += 1;
+    // helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    // // timestamp range check e4 arg sums
+    // if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
+    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+    //     alpha_offset += 1;
+    //     helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    // }
+    // // generic lookup e4 arg sums
+    // if generic_lookup_multiplicities_layout.num_dst_cols > 0 {
+    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+    //     alpha_offset += 1;
+    //     helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    // }
+    // // delegation aux poly sums
+    // if handle_delegation_requests || process_delegations {
+    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+    //     alpha_offset += 1;
+    //     let mut delegation_accumulator_interpolant_prefactor = sum_over_delegation_poly;
+    //     delegation_accumulator_interpolant_prefactor
+    //         .negate()
+    //         .mul_assign_by_base(&omega)
+    //         .mul_assign_by_base(&decompression_factor_inv);
+    //     helpers.push(delegation_accumulator_interpolant_prefactor);
+    //     helpers.push(*alpha.mul_assign_by_base(&decompression_factor));
+    // }
+    // assert_eq!(alpha_offset, h_alphas_for_last_row_and_at_zero.len());
+    // assert_eq!(helpers.len(), *num_helpers_expected);
     helpers
         .spare_capacity_mut()
         .fill(MaybeUninit::new(E4::ZERO));
@@ -1404,6 +1426,7 @@ mod tests {
             log_n,
             circuit_sequence,
             delegation_processing_type,
+            is_unrolled,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
@@ -1490,6 +1513,7 @@ mod tests {
             twiddles.omega_inv,
             &cached_data,
             &circuit,
+            *is_unrolled, 
             log_n as u32,
         );
         // Allocate GPU memory

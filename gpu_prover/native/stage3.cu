@@ -475,388 +475,386 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   }
 
   // Range check 16 and timestamp range check args
-  {
 #pragma unroll
-    for (unsigned i = 0; i < range_check_16_layout.num_dst_cols; i++) {
-      const unsigned src = 2 * i + range_check_16_layout.src_cols_start;
-      const bf a = witness_cols.get_at_col(src);
-      const bf b = witness_cols.get_at_col(src + 1);
-      const bf bf_arg = stage_2_bf_cols.get_at_col(range_check_16_layout.bf_args_start + i);
-      enforce_width_1_bf_arg_construction(a, b, bf_arg, alphas, helpers, acc_linear, acc_quadratic);
-      enforce_width_1_e4_arg_construction(a, b, bf_arg, range_check_16_layout.e4_args_start + i, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
-    }
-
-    enforce_range_check_expressions(range_check_16_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
-                                    acc_quadratic);
-
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-      const bf a = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-      const bf b = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-      const bf bf_arg = stage_2_bf_cols.get_at_col(lazy_init_teardown_layout.bf_arg_col);
-      enforce_width_1_bf_arg_construction(a, b, bf_arg, alphas, helpers, acc_linear, acc_quadratic);
-      enforce_width_1_e4_arg_construction(a, b, bf_arg, lazy_init_teardown_layout.e4_arg_col, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
-    }
-
-    enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers,
-                                    acc_linear, acc_quadratic);
-
-    // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
-    // I could use enforce_range_check_expressions_with_constant_terms here too.
-#pragma unroll
-    for (unsigned i = 0, expression_idx = 0, flat_term_idx = 0; i < expressions_for_shuffle_ram.num_expression_pairs; i++) {
-      bf a_and_b[2];
-      eval_a_and_b<false>(a_and_b, expressions_for_shuffle_ram, expression_idx, flat_term_idx, setup_cols, witness_cols, memory_cols);
-      const bf a = a_and_b[0]; // not including constant contribution
-      const bf b = a_and_b[1]; // not including constant contribution
-      const bf bf_arg = stage_2_bf_cols.get_at_col(expressions_for_shuffle_ram.bf_dst_cols[i]);
-      const e4 alpha = (alphas++).get();
-      const bf prod = bf::mul(a, b);
-      acc_quadratic = e4::add(acc_quadratic, e4::mul(alpha, prod));
-      const bf a_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 2];
-      const bf b_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 1];
-      const bf b_constant_term_adjusted = bf::sub(b_constant_term, memory_timestamp_high_from_circuit_idx);
-      const bf linear_contribution_from_a_b_constants = bf::add(bf::mul(a, b_constant_term_adjusted), bf::mul(b, a_constant_term));
-      acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
-      enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
-                                          acc_quadratic);
-    }
+  for (unsigned i = 0; i < range_check_16_layout.num_dst_cols; i++) {
+    const unsigned src = 2 * i + range_check_16_layout.src_cols_start;
+    const bf a = witness_cols.get_at_col(src);
+    const bf b = witness_cols.get_at_col(src + 1);
+    const bf bf_arg = stage_2_bf_cols.get_at_col(range_check_16_layout.bf_args_start + i);
+    enforce_width_1_bf_arg_construction(a, b, bf_arg, alphas, helpers, acc_linear, acc_quadratic);
+    enforce_width_1_e4_arg_construction(a, b, bf_arg, range_check_16_layout.e4_args_start + i, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
   }
 
-  if (process_delegations) {
-    // width 3 lookups were already handled by delegated_width_3_lookups_kernel.
-    // width_3_lookups_layout is just a placeholder with enough info to account for the alphas and helpers the other kernel used.
-    alphas += width_3_lookups_layout.num_lookups;
-    helpers += width_3_lookups_layout.num_helpers_used;
-  } else {
-    enforce_width_3_lookup_args_construction(width_3_lookups_layout, witness_cols, memory_cols, stage_2_e4_cols, helpers, acc_quadratic);
-    alphas += width_3_lookups_layout.num_lookups;
+  enforce_range_check_expressions(range_check_16_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                  acc_quadratic);
+
+  for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+    const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+    const bf a = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+    const bf b = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+    const bf bf_arg = stage_2_bf_cols.get_at_col(lazy_init_teardown_layout.bf_arg_col);
+    enforce_width_1_bf_arg_construction(a, b, bf_arg, alphas, helpers, acc_linear, acc_quadratic);
+    enforce_width_1_e4_arg_construction(a, b, bf_arg, lazy_init_teardown_layout.e4_arg_col, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
   }
 
-  enforce_lookup_multiplicities<1>(range_check_16_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
-  enforce_lookup_multiplicities<1>(timestamp_range_check_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
-                                   acc_quadratic);
-  enforce_lookup_multiplicities<NUM_LOOKUP_ARGUMENT_KEY_PARTS>(generic_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers,
-                                                               acc_linear, acc_quadratic);
+  enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers,
+                                  acc_linear, acc_quadratic);
 
-  if (handle_delegation_requests) {
-    const auto &metadata = delegation_request_metadata;
-    const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
-    const e4 alpha = (alphas++).get();
-    acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
-    e4 denom = (helpers++).get();
-    denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col + 1)));
-    const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-    acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-  }
-
-  if (process_delegations) {
-    const auto &metadata = delegation_processing_metadata;
-    const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
-    const e4 alpha = (alphas++).get();
-    acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
-    e4 denom = (helpers++).get();
-    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col)));
-    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col + 1)));
-    const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-    acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-  }
-
-  if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-    // Enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-
-      const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-      const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-      const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
-      const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
-      const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
-      const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
-      const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
-
-      enforce_val_zero_if_pred_zero(final_borrow, address_low, alphas, acc_quadratic, acc_linear);
-      enforce_val_zero_if_pred_zero(final_borrow, address_high, alphas, acc_quadratic, acc_linear);
-      enforce_val_zero_if_pred_zero(final_borrow, value_low, alphas, acc_quadratic, acc_linear);
-      enforce_val_zero_if_pred_zero(final_borrow, value_high, alphas, acc_quadratic, acc_linear);
-      enforce_val_zero_if_pred_zero(final_borrow, timestamp_low, alphas, acc_quadratic, acc_linear);
-      enforce_val_zero_if_pred_zero(final_borrow, timestamp_high, alphas, acc_quadratic, acc_linear);
-    }
-
-    // Enforce access contributions to global memory accumulator
-    e4 e4_arg_prev{};
-    // Some write timestamp limb contributions are common across accesses:
-    const bf write_timestamp_for_shuffle_ram_low = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
-    const bf write_timestamp_for_shuffle_ram_high = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
-#pragma unroll 1
-    for (unsigned i = 0; i < shuffle_ram_accesses.num_accesses; i++) {
-      const auto &access = shuffle_ram_accesses.accesses[i];
-
-      const bf address_low = memory_cols.get_at_col(access.address_start);
-      e4 numerator = e4::mul((helpers++).get(), address_low);
-
-      if (access.is_register_only) {
-        alphas++; // constant bf::one() is already accounted for in numerator constant helper
-      } else {
-        const bf address_high = memory_cols.get_at_col(access.address_start + 1);
-        numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
-        numerator = e4::add(numerator, e4::mul((alphas++).get(), memory_cols.get_at_col(access.maybe_is_register_start)));
-      }
-
-      e4 denom{};
-
-      const e4 value_low_helper = (helpers++).get();
-      const e4 value_high_helper = (helpers++).get();
-      if (access.is_write) {
-        denom = numerator;
-
-        const bf read_value_low = memory_cols.get_at_col(access.read_value_start);
-        denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
-        const bf read_value_high = memory_cols.get_at_col(access.read_value_start + 1);
-        denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-
-        const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_start);
-        numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
-        const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_start + 1);
-        numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-      } else {
-        const bf value_low = memory_cols.get_at_col(access.read_value_start);
-        numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
-        const bf value_high = memory_cols.get_at_col(access.read_value_start + 1);
-        numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-
-        denom = numerator;
-      }
-
-      const e4 timestamp_low_helper = (helpers++).get();
-      const e4 timestamp_high_helper = (helpers++).get();
-
-      const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_start);
-      denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-      const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_start + 1);
-      denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-
-      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_for_shuffle_ram_low));
-      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_for_shuffle_ram_high));
-
-      // adjusted constant contributions
-      denom = e4::add(denom, (helpers++).get());
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
-      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-      if (i == 0) {
-        acc_linear = e4::sub(acc_linear, numerator);
-      } else {
-        numerator = e4::add(numerator, (helpers++).get());
-        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-      }
-
-      e4_arg_prev = e4_arg;
-    }
-
-    // Enforce lazy init contributions to global memory accumulator
-    // TODO: try interleaving this with the above to avoid redundant loads
-    for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-      const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-
-      const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-      const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-      const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
-      const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
-      const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
-      const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
-
-      e4 numerator = e4::mul((helpers++).get(), address_low);
-      numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
-
-      e4 denom{numerator};
-      denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
-      denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
-      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
-      denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
-
-      const e4 alpha_times_gamma_adjusted = (helpers++).get();
-      denom = e4::add(denom, alpha_times_gamma_adjusted);
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
-      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-      numerator = e4::add(numerator, alpha_times_gamma_adjusted);
-      acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-      e4_arg_prev = e4_arg;
-    }
-
-    alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
-  }
-
-  if (process_registers_and_indirect_access) {
-    const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
-    const bf write_timestamp_high = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col + 1);
-    unsigned flat_indirect_idx = 0;
-    e4 e4_arg_prev{};
-#pragma unroll 1
-    for (unsigned i = 0; i < register_and_indirect_accesses.num_register_accesses; i++) {
-      bf base_low;
-      bf base_high;
-      {
-        const auto &access = register_and_indirect_accesses.register_accesses[i];
-        e4 numerator{};
-        e4 denom{};
-
-        const e4 value_low_helper = (helpers++).get();
-        const e4 value_high_helper = (helpers++).get();
-        if (access.is_write) {
-          const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-          denom = e4::mul(value_low_helper, read_value_low);
-          const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-          denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-
-          // imitate arg construction
-          base_low = bf::into_canonical(read_value_low);
-          base_high = bf::into_canonical(read_value_high);
-
-          const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-          numerator = e4::mul(value_low_helper, write_value_low);
-          const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-          numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-        } else {
-          const bf value_low = memory_cols.get_at_col(access.read_value_col);
-          numerator = e4::mul(value_low_helper, value_low);
-          const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-          numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-
-          // imitate arg construction
-          base_low = bf::into_canonical(value_low);
-          base_high = bf::into_canonical(value_high);
-
-          denom = numerator;
-        }
-
-        const e4 timestamp_low_helper = (helpers++).get();
-        const e4 timestamp_high_helper = (helpers++).get();
-
-        numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
-        numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
-
-        const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-        denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-        const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-        denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-
-        // adjusted constant contributions
-        const e4 constant = (helpers++).get();
-        denom = e4::add(denom, constant);
-        const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i + flat_indirect_idx);
-        acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-        // flush result
-        if (i == 0) {
-          acc_linear = e4::sub(acc_linear, numerator);
-          e4_arg_prev = e4_arg;
-        } else {
-          numerator = e4::add(numerator, constant);
-          acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-          e4_arg_prev = e4_arg;
-        }
-      }
-
-      const unsigned end = flat_indirect_idx + register_and_indirect_accesses.indirect_accesses_per_register_access[i];
-#pragma unroll 1
-      for (; flat_indirect_idx < end; flat_indirect_idx++) {
-        const auto &access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-        e4 numerator{};
-        e4 denom{};
-
-        const e4 address_low_helper = (helpers++).get();
-        const e4 address_high_helper = (helpers++).get();
-        if (!access.has_address_derivation_carry_bit) {
-          if (access.has_variable_dependent) {
-            const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
-            const bf t_canonical = bf::into_canonical(t);
-            const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
-            numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
-          } else {
-            numerator = e4::mul(address_low_helper, base_low);
-          }
-          numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
-        } else {
-          const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);
-          numerator = e4::mul(address_low_helper, bf::sub(base_low, bf::mul(carry_bit, SHIFT_16)));
-          numerator = e4::add(numerator, e4::mul(address_high_helper, bf::add(base_high, carry_bit)));
-        }
-
-        const e4 value_low_helper = (helpers++).get();
-        const e4 value_high_helper = (helpers++).get();
-        if (access.has_write) {
-          denom = numerator;
-
-          const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-          denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
-          const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-          denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-
-          const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-          numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
-          const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-          numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-        } else {
-          const bf value_low = memory_cols.get_at_col(access.read_value_col);
-          numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
-          const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-          numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-
-          denom = numerator;
-        }
-
-        const e4 timestamp_low_helper = (helpers++).get();
-        const e4 timestamp_high_helper = (helpers++).get();
-
-        numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
-        numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
-
-        const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-        denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-        const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-        denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-
-        // adjusted constant contributions
-        const e4 constant = (helpers++).get();
-        denom = e4::add(denom, constant);
-        const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + flat_indirect_idx + i + 1);
-        acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-
-        // flush result
-        numerator = e4::add(numerator, constant);
-        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-        e4_arg_prev = e4_arg;
-      }
-    }
-
-    alphas += register_and_indirect_accesses.num_register_accesses + flat_indirect_idx;
-  }
-
-  {
-    // kinda ugly with 3 e4 x e4 muls, but hopefully negligible overall
-    const e4 memory_arg_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col - 1);
-    const e4 grand_product_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-    e4 grand_product_entry_next{};
-    if (gid == n - 1) {
-      stage_2_e4_cols.sub_row(gid);
-      grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-      stage_2_e4_cols.add_row(gid);
-    } else {
-      stage_2_e4_cols.add_row(1);
-      grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-      stage_2_e4_cols.sub_row(1);
-    }
-    const e4 alpha = (alphas++).get();
-    acc_linear = e4::add(acc_linear, e4::mul(alpha, grand_product_entry_next));
-    const e4 prod = e4::mul(memory_arg_entry, grand_product_entry);
-    acc_quadratic = e4::sub(acc_quadratic, e4::mul(alpha, prod));
-  }
+//   // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
+//   // I could use enforce_range_check_expressions_with_constant_terms here too.
+// #pragma unroll
+//   for (unsigned i = 0, expression_idx = 0, flat_term_idx = 0; i < expressions_for_shuffle_ram.num_expression_pairs; i++) {
+//     bf a_and_b[2];
+//     eval_a_and_b<false>(a_and_b, expressions_for_shuffle_ram, expression_idx, flat_term_idx, setup_cols, witness_cols, memory_cols);
+//     const bf a = a_and_b[0]; // not including constant contribution
+//     const bf b = a_and_b[1]; // not including constant contribution
+//     const bf bf_arg = stage_2_bf_cols.get_at_col(expressions_for_shuffle_ram.bf_dst_cols[i]);
+//     const e4 alpha = (alphas++).get();
+//     const bf prod = bf::mul(a, b);
+//     acc_quadratic = e4::add(acc_quadratic, e4::mul(alpha, prod));
+//     const bf a_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 2];
+//     const bf b_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 1];
+//     const bf b_constant_term_adjusted = bf::sub(b_constant_term, memory_timestamp_high_from_circuit_idx);
+//     const bf linear_contribution_from_a_b_constants = bf::add(bf::mul(a, b_constant_term_adjusted), bf::mul(b, a_constant_term));
+//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
+//     enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
+//                                         acc_quadratic);
+//   }
+// 
+//   if (process_delegations) {
+//     // width 3 lookups were already handled by delegated_width_3_lookups_kernel.
+//     // width_3_lookups_layout is just a placeholder with enough info to account for the alphas and helpers the other kernel used.
+//     alphas += width_3_lookups_layout.num_lookups;
+//     helpers += width_3_lookups_layout.num_helpers_used;
+//   } else {
+//     enforce_width_3_lookup_args_construction(width_3_lookups_layout, witness_cols, memory_cols, stage_2_e4_cols, helpers, acc_quadratic);
+//     alphas += width_3_lookups_layout.num_lookups;
+//   }
+// 
+//   enforce_lookup_multiplicities<1>(range_check_16_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
+//   enforce_lookup_multiplicities<1>(timestamp_range_check_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+//                                    acc_quadratic);
+//   enforce_lookup_multiplicities<NUM_LOOKUP_ARGUMENT_KEY_PARTS>(generic_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers,
+//                                                                acc_linear, acc_quadratic);
+// 
+//   if (handle_delegation_requests) {
+//     const auto &metadata = delegation_request_metadata;
+//     const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
+//     const e4 alpha = (alphas++).get();
+//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
+//     e4 denom = (helpers++).get();
+//     denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
+//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
+//     denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col)));
+//     denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col + 1)));
+//     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+//     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+//   }
+// 
+//   if (process_delegations) {
+//     const auto &metadata = delegation_processing_metadata;
+//     const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
+//     const e4 alpha = (alphas++).get();
+//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
+//     e4 denom = (helpers++).get();
+//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
+//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col)));
+//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col + 1)));
+//     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+//     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+//   }
+// 
+//   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
+//     // Enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
+//     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+//       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+// 
+//       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+//       const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+//       const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
+//       const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
+//       const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
+//       const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
+//       const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
+// 
+//       enforce_val_zero_if_pred_zero(final_borrow, address_low, alphas, acc_quadratic, acc_linear);
+//       enforce_val_zero_if_pred_zero(final_borrow, address_high, alphas, acc_quadratic, acc_linear);
+//       enforce_val_zero_if_pred_zero(final_borrow, value_low, alphas, acc_quadratic, acc_linear);
+//       enforce_val_zero_if_pred_zero(final_borrow, value_high, alphas, acc_quadratic, acc_linear);
+//       enforce_val_zero_if_pred_zero(final_borrow, timestamp_low, alphas, acc_quadratic, acc_linear);
+//       enforce_val_zero_if_pred_zero(final_borrow, timestamp_high, alphas, acc_quadratic, acc_linear);
+//     }
+// 
+//     // Enforce access contributions to global memory accumulator
+//     e4 e4_arg_prev{};
+//     // Some write timestamp limb contributions are common across accesses:
+//     const bf write_timestamp_for_shuffle_ram_low = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
+//     const bf write_timestamp_for_shuffle_ram_high = setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
+// #pragma unroll 1
+//     for (unsigned i = 0; i < shuffle_ram_accesses.num_accesses; i++) {
+//       const auto &access = shuffle_ram_accesses.accesses[i];
+// 
+//       const bf address_low = memory_cols.get_at_col(access.address_start);
+//       e4 numerator = e4::mul((helpers++).get(), address_low);
+// 
+//       if (access.is_register_only) {
+//         alphas++; // constant bf::one() is already accounted for in numerator constant helper
+//       } else {
+//         const bf address_high = memory_cols.get_at_col(access.address_start + 1);
+//         numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
+//         numerator = e4::add(numerator, e4::mul((alphas++).get(), memory_cols.get_at_col(access.maybe_is_register_start)));
+//       }
+// 
+//       e4 denom{};
+// 
+//       const e4 value_low_helper = (helpers++).get();
+//       const e4 value_high_helper = (helpers++).get();
+//       if (access.is_write) {
+//         denom = numerator;
+// 
+//         const bf read_value_low = memory_cols.get_at_col(access.read_value_start);
+//         denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
+//         const bf read_value_high = memory_cols.get_at_col(access.read_value_start + 1);
+//         denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
+// 
+//         const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_start);
+//         numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
+//         const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_start + 1);
+//         numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
+//       } else {
+//         const bf value_low = memory_cols.get_at_col(access.read_value_start);
+//         numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
+//         const bf value_high = memory_cols.get_at_col(access.read_value_start + 1);
+//         numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
+// 
+//         denom = numerator;
+//       }
+// 
+//       const e4 timestamp_low_helper = (helpers++).get();
+//       const e4 timestamp_high_helper = (helpers++).get();
+// 
+//       const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_start);
+//       denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
+//       const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_start + 1);
+//       denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
+// 
+//       numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_for_shuffle_ram_low));
+//       numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_for_shuffle_ram_high));
+// 
+//       // adjusted constant contributions
+//       denom = e4::add(denom, (helpers++).get());
+//       const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
+//       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+// 
+//       if (i == 0) {
+//         acc_linear = e4::sub(acc_linear, numerator);
+//       } else {
+//         numerator = e4::add(numerator, (helpers++).get());
+//         acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+//       }
+// 
+//       e4_arg_prev = e4_arg;
+//     }
+// 
+//     // Enforce lazy init contributions to global memory accumulator
+//     // TODO: try interleaving this with the above to avoid redundant loads
+//     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+//       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+// 
+//       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+//       const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+//       const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
+//       const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
+//       const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
+//       const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
+// 
+//       e4 numerator = e4::mul((helpers++).get(), address_low);
+//       numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
+// 
+//       e4 denom{numerator};
+//       denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
+//       denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
+//       denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
+//       denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
+// 
+//       const e4 alpha_times_gamma_adjusted = (helpers++).get();
+//       denom = e4::add(denom, alpha_times_gamma_adjusted);
+//       const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
+//       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+// 
+//       numerator = e4::add(numerator, alpha_times_gamma_adjusted);
+//       acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+//       e4_arg_prev = e4_arg;
+//     }
+// 
+//     alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
+//   }
+// 
+//   if (process_registers_and_indirect_access) {
+//     const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
+//     const bf write_timestamp_high = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col + 1);
+//     unsigned flat_indirect_idx = 0;
+//     e4 e4_arg_prev{};
+// #pragma unroll 1
+//     for (unsigned i = 0; i < register_and_indirect_accesses.num_register_accesses; i++) {
+//       bf base_low;
+//       bf base_high;
+//       {
+//         const auto &access = register_and_indirect_accesses.register_accesses[i];
+//         e4 numerator{};
+//         e4 denom{};
+// 
+//         const e4 value_low_helper = (helpers++).get();
+//         const e4 value_high_helper = (helpers++).get();
+//         if (access.is_write) {
+//           const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
+//           denom = e4::mul(value_low_helper, read_value_low);
+//           const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
+//           denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
+// 
+//           // imitate arg construction
+//           base_low = bf::into_canonical(read_value_low);
+//           base_high = bf::into_canonical(read_value_high);
+// 
+//           const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
+//           numerator = e4::mul(value_low_helper, write_value_low);
+//           const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
+//           numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
+//         } else {
+//           const bf value_low = memory_cols.get_at_col(access.read_value_col);
+//           numerator = e4::mul(value_low_helper, value_low);
+//           const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
+//           numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
+// 
+//           // imitate arg construction
+//           base_low = bf::into_canonical(value_low);
+//           base_high = bf::into_canonical(value_high);
+// 
+//           denom = numerator;
+//         }
+// 
+//         const e4 timestamp_low_helper = (helpers++).get();
+//         const e4 timestamp_high_helper = (helpers++).get();
+// 
+//         numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
+//         numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
+// 
+//         const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
+//         denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
+//         const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
+//         denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
+// 
+//         // adjusted constant contributions
+//         const e4 constant = (helpers++).get();
+//         denom = e4::add(denom, constant);
+//         const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i + flat_indirect_idx);
+//         acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+// 
+//         // flush result
+//         if (i == 0) {
+//           acc_linear = e4::sub(acc_linear, numerator);
+//           e4_arg_prev = e4_arg;
+//         } else {
+//           numerator = e4::add(numerator, constant);
+//           acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+//           e4_arg_prev = e4_arg;
+//         }
+//       }
+// 
+//       const unsigned end = flat_indirect_idx + register_and_indirect_accesses.indirect_accesses_per_register_access[i];
+// #pragma unroll 1
+//       for (; flat_indirect_idx < end; flat_indirect_idx++) {
+//         const auto &access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
+//         e4 numerator{};
+//         e4 denom{};
+// 
+//         const e4 address_low_helper = (helpers++).get();
+//         const e4 address_high_helper = (helpers++).get();
+//         if (!access.has_address_derivation_carry_bit) {
+//           if (access.has_variable_dependent) {
+//             const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
+//             const bf t_canonical = bf::into_canonical(t);
+//             const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
+//             numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
+//           } else {
+//             numerator = e4::mul(address_low_helper, base_low);
+//           }
+//           numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
+//         } else {
+//           const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);
+//           numerator = e4::mul(address_low_helper, bf::sub(base_low, bf::mul(carry_bit, SHIFT_16)));
+//           numerator = e4::add(numerator, e4::mul(address_high_helper, bf::add(base_high, carry_bit)));
+//         }
+// 
+//         const e4 value_low_helper = (helpers++).get();
+//         const e4 value_high_helper = (helpers++).get();
+//         if (access.has_write) {
+//           denom = numerator;
+// 
+//           const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
+//           denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
+//           const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
+//           denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
+// 
+//           const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
+//           numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
+//           const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
+//           numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
+//         } else {
+//           const bf value_low = memory_cols.get_at_col(access.read_value_col);
+//           numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
+//           const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
+//           numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
+// 
+//           denom = numerator;
+//         }
+// 
+//         const e4 timestamp_low_helper = (helpers++).get();
+//         const e4 timestamp_high_helper = (helpers++).get();
+// 
+//         numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
+//         numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
+// 
+//         const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
+//         denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
+//         const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
+//         denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
+// 
+//         // adjusted constant contributions
+//         const e4 constant = (helpers++).get();
+//         denom = e4::add(denom, constant);
+//         const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + flat_indirect_idx + i + 1);
+//         acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+// 
+//         // flush result
+//         numerator = e4::add(numerator, constant);
+//         acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+//         e4_arg_prev = e4_arg;
+//       }
+//     }
+// 
+//     alphas += register_and_indirect_accesses.num_register_accesses + flat_indirect_idx;
+//   }
+// 
+//   {
+//     // kinda ugly with 3 e4 x e4 muls, but hopefully negligible overall
+//     const e4 memory_arg_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col - 1);
+//     const e4 grand_product_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col);
+//     e4 grand_product_entry_next{};
+//     if (gid == n - 1) {
+//       stage_2_e4_cols.sub_row(gid);
+//       grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
+//       stage_2_e4_cols.add_row(gid);
+//     } else {
+//       stage_2_e4_cols.add_row(1);
+//       grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
+//       stage_2_e4_cols.sub_row(1);
+//     }
+//     const e4 alpha = (alphas++).get();
+//     acc_linear = e4::add(acc_linear, e4::mul(alpha, grand_product_entry_next));
+//     const e4 prod = e4::mul(memory_arg_entry, grand_product_entry);
+//     acc_quadratic = e4::sub(acc_quadratic, e4::mul(alpha, prod));
+//   }
 
   // Finalize "every row except last" contributions
   acc_quadratic = e4::mul(acc_quadratic, decompression_factor_squared);
@@ -873,167 +871,168 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   // TODO: fold beta powers into corresponding alpha powers
   acc = e4::mul(acc, betas.get(5));
 
-  // Constraints at every row except last two
-  if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layouts.process_shuffle_ram_init) {
-    e4 acc_linear{e4::zero()};
+  // // Constraints at every row except last two
+  // if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layouts.process_shuffle_ram_init) {
+  //   e4 acc_linear{e4::zero()};
 
-    {
-      auto witness_cols_next_row = witness_cols.copy();
-      if (gid < n - 1)
-        witness_cols_next_row.add_row(1);
-      else
-        witness_cols_next_row.sub_row(gid);
+  //   {
+  //     auto witness_cols_next_row = witness_cols.copy();
+  //     if (gid < n - 1)
+  //       witness_cols_next_row.add_row(1);
+  //     else
+  //       witness_cols_next_row.sub_row(gid);
 
-      for (unsigned i = 0; i < state_linkage_constraints.num_constraints; i++) {
-        const e4 alpha = (alphas_every_row_except_last_two++).get();
-        const bf src_val = witness_cols.get_at_col(state_linkage_constraints.srcs[i]);
-        const bf dst_val = witness_cols_next_row.get_at_col(state_linkage_constraints.dsts[i]);
-        acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(src_val, dst_val)));
-      }
-    }
+  //     for (unsigned i = 0; i < state_linkage_constraints.num_constraints; i++) {
+  //       const e4 alpha = (alphas_every_row_except_last_two++).get();
+  //       const bf src_val = witness_cols.get_at_col(state_linkage_constraints.srcs[i]);
+  //       const bf dst_val = witness_cols_next_row.get_at_col(state_linkage_constraints.dsts[i]);
+  //       acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(src_val, dst_val)));
+  //     }
+  //   }
 
-    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-      auto memory_cols_next_row = memory_cols.copy();
-      if (gid < n - 1)
-        memory_cols_next_row.add_row(1);
-      else
-        memory_cols_next_row.sub_row(gid);
+  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
+  //     auto memory_cols_next_row = memory_cols.copy();
+  //     if (gid < n - 1)
+  //       memory_cols_next_row.add_row(1);
+  //     else
+  //       memory_cols_next_row.sub_row(gid);
 
-      // TODO: Investigate how this is applied for unrolled circuits
-      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-        const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
-        {
-          const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-          const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
-          const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
-          bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
-          tmp = bf::add(tmp, this_low);
-          tmp = bf::sub(tmp, next_low);
-          tmp = bf::sub(tmp, aux_low);
-          const e4 alpha = (alphas_every_row_except_last_two++).get();
-          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
-        }
-        {
-          const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
-          const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-          const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-          const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
-          bf tmp = bf::mul(SHIFT_16, final_borrow);
-          tmp = bf::add(tmp, this_high);
-          tmp = bf::sub(tmp, intermediate_borrow);
-          tmp = bf::sub(tmp, next_high);
-          tmp = bf::sub(tmp, aux_high);
-          const e4 alpha = (alphas_every_row_except_last_two++).get();
-          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
-        }
-      }
-    }
+  //     // TODO: Investigate how this is applied for unrolled circuits
+  //     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+  //       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+  //       const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
+  //       {
+  //         const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+  //         const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
+  //         const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
+  //         bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
+  //         tmp = bf::add(tmp, this_low);
+  //         tmp = bf::sub(tmp, next_low);
+  //         tmp = bf::sub(tmp, aux_low);
+  //         const e4 alpha = (alphas_every_row_except_last_two++).get();
+  //         acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+  //       }
+  //       {
+  //         const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
+  //         const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+  //         const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+  //         const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
+  //         bf tmp = bf::mul(SHIFT_16, final_borrow);
+  //         tmp = bf::add(tmp, this_high);
+  //         tmp = bf::sub(tmp, intermediate_borrow);
+  //         tmp = bf::sub(tmp, next_high);
+  //         tmp = bf::sub(tmp, aux_high);
+  //         const e4 alpha = (alphas_every_row_except_last_two++).get();
+  //         acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+  //       }
+  //     }
+  //   }
 
-    // Finalize "every row except last two" contributions, which are purely linear
-    acc_linear = e4::mul(acc_linear, decompression_factor);
-    multiplier = e2::mul(multiplier, e2::sub(x, omega_inv_squared));
-    acc_linear = e4::mul(acc_linear, multiplier);
-    acc = e4::add(acc, e4::mul(betas.get(4), acc_linear));
-  }
+  //   // Finalize "every row except last two" contributions, which are purely linear
+  //   acc_linear = e4::mul(acc_linear, decompression_factor);
+  //   multiplier = e2::mul(multiplier, e2::sub(x, omega_inv_squared));
+  //   acc_linear = e4::mul(acc_linear, multiplier);
+  //   acc = e4::add(acc, e4::mul(betas.get(4), acc_linear));
+  // }
 
-  const e2 denoms[4] = {x, e2::sub(x, bf::one()), e2::sub(x, omega_inv_squared), e2::sub(x, omega_inv)};
-  e2 denom_invs[4] = {};
-  batch_inv_registers<e2, 4, true>(denoms, denom_invs, 4);
+  // const e2 denoms[4] = {x, e2::sub(x, bf::one()), e2::sub(x, omega_inv_squared), e2::sub(x, omega_inv)};
+  // e2 denom_invs[4] = {};
+  // batch_inv_registers<e2, 4, true>(denoms, denom_invs, 4);
 
-  // Constraints at first row: grand product == 1, boundary constraints
-  {
-    e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
-    unsigned i = 0;
-    if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-      for (; i < boundary_constraints.num_init_teardown; i++)
-        acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
-    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row;
-    for (; i < lim; i++)
-      acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.first_row_cols[i])));
-    acc_linear = e4::add(acc_linear, constants_times_challenges->first_row);
-    acc_linear = e4::mul(acc_linear, denom_invs[1]);
-    acc = e4::add(acc, acc_linear);
-  }
+  // // Constraints at first row: grand product == 1, boundary constraints
+  // {
+  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
+  //   unsigned i = 0;
+  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
+  //     for (; i < boundary_constraints.num_init_teardown; i++)
+  //       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
+  //   const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row;
+  //   for (; i < lim; i++)
+  //     acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.first_row_cols[i])));
+  //   acc_linear = e4::add(acc_linear, constants_times_challenges->first_row);
+  //   acc_linear = e4::mul(acc_linear, denom_invs[1]);
+  //   acc = e4::add(acc, acc_linear);
+  // }
 
-  // Boundary constraints at one before last row (at least some should always be present in practice)
-  if (boundary_constraints.num_init_teardown > 0 || boundary_constraints.num_public_one_before_last_row > 0) {
-    e4 acc_linear{};
-    unsigned i = 0;
-    // TODO: Fix for unrolled circuits
-    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-      acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
-      i++;
-      for (; i < boundary_constraints.num_init_teardown; i++)
-        acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
-    } else {
-      acc_linear = e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
-      i++;
-    }
-    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_one_before_last_row;
-    for (; i < lim; i++)
-      acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
-    acc_linear = e4::add(acc_linear, constants_times_challenges->one_before_last_row);
-    acc_linear = e4::mul(acc_linear, denom_invs[2]);
-    acc = e4::add(acc, acc_linear);
-  }
+  // // Boundary constraints at one before last row (at least some should always be present in practice)
+  // if (boundary_constraints.num_init_teardown > 0 || boundary_constraints.num_public_one_before_last_row > 0) {
+  //   e4 acc_linear{};
+  //   unsigned i = 0;
+  //   // TODO: Fix for unrolled circuits
+  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
+  //     acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
+  //     i++;
+  //     for (; i < boundary_constraints.num_init_teardown; i++)
+  //       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
+  //   } else {
+  //     acc_linear = e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
+  //     i++;
+  //   }
+  //   const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_one_before_last_row;
+  //   for (; i < lim; i++)
+  //     acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
+  //   acc_linear = e4::add(acc_linear, constants_times_challenges->one_before_last_row);
+  //   acc_linear = e4::mul(acc_linear, denom_invs[2]);
+  //   acc = e4::add(acc, acc_linear);
+  // }
 
-  // One constraint at last row (grand product accumulator)
-  {
-    e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
-    acc_linear = e4::add(acc_linear, (helpers++).get());
-    acc_linear = e4::mul(acc_linear, denom_invs[3]);
-    acc = e4::add(acc, acc_linear);
-  }
+  // // One constraint at last row (grand product accumulator)
+  // {
+  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
+  //   acc_linear = e4::add(acc_linear, (helpers++).get());
+  //   acc_linear = e4::mul(acc_linear, denom_invs[3]);
+  //   acc = e4::add(acc, acc_linear);
+  // }
 
-  // Constraints at last row and x = 0
-  {
-    e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
-    // validate col sums for range check 16 lookup e4 args
-    {
-      const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
-      for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
-        acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
-      // TODO: Fix for unrolled circuits
-      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-        acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
-      }
-      acc_linear = e4::mul(acc_linear, (helpers++).get());
-    }
-    // validate col sums for timestamp range check e4 args
-    if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
-      e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
-      const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
-      // This start location and the contiguity of e4 args cols are checked on the Rust side.
-      const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
-          timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
-      for (unsigned i = 0; i < num_timestamp_e4_args; i++)
-        acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
-      acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());
-      acc_linear = e4::add(acc_linear, acc_timestamp);
-    }
-    // validate col sums for generic lookup e4 args
-    {
-      e4 acc_generic = e4::neg(stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start));
-      for (unsigned i = 1; i < generic_lookup_multiplicities_layout.num_dst_cols; i++)
-        acc_generic = e4::sub(acc_generic, stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start + i));
-      for (unsigned i = 0; i < width_3_lookups_layout.num_lookups; i++)
-        acc_generic = e4::add(acc_generic, stage_2_e4_cols.get_at_col(width_3_lookups_layout.e4_arg_cols_start + i));
-      acc_generic = e4::mul(acc_generic, (helpers++).get());
-      acc_linear = e4::add(acc_linear, acc_generic);
-    }
-    if (handle_delegation_requests || process_delegations) {
-      const e4 interpolant = e4::mul((helpers++).get(), x);
-      const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-      const e4 diff = e4::sub(e4_arg, interpolant);
-      const e4 term = e4::mul(diff, (helpers++).get());
-      acc_linear = e4::add(acc_linear, term);
-    }
-    const e2 denom_inv = e2::mul(denom_invs[0], denom_invs[3]);
-    acc_linear = e4::mul(acc_linear, denom_inv);
-    acc = e4::add(acc, acc_linear);
-  }
+  // // Constraints at last row and x = 0
+  // {
+  //   e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
+  //   // validate col sums for range check 16 lookup e4 args
+  //   {
+  //     const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
+  //     for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
+  //       acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
+  //     // TODO: Fix for unrolled circuits
+  //     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+  //       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+  //       acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
+  //     }
+  //     acc_linear = e4::mul(acc_linear, (helpers++).get());
+  //   }
+  //   // validate col sums for timestamp range check e4 args
+  //   if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
+  //     e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
+  //     const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
+  //     // This start location and the contiguity of e4 args cols are checked on the Rust side.
+  //     const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
+  //         timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
+  //     for (unsigned i = 0; i < num_timestamp_e4_args; i++)
+  //       acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
+  //     acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());
+  //     acc_linear = e4::add(acc_linear, acc_timestamp);
+  //   }
+  //   // validate col sums for generic lookup e4 args
+  //   {
+  //     e4 acc_generic = e4::neg(stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start));
+  //     for (unsigned i = 1; i < generic_lookup_multiplicities_layout.num_dst_cols; i++)
+  //       acc_generic = e4::sub(acc_generic, stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start + i));
+  //     for (unsigned i = 0; i < width_3_lookups_layout.num_lookups; i++)
+  //       acc_generic = e4::add(acc_generic, stage_2_e4_cols.get_at_col(width_3_lookups_layout.e4_arg_cols_start + i));
+  //     acc_generic = e4::mul(acc_generic, (helpers++).get());
+  //     acc_linear = e4::add(acc_linear, acc_generic);
+  //   }
+  //   // validate delegation aux poly sums
+  //   if (handle_delegation_requests || process_delegations) {
+  //     const e4 interpolant = e4::mul((helpers++).get(), x);
+  //     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+  //     const e4 diff = e4::sub(e4_arg, interpolant);
+  //     const e4 term = e4::mul(diff, (helpers++).get());
+  //     acc_linear = e4::add(acc_linear, term);
+  //   }
+  //   const e2 denom_inv = e2::mul(denom_invs[0], denom_invs[3]);
+  //   acc_linear = e4::mul(acc_linear, denom_inv);
+  //   acc = e4::add(acc, acc_linear);
+  // }
 
   quotient.set(acc);
 }

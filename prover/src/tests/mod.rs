@@ -212,6 +212,7 @@ pub struct GpuComparisonArgs<'a> {
     pub log_n: usize,
     pub circuit_sequence: Option<usize>,
     pub delegation_processing_type: Option<u16>,
+    pub is_unrolled: bool,
     pub prover_data: &'a ProverData<DEFAULT_TRACE_PADDING_MULTIPLE, Global, DefaultTreeConstructor>,
 }
 

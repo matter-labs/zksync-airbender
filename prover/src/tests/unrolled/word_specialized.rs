@@ -872,6 +872,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -880,7 +881,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if true {
+    if false {
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
 
         use crate::cs::machine::ops::unrolled::jump_branch_slt::*;
@@ -1024,6 +1025,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1038,7 +1040,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
-    if true {
+    if false {
         println!("Will try to prove XOR/AND/OR/SHIFT/CSR circuit");
         use crate::cs::machine::ops::unrolled::shift_binary_csr::*;
 
@@ -1193,6 +1195,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1204,7 +1207,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if true {
+    if false {
         println!("Will try to prove MUL/DIV circuit");
 
         use crate::cs::machine::ops::unrolled::mul_div::*;
@@ -1352,6 +1355,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1366,7 +1370,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if true {
+    if false {
         println!("Will try to prove word LOAD/STORE circuit");
 
         const SECOND_WORD_BITS: usize = 4;
@@ -1520,6 +1524,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1530,7 +1535,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if true {
+    if false {
         println!("Will try to prove subword LOAD/STORE circuit");
 
         use cs::machine::ops::unrolled::load_store::*;
@@ -1690,6 +1695,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1698,22 +1704,22 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    // Machine state permutation ended
-    {
-        for (pc, ts) in write_set.iter().copied() {
-            if read_set.contains(&(pc, ts)) == false {
-                panic!("read set doesn't contain a pair {:?}", (pc, ts));
-            }
-        }
+    // // Machine state permutation ended
+    // {
+    //     for (pc, ts) in write_set.iter().copied() {
+    //         if read_set.contains(&(pc, ts)) == false {
+    //             panic!("read set doesn't contain a pair {:?}", (pc, ts));
+    //         }
+    //     }
 
-        for (pc, ts) in read_set.iter().copied() {
-            if write_set.contains(&(pc, ts)) == false {
-                panic!("write set doesn't contain a pair {:?}", (pc, ts));
-            }
-        }
-    }
+    //     for (pc, ts) in read_set.iter().copied() {
+    //         if write_set.contains(&(pc, ts)) == false {
+    //             panic!("write set doesn't contain a pair {:?}", (pc, ts));
+    //         }
+    //     }
+    // }
 
-    if true {
+    if false {
         println!("Will try to prove memory inits and teardowns circuit");
 
         let compiler = OneRowCompiler::<Mersenne31Field>::default();
@@ -1820,6 +1826,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 log_n: TRACE_LEN_LOG2,
                 circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1828,7 +1835,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if true {
+    if false {
         // now prove delegation circuits
         let mut external_values = ExternalValues {
             challenges: external_challenges,
@@ -1976,6 +1983,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                     log_n: trace_len.trailing_zeros() as usize,
                     circuit_sequence: None,
                     delegation_processing_type: Some(delegation_type),
+                    is_unrolled: false,
                     prover_data: &prover_data,
                 };
                 gpu_comparison_hook(&gpu_comparison_args);

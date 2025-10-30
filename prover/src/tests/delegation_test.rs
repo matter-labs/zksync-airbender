@@ -346,6 +346,7 @@ pub fn run_basic_delegation_test_impl(
             log_n: log_n as usize,
             circuit_sequence: Some(0),
             delegation_processing_type: None,
+            is_unrolled: false,
             prover_data: &prover_data,
         };
         gpu_comparison_hook(&gpu_comparison_args);
@@ -450,6 +451,7 @@ pub fn run_basic_delegation_test_impl(
                     log_n: log_n as usize,
                     circuit_sequence: None,
                     delegation_processing_type: Some(delegation_type),
+                    is_unrolled: false,
                     prover_data: &prover_data,
                 };
                 gpu_comparison_hook(&gpu_comparison_args);

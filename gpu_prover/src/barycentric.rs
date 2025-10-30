@@ -354,6 +354,7 @@ mod tests {
             log_n,
             circuit_sequence,
             delegation_processing_type,
+            is_unrolled: _,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
