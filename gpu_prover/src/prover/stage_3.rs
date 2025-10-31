@@ -138,6 +138,7 @@ impl StageThreeOutput {
                 &beta_powers,
                 omega,
                 stage_2_lookup_challenges_accessor.get(),
+                None,
                 &cached_data_clone,
                 &circuit_clone,
                 &aux_boundary_values,

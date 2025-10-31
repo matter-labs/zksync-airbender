@@ -246,6 +246,46 @@ EXTERN __launch_bounds__(128, 8) __global__
   quotient.set(acc_quadratic);
 }
 
+DEVICE_FORCEINLINE void enforce_intermediate_state_lookup(const IntermediateStateLookupLayout &layout,
+                                                          const matrix_getter<bf, ld_modifier::cg> &witness_cols,
+                                                          const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                          const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols,
+                                                          vector_getter<e4, ld_modifier::ca> &alphas,
+                                                          vector_getter<e4, ld_modifier::ca> &helpers,
+                                                          e4 &acc_linear, e4 &acc_quadratic,
+                                                          const e2 &decompression_factor) {
+  e4 alpha = (alphas++).get();
+  const bf execute = memory_cols.get_at_col(layout.execute);
+  acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(execute)));
+
+  const bf pc_low = memory_cols.get_at_col(layout.pc);
+  const bf pc_high = memory_cols.get_at_col(layout.pc + 1);
+  const bf rs1_index = memory_cols.get_at_col(layout.rs1_index);
+  const bf rs2_index = get_witness_or_memory(layout.rs2_index, witness_cols, memory_cols);
+  const bf rd_index = get_witness_or_memory(layout.rd_index, witness_cols, memory_cols);
+  const bf rd_is_zero = witness_cols.get_at_col(layout.rd_is_zero);
+  const bf imm0 = witness_cols.get_at_col(layout.imm);
+  const bf imm1 = witness_cols.get_at_col(layout.imm + 1);
+  const bf funct3 = witness_cols.get_at_col(layout.funct3);
+  const bf circuit_family_extra_mask = get_witness_or_memory(layout.circuit_family_extra_mask, witness_cols, memory_cols);
+
+  e4 acc = (helpers++).get(); // alpha * gamma * decompression_factor_inv
+  acc = e4::add(acc, e4::mul(alpha, pc_low));
+  acc = e4::add(acc, e4::mul((helpers++).get(), pc_high));
+  acc = e4::add(acc, e4::mul((helpers++).get(), rs1_index));
+  acc = e4::add(acc, e4::mul((helpers++).get(), rs2_index));
+  acc = e4::add(acc, e4::mul((helpers++).get(), rd_index));
+  acc = e4::add(acc, e4::mul((helpers++).get(), rd_is_zero));
+  acc = e4::add(acc, e4::mul((helpers++).get(), imm0));
+  acc = e4::add(acc, e4::mul((helpers++).get(), imm1));
+  acc = e4::add(acc, e4::mul((helpers++).get(), funct3));
+  acc = e4::add(acc, e4::mul((helpers++).get(), circuit_family_extra_mask));
+
+  const e4 e4_arg = stage_2_e4_cols.get_at_col(layout.intermediate_poly);
+  acc = e4::mul(acc, e4_arg);
+  acc_quadratic = e4::add(acc_quadratic, acc);
+}
+
 // Assumes pred is a boolean (0 or 1) and enforces (pred - 1) * val == 0.
 DEVICE_FORCEINLINE void enforce_val_zero_if_pred_zero(const bf predicate, const bf val, vector_getter<e4, ld_modifier::ca> &alphas, e4 &acc_quadratic,
                                                       e4 &acc_linear) {
@@ -399,6 +439,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout range_check_16_expressions,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout timestamp_range_check_expressions,
+    __grid_constant__ const IntermediateStateLookupLayout intermediate_state_lookup_layout,
     __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram,
     __grid_constant__ const NonDelegatedWidth3LookupsLayout width_3_lookups_layout,
     __grid_constant__ const MultiplicitiesLayout range_check_16_multiplicities_layout,
@@ -499,6 +540,11 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
   enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers,
                                   acc_linear, acc_quadratic);
+
+  if (intermediate_state_lookup_layout.has_decoder) {
+    enforce_intermediate_state_lookup(intermediate_state_lookup_layout, witness_cols, memory_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                      acc_quadratic, decompression_factor);
+  }
 
 //   // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
 //   // I could use enforce_range_check_expressions_with_constant_terms here too.

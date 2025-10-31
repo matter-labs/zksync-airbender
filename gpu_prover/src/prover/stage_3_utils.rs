@@ -2,9 +2,11 @@ use super::arg_utils::*;
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use cs::definitions::{
     BoundaryConstraintLocation, LookupExpression, TableIndex, COMMON_TABLE_WIDTH,
-    NUM_LOOKUP_ARGUMENT_KEY_PARTS,
+    EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES, NUM_LOOKUP_ARGUMENT_KEY_PARTS,
 };
-use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};
+use cs::one_row_compiler::{
+    ColumnAddress, CompiledCircuitArtifact, IntermediateStatePermutationVariables,
+};
 use field::{Field, FieldExtension, PrimeField};
 use prover::definitions::AuxArgumentsBoundaryValues;
 use std::alloc::Allocator;
@@ -14,6 +16,14 @@ type E2 = Ext2Field;
 type E4 = Ext4Field;
 
 pub const BETA_POWERS_COUNT: usize = 6;
+
+fn stash_witness_or_memory_column_address(address: &ColumnAddress) -> u16 {
+    match address {
+        ColumnAddress::WitnessSubtree(col) => *col as u16,
+        ColumnAddress::MemorySubtree(col) => (*col as u16) | ColTypeFlags::MEMORY,
+        _ => panic!("unexpected ColumnAddress variant"),
+    }
+}
 
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -76,14 +86,6 @@ impl FlattenedGenericConstraintsMetadata {
             *explicit_coeff_idx += 1;
         }
         *flat_term_idx += 1;
-    }
-
-    fn stash_column_address(address: &ColumnAddress) -> u16 {
-        match address {
-            ColumnAddress::WitnessSubtree(col) => *col as u16,
-            ColumnAddress::MemorySubtree(col) => (*col as u16) | ColTypeFlags::MEMORY,
-            _ => panic!("unexpected ColumnAddress variant"),
-        }
     }
 
     fn compute_every_row_zerofier(decompression_factor_squared: E2) -> E2 {
@@ -157,9 +159,9 @@ impl FlattenedGenericConstraintsMetadata {
                     &mut flat_term_idx,
                     &mut explicit_coeff_idx,
                 );
-                col_idxs[flat_col_idx] = Self::stash_column_address(a);
+                col_idxs[flat_col_idx] = stash_witness_or_memory_column_address(a);
                 flat_col_idx += 1;
-                col_idxs[flat_col_idx] = Self::stash_column_address(b);
+                col_idxs[flat_col_idx] = stash_witness_or_memory_column_address(b);
                 flat_col_idx += 1;
             }
             let num_quadratic_terms = u8::try_from(num_quadratic_terms).unwrap();
@@ -173,7 +175,7 @@ impl FlattenedGenericConstraintsMetadata {
                     &mut flat_term_idx,
                     &mut explicit_coeff_idx,
                 );
-                col_idxs[flat_col_idx] = Self::stash_column_address(a);
+                col_idxs[flat_col_idx] = stash_witness_or_memory_column_address(a);
                 flat_col_idx += 1;
             }
             let num_linear_terms = u8::try_from(num_linear_terms).unwrap();
@@ -193,7 +195,7 @@ impl FlattenedGenericConstraintsMetadata {
                     &mut flat_term_idx,
                     &mut explicit_coeff_idx,
                 );
-                col_idxs[flat_col_idx] = Self::stash_column_address(a);
+                col_idxs[flat_col_idx] = stash_witness_or_memory_column_address(a);
                 flat_col_idx += 1;
             }
             let num_linear_terms = u8::try_from(num_linear_terms).unwrap();
@@ -433,7 +435,7 @@ impl<
         lookup_challenges: &[E4],
         lookup_gamma: E4,
         alphas: &[E4],
-        alphas_offset: &mut usize,
+        alpha_offset: &mut usize,
         helpers: &mut Vec<E4, impl Allocator>,
         decompression_factor_inv: E2,
         constants_times_challenges: &mut ConstantsTimesChallenges,
@@ -445,8 +447,8 @@ impl<
             .append(&mut (&lookup_challenges[0..(NUM_LOOKUP_ARGUMENT_KEY_PARTS - 2)]).to_vec());
         assert_eq!(self.helpers_offset as usize, helpers.len());
         for lookup_set in circuit.witness_layout.width_3_lookups.iter() {
-            let alpha = alphas[*alphas_offset];
-            *alphas_offset += 1;
+            let alpha = alphas[*alpha_offset];
+            *alpha_offset += 1;
             match lookup_set.table_index {
                 TableIndex::Constant(table_type) => {
                     let id = BF::from_u64_unchecked(table_type.to_table_id() as u64);
@@ -619,6 +621,122 @@ impl Default for MultiplicitiesLayout {
             dst_cols_start: 0,
             setup_cols_start: 0,
             num_dst_cols: 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[repr(C)]
+pub(super) struct IntermediateStateLookupLayout {
+    pub execute: u32,
+    pub pc: u32,
+    // pub timestamp : u32, // not used for lookup
+    pub rs1_index: u32,
+    pub rs2_index: u32,
+    pub rd_index: u32,
+    // pub decoder_witness_is_in_memory: bool, // should be false
+    pub rd_is_zero: u32,
+    pub imm: u32,
+    pub funct3: u32,
+    // pub funct7: u32, // should be empty
+    // pub circuit_family: u32, // should be empty
+    pub circuit_family_extra_mask: u32,
+    pub intermediate_poly: u32,
+    pub has_decoder: bool,
+}
+
+impl IntermediateStateLookupLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let intermediate_state_layout = circuit
+            .memory_layout
+            .intermediate_state_layout
+            .as_ref()
+            .unwrap();
+        let IntermediateStatePermutationVariables {
+            execute,
+            pc,
+            timestamp: _,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            decoder_witness_is_in_memory,
+            rd_is_zero,
+            imm,
+            funct3,
+            funct7,
+            circuit_family,
+            circuit_family_extra_mask,
+        } = *intermediate_state_layout;
+        assert_eq!(decoder_witness_is_in_memory, false);
+        assert_eq!(funct7.num_elements(), 0);
+        assert_eq!(circuit_family.num_elements(), 0);
+        let intermediate_poly = translate_e4_offset(
+            circuit
+                .stage_2_layout
+                .intermediate_poly_for_decoder_accesses
+                .start(),
+        );
+        Self {
+            execute: execute.start() as u32,
+            pc: pc.start() as u32,
+            rs1_index: rs1_index.start() as u32,
+            rs2_index: stash_witness_or_memory_column_address(&rs2_index) as u32,
+            rd_index: stash_witness_or_memory_column_address(&rd_index) as u32,
+            rd_is_zero: rd_is_zero.start() as u32,
+            imm: imm.start() as u32,
+            funct3: funct3.start() as u32,
+            circuit_family_extra_mask: stash_witness_or_memory_column_address(
+                &circuit_family_extra_mask,
+            ) as u32,
+            intermediate_poly: intermediate_poly as u32,
+            has_decoder: true,
+        }
+    }
+
+    pub fn prepare_async_challenge_data(
+        &self,
+        challenges: &DecoderTableChallenges,
+        alphas: &[E4],
+        alpha_offset: &mut usize,
+        helpers: &mut Vec<E4, impl Allocator>,
+        decompression_factor_inv: E2,
+    ) {
+        assert!(self.has_decoder);
+        let alpha = alphas[*alpha_offset];
+        *alpha_offset = *alpha_offset + 1;
+        helpers.push(
+            *alpha
+                .clone()
+                .mul_assign(&challenges.gamma)
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+        for j in 0..EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES {
+            helpers.push(
+                *alpha
+                    .clone()
+                    .mul_assign(&challenges.linearization_challenges[j]),
+            );
+        }
+    }
+}
+
+impl Default for IntermediateStateLookupLayout {
+    fn default() -> Self {
+        Self {
+            execute: 0,
+            pc: 0,
+            rs1_index: 0,
+            rs2_index: 0,
+            rd_index: 0,
+            rd_is_zero: 0,
+            imm: 0,
+            funct3: 0,
+            circuit_family_extra_mask: 0,
+            intermediate_poly: 0,
+            has_decoder: false,
         }
     }
 }

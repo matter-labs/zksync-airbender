@@ -8,7 +8,8 @@ use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::utils::WARP_SIZE;
 use cs::definitions::{
     DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH,
-    DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW, NUM_LOOKUP_ARGUMENT_KEY_PARTS,
+    DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW,
+    EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH, NUM_LOOKUP_ARGUMENT_KEY_PARTS,
 };
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
@@ -90,6 +91,7 @@ cuda_kernel!(
     range_check_16_layout: RangeCheck16ArgsLayout,
     range_check_16_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
     timestamp_range_check_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
+    intermediate_state_lookup_layout: IntermediateStateLookupLayout,
     expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
     width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
@@ -123,6 +125,7 @@ pub struct StaticMetadata {
     range_check_16_layout: RangeCheck16ArgsLayout,
     range_check_16_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
     timestamp_range_check_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
+    intermediate_state_lookup_layout: IntermediateStateLookupLayout,
     expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
     generic_lookup_multiplicities_layout: MultiplicitiesLayout,
     state_linkage_constraints: StateLinkageConstraints,
@@ -140,6 +143,7 @@ pub struct StaticMetadata {
     delegation_request_metadata: DelegationRequestMetadata,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
     num_helpers_expected: usize,
+    is_unrolled: bool,
 }
 
 impl StaticMetadata {
@@ -255,7 +259,10 @@ impl StaticMetadata {
             .stage_2_layout
             .intermediate_polys_for_generic_lookup
             .num_elements();
-        assert_eq!(num_generic_multiplicities_cols > 0, num_generic_lookup_args > 0);
+        assert_eq!(
+            num_generic_multiplicities_cols > 0,
+            num_generic_lookup_args > 0
+        );
         if !is_unrolled {
             assert!(num_generic_lookup_args > 0);
         }
@@ -401,7 +408,18 @@ impl StaticMetadata {
                 num_helpers_expected += 2;
             }
         }
+        // decoder table lookups
+        let intermediate_state_lookup_layout = if is_unrolled {
+            num_helpers_expected += EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH;
+            IntermediateStateLookupLayout::new(circuit, &translate_e4_offset)
+        } else {
+            assert!(circuit.memory_layout.intermediate_state_layout.is_none());
+            IntermediateStateLookupLayout::default()
+        };
         // timestamp range check expressions for shuffle ram
+        if is_unrolled {
+            assert_eq!(expressions_for_shuffle_ram_layout.num_expression_pairs, 0);
+        }
         for _ in 0..expressions_for_shuffle_ram_layout.num_expression_pairs {
             num_helpers_expected += 2;
         }
@@ -613,6 +631,7 @@ impl StaticMetadata {
             range_check_16_layout,
             range_check_16_expressions_layout,
             timestamp_range_check_expressions_layout,
+            intermediate_state_lookup_layout,
             expressions_for_shuffle_ram_layout,
             generic_lookup_multiplicities_layout,
             state_linkage_constraints,
@@ -630,6 +649,7 @@ impl StaticMetadata {
             delegation_request_metadata,
             register_and_indirect_accesses,
             num_helpers_expected,
+            is_unrolled,
         }
     }
 }
@@ -640,6 +660,7 @@ pub(super) fn prepare_async_challenge_data(
     h_beta_powers: &[E4],
     omega: E2,
     lookup_challenges: &LookupChallenges,
+    decoder_table_challenges: Option<DecoderTableChallenges>,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
     aux_arguments_boundary_values: &[AuxArgumentsBoundaryValues],
@@ -656,6 +677,7 @@ pub(super) fn prepare_async_challenge_data(
         non_delegated_width_3_lookups_layout,
         range_check_16_expressions_layout,
         timestamp_range_check_expressions_layout,
+        intermediate_state_lookup_layout,
         expressions_for_shuffle_ram_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
@@ -669,6 +691,7 @@ pub(super) fn prepare_async_challenge_data(
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected,
+        is_unrolled,
         ..
     } = static_metadata;
 
@@ -683,6 +706,14 @@ pub(super) fn prepare_async_challenge_data(
         range_check_16_width_1_lookups_access_via_expressions,
         ..
     } = cached_data.clone();
+
+    let decoder_table_challenges = if *is_unrolled {
+        decoder_table_challenges.unwrap()
+    } else {
+        assert!(decoder_table_challenges.is_none());
+        DecoderTableChallenges::default()
+    };
+    let intermediate_state_layout = &circuit.memory_layout.intermediate_state_layout;
 
     // We keep references to host AND device copies of challenge powers,
     // because host copies come in handy to precompute challenges_times_powers_sum
@@ -886,6 +917,18 @@ pub(super) fn prepare_async_challenge_data(
             helpers,
             constants_times_challenges,
         );
+    }
+    // decoder lookups
+    if circuit.memory_layout.intermediate_state_layout.is_some() {
+        intermediate_state_lookup_layout.prepare_async_challenge_data(
+            &decoder_table_challenges,
+            &h_alphas_for_hardcoded_every_row_except_last,
+            &mut alpha_offset,
+            helpers,
+            decompression_factor_inv,
+        );
+    } else {
+        assert!(!intermediate_state_lookup_layout.has_decoder);
     }
     // timestamp range check expressions for shuffle ram
     let num_pairs = expressions_for_shuffle_ram_layout.num_expression_pairs as usize;
@@ -1247,6 +1290,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         range_check_16_layout,
         range_check_16_expressions_layout,
         timestamp_range_check_expressions_layout,
+        intermediate_state_lookup_layout,
         expressions_for_shuffle_ram_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
@@ -1264,6 +1308,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected: _,
+        is_unrolled: _,
     } = static_metadata;
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
@@ -1369,6 +1414,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         range_check_16_layout,
         range_check_16_expressions_layout,
         timestamp_range_check_expressions_layout,
+        intermediate_state_lookup_layout,
         expressions_for_shuffle_ram_layout,
         non_delegated_width_3_lookups_layout,
         range_check_16_multiplicities_layout,
@@ -1508,12 +1554,22 @@ mod tests {
                 .lookup_argument_linearization_challenges,
             prover_data.stage_2_result.lookup_argument_gamma,
         );
+        let decoder_table_challenges = if *is_unrolled {
+            Some(DecoderTableChallenges::new(
+                &prover_data
+                    .stage_2_result
+                    .decoder_table_linearization_challenges,
+                prover_data.stage_2_result.decoder_table_gamma,
+            ))
+        } else {
+            None
+        };
         let static_metadata = StaticMetadata::new(
             tau,
             twiddles.omega_inv,
             &cached_data,
             &circuit,
-            *is_unrolled, 
+            *is_unrolled,
             log_n as u32,
         );
         // Allocate GPU memory
@@ -1541,6 +1597,7 @@ mod tests {
             &h_beta_powers,
             twiddles.omega,
             &lookup_challenges,
+            decoder_table_challenges,
             &cached_data,
             &circuit,
             aux_boundary_values,

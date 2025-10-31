@@ -466,26 +466,26 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             &memory_timestamp_high_from_circuit_idx,
                         );
 
-                        // if compiled_circuit
-                        //     .memory_layout
-                        //     .intermediate_state_layout.is_some() {
+                        if compiled_circuit
+                            .memory_layout
+                            .intermediate_state_layout.is_some() {
 
-                        //     evaluate_decoder_table_access(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &stage_2_output.decoder_table_linearization_challenges,
-                        //         &stage_2_output.decoder_table_gamma,
-                        //     );
-                        // }
+                            evaluate_decoder_table_access(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &stage_2_output.decoder_table_linearization_challenges,
+                                &stage_2_output.decoder_table_gamma,
+                            );
+                        }
 
                         // // width-3 generic lookup
                         // evaluate_width_3_lookups(
