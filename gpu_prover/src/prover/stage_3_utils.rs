@@ -323,6 +323,7 @@ impl<
     pub fn new<F: Fn(usize) -> usize>(
         circuit: &CompiledCircuitArtifact<BF>,
         helpers_offset: usize,
+        is_unrolled: bool,
         translate_e4_offset: &F,
     ) -> Self {
         assert_eq!(COMMON_TABLE_WIDTH, 3);
@@ -388,7 +389,9 @@ impl<
                             lookup_is_empty = false;
                             num_helpers_used += 1;
                         }
-                        assert_eq!(a.constant_term, BF::ZERO);
+                        if !is_unrolled {
+                            assert_eq!(a.constant_term, BF::ZERO);
+                        }
                         assert!(num_terms <= MAX_TERMS_PER_EXPRESSION);
                         num_terms_per_expression[val_idx] = u8::try_from(num_terms).unwrap();
                         for (coeff, column_address) in a.linear_terms.iter() {
@@ -449,6 +452,7 @@ impl<
         for lookup_set in circuit.witness_layout.width_3_lookups.iter() {
             let alpha = alphas[*alpha_offset];
             *alpha_offset += 1;
+            let internal_constants_helper_idx = helpers.len();
             match lookup_set.table_index {
                 TableIndex::Constant(table_type) => {
                     let id = BF::from_u64_unchecked(table_type.to_table_id() as u64);
@@ -481,6 +485,13 @@ impl<
                         if num_terms > 0 {
                             helpers.push(*alpha.clone().mul_assign(&val_challenge));
                         }
+                        helpers[internal_constants_helper_idx].add_assign(
+                            alpha
+                                .clone()
+                                .mul_assign(&val_challenge)
+                                .mul_assign_by_base(&a.constant_term)
+                                .mul_assign_by_base(&decompression_factor_inv),
+                        );
                     }
                 };
             }
@@ -588,26 +599,28 @@ impl MultiplicitiesLayout {
     pub fn prepare_async_challenge_data(
         &self,
         entry_width: usize,
-        lookup_challenges: &LookupChallenges,
+        gamma: E4,
+        linearization_challenges: &[E4],
         alphas: &[E4],
         alpha_offset: &mut usize,
         helpers: &mut Vec<E4, impl Allocator>,
         decompression_factor_inv: E2,
     ) {
+        assert_eq!(entry_width - 1, linearization_challenges.len());
         for _ in 0..self.num_dst_cols as usize {
             let alpha = alphas[*alpha_offset];
             *alpha_offset = *alpha_offset + 1;
             helpers.push(
                 *alpha
                     .clone()
-                    .mul_assign(&lookup_challenges.gamma)
+                    .mul_assign(&gamma)
                     .mul_assign_by_base(&decompression_factor_inv),
             );
             for j in 0..entry_width - 1 {
                 helpers.push(
                     *alpha
                         .clone()
-                        .mul_assign(&lookup_challenges.linearization_challenges[j]),
+                        .mul_assign(&linearization_challenges[j]),
                 );
             }
         }

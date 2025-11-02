@@ -487,106 +487,106 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             );
                         }
 
-                        // // width-3 generic lookup
-                        // evaluate_width_3_lookups(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &lookup_argument_linearization_challenges,
-                        //     &lookup_argument_linearization_challenges_without_table_id,
-                        //     &lookup_argument_gamma,
-                        // );
+                        // width-3 generic lookup
+                        evaluate_width_3_lookups(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &lookup_argument_linearization_challenges,
+                            &lookup_argument_linearization_challenges_without_table_id,
+                            &lookup_argument_gamma,
+                        );
 
-                        // // now multiplicities
-                        // if compiled_circuit.stage_2_layout
-                        //     .intermediate_poly_for_range_check_16_multiplicity.num_elements() > 0 {
-                        //         evaluate_width_1_range_check_multiplicity(
-                        //             compiled_circuit,
-                        //             witness_trace_view_row,
-                        //             memory_trace_view_row,
-                        //             setup_trace_view_row,
-                        //             stage_2_trace_view_row,
-                        //             &tau_in_domain,
-                        //             &tau_in_domain_by_half,
-                        //             absolute_row_idx,
-                        //             is_last_row,
-                        //             &mut quotient_term,
-                        //             &mut other_challenges_ptr,
-                        //             &lookup_argument_gamma,
-                        //             compiled_circuit.stage_2_layout
-                        //                 .intermediate_poly_for_range_check_16_multiplicity
-                        //                 .start(),
-                        //                 range_check_16_multiplicities_src,
-                        //                 range_check_16_setup_column,
-                        //         );
-                        // }
+                        // now multiplicities
+                        if compiled_circuit.stage_2_layout
+                            .intermediate_poly_for_range_check_16_multiplicity.num_elements() > 0 {
+                                evaluate_width_1_range_check_multiplicity(
+                                    compiled_circuit,
+                                    witness_trace_view_row,
+                                    memory_trace_view_row,
+                                    setup_trace_view_row,
+                                    stage_2_trace_view_row,
+                                    &tau_in_domain,
+                                    &tau_in_domain_by_half,
+                                    absolute_row_idx,
+                                    is_last_row,
+                                    &mut quotient_term,
+                                    &mut other_challenges_ptr,
+                                    &lookup_argument_gamma,
+                                    compiled_circuit.stage_2_layout
+                                        .intermediate_poly_for_range_check_16_multiplicity
+                                        .start(),
+                                        range_check_16_multiplicities_src,
+                                        range_check_16_setup_column,
+                                );
+                        }
 
-                        // if compiled_circuit.stage_2_layout
-                        //     .intermediate_poly_for_timestamp_range_check_multiplicity.num_elements() > 0 {
-                        //     evaluate_width_1_range_check_multiplicity(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &lookup_argument_gamma,
-                        //         compiled_circuit.stage_2_layout
-                        //             .intermediate_poly_for_timestamp_range_check_multiplicity
-                        //             .start(),
-                        //         timestamp_range_check_multiplicities_src,
-                        //         timestamp_range_check_setup_column,
-                        //     );
-                        // }
+                        if compiled_circuit.stage_2_layout
+                            .intermediate_poly_for_timestamp_range_check_multiplicity.num_elements() > 0 {
+                            evaluate_width_1_range_check_multiplicity(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &lookup_argument_gamma,
+                                compiled_circuit.stage_2_layout
+                                    .intermediate_poly_for_timestamp_range_check_multiplicity
+                                    .start(),
+                                timestamp_range_check_multiplicities_src,
+                                timestamp_range_check_setup_column,
+                            );
+                        }
 
-                        // if compiled_circuit.witness_layout
-                        //     .multiplicities_columns_for_decoder_in_executor_families.num_elements() > 0 {
-                        //         evaluate_decoder_lookup_multiplicity(
-                        //             compiled_circuit,
-                        //             witness_trace_view_row,
-                        //             memory_trace_view_row,
-                        //             setup_trace_view_row,
-                        //             stage_2_trace_view_row,
-                        //             &tau_in_domain,
-                        //             &tau_in_domain_by_half,
-                        //             absolute_row_idx,
-                        //             is_last_row,
-                        //             &mut quotient_term,
-                        //             &mut other_challenges_ptr,
-                        //             &stage_2_output.decoder_table_linearization_challenges,
-                        //             &stage_2_output.decoder_table_gamma,
-                        //         );
-                        // }
+                        if compiled_circuit.witness_layout
+                            .multiplicities_columns_for_decoder_in_executor_families.num_elements() > 0 {
+                                evaluate_decoder_lookup_multiplicity(
+                                    compiled_circuit,
+                                    witness_trace_view_row,
+                                    memory_trace_view_row,
+                                    setup_trace_view_row,
+                                    stage_2_trace_view_row,
+                                    &tau_in_domain,
+                                    &tau_in_domain_by_half,
+                                    absolute_row_idx,
+                                    is_last_row,
+                                    &mut quotient_term,
+                                    &mut other_challenges_ptr,
+                                    &stage_2_output.decoder_table_linearization_challenges,
+                                    &stage_2_output.decoder_table_gamma,
+                                );
+                        }
 
-                        // // generic lookup
-                        // evaluate_width_3_lookups_multiplicity(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &lookup_argument_linearization_challenges,
-                        //     &lookup_argument_gamma,
-                        // );
+                        // generic lookup
+                        evaluate_width_3_lookups_multiplicity(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &lookup_argument_linearization_challenges,
+                            &lookup_argument_gamma,
+                        );
 
                         // // write timestamps come from cycle itself, and are used for multiple things below
                         // let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {

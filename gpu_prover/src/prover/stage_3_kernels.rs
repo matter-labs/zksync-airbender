@@ -96,6 +96,7 @@ cuda_kernel!(
     width_3_lookups_layout: NonDelegatedWidth3LookupsLayout,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
     timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
+    decoder_lookup_multiplicities_layout: MultiplicitiesLayout,
     generic_lookup_multiplicities_layout: MultiplicitiesLayout,
     state_linkage_constraints: StateLinkageConstraints,
     boundary_constraints: BoundaryConstraints,
@@ -127,6 +128,7 @@ pub struct StaticMetadata {
     timestamp_range_check_expressions_layout: TEMPORARYFlattenedLookupExpressionsLayout,
     intermediate_state_lookup_layout: IntermediateStateLookupLayout,
     expressions_for_shuffle_ram_layout: FlattenedLookupExpressionsForShuffleRamLayout,
+    decoder_lookup_multiplicities_layout: MultiplicitiesLayout,
     generic_lookup_multiplicities_layout: MultiplicitiesLayout,
     state_linkage_constraints: StateLinkageConstraints,
     boundary_constraints: BoundaryConstraints,
@@ -239,6 +241,10 @@ impl StaticMetadata {
                 .intermediate_poly_for_timestamp_range_check_multiplicity
                 .num_elements(),
         );
+        let decoder_multiplicities_src = &circuit
+            .witness_layout
+            .multiplicities_columns_for_decoder_in_executor_families;
+        let num_decoder_multiplicities_cols = decoder_multiplicities_src.num_elements();
         let num_generic_multiplicities_cols = circuit
             .setup_layout
             .generic_lookup_setup_columns
@@ -409,13 +415,18 @@ impl StaticMetadata {
             }
         }
         // decoder table lookups
-        let intermediate_state_lookup_layout = if is_unrolled {
-            num_helpers_expected += EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH;
-            IntermediateStateLookupLayout::new(circuit, &translate_e4_offset)
-        } else {
+        if !is_unrolled {
+            assert_eq!(num_decoder_multiplicities_cols, 0);
             assert!(circuit.memory_layout.intermediate_state_layout.is_none());
-            IntermediateStateLookupLayout::default()
-        };
+        }
+        let intermediate_state_lookup_layout =
+            if circuit.memory_layout.intermediate_state_layout.is_some() {
+                assert_eq!(num_decoder_multiplicities_cols, 1);
+                num_helpers_expected += EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH;
+                IntermediateStateLookupLayout::new(circuit, &translate_e4_offset)
+            } else {
+                IntermediateStateLookupLayout::default()
+            };
         // timestamp range check expressions for shuffle ram
         if is_unrolled {
             assert_eq!(expressions_for_shuffle_ram_layout.num_expression_pairs, 0);
@@ -428,6 +439,7 @@ impl StaticMetadata {
                 let delegated_layout = DelegatedWidth3LookupsLayout::new(
                     circuit,
                     num_helpers_expected,
+                    is_unrolled,
                     &translate_e4_offset,
                 );
                 let non_delegated_placeholder = NonDelegatedWidth3LookupsLayout::new_placeholder(
@@ -443,6 +455,7 @@ impl StaticMetadata {
                     NonDelegatedWidth3LookupsLayout::new(
                         circuit,
                         num_helpers_expected,
+                        is_unrolled,
                         &translate_e4_offset,
                     )
                 } else {
@@ -478,6 +491,29 @@ impl StaticMetadata {
             };
         num_helpers_expected += num_timestamp_range_check_multiplicities_cols;
 
+        let decoder_lookup_multiplicities_layout = if num_decoder_multiplicities_cols > 0 {
+            let src_cols_start = decoder_multiplicities_src.start() as u32;
+            let dst_cols = &circuit
+                .stage_2_layout
+                .intermediate_polys_for_decoder_multiplicities;
+            assert_eq!(num_decoder_multiplicities_cols, dst_cols.num_elements());
+            let dst_cols_start = translate_e4_offset(dst_cols.start()) as u32;
+            let setup_cols_start = circuit
+                .setup_layout
+                .preprocessed_decoder_setup_columns
+                .start() as u32;
+            MultiplicitiesLayout {
+                src_cols_start,
+                dst_cols_start,
+                setup_cols_start,
+                num_dst_cols: num_decoder_multiplicities_cols as u32,
+            }
+        } else {
+            MultiplicitiesLayout::default()
+        };
+        num_helpers_expected +=
+            num_decoder_multiplicities_cols * EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH;
+
         let generic_lookup_multiplicities_layout = if num_generic_multiplicities_cols > 0 {
             MultiplicitiesLayout {
                 src_cols_start: generic_lookup_multiplicities_src_start as u32,
@@ -496,11 +532,15 @@ impl StaticMetadata {
         if process_delegations {
             num_helpers_expected += 1 + delegation_challenges.linearization_challenges.len();
         }
-        let raw_memory_args_start = circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .start();
-        let memory_args_start = translate_e4_offset(raw_memory_args_start);
+        let memory_args_start = if num_memory_args > 0 {
+            let raw_memory_args_start = circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument
+                .start();
+            translate_e4_offset(raw_memory_args_start)
+        } else {
+            0
+        };
         // lazy init padding constraints (limbs are zero if "final borrow" is zero)
         // go before shuffle ram accesses, but don't use any helpers.
         let shuffle_ram_accesses = if process_shuffle_ram_init {
@@ -544,9 +584,13 @@ impl StaticMetadata {
                 num_helpers_expected += 7;
             }
         }
-        let (_, memory_grand_product_col) = get_grand_product_src_dst_cols(circuit, false);
+        let (_, memory_grand_product_col) = get_grand_product_src_dst_cols(circuit, is_unrolled);
         // Prepare static layout data for constraints on all rows except the last two
-        let state_linkage_constraints = StateLinkageConstraints::new(circuit);
+        let state_linkage_constraints = if !is_unrolled {
+            StateLinkageConstraints::new(circuit)
+        } else {
+            StateLinkageConstraints::default()
+        };
         // Layout data for boundary constraints (first row and second-to-last row)
         let boundary_constraints = BoundaryConstraints::new(
             circuit,
@@ -633,6 +677,7 @@ impl StaticMetadata {
             timestamp_range_check_expressions_layout,
             intermediate_state_lookup_layout,
             expressions_for_shuffle_ram_layout,
+            decoder_lookup_multiplicities_layout,
             generic_lookup_multiplicities_layout,
             state_linkage_constraints,
             boundary_constraints,
@@ -679,6 +724,7 @@ pub(super) fn prepare_async_challenge_data(
         timestamp_range_check_expressions_layout,
         intermediate_state_lookup_layout,
         expressions_for_shuffle_ram_layout,
+        decoder_lookup_multiplicities_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
         boundary_constraints,
@@ -982,7 +1028,8 @@ pub(super) fn prepare_async_challenge_data(
     };
     range_check_16_multiplicities_layout.prepare_async_challenge_data(
         1,
-        &lookup_challenges,
+        lookup_challenges.gamma,
+        &[],
         &h_alphas_for_hardcoded_every_row_except_last,
         &mut alpha_offset,
         helpers,
@@ -990,7 +1037,17 @@ pub(super) fn prepare_async_challenge_data(
     );
     timestamp_range_check_multiplicities_layout.prepare_async_challenge_data(
         1,
-        &lookup_challenges,
+        lookup_challenges.gamma,
+        &[],
+        &h_alphas_for_hardcoded_every_row_except_last,
+        &mut alpha_offset,
+        helpers,
+        decompression_factor_inv,
+    );
+    decoder_lookup_multiplicities_layout.prepare_async_challenge_data(
+        EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH,
+        decoder_table_challenges.gamma,
+        &decoder_table_challenges.linearization_challenges,
         &h_alphas_for_hardcoded_every_row_except_last,
         &mut alpha_offset,
         helpers,
@@ -998,164 +1055,165 @@ pub(super) fn prepare_async_challenge_data(
     );
     generic_lookup_multiplicities_layout.prepare_async_challenge_data(
         NUM_LOOKUP_ARGUMENT_KEY_PARTS,
-        &lookup_challenges,
+        lookup_challenges.gamma,
+        &lookup_challenges.linearization_challenges,
         &h_alphas_for_hardcoded_every_row_except_last,
         &mut alpha_offset,
         helpers,
         decompression_factor_inv,
     );
-    if handle_delegation_requests {
-        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-        alpha_offset += 1;
-        let mut timestamp_low_constant = delegation_challenges.linearization_challenges
-            [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW];
-        timestamp_low_constant.mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
-        let mut timestamp_high_constant = delegation_challenges.linearization_challenges
-            [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH];
-        timestamp_high_constant.mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
-        helpers.push(
-            *delegation_challenges
-                .gamma
-                .clone()
-                .add_assign(&timestamp_low_constant)
-                .add_assign(&timestamp_high_constant)
-                .mul_assign(&alpha)
-                .mul_assign_by_base(&decompression_factor_inv),
-        );
-        for challenge in delegation_challenges.linearization_challenges.iter() {
-            helpers.push(*alpha.clone().mul_assign(&challenge));
-        }
-    }
-    if process_delegations {
-        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-        alpha_offset += 1;
-        helpers.push(
-            *delegation_challenges
-                .gamma
-                .clone()
-                .add_assign_base(&delegation_processing_metadata.delegation_type)
-                .mul_assign(&alpha)
-                .mul_assign_by_base(&decompression_factor_inv),
-        );
-        for challenge in delegation_challenges.linearization_challenges.iter() {
-            helpers.push(*alpha.clone().mul_assign(&challenge));
-        }
-    }
-    // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
-    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-        alpha_offset += 6;
-    }
-    for i in 0..shuffle_ram_accesses.num_accesses as usize {
-        let access = &shuffle_ram_accesses.accesses[i];
-        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-        alpha_offset += 1;
-        let mc = &memory_challenges;
-        let mut numerator_constant = mc.gamma;
-        if access.is_register_only {
-            numerator_constant.add_assign_base(&BF::ONE);
-        }
-        let mut denom_constant = numerator_constant;
-        let write_timestamp_low_constant = *mc
-            .timestamp_low_challenge
-            .clone()
-            .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
-        let write_timestamp_high_constant = *mc
-            .timestamp_high_challenge
-            .clone()
-            .mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
-        numerator_constant
-            .add_assign(&write_timestamp_low_constant)
-            .add_assign(&write_timestamp_high_constant);
-        numerator_constant.mul_assign(&alpha);
-        if i == 0 {
-            constants_times_challenges
-                .every_row_except_last
-                .sub_assign(&numerator_constant);
-        }
-        helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-        if !access.is_register_only {
-            helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-        }
-        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-        helpers.push(
-            *denom_constant
-                .mul_assign(&alpha)
-                .mul_assign_by_base(&decompression_factor_inv),
-        );
-        if i > 0 {
-            helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
-        }
-    }
-    // for lazy init memory accumulator contributions
-    for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
-        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-        alpha_offset += 1;
-        let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
-        let mc = &memory_challenges;
-        helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-        helpers.push(
-            *alpha_times_gamma
-                .clone()
-                .mul_assign_by_base(&decompression_factor_inv),
-        );
-    }
-    let mut flat_indirect_idx = 0;
-    for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
-        let register_access = &register_and_indirect_accesses.register_accesses[i];
-        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-        alpha_offset += 1;
-        let mc = &memory_challenges;
-        let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
-        constant.mul_assign(&alpha);
-        if i == 0 {
-            constants_times_challenges
-                .every_row_except_last
-                .sub_assign(&constant);
-        }
-        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-        helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
-        for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
-            let indirect_access =
-                &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-            flat_indirect_idx += 1;
-            let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-            alpha_offset += 1;
-            // sanity checks based on our known circuit geometries
-            if indirect_access.has_write {
-                if j == 0 {
-                    assert_eq!(j == 0, indirect_access.offset_constant == 0);
-                }
-            } else {
-                assert_eq!(j == 0, indirect_access.offset_constant == 0);
-            }
-            let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
-            let mut constant = *mc
-                .address_low_challenge
-                .clone()
-                .mul_assign_by_base(&offset)
-                .add_assign(&mc.gamma)
-                .mul_assign(&alpha);
-            helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-            helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-            helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-            helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-            helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-            helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-            helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
-        }
-    }
-    alpha_offset += 1;
+    // if handle_delegation_requests {
+    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //     alpha_offset += 1;
+    //     let mut timestamp_low_constant = delegation_challenges.linearization_challenges
+    //         [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW];
+    //     timestamp_low_constant.mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
+    //     let mut timestamp_high_constant = delegation_challenges.linearization_challenges
+    //         [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH];
+    //     timestamp_high_constant.mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
+    //     helpers.push(
+    //         *delegation_challenges
+    //             .gamma
+    //             .clone()
+    //             .add_assign(&timestamp_low_constant)
+    //             .add_assign(&timestamp_high_constant)
+    //             .mul_assign(&alpha)
+    //             .mul_assign_by_base(&decompression_factor_inv),
+    //     );
+    //     for challenge in delegation_challenges.linearization_challenges.iter() {
+    //         helpers.push(*alpha.clone().mul_assign(&challenge));
+    //     }
+    // }
+    // if process_delegations {
+    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //     alpha_offset += 1;
+    //     helpers.push(
+    //         *delegation_challenges
+    //             .gamma
+    //             .clone()
+    //             .add_assign_base(&delegation_processing_metadata.delegation_type)
+    //             .mul_assign(&alpha)
+    //             .mul_assign_by_base(&decompression_factor_inv),
+    //     );
+    //     for challenge in delegation_challenges.linearization_challenges.iter() {
+    //         helpers.push(*alpha.clone().mul_assign(&challenge));
+    //     }
+    // }
+    // // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
+    // for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
+    //     alpha_offset += 6;
+    // }
+    // for i in 0..shuffle_ram_accesses.num_accesses as usize {
+    //     let access = &shuffle_ram_accesses.accesses[i];
+    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //     alpha_offset += 1;
+    //     let mc = &memory_challenges;
+    //     let mut numerator_constant = mc.gamma;
+    //     if access.is_register_only {
+    //         numerator_constant.add_assign_base(&BF::ONE);
+    //     }
+    //     let mut denom_constant = numerator_constant;
+    //     let write_timestamp_low_constant = *mc
+    //         .timestamp_low_challenge
+    //         .clone()
+    //         .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
+    //     let write_timestamp_high_constant = *mc
+    //         .timestamp_high_challenge
+    //         .clone()
+    //         .mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
+    //     numerator_constant
+    //         .add_assign(&write_timestamp_low_constant)
+    //         .add_assign(&write_timestamp_high_constant);
+    //     numerator_constant.mul_assign(&alpha);
+    //     if i == 0 {
+    //         constants_times_challenges
+    //             .every_row_except_last
+    //             .sub_assign(&numerator_constant);
+    //     }
+    //     helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+    //     if !access.is_register_only {
+    //         helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+    //     }
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+    //     helpers.push(
+    //         *denom_constant
+    //             .mul_assign(&alpha)
+    //             .mul_assign_by_base(&decompression_factor_inv),
+    //     );
+    //     if i > 0 {
+    //         helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
+    //     }
+    // }
+    // // for lazy init memory accumulator contributions
+    // for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
+    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //     alpha_offset += 1;
+    //     let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
+    //     let mc = &memory_challenges;
+    //     helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+    //     helpers.push(
+    //         *alpha_times_gamma
+    //             .clone()
+    //             .mul_assign_by_base(&decompression_factor_inv),
+    //     );
+    // }
+    // let mut flat_indirect_idx = 0;
+    // for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
+    //     let register_access = &register_and_indirect_accesses.register_accesses[i];
+    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //     alpha_offset += 1;
+    //     let mc = &memory_challenges;
+    //     let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
+    //     constant.mul_assign(&alpha);
+    //     if i == 0 {
+    //         constants_times_challenges
+    //             .every_row_except_last
+    //             .sub_assign(&constant);
+    //     }
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+    //     helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
+    //     for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
+    //         let indirect_access =
+    //             &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
+    //         flat_indirect_idx += 1;
+    //         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+    //         alpha_offset += 1;
+    //         // sanity checks based on our known circuit geometries
+    //         if indirect_access.has_write {
+    //             if j == 0 {
+    //                 assert_eq!(j == 0, indirect_access.offset_constant == 0);
+    //             }
+    //         } else {
+    //             assert_eq!(j == 0, indirect_access.offset_constant == 0);
+    //         }
+    //         let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
+    //         let mut constant = *mc
+    //             .address_low_challenge
+    //             .clone()
+    //             .mul_assign_by_base(&offset)
+    //             .add_assign(&mc.gamma)
+    //             .mul_assign(&alpha);
+    //         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+    //         helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+    //         helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+    //         helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+    //         helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+    //         helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+    //         helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
+    //     }
+    // }
+    // alpha_offset += 1;
     // assert_eq!(
     //     alpha_offset,
     //     h_alphas_for_hardcoded_every_row_except_last.len()
@@ -1292,6 +1350,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         timestamp_range_check_expressions_layout,
         intermediate_state_lookup_layout,
         expressions_for_shuffle_ram_layout,
+        decoder_lookup_multiplicities_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
         boundary_constraints,
@@ -1419,6 +1478,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         non_delegated_width_3_lookups_layout,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
+        decoder_lookup_multiplicities_layout,
         generic_lookup_multiplicities_layout,
         state_linkage_constraints,
         boundary_constraints,
@@ -1574,16 +1634,46 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
-        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
-        let mut d_stage_2_row_major = DeviceAllocation::<BF>::alloc(h_stage_2_slice.len()).unwrap();
 
+        println!("h_setup_slice.len() {}", h_setup_slice.len());
+        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
         let mut d_setup_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
+        memory_copy_async(&mut d_setup_row_major, &h_setup_slice, &stream).unwrap();
+        let d_setup_row_major_matrix =
+            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
+        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
+        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
+        drop(d_setup_row_major_matrix);
+        d_setup_row_major.free().unwrap();
+
+        println!("h_trace_slice.len() {}", h_trace_slice.len());
+        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
         let mut d_trace_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
+        memory_copy_async(&mut d_trace_row_major, &h_trace_slice, &stream).unwrap();
+        let d_trace_row_major_matrix =
+            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
+        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
+        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
+        drop(d_trace_row_major_matrix);
+        d_trace_row_major.free().unwrap();
+
+        println!("h_stage_2_slice.len() {}", h_stage_2_slice.len());
+        let mut d_stage_2_row_major = DeviceAllocation::<BF>::alloc(h_stage_2_slice.len()).unwrap();
         let mut d_stage_2_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
+        memory_copy_async(&mut d_stage_2_row_major, &h_stage_2_slice, &stream).unwrap();
+        let d_stage_2_row_major_matrix = DeviceMatrixChunk::new(
+            &d_stage_2_row_major,
+            h_stage_2.padded_width,
+            0,
+            num_stage_2_cols,
+        );
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_stage_2_column_major, domain_size);
+        transpose(&d_stage_2_row_major_matrix, &mut d_stage_2_cols, &stream).unwrap();
+        drop(d_stage_2_row_major_matrix);
+        d_stage_2_row_major.free().unwrap();
 
         let mut d_alpha_powers =
             DeviceAllocation::<E4>::alloc(alpha_powers_layout.precomputation_size).unwrap();
@@ -1607,9 +1697,6 @@ mod tests {
             &mut h_helpers,
             &mut h_constants_times_challenges,
         );
-        memory_copy_async(&mut d_setup_row_major, &h_setup_slice, &stream).unwrap();
-        memory_copy_async(&mut d_trace_row_major, &h_trace_slice, &stream).unwrap();
-        memory_copy_async(&mut d_stage_2_row_major, &h_stage_2_slice, &stream).unwrap();
         memory_copy_async(&mut d_alpha_powers, &h_alpha_powers, &stream).unwrap();
         memory_copy_async(&mut d_beta_powers, &h_beta_powers, &stream).unwrap();
         memory_copy_async(&mut d_helpers, &h_helpers, &stream).unwrap();
@@ -1619,22 +1706,6 @@ mod tests {
             &stream,
         )
         .unwrap();
-        let d_setup_row_major_matrix =
-            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
-        let d_trace_row_major_matrix =
-            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
-        let d_stage_2_row_major_matrix = DeviceMatrixChunk::new(
-            &d_stage_2_row_major,
-            h_stage_2.padded_width,
-            0,
-            num_stage_2_cols,
-        );
-        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
-        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
-        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_stage_2_column_major, domain_size);
-        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
-        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
-        transpose(&d_stage_2_row_major_matrix, &mut d_stage_2_cols, &stream).unwrap();
         let slice = d_trace_cols.slice();
         let stride = d_trace_cols.stride();
         let offset = d_trace_cols.offset();

@@ -301,6 +301,16 @@ impl StateLinkageConstraints {
     }
 }
 
+impl Default for StateLinkageConstraints {
+    fn default() -> Self {
+        Self {
+            srcs: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            dsts: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            num_constraints: 0,
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 #[repr(C)]
 pub struct MemoryChallenges {

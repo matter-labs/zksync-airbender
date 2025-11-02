@@ -444,6 +444,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     __grid_constant__ const NonDelegatedWidth3LookupsLayout width_3_lookups_layout,
     __grid_constant__ const MultiplicitiesLayout range_check_16_multiplicities_layout,
     __grid_constant__ const MultiplicitiesLayout timestamp_range_check_multiplicities_layout,
+    __grid_constant__ const MultiplicitiesLayout decoder_lookup_multiplicities_layout,
     __grid_constant__ const MultiplicitiesLayout generic_lookup_multiplicities_layout,
     __grid_constant__ const StateLinkageConstraints state_linkage_constraints, __grid_constant__ const BoundaryConstraints boundary_constraints,
     vector_getter<e4, ld_modifier::ca> alphas, vector_getter<e4, ld_modifier::ca> alphas_every_row_except_last_two, vector_getter<e4, ld_modifier::ca> betas,
@@ -546,43 +547,48 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
                                       acc_quadratic, decompression_factor);
   }
 
-//   // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
-//   // I could use enforce_range_check_expressions_with_constant_terms here too.
-// #pragma unroll
-//   for (unsigned i = 0, expression_idx = 0, flat_term_idx = 0; i < expressions_for_shuffle_ram.num_expression_pairs; i++) {
-//     bf a_and_b[2];
-//     eval_a_and_b<false>(a_and_b, expressions_for_shuffle_ram, expression_idx, flat_term_idx, setup_cols, witness_cols, memory_cols);
-//     const bf a = a_and_b[0]; // not including constant contribution
-//     const bf b = a_and_b[1]; // not including constant contribution
-//     const bf bf_arg = stage_2_bf_cols.get_at_col(expressions_for_shuffle_ram.bf_dst_cols[i]);
-//     const e4 alpha = (alphas++).get();
-//     const bf prod = bf::mul(a, b);
-//     acc_quadratic = e4::add(acc_quadratic, e4::mul(alpha, prod));
-//     const bf a_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 2];
-//     const bf b_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 1];
-//     const bf b_constant_term_adjusted = bf::sub(b_constant_term, memory_timestamp_high_from_circuit_idx);
-//     const bf linear_contribution_from_a_b_constants = bf::add(bf::mul(a, b_constant_term_adjusted), bf::mul(b, a_constant_term));
-//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
-//     enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
-//                                         acc_quadratic);
-//   }
-// 
-//   if (process_delegations) {
-//     // width 3 lookups were already handled by delegated_width_3_lookups_kernel.
-//     // width_3_lookups_layout is just a placeholder with enough info to account for the alphas and helpers the other kernel used.
-//     alphas += width_3_lookups_layout.num_lookups;
-//     helpers += width_3_lookups_layout.num_helpers_used;
-//   } else {
-//     enforce_width_3_lookup_args_construction(width_3_lookups_layout, witness_cols, memory_cols, stage_2_e4_cols, helpers, acc_quadratic);
-//     alphas += width_3_lookups_layout.num_lookups;
-//   }
-// 
-//   enforce_lookup_multiplicities<1>(range_check_16_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
-//   enforce_lookup_multiplicities<1>(timestamp_range_check_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
-//                                    acc_quadratic);
-//   enforce_lookup_multiplicities<NUM_LOOKUP_ARGUMENT_KEY_PARTS>(generic_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers,
-//                                                                acc_linear, acc_quadratic);
-// 
+  // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
+  // I could use enforce_range_check_expressions_with_constant_terms here too.
+#pragma unroll
+  for (unsigned i = 0, expression_idx = 0, flat_term_idx = 0; i < expressions_for_shuffle_ram.num_expression_pairs; i++) {
+    bf a_and_b[2];
+    eval_a_and_b<false>(a_and_b, expressions_for_shuffle_ram, expression_idx, flat_term_idx, setup_cols, witness_cols, memory_cols);
+    const bf a = a_and_b[0]; // not including constant contribution
+    const bf b = a_and_b[1]; // not including constant contribution
+    const bf bf_arg = stage_2_bf_cols.get_at_col(expressions_for_shuffle_ram.bf_dst_cols[i]);
+    const e4 alpha = (alphas++).get();
+    const bf prod = bf::mul(a, b);
+    acc_quadratic = e4::add(acc_quadratic, e4::mul(alpha, prod));
+    const bf a_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 2];
+    const bf b_constant_term = expressions_for_shuffle_ram.constant_terms[expression_idx - 1];
+    const bf b_constant_term_adjusted = bf::sub(b_constant_term, memory_timestamp_high_from_circuit_idx);
+    const bf linear_contribution_from_a_b_constants = bf::add(bf::mul(a, b_constant_term_adjusted), bf::mul(b, a_constant_term));
+    acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
+    enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
+                                        acc_quadratic);
+  }
+
+  if (process_delegations) {
+    // width 3 lookups were already handled by delegated_width_3_lookups_kernel.
+    // width_3_lookups_layout is just a placeholder with enough info to account for the alphas and helpers the other kernel used.
+    alphas += width_3_lookups_layout.num_lookups;
+    helpers += width_3_lookups_layout.num_helpers_used;
+  } else {
+    enforce_width_3_lookup_args_construction(width_3_lookups_layout, witness_cols, memory_cols, stage_2_e4_cols, helpers, acc_quadratic);
+    alphas += width_3_lookups_layout.num_lookups;
+  }
+
+  enforce_lookup_multiplicities<1>(range_check_16_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
+
+  enforce_lookup_multiplicities<1>(timestamp_range_check_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                   acc_quadratic);
+
+  enforce_lookup_multiplicities<EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH>(decoder_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols,
+                                                                             alphas, helpers, acc_linear, acc_quadratic);
+
+  enforce_lookup_multiplicities<NUM_LOOKUP_ARGUMENT_KEY_PARTS>(generic_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers,
+                                                               acc_linear, acc_quadratic);
+
 //   if (handle_delegation_requests) {
 //     const auto &metadata = delegation_request_metadata;
 //     const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
