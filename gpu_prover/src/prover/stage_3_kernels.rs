@@ -1153,12 +1153,6 @@ pub(super) fn prepare_async_challenge_data(
             numerator_constant.add_assign(&write_timestamp_high_constant);
         }
         numerator_constant.mul_assign(&alpha);
-        if !arg_prev_exists {
-            constants_times_challenges
-                .every_row_except_last
-                .sub_assign(&numerator_constant);
-            arg_prev_exists = true;
-        }
         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
         if !access.is_register_only {
             helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
@@ -1172,7 +1166,12 @@ pub(super) fn prepare_async_challenge_data(
                 .mul_assign(&alpha)
                 .mul_assign_by_base(&decompression_factor_inv),
         );
-        if arg_prev_exists {
+        if !arg_prev_exists {
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&numerator_constant);
+            arg_prev_exists = true;
+        } else {
             helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
         }
     }
