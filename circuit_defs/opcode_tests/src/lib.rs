@@ -3,8 +3,6 @@
 #![feature(let_chains)]
 #![feature(allocator_api)]
 
-// NOTE: Temporary disabled due to conflicts with witness evaluation
-
 // run them all with: cargo test --profile test-release --lib --package opcode_tests
 #[cfg(test)]
 mod opcodes {
@@ -33,6 +31,7 @@ mod opcodes {
     mod lhu;
     mod lw;
     // mod misalign_jalr;
+    mod mop;
     mod mul;
     mod mulh;
     mod mulhsu;
@@ -56,11 +55,10 @@ mod opcodes {
     mod sw;
     mod xor;
     mod xori;
-    // just for delegation
-    mod csrrw;
 }
 
 use cs::cs::cs_reference::BasicAssembly;
+use cs::definitions::timestamp_from_chunk_cycle_and_sequence;
 use cs::machine::machine_configurations::create_csr_table_for_delegation;
 use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
 use cs::machine::Machine;
@@ -74,13 +72,11 @@ use prover::tracers::main_cycle_optimized::RamTracingData;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use prover::VectorMemoryImplWithRom;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use risc_v_simulator::abstractions::tracer::Tracer;
-use risc_v_simulator::cycle::state::RiscV32State;
 use risc_v_simulator::cycle::state::NUM_REGISTERS;
+use risc_v_simulator::cycle::state_new::RiscV32StateForUnrolledProver;
 use risc_v_simulator::cycle::IMStandardIsaConfig;
 use risc_v_simulator::cycle::MachineConfig;
 use risc_v_simulator::delegations::DelegationsCSRProcessor;
-use risc_v_simulator::mmu::NoMMU;
 use std::alloc::Global;
 use std::collections::HashMap;
 
@@ -90,24 +86,277 @@ const SECOND_WORD_BITS: usize = 4;
 #[test]
 fn mario_test() {
     test_single_opcode("addi x1,x0,1", None, [0; 32], Some((1, 1)));
-    // test_single_opcode("addi x1,x0,1", [0;32], (1,1));
-    // test_single_opcode("add, x24, x4, x24", [0;32], (1,0));
-    // test_single_opcode("beq x19, x19, 1024", [0;32], (1,0));
-    // test_single_opcode("beq, x10, x11, 1366", [0;32], Some((10,5)));
-    // test_single_opcode("jalr, x25, 64(x4)", [0;32], None);
-    //              test_single_opcode("lb, x20, -8(x12)", {let mut xs=[0;32]; xs[12]=1024; xs}, None);
-    // test_single_opcode("lb, x20, 0(x12)", {let mut xs=[0;32]; xs[12]=512; xs}, None);
-    // test_single_opcode("lb, x20, 0(x12)", {let mut xs=[0;32]; xs[12]=1<<5; xs}, None);
-    // test_single_opcode("lb, x20, 399(x12)", {let mut xs=[0;32]; xs[12]=1<<20; xs}, None);
-    // test_single_opcode("sb, x11, 512(x29)", {let mut xs=[0;32]; xs[11]=2147483647; xs[29]=2097152; xs}, None);
-    // test_single_opcode(" lui x8, 0", [0; 32], None);
-    // test_single_opcode("lb, x11, 256(x21)", {let mut xs = [0; 32]; xs[21]=2048; xs}, None);
-    // test_single_opcode("div, x3, x1, x2", None, {let mut xs = [0; 32]; xs[1]=i32::MIN as u32; xs[2]=-1_i32 as u32; xs}, Some((3, i32::MIN as u32)));
-    // test_single_opcode("divu, x3, x1, x2", None, {let mut xs = [0; 32]; xs[1]=i32::MIN as u32; xs[2]=-1_i32 as u32; xs}, Some((3, 0)));
-    // test_single_opcode("rem, x3, x1, x2", None, {let mut xs = [0; 32]; xs[1]=i32::MIN as u32; xs[2]=-1_i32 as u32; xs}, Some((3, 0)));
-    // test_single_opcode("remu, x3, x1, x2", None, {let mut xs = [0; 32]; xs[1]=i32::MIN as u32; xs[2]=-1_i32 as u32; xs}, Some((3, i32::MIN as u32)));
-    // const WHATEVER: u32 = 0x7c5150f3; // 1985 1987 1988 1989
-    // crate::test_single_opcode("csrrwi x1, whatever, 2", Some(WHATEVER), [0;32], None);
+    test_single_opcode("addi x1,x0,1", None, [0; 32], Some((1, 1)));
+    test_single_opcode("add, x24, x4, x24", None, [0; 32], Some((1, 0)));
+    test_single_opcode("beq x19, x19, 1024", None, [0; 32], Some((1, 0)));
+
+    assert!(std::panic::catch_unwind(|| test_single_opcode(
+        "beq, x10, x11, 1366",
+        None,
+        [0; 32],
+        None
+    ))
+    .unwrap_err()
+    .downcast_ref::<String>()
+    .unwrap()
+    .starts_with("unsatisfied"));
+    test_single_opcode("jalr, x25, 64(x4)", None, [0; 32], None);
+    test_single_opcode(
+        "lb, x20, -8(x12)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[12] = 1024;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(
+        "lb, x20, 0(x12)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[12] = 512;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(
+        "lb, x20, 0(x12)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[12] = 1 << 5;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(
+        "lb, x20, 399(x12)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[12] = 1 << 20;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(
+        "sb, x11, 512(x29)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[11] = 2147483647;
+            xs[29] = 2097152;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(" lui x8, 0", None, [0; 32], None);
+    test_single_opcode(
+        "lb, x11, 256(x21)",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[21] = 2048;
+            xs
+        },
+        None,
+    );
+    test_single_opcode(
+        "div, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = i32::MIN as u32;
+            xs[2] = -1_i32 as u32;
+            xs
+        },
+        Some((3, i32::MIN as u32)),
+    );
+    test_single_opcode(
+        "divu, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = i32::MIN as u32;
+            xs[2] = -1_i32 as u32;
+            xs
+        },
+        Some((3, 0)),
+    );
+    test_single_opcode(
+        "rem, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = i32::MIN as u32;
+            xs[2] = -1_i32 as u32;
+            xs
+        },
+        Some((3, 0)),
+    );
+    test_single_opcode(
+        "remu, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = i32::MIN as u32;
+            xs[2] = -1_i32 as u32;
+            xs
+        },
+        Some((3, i32::MIN as u32)),
+    );
+    test_single_opcode(
+        "div, x3, x1, x0",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 100;
+            xs
+        },
+        Some((3, u32::MAX)),
+    );
+    test_single_opcode(
+        "divu, x3, x1, x0",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 100;
+            xs
+        },
+        Some((3, u32::MAX)),
+    );
+    test_single_opcode(
+        "rem, x3, x1, x0",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 100;
+            xs
+        },
+        Some((3, 100)),
+    );
+    test_single_opcode(
+        "remu, x3, x1, x0",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 100;
+            xs
+        },
+        Some((3, 100)),
+    );
+    test_single_opcode("addi x0, x0, 999", None, [0; 32], Some((0, 0)));
+    test_single_opcode(
+        "add x3, x0, x1",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 42;
+            xs
+        },
+        Some((3, 42)),
+    ); // x0 reads as 0
+    test_single_opcode(
+        "sll, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 1;
+            xs[2] = 31;
+            xs
+        },
+        Some((3, 1u32 << 31)),
+    );
+    test_single_opcode(
+        "srl, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 0x80000000;
+            xs[2] = 31;
+            xs
+        },
+        Some((3, 1)),
+    );
+    test_single_opcode(
+        "sra, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 0x80000000;
+            xs[2] = 31;
+            xs
+        },
+        Some((3, u32::MAX)),
+    );
+    test_single_opcode(
+        "and, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = u32::MAX;
+            xs[2] = 0x55555555;
+            xs
+        },
+        Some((3, 0x55555555)),
+    );
+    test_single_opcode(
+        "or, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 0xAAAAAAAA;
+            xs[2] = 0x55555555;
+            xs
+        },
+        Some((3, u32::MAX)),
+    );
+    test_single_opcode(
+        "xor, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = u32::MAX;
+            xs[2] = u32::MAX;
+            xs
+        },
+        Some((3, 0)),
+    );
+    test_single_opcode(
+        "slt, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = i32::MIN as u32;
+            xs[2] = i32::MAX as u32;
+            xs
+        },
+        Some((3, 1)),
+    );
+    test_single_opcode(
+        "sltu, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = 0;
+            xs[2] = u32::MAX;
+            xs
+        },
+        Some((3, 1)),
+    );
+    test_single_opcode(
+        "sltu, x3, x1, x2",
+        None,
+        {
+            let mut xs = [0; 32];
+            xs[1] = u32::MAX;
+            xs[2] = 0;
+            xs
+        },
+        Some((3, 0)),
+    );
 }
 
 #[test]
@@ -248,9 +497,9 @@ pub fn test_single_opcode(
     const MAX_RAM: usize = 1 << 24;
     const START_ROM: u32 = 0;
     const ROM_BYTECODE_PADDING: &[u32] = &[UNIMP_OPCODE; (MAX_ROM / 4) - 4]; // necessary for ROM lookup table
-    let mut state: RiscV32State<IMStandardIsaConfig> = {
-        let mut state = RiscV32State::<IMStandardIsaConfig>::initial(ENTRY_POINT);
-        state.registers = initial_registers;
+    let mut state: RiscV32StateForUnrolledProver<IMStandardIsaConfig> = {
+        let mut state = RiscV32StateForUnrolledProver::<IMStandardIsaConfig>::initial(ENTRY_POINT);
+        state.observable.registers = initial_registers;
         state
     };
     let mut memory_source = {
@@ -264,7 +513,7 @@ pub fn test_single_opcode(
         let delegation_factories =
             setups::delegation_factories_for_machine::<IMStandardIsaConfig, Global>();
 
-        let ram_tracer = RamTracingData::new_for_ram_size_and_rom_bound(1 << 30, MAX_ROM); // use 1 GB RAM
+        let ram_tracer = RamTracingData::<true>::new_for_ram_size_and_rom_bound(1 << 30, MAX_ROM); // use 1 GB RAM
         let delegation_tracer = DelegationTracingData {
             all_per_type_logs: HashMap::new(),
             delegation_witness_factories: delegation_factories,
@@ -274,69 +523,73 @@ pub fn test_single_opcode(
             mem_writes_offset: 0,
         };
 
-        let aux_data = (0, ram_tracer, delegation_tracer);
-
-        let tracer = GPUFriendlyTracer::create_from_initial_state_for_num_cycles_and_chunk_size(
-            &state, aux_data, MAX_CYCLES, MAX_CYCLES,
-        );
-
-        tracer
+        let initial_ts = timestamp_from_chunk_cycle_and_sequence(0, MAX_CYCLES, 0);
+        GPUFriendlyTracer::new(initial_ts, ram_tracer, delegation_tracer, MAX_CYCLES, 1)
     };
-    let mut mmu = NoMMU { sapt: state.sapt };
     let mut non_determinism_source = QuasiUARTSource::default();
     let mut custom_csr_processor = DelegationsCSRProcessor;
     let simulator_crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        state.cycle_ext(
+        state.cycle(
             &mut memory_source,
             &mut tracer,
-            &mut mmu,
             &mut non_determinism_source,
             &mut custom_csr_processor,
         )
     }))
     .is_err();
     if simulator_crashed {
+        dbg!("Simulator crashed");
         let instr = bytecode[0];
         let opcode = instr & 0b0111_1111;
         let f3 = (instr >> 12) & 0b111;
         let f7 = instr >> 25;
         let rd_index = (instr >> 7) & 0b1_1111;
-        if state.pc == 0 {
+        if state.observable.pc == 0 {
             // correct?
-            state.pc = 4;
+            state.observable.pc = 4;
         }
         // take from state
-        let rs1 =
-            state.get_first_register(risc_v_simulator::utils::get_formal_rs1(instr), &mut tracer);
-        let rs2 =
-            state.get_second_register(risc_v_simulator::utils::get_formal_rs2(instr), &mut tracer);
+        let rs1 = state.get_register(risc_v_simulator::utils::get_formal_rs1(instr));
+        let rs2 = state.get_register(risc_v_simulator::utils::get_formal_rs2(instr));
 
-        let mut set_dummy_witness = || state.set_register(0, 0, &mut tracer);
+        let mut set_dummy_witness = || {
+            state.set_register(0, 0);
+        };
 
         // dummy is necessary sometimes to avoid circuit from crashing during memory opcode
         // even though we normally have no witness where we put the dummy
 
         match opcode {
             // JAL misaligned
-            0b1101111 => state.set_register(rd_index, 4, &mut tracer),
+            0b1101111 => {
+                state.set_register(rd_index, 4);
+            }
             // JALR misaligned
-            0b1100111 => state.set_register(rd_index, 4, &mut tracer),
+            0b1100111 => {
+                state.set_register(rd_index, 4);
+            }
             // BRANCH misaligned
             0b1100011 => (),
             // LOADS misaligned - write to rd
-            0b0000011 if f3 != 0b000 => set_dummy_witness(),
+            0b0000011 if f3 != 0b000 => {
+                set_dummy_witness();
+            }
             // STORES misaligned - write to mem
-            0b0100011 if f3 != 0b000 => set_dummy_witness(),
+            0b0100011 if f3 != 0b000 => {
+                set_dummy_witness();
+            }
             // ECALL / EBREAK
             0b1110011 if f3 == 0b000 => (),
             // CSR ops - since we crashed it's not non-determinism and it's not supported delegation. we're forced to use dummy reg write but this is wrong
             // WARNING: currently simulator also crashes for supported csr if we don't use abi correctly, and we are patching those too!
-            0b1110011 if f3 != 0b000 => set_dummy_witness(),
+            0b1110011 if f3 != 0b000 => {
+                set_dummy_witness();
+            }
             // FENCE
             0b0001111 => (),
             // FADD.S
             0b1010011 if f7 == 0b0000000 => {
-                state.set_register(rd_index, (rs1 as f32 + rs2 as f32) as u32, &mut tracer)
+                state.set_register(rd_index, (rs1 as f32 + rs2 as f32) as u32);
             }
             _ => unreachable!("{instr:x}"),
         }
@@ -389,11 +642,14 @@ pub fn test_single_opcode(
     };
 
     // really the only conditions we need
-    assert_eq!((ENTRY_POINT, state.pc), (circuit_pc_prev, circuit_pc));
+    assert_eq!(
+        (ENTRY_POINT, state.observable.pc),
+        (circuit_pc_prev, circuit_pc)
+    );
     assert!(
-        state.registers == circuit_registers,
+        state.observable.registers == circuit_registers,
         "expected final register state\n\t{:?}\nbut circuit witness produced\n\t{:?}",
-        state.registers,
+        state.observable.registers,
         circuit_registers,
     );
 
@@ -406,11 +662,19 @@ pub fn test_single_opcode(
     // check ram reads/writes (does not apply to rom)
     // TODO: might need to adjust this for reads that were overwritten
     // dbg!(tracer.ram_tracer.accesses_per_cycles[0]);
+    use risc_v_simulator::cycle::status_registers::TrapReason;
     for (addr, val) in circuit_mem_accesses {
-        assert_eq!(val, memory_source.ram[addr as usize / 4]);
+        // Skip dummy ROM read queries (modeled as read 0 from address 0)
+        if addr == 0 && val == 0 {
+            continue;
+        }
+        let mut trap = TrapReason::NoTrap;
+        use risc_v_simulator::abstractions::memory::AccessType;
+        use risc_v_simulator::abstractions::memory::MemorySource;
+        let mem_val = memory_source.get(addr as u64, AccessType::MemLoad, &mut trap);
+        assert_eq!(val, mem_val, "Memory mismatch at address {:#x}", addr);
     }
 }
-
 #[allow(dead_code)]
 trait TestCase {
     const TESTCASES: &str;
@@ -475,7 +739,7 @@ trait TestCase {
                 }
                 &instruction_fields.join(", ")
             };
-            dbg!(instruction);
+
             let final_register = if let Some((xid, xval)) = Self::FINAL_REGISTER_INDEX {
                 let i = fields[xid][1..].parse::<usize>().expect("expected reg id");
                 if let Ok(val) = fields[xval].parse::<u32>() {
@@ -520,7 +784,6 @@ trait TestCase {
                     } else {
                         panic!("error parsing value {}", &fields[xval]);
                     }
-                    dbg!((i, initial_registers[i]));
                 }
                 (initial_registers, init_regs_u32)
             };
@@ -582,7 +845,7 @@ fn debug_single_test() {
         0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
-    let expected_rd_parts = Some((3, 0));
+    let expected_rd_parts = Some((3, 4294920957));
 
     test_single_opcode(instruction, None, registers, expected_rd_parts);
 }

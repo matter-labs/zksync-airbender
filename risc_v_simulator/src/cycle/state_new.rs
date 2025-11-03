@@ -876,7 +876,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             }
                         }
                         let rd_value = operand_1.to_reduced_u32();
-
                         let rd_old_value = self.set_register(rd, rd_value);
                         tracer.trace_rd_write(rd, rd_old_value, rd_value);
                     }

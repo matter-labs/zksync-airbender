@@ -158,16 +158,6 @@ impl<
         cs.set_values(value_fn);
 
         // add constraints and conditionally assign witness to final result
-
-        cs.add_constraint(
-            Term::from(exec_flag.get_variable().unwrap())
-                * (Term::from(result_tmp_low) - Term::from(result_register.0[0].get_variable())),
-        );
-        cs.add_constraint(
-            Term::from(exec_flag.get_variable().unwrap())
-                * (Term::from(result_tmp_high) - Term::from(result_register.0[1].get_variable())),
-        );
-
         let input_vars = [result_tmp_low, result_tmp_high];
         let output_vars = [
             result_register.0[0].get_variable(),
@@ -187,6 +177,15 @@ impl<
         };
 
         cs.set_values(value_fn);
+
+        cs.add_constraint(
+            Term::from(exec_flag.get_variable().unwrap())
+                * (Term::from(result_tmp_low) - Term::from(result_register.0[0].get_variable())),
+        );
+        cs.add_constraint(
+            Term::from(exec_flag.get_variable().unwrap())
+                * (Term::from(result_tmp_high) - Term::from(result_register.0[1].get_variable())),
+        );
         // we want to return canonical result, so we will create subtraction relation and require underflow
         assert!(F::CHARACTERISTICS < u32::MAX as u64);
         let modulus = Register::new_from_constant(F::CHARACTERISTICS as u32);
