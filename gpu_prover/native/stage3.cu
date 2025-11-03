@@ -702,7 +702,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
     if (metadata.has_abi_mem_offset_high) {
       denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-    } {
+    } else {
       helpers++; // unused
     }
     const auto& timestamp_src_cols = is_unrolled ? memory_cols : setup_cols;
@@ -732,10 +732,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
     enforce_lazy_init_teardown_padding(lazy_init_teardown_layouts, witness_cols, memory_cols, alphas, acc_linear, acc_quadratic);
 
-
   // Enforce contributions to global grand product
   e4 e4_arg_prev{};
-  bool arg_prev_is_initialized;
+  bool arg_prev_is_initialized = false;
 
   if (shuffle_ram_accesses.num_accesses > 0) {
     const auto &memory_or_setup_cols = is_unrolled ? memory_cols : setup_cols;
