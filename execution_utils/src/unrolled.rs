@@ -333,10 +333,8 @@ pub fn verify_unrolled_base_layer_via_full_statement_verifier(
             let it = responses.into_iter();
             prover::nd_source_std::set_iterator(it);
 
-            #[allow(invalid_value)]
-            let regs = unsafe {
-                full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer()
-            };
+            let regs =
+                full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer();
 
             regs
         })
@@ -433,10 +431,9 @@ pub fn verify_unrolled_recursion_layer_via_full_statement_verifier(
             let it = responses.into_iter();
             prover::nd_source_std::set_iterator(it);
 
-            #[allow(invalid_value)]
-            let regs = unsafe {
-                full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer()
-            };
+            let regs =
+                full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer(
+                );
 
             regs
         })

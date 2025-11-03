@@ -176,21 +176,21 @@ pub fn verify_unified_recursion_layer_for_machine_configuration<C: MachineConfig
 
     let responses = proof.flatten_into_responses(C::ALLOWED_DELEGATION_CSRS, compiled_layouts);
 
-    let params = if setups::is_default_machine_configuration::<C>() {
-        panic!(
-            "Trying to use configuration {:?} at recursion layer",
-            std::any::type_name::<C>()
-        );
-    } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
-        panic!(
-            "Trying to use configuration {:?} at recursion layer",
-            std::any::type_name::<C>()
-        );
-    } else if setups::is_reduced_machine_configuration::<C>() {
-        full_statement_verifier::unrolled_proof_statement::RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-    } else {
-        panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-    };
+    // let params = if setups::is_default_machine_configuration::<C>() {
+    //     panic!(
+    //         "Trying to use configuration {:?} at recursion layer",
+    //         std::any::type_name::<C>()
+    //     );
+    // } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
+    //     panic!(
+    //         "Trying to use configuration {:?} at recursion layer",
+    //         std::any::type_name::<C>()
+    //     );
+    // } else if setups::is_reduced_machine_configuration::<C>() {
+    //     full_statement_verifier::unrolled_proof_statement::RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
+    // } else {
+    //     panic!("Unknown configuration {:?}", std::any::type_name::<C>());
+    // };
 
     println!("Running the verifier");
 
@@ -279,10 +279,7 @@ pub fn verify_unrolled_recursion_layer_via_full_statement_verifier(
                 let it = responses.into_iter();
                 prover::nd_source_std::set_iterator(it);
 
-                #[allow(invalid_value)]
-                let regs = unsafe {
-                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer()
-                };
+                let regs = full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer();
 
                 regs
             })

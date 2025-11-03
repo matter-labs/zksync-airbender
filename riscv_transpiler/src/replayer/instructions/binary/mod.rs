@@ -19,7 +19,6 @@ pub(crate) fn and<C: Counters, R: RAM, const USE_IMM: bool>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -55,7 +54,6 @@ pub(crate) fn or<C: Counters, R: RAM, const USE_IMM: bool>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -91,7 +89,6 @@ pub(crate) fn xor<C: Counters, R: RAM, const USE_IMM: bool>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,

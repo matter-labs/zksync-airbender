@@ -192,7 +192,8 @@ mod lde_tests;
 
 pub use delegation_test::run_basic_delegation_test_impl;
 pub use keccak_test::run_keccak_test_impl;
-pub use unrolled::with_transpiler::run_basic_unrolled_test_in_transpiler_with_word_specialization_impl;
+
+// pub use unrolled::with_transpiler::run_basic_unrolled_test_in_transpiler_with_word_specialization_impl;
 
 // NOTE: For some reason tryint to add generic tree constructor to GPU arguments just makes resolver crazy,
 // it starts to complaint about `ROM_ADDRESS_SPACE_SECOND_WORD_BITS` being not a constant but unconstraint const generic,

@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use super::*;
 use crate::tracers::delegation::DelegationWitness;
 use crate::tracers::unrolled::tracer::*;
-use crate::tracers::unrolled::word_specialized_tracer::WordSpecializedTracer;
+// use crate::tracers::unrolled::word_specialized_tracer::WordSpecializedTracer;
 use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
 use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions_no_signed_mul_div::FullIsaMachineWithDelegationNoExceptionHandlingNoSignedMulDiv;
 use cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
@@ -209,216 +209,216 @@ pub fn run_unrolled_machine_for_num_cycles<
     )
 }
 
-pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
-    CSR: DelegationCSRProcessor,
-    C: MachineConfig,
-    A: GoodAllocator,
->(
-    num_cycles: usize,
-    initial_pc: u32,
-    mut custom_csr_processor: CSR,
-    memory: &mut VectorMemoryImplWithRom,
-    rom_address_space_bound: usize,
-    non_determinism: &mut impl NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-    opcode_family_chunk_factories: HashMap<
-        u8,
-        Box<dyn Fn() -> NonMemTracingFamilyChunk<A> + Send + Sync + 'static>,
-    >,
-    word_sized_mem_family_chunk_factory: Box<
-        dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static,
-    >,
-    subword_sized_mem_family_chunk_factory: Box<
-        dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static,
-    >,
-    delegation_factories: HashMap<
-        u16,
-        Box<dyn Fn() -> DelegationWitness<A> + Send + Sync + 'static>,
-    >,
-    ram_bound: usize,
-    worker: &Worker,
-) -> (
-    u32,
-    TimestampScalar,
-    usize,
-    HashMap<u8, Vec<NonMemTracingFamilyChunk<A>>>,
-    (Vec<MemTracingFamilyChunk<A>>, Vec<MemTracingFamilyChunk<A>>),
-    HashMap<u16, Vec<DelegationWitness<A>>>,
-    [RamShuffleMemStateRecord; NUM_REGISTERS], // register final values
-    Vec<Vec<(u32, (TimestampScalar, u32)), A>>, // lazy iniy/teardown data - all unique words touched, sorted ascending, but not in one vector
-) {
-    use crate::tracers::main_cycle_optimized::DelegationTracingData;
-    use crate::tracers::main_cycle_optimized::RamTracingData;
+// pub fn run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization<
+//     CSR: DelegationCSRProcessor,
+//     C: MachineConfig,
+//     A: GoodAllocator,
+// >(
+//     num_cycles: usize,
+//     initial_pc: u32,
+//     mut custom_csr_processor: CSR,
+//     memory: &mut VectorMemoryImplWithRom,
+//     rom_address_space_bound: usize,
+//     non_determinism: &mut impl NonDeterminismCSRSource<VectorMemoryImplWithRom>,
+//     opcode_family_chunk_factories: HashMap<
+//         u8,
+//         Box<dyn Fn() -> NonMemTracingFamilyChunk<A> + Send + Sync + 'static>,
+//     >,
+//     word_sized_mem_family_chunk_factory: Box<
+//         dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static,
+//     >,
+//     subword_sized_mem_family_chunk_factory: Box<
+//         dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static,
+//     >,
+//     delegation_factories: HashMap<
+//         u16,
+//         Box<dyn Fn() -> DelegationWitness<A> + Send + Sync + 'static>,
+//     >,
+//     ram_bound: usize,
+//     worker: &Worker,
+// ) -> (
+//     u32,
+//     TimestampScalar,
+//     usize,
+//     HashMap<u8, Vec<NonMemTracingFamilyChunk<A>>>,
+//     (Vec<MemTracingFamilyChunk<A>>, Vec<MemTracingFamilyChunk<A>>),
+//     HashMap<u16, Vec<DelegationWitness<A>>>,
+//     [RamShuffleMemStateRecord; NUM_REGISTERS], // register final values
+//     Vec<Vec<(u32, (TimestampScalar, u32)), A>>, // lazy iniy/teardown data - all unique words touched, sorted ascending, but not in one vector
+// ) {
+//     use crate::tracers::main_cycle_optimized::DelegationTracingData;
+//     use crate::tracers::main_cycle_optimized::RamTracingData;
 
-    let now = std::time::Instant::now();
+//     let now = std::time::Instant::now();
 
-    let mut state = RiscV32StateForUnrolledProver::<C>::initial(initial_pc);
+//     let mut state = RiscV32StateForUnrolledProver::<C>::initial(initial_pc);
 
-    let ram_tracer =
-        RamTracingData::<true>::new_for_ram_size_and_rom_bound(ram_bound, rom_address_space_bound);
-    let delegation_tracer = DelegationTracingData::<A> {
-        all_per_type_logs: HashMap::new(),
-        delegation_witness_factories: delegation_factories,
-        current_per_type_logs: HashMap::new(),
-        num_traced_registers: 0,
-        mem_reads_offset: 0,
-        mem_writes_offset: 0,
-    };
+//     let ram_tracer =
+//         RamTracingData::<true>::new_for_ram_size_and_rom_bound(ram_bound, rom_address_space_bound);
+//     let delegation_tracer = DelegationTracingData::<A> {
+//         all_per_type_logs: HashMap::new(),
+//         delegation_witness_factories: delegation_factories,
+//         current_per_type_logs: HashMap::new(),
+//         num_traced_registers: 0,
+//         mem_reads_offset: 0,
+//         mem_writes_offset: 0,
+//     };
 
-    // important - in out memory implementation first access in every chunk is timestamped as (trace_size * circuit_idx) + 4,
-    // so we take care of it
+//     // important - in out memory implementation first access in every chunk is timestamped as (trace_size * circuit_idx) + 4,
+//     // so we take care of it
 
-    let mut tracer = WordSpecializedTracer::<C, A, true, true, true>::new(
-        ram_tracer,
-        opcode_family_chunk_factories,
-        word_sized_mem_family_chunk_factory,
-        subword_sized_mem_family_chunk_factory,
-        delegation_tracer,
-    );
+//     let mut tracer = WordSpecializedTracer::<C, A, true, true, true>::new(
+//         ram_tracer,
+//         opcode_family_chunk_factories,
+//         word_sized_mem_family_chunk_factory,
+//         subword_sized_mem_family_chunk_factory,
+//         delegation_tracer,
+//     );
 
-    let cycles_used = state.run_cycles(
-        memory,
-        &mut tracer,
-        non_determinism,
-        &mut custom_csr_processor,
-        num_cycles,
-    );
+//     let cycles_used = state.run_cycles(
+//         memory,
+//         &mut tracer,
+//         non_determinism,
+//         &mut custom_csr_processor,
+//         num_cycles,
+//     );
 
-    println!("Execution completed after {} cycles", cycles_used);
+//     println!("Execution completed after {} cycles", cycles_used);
 
-    let WordSpecializedTracer {
-        bookkeeping_aux_data,
-        current_timestamp,
-        current_family_chunks,
-        completed_family_chunks,
-        current_word_sized_mem_family_chunk,
-        current_subword_sized_mem_family_chunk,
-        completed_word_sized_mem_family_chunks,
-        completed_subword_sized_mem_family_chunks,
-        delegation_tracer,
-        ..
-    } = tracer;
+//     let WordSpecializedTracer {
+//         bookkeeping_aux_data,
+//         current_timestamp,
+//         current_family_chunks,
+//         completed_family_chunks,
+//         current_word_sized_mem_family_chunk,
+//         current_subword_sized_mem_family_chunk,
+//         completed_word_sized_mem_family_chunks,
+//         completed_subword_sized_mem_family_chunks,
+//         delegation_tracer,
+//         ..
+//     } = tracer;
 
-    let mut completed_family_chunks = completed_family_chunks;
-    for (i, el) in current_family_chunks.into_iter().enumerate() {
-        completed_family_chunks
-            .entry((i + 1) as u8)
-            .or_insert(vec![])
-            .push(el);
-    }
+//     let mut completed_family_chunks = completed_family_chunks;
+//     for (i, el) in current_family_chunks.into_iter().enumerate() {
+//         completed_family_chunks
+//             .entry((i + 1) as u8)
+//             .or_insert(vec![])
+//             .push(el);
+//     }
 
-    let mut completed_word_sized_mem_family_chunks = completed_word_sized_mem_family_chunks;
-    completed_word_sized_mem_family_chunks.push(current_word_sized_mem_family_chunk);
+//     let mut completed_word_sized_mem_family_chunks = completed_word_sized_mem_family_chunks;
+//     completed_word_sized_mem_family_chunks.push(current_word_sized_mem_family_chunk);
 
-    let mut completed_subword_sized_mem_family_chunks = completed_subword_sized_mem_family_chunks;
-    completed_subword_sized_mem_family_chunks.push(current_subword_sized_mem_family_chunk);
+//     let mut completed_subword_sized_mem_family_chunks = completed_subword_sized_mem_family_chunks;
+//     completed_subword_sized_mem_family_chunks.push(current_subword_sized_mem_family_chunk);
 
-    let cycles_passed = (current_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-    assert_eq!(cycles_used as u64, cycles_passed);
+//     let cycles_passed = (current_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+//     assert_eq!(cycles_used as u64, cycles_passed);
 
-    let RamTracingData {
-        register_last_live_timestamps,
-        ram_words_last_live_timestamps,
-        access_bitmask,
-        num_touched_ram_cells,
-        ..
-    } = bookkeeping_aux_data;
+//     let RamTracingData {
+//         register_last_live_timestamps,
+//         ram_words_last_live_timestamps,
+//         access_bitmask,
+//         num_touched_ram_cells,
+//         ..
+//     } = bookkeeping_aux_data;
 
-    println!("{} unique memory cells touched", num_touched_ram_cells);
+//     println!("{} unique memory cells touched", num_touched_ram_cells);
 
-    // now we can co-join touched memory cells, their final values and timestamps
+//     // now we can co-join touched memory cells, their final values and timestamps
 
-    let memory_final_state = memory.clone().get_final_ram_state();
-    let memory_state_ref = &memory_final_state;
-    let ram_words_last_live_timestamps_ref = &ram_words_last_live_timestamps;
+//     let memory_final_state = memory.clone().get_final_ram_state();
+//     let memory_state_ref = &memory_final_state;
+//     let ram_words_last_live_timestamps_ref = &ram_words_last_live_timestamps;
 
-    // parallel collect
-    // first we will walk over access_bitmask and collect subparts
-    let mut chunks: Vec<Vec<(u32, (TimestampScalar, u32)), A>> =
-        vec![Vec::new_in(A::default()).clone(); worker.get_num_cores()];
-    let mut dst = &mut chunks[..];
-    worker.scope(access_bitmask.len(), |scope, geometry| {
-        for thread_idx in 0..geometry.len() {
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let range = chunk_start..(chunk_start + chunk_size);
-            let (el, rest) = dst.split_at_mut(1);
-            dst = rest;
-            let src = &access_bitmask[range];
+//     // parallel collect
+//     // first we will walk over access_bitmask and collect subparts
+//     let mut chunks: Vec<Vec<(u32, (TimestampScalar, u32)), A>> =
+//         vec![Vec::new_in(A::default()).clone(); worker.get_num_cores()];
+//     let mut dst = &mut chunks[..];
+//     worker.scope(access_bitmask.len(), |scope, geometry| {
+//         for thread_idx in 0..geometry.len() {
+//             let chunk_size = geometry.get_chunk_size(thread_idx);
+//             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+//             let range = chunk_start..(chunk_start + chunk_size);
+//             let (el, rest) = dst.split_at_mut(1);
+//             dst = rest;
+//             let src = &access_bitmask[range];
 
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                let el = &mut el[0];
-                for (idx, word) in src.iter().enumerate() {
-                    for bit_idx in 0..usize::BITS {
-                        let word_idx =
-                            (chunk_start + idx) * (usize::BITS as usize) + (bit_idx as usize);
-                        let phys_address = word_idx << 2;
-                        let word_is_used = *word & (1 << bit_idx) > 0;
-                        if word_is_used {
-                            let word_value = memory_state_ref[word_idx];
-                            let last_timestamp: TimestampScalar =
-                                ram_words_last_live_timestamps_ref[word_idx];
-                            el.push((phys_address as u32, (last_timestamp, word_value)));
-                        }
-                    }
-                }
-            });
-        }
-    });
+//             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+//                 let el = &mut el[0];
+//                 for (idx, word) in src.iter().enumerate() {
+//                     for bit_idx in 0..usize::BITS {
+//                         let word_idx =
+//                             (chunk_start + idx) * (usize::BITS as usize) + (bit_idx as usize);
+//                         let phys_address = word_idx << 2;
+//                         let word_is_used = *word & (1 << bit_idx) > 0;
+//                         if word_is_used {
+//                             let word_value = memory_state_ref[word_idx];
+//                             let last_timestamp: TimestampScalar =
+//                                 ram_words_last_live_timestamps_ref[word_idx];
+//                             el.push((phys_address as u32, (last_timestamp, word_value)));
+//                         }
+//                     }
+//                 }
+//             });
+//         }
+//     });
 
-    let register_final_values = std::array::from_fn(|i| {
-        let ts = register_last_live_timestamps[i];
-        let value = state.registers[i];
+//     let register_final_values = std::array::from_fn(|i| {
+//         let ts = register_last_live_timestamps[i];
+//         let value = state.registers[i];
 
-        RamShuffleMemStateRecord {
-            last_access_timestamp: ts,
-            current_value: value,
-        }
-    });
+//         RamShuffleMemStateRecord {
+//             last_access_timestamp: ts,
+//             current_value: value,
+//         }
+//     });
 
-    let DelegationTracingData {
-        all_per_type_logs,
-        current_per_type_logs,
-        ..
-    } = delegation_tracer;
+//     let DelegationTracingData {
+//         all_per_type_logs,
+//         current_per_type_logs,
+//         ..
+//     } = delegation_tracer;
 
-    let mut all_per_type_logs = all_per_type_logs;
-    for (delegation_type, current_data) in current_per_type_logs.into_iter() {
-        // we use a convention that not executing delegation is checked
-        // by looking at the lengths, so we do NOT pad here
+//     let mut all_per_type_logs = all_per_type_logs;
+//     for (delegation_type, current_data) in current_per_type_logs.into_iter() {
+//         // we use a convention that not executing delegation is checked
+//         // by looking at the lengths, so we do NOT pad here
 
-        // let mut current_data = current_data;
-        // current_data.pad();
+//         // let mut current_data = current_data;
+//         // current_data.pad();
 
-        if current_data.is_empty() == false {
-            all_per_type_logs
-                .entry(delegation_type)
-                .or_insert(vec![])
-                .push(current_data);
-        }
-    }
+//         if current_data.is_empty() == false {
+//             all_per_type_logs
+//                 .entry(delegation_type)
+//                 .or_insert(vec![])
+//                 .push(current_data);
+//         }
+//     }
 
-    let elapsed = now.elapsed();
+//     let elapsed = now.elapsed();
 
-    let freq = (cycles_passed as f64) / elapsed.as_secs_f64() / 1_000_000f64;
-    println!("Simulator frequency is {} MHz", freq);
+//     let freq = (cycles_passed as f64) / elapsed.as_secs_f64() / 1_000_000f64;
+//     println!("Simulator frequency is {} MHz", freq);
 
-    let final_pc = state.pc;
-    let final_timestamp = state.timestamp;
+//     let final_pc = state.pc;
+//     let final_timestamp = state.timestamp;
 
-    (
-        final_pc,
-        final_timestamp,
-        cycles_used,
-        completed_family_chunks,
-        (
-            completed_word_sized_mem_family_chunks,
-            completed_subword_sized_mem_family_chunks,
-        ),
-        all_per_type_logs,
-        register_final_values,
-        chunks,
-    )
-}
+//     (
+//         final_pc,
+//         final_timestamp,
+//         cycles_used,
+//         completed_family_chunks,
+//         (
+//             completed_word_sized_mem_family_chunks,
+//             completed_subword_sized_mem_family_chunks,
+//         ),
+//         all_per_type_logs,
+//         register_final_values,
+//         chunks,
+//     )
+// }
 
 pub fn run_unrolled_machine<
     C: MachineConfig,

@@ -27,7 +27,6 @@ use prover::unrolled::evaluate_init_and_teardown_witness;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::unrolled::NonMemoryCircuitOracle;
 use prover::unrolled::UnifiedRiscvCircuitOracle;
-use prover::witness_evaluator::unrolled::run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization;
 use prover::worker;
 use prover::ExecutorFamilyWitnessEvaluationAuxData;
 use prover::ShuffleRamSetupAndTeardown;

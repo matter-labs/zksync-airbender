@@ -1,5 +1,4 @@
 use super::*;
-use crate::tests::unrolled::word_specialized::*;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
