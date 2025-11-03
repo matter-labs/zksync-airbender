@@ -137,15 +137,15 @@ impl ProgramProof {
         let proof_list = ProofList {
             basic_proofs: vec![],
             // Here we're guessing - as ProgramProof doesn't distinguish between basic and reduced proofs.
-            reduced_proofs: self.base_layer_proofs,
-            reduced_log_23_proofs: vec![],
+            reduced_proofs: vec![],
+            reduced_log_23_proofs: self.base_layer_proofs,
             delegation_proofs: self.delegation_proofs.clone().into_iter().collect(),
         };
 
         let proof_metadata = ProofMetadata {
             basic_proof_count: 0,
-            reduced_proof_count,
-            reduced_log_23_proof_count: 0,
+            reduced_proof_count: 0,
+            reduced_log_23_proof_count: reduced_proof_count,
             deprecated_final_proof_count: 0,
             delegation_proof_count: vec![],
             register_values: self.register_final_values,

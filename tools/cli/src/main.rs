@@ -583,6 +583,8 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
         oracle.insert(0, VerifierCircuitsIdentifiers::BaseLayer as u32);
     } else if metadata.reduced_proof_count > 0 {
         oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLayer as u32);
+    } else if metadata.reduced_log_23_proof_count > 0 {
+        oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLog23Layer as u32);
     } else {
         panic!("No proofs");
     };
@@ -595,8 +597,9 @@ fn flatten_two(first_metadata: &String, second_metadata: &String, output_file: &
     let (metadata2, oracle2) = generate_oracle_data_from_metadata(second_metadata);
 
     oracle.extend(oracle2);
-    assert!(metadata.reduced_proof_count > 0);
-    assert!(metadata2.reduced_proof_count > 0);
+    // Check for either reduced or reduced_log_23 proofs
+    assert!(metadata.reduced_proof_count > 0 || metadata.reduced_log_23_proof_count > 0);
+    assert!(metadata2.reduced_proof_count > 0 || metadata2.reduced_log_23_proof_count > 0);
 
     oracle.insert(
         0,
@@ -623,7 +626,9 @@ fn verify_all(metadata_path: &String) {
         let output = full_statement_verifier::verify_recursion_layer();
         println!("Output is: {:?}", output);
     } else if metadata.reduced_log_23_proof_count > 0 {
-        todo!("not implemented yet");
+        println!("Running continue recursive log23");
+        let output = full_statement_verifier::verify_recursion_log_23_layer();
+        println!("Output is: {:?}", output);
     } else {
         panic!("No proofs");
     };
@@ -646,10 +651,16 @@ fn verify_all_program_proof(program_proof_path: &String) {
 
     verifier_common::prover::nd_source_std::set_iterator(it);
 
-    // Assume that program proof has only recursion proofs.
-    println!("Running continue recursive");
-    assert!(metadata.reduced_proof_count > 0);
-    let output = full_statement_verifier::verify_recursion_layer();
+    // Determine which verifier to use based on proof type
+    let output = if metadata.reduced_proof_count > 0 {
+        println!("Running continue recursive (reduced)");
+        full_statement_verifier::verify_recursion_layer()
+    } else if metadata.reduced_log_23_proof_count > 0 {
+        println!("Running continue recursive (log23)");
+        full_statement_verifier::verify_recursion_log_23_layer()
+    } else {
+        panic!("No recursion proofs found in program proof");
+    };
     println!("Output is: {:?}", output);
 
     assert!(
