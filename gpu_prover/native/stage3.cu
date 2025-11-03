@@ -451,7 +451,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     vector_getter<e4, ld_modifier::ca> helpers, const ConstantsTimesChallenges *constants_times_challenges,
     vectorized_e4_matrix_getter_setter<ld_modifier::cs, st_modifier::cs> quotient, const bf memory_timestamp_high_from_circuit_idx,
     const e2 decompression_factor, const e2 decompression_factor_squared, const e2 every_row_zerofier, const e2 omega_inv, const e2 omega_inv_squared,
-    const unsigned log_n) {
+    const bool is_unrolled, const unsigned log_n) {
   const unsigned n = 1 << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= n)
@@ -589,32 +589,41 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   enforce_lookup_multiplicities<NUM_LOOKUP_ARGUMENT_KEY_PARTS>(generic_lookup_multiplicities_layout, setup_cols, witness_cols, stage_2_e4_cols, alphas, helpers,
                                                                acc_linear, acc_quadratic);
 
-//   if (handle_delegation_requests) {
-//     const auto &metadata = delegation_request_metadata;
-//     const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
-//     const e4 alpha = (alphas++).get();
-//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
-//     e4 denom = (helpers++).get();
-//     denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
-//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-//     denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col)));
-//     denom = e4::add(denom, e4::mul((helpers++).get(), setup_cols.get_at_col(metadata.timestamp_col + 1)));
-//     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-//     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-//   }
-// 
-//   if (process_delegations) {
-//     const auto &metadata = delegation_processing_metadata;
-//     const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
-//     const e4 alpha = (alphas++).get();
-//     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
-//     e4 denom = (helpers++).get();
-//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
-//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col)));
-//     denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col + 1)));
-//     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-//     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-//   }
+  if (handle_delegation_requests) {
+    const auto &metadata = delegation_request_metadata;
+    const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
+    const e4 alpha = (alphas++).get();
+    acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
+    e4 denom = (helpers++).get();
+    denom = e4::add(denom, e4::mul(alpha, memory_cols.get_at_col(metadata.delegation_type_col)));
+    if (metadata.has_abi_mem_offset_high) {
+      denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
+    } {
+      helpers++; // unused
+    }
+    const auto& timestamp_src_cols = is_unrolled ? memory_cols : setup_cols;
+    denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_src_cols.get_at_col(metadata.timestamp_col)));
+    denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_src_cols.get_at_col(metadata.timestamp_col + 1)));
+    const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+    acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+  }
+
+  if (process_delegations) {
+    const auto &metadata = delegation_processing_metadata;
+    const bf m = memory_cols.get_at_col(metadata.multiplicity_col);
+    const e4 alpha = (alphas++).get();
+    acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(m)));
+    e4 denom = (helpers++).get();
+    if (metadata.has_abi_mem_offset_high) {
+      denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.abi_mem_offset_high_col)));
+    } else {
+      helpers++; // unused
+    }
+    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col)));
+    denom = e4::add(denom, e4::mul((helpers++).get(), memory_cols.get_at_col(metadata.write_timestamp_col + 1)));
+    const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+    acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+  }
 // 
 //   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
 //     // Enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero

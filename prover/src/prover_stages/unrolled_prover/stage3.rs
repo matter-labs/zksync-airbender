@@ -588,45 +588,45 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             &lookup_argument_gamma,
                         );
 
-                        // // write timestamps come from cycle itself, and are used for multiple things below
-                        // let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {
-                        //     let write_timestamp_low = *memory_trace_view_row
-                        //         .get_unchecked(intermediate_state_layout.timestamp.start());
-                        //     let write_timestamp_high = *memory_trace_view_row
-                        //         .get_unchecked(
-                        //             intermediate_state_layout.timestamp.start() + 1,
-                        //         );
+                        // write timestamps come from cycle itself, and are used for multiple things below
+                        let (write_timestamp_low, write_timestamp_high) = if let Some(intermediate_state_layout) = compiled_circuit.memory_layout.intermediate_state_layout.as_ref() {
+                            let write_timestamp_low = *memory_trace_view_row
+                                .get_unchecked(intermediate_state_layout.timestamp.start());
+                            let write_timestamp_high = *memory_trace_view_row
+                                .get_unchecked(
+                                    intermediate_state_layout.timestamp.start() + 1,
+                                );
 
-                        //     (write_timestamp_low, write_timestamp_high)
-                        // } else {
-                        //     (Mersenne31Field::ZERO, Mersenne31Field::ZERO)
-                        // };
+                            (write_timestamp_low, write_timestamp_high)
+                        } else {
+                            (Mersenne31Field::ZERO, Mersenne31Field::ZERO)
+                        };
 
-                        // // either process set equality for delegation requests or processings
-                        // if handle_delegation_requests {
-                        //     evaluate_delegation_requests(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &delegation_request_layout,
-                        //         &delegation_challenges,
-                        //         write_timestamp_low,
-                        //         write_timestamp_high,
-                        //         &delegation_requests_timestamp_extra_contribution,
-                        //     );
-                        // }
+                        // either process set equality for delegation requests or processings
+                        if handle_delegation_requests {
+                            evaluate_delegation_requests(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &delegation_request_layout,
+                                &delegation_challenges,
+                                write_timestamp_low,
+                                write_timestamp_high,
+                                &delegation_requests_timestamp_extra_contribution,
+                            );
+                        }
 
-                        // if process_delegations {
-                        //     panic!("Please use another prover function for such circuit types");
-                        // }
+                        if process_delegations {
+                            panic!("Please use another prover function for such circuit types");
+                        }
 
                         // if process_shuffle_ram_init {
                         //     evaluate_memory_init_teardown_padding(

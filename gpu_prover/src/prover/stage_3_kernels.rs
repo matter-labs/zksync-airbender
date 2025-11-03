@@ -112,6 +112,7 @@ cuda_kernel!(
     every_row_zerofier : E2,
     omega_inv: E2,
     omega_inv_squared: E2,
+    is_unrolled: bool,
     log_n: u32,
 );
 
@@ -167,12 +168,15 @@ impl StaticMetadata {
 
         let ProverCachedData {
             trace_len,
+            memory_timestamp_high_from_circuit_idx,
+            delegation_type,
             memory_argument_challenges,
             delegation_challenges,
             process_shuffle_ram_init,
             shuffle_ram_inits_and_teardowns,
             lazy_init_address_range_check_16,
             handle_delegation_requests,
+            delegation_request_layout,
             process_batch_ram_access,
             process_registers_and_indirect_access,
             delegation_processor_layout,
@@ -281,8 +285,27 @@ impl StaticMetadata {
             } else {
                 (0, DelegationChallenges::default())
             };
-        let (delegation_request_metadata, delegation_processing_metadata) =
-            get_delegation_metadata(cached_data, circuit);
+        let delegation_request_metadata = if handle_delegation_requests {
+            let memory_timestamp_high_from_circuit_idx = if is_unrolled {
+                None
+            } else {
+                Some(memory_timestamp_high_from_circuit_idx)
+            };
+            DelegationRequestMetadata::new(
+                circuit,
+                memory_timestamp_high_from_circuit_idx,
+                &delegation_request_layout,
+                is_unrolled,
+            )
+        } else {
+            DelegationRequestMetadata::default()
+        };
+        let delegation_processing_metadata = if process_delegations {
+            assert!(!is_unrolled);
+            DelegationProcessingMetadata::new(&delegation_processor_layout, delegation_type)
+        } else {
+            DelegationProcessingMetadata::default()
+        };
         let memory_challenges = MemoryChallenges::new(&memory_argument_challenges);
         let num_memory_args = circuit
             .stage_2_layout
@@ -1062,43 +1085,45 @@ pub(super) fn prepare_async_challenge_data(
         helpers,
         decompression_factor_inv,
     );
-    // if handle_delegation_requests {
-    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //     alpha_offset += 1;
-    //     let mut timestamp_low_constant = delegation_challenges.linearization_challenges
-    //         [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW];
-    //     timestamp_low_constant.mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
-    //     let mut timestamp_high_constant = delegation_challenges.linearization_challenges
-    //         [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH];
-    //     timestamp_high_constant.mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
-    //     helpers.push(
-    //         *delegation_challenges
-    //             .gamma
-    //             .clone()
-    //             .add_assign(&timestamp_low_constant)
-    //             .add_assign(&timestamp_high_constant)
-    //             .mul_assign(&alpha)
-    //             .mul_assign_by_base(&decompression_factor_inv),
-    //     );
-    //     for challenge in delegation_challenges.linearization_challenges.iter() {
-    //         helpers.push(*alpha.clone().mul_assign(&challenge));
-    //     }
-    // }
-    // if process_delegations {
-    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //     alpha_offset += 1;
-    //     helpers.push(
-    //         *delegation_challenges
-    //             .gamma
-    //             .clone()
-    //             .add_assign_base(&delegation_processing_metadata.delegation_type)
-    //             .mul_assign(&alpha)
-    //             .mul_assign_by_base(&decompression_factor_inv),
-    //     );
-    //     for challenge in delegation_challenges.linearization_challenges.iter() {
-    //         helpers.push(*alpha.clone().mul_assign(&challenge));
-    //     }
-    // }
+    if handle_delegation_requests {
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        let mut timestamp_low_constant = delegation_challenges.linearization_challenges
+            [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW];
+        timestamp_low_constant.mul_assign_by_base(&delegation_request_metadata.in_cycle_write_idx);
+        let mut timestamp_high_constant = delegation_challenges.linearization_challenges
+            [DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH];
+        timestamp_high_constant.mul_assign_by_base(
+            &delegation_request_metadata.memory_timestamp_high_from_circuit_idx,
+        );
+        helpers.push(
+            *delegation_challenges
+                .gamma
+                .clone()
+                .add_assign(&timestamp_low_constant)
+                .add_assign(&timestamp_high_constant)
+                .mul_assign(&alpha)
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+        for challenge in delegation_challenges.linearization_challenges.iter() {
+            helpers.push(*alpha.clone().mul_assign(&challenge));
+        }
+    }
+    if process_delegations {
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        helpers.push(
+            *delegation_challenges
+                .gamma
+                .clone()
+                .add_assign_base(&delegation_processing_metadata.delegation_type)
+                .mul_assign(&alpha)
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+        for challenge in delegation_challenges.linearization_challenges.iter() {
+            helpers.push(*alpha.clone().mul_assign(&challenge));
+        }
+    }
     // // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
     // for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
     //     alpha_offset += 6;
@@ -1367,7 +1392,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_request_metadata,
         register_and_indirect_accesses,
         num_helpers_expected: _,
-        is_unrolled: _,
+        is_unrolled,
     } = static_metadata;
     let AlphaPowersLayout {
         num_quotient_terms_every_row_except_last,
@@ -1494,6 +1519,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         flat_generic_constraints_metadata.every_row_zerofier,
         omega_inv,
         omega_inv_squared,
+        is_unrolled,
         log_n,
     );
     HardcodedConstraintsFunction(ab_hardcoded_constraints_kernel).launch(&config, &args)

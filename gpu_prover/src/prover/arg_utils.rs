@@ -1,7 +1,7 @@
 use cs::definitions::{
-    IndirectAccessColumns, LookupExpression, OptimizedOraclesForLookupWidth1,
-    RegisterAccessColumns, RegisterAndIndirectAccessDescription, ShuffleRamAuxComparisonSet,
-    ShuffleRamInitAndTeardownLayout,
+    DelegationProcessingLayout, DelegationRequestLayout, IndirectAccessColumns, LookupExpression,
+    OptimizedOraclesForLookupWidth1, RegisterAccessColumns, RegisterAndIndirectAccessDescription,
+    ShuffleRamAuxComparisonSet, ShuffleRamInitAndTeardownLayout,
     EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -20,7 +20,6 @@ use prover::definitions::{
     ExternalDelegationArgumentChallenges, ExternalMachineStateArgumentChallenges,
     ExternalMemoryArgumentChallenges,
 };
-use prover::prover_stages::cached_data::ProverCachedData;
 
 use super::{BF, E4};
 use std::mem::size_of;
@@ -91,6 +90,47 @@ pub struct DelegationRequestMetadata {
     pub has_abi_mem_offset_high: bool,
 }
 
+impl DelegationRequestMetadata {
+    pub fn new(
+        circuit: &CompiledCircuitArtifact<BF>,
+        memory_timestamp_high_from_circuit_idx: Option<BF>,
+        layout: &DelegationRequestLayout,
+        is_unrolled: bool,
+    ) -> Self {
+        let (timestamp_columns, memory_timestamp_high_from_circuit_idx) = if is_unrolled {
+            assert!(memory_timestamp_high_from_circuit_idx.is_none());
+            (
+                &circuit
+                    .memory_layout
+                    .intermediate_state_layout
+                    .unwrap()
+                    .timestamp,
+                BF::ZERO,
+            )
+        } else {
+            (
+                &circuit.setup_layout.timestamp_setup_columns,
+                memory_timestamp_high_from_circuit_idx.unwrap(),
+            )
+        };
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
+        };
+        Self {
+            multiplicity_col: layout.multiplicity.start() as u32,
+            timestamp_col: timestamp_columns.start() as u32,
+            memory_timestamp_high_from_circuit_idx,
+            delegation_type_col: layout.delegation_type.start() as u32,
+            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationProcessingMetadata {
@@ -101,51 +141,21 @@ pub struct DelegationProcessingMetadata {
     pub has_abi_mem_offset_high: bool,
 }
 
-pub fn get_delegation_metadata(
-    cached_data: &ProverCachedData,
-    circuit: &CompiledCircuitArtifact<BF>,
-) -> (DelegationRequestMetadata, DelegationProcessingMetadata) {
-    let handle_delegation_requests = cached_data.handle_delegation_requests;
-    let process_delegations = cached_data.process_delegations;
-    let execute_delegation_argument = cached_data.execute_delegation_argument;
-    let delegation_request_layout = cached_data.delegation_request_layout;
-    let delegation_processor_layout = cached_data.delegation_processor_layout;
-    let memory_timestamp_high_from_circuit_idx = cached_data.memory_timestamp_high_from_circuit_idx;
-    let delegation_type = cached_data.delegation_type;
-    assert_eq!(
-        execute_delegation_argument,
-        handle_delegation_requests || process_delegations
-    );
-    // NB: handle_delegation_requests and process_delegations are mutually exclusive
-    if handle_delegation_requests {
-        assert!(!process_delegations);
-        let layout = delegation_request_layout;
-        let request_metadata = DelegationRequestMetadata {
-            multiplicity_col: layout.multiplicity.start() as u32,
-            timestamp_col: circuit.setup_layout.timestamp_setup_columns.start() as u32,
-            memory_timestamp_high_from_circuit_idx,
-            delegation_type_col: layout.delegation_type.start() as u32,
-            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            has_abi_mem_offset_high: true,
+impl DelegationProcessingMetadata {
+    pub fn new(layout: &DelegationProcessingLayout, delegation_type: BF) -> Self {
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
         };
-        (request_metadata, DelegationProcessingMetadata::default())
-    } else if process_delegations {
-        assert!(!handle_delegation_requests); // redundant, for clarity
-        let layout = delegation_processor_layout;
-        let processing_metadata = DelegationProcessingMetadata {
+        Self {
             multiplicity_col: layout.multiplicity.start() as u32,
             delegation_type,
             write_timestamp_col: layout.write_timestamp.start() as u32,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            has_abi_mem_offset_high: true,
-        };
-        (DelegationRequestMetadata::default(), processing_metadata)
-    } else {
-        (
-            DelegationRequestMetadata::default(),
-            DelegationProcessingMetadata::default(),
-        )
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
     }
 }
 
