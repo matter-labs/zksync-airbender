@@ -628,70 +628,70 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             panic!("Please use another prover function for such circuit types");
                         }
 
-                        // if process_shuffle_ram_init {
-                        //     evaluate_memory_init_teardown_padding(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //     );
-                        // }
+                        if process_shuffle_ram_init {
+                            evaluate_memory_init_teardown_padding(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                            );
+                        }
 
-                        // // and now we work with memory multiplicative accumulators
-                        // // Numerator is write set, denom is read set
+                        // and now we work with memory multiplicative accumulators
+                        // Numerator is write set, denom is read set
 
-                        // // NOTE: it'll be multiplied by tau^H/2 eventually, so we must give an inverse instead of one
-                        // let initial = Mersenne31Quartic::from_base(tau_in_domain_by_half_inv);
-                        // let mut permutation_argument_src = &initial as *const Mersenne31Quartic;
+                        // NOTE: it'll be multiplied by tau^H/2 eventually, so we must give an inverse instead of one
+                        let initial = Mersenne31Quartic::from_base(tau_in_domain_by_half_inv);
+                        let mut permutation_argument_src = &initial as *const Mersenne31Quartic;
 
-                        // // first lazy init from read set / lazy teardown
+                        // first lazy init from read set / lazy teardown
 
-                        // // and memory grand product accumulation identities
+                        // and memory grand product accumulation identities
 
-                        // // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
+                        // sequence of keys is in general is_reg || address_low || address_high || timestamp low || timestamp_high || value_low || value_high
 
-                        // // Note on multiplication by tau^H/2: numerator and denominator are degree 1
+                        // Note on multiplication by tau^H/2: numerator and denominator are degree 1
 
-                        // // we assembled P(x) = write init set / read teardown set
+                        // we assembled P(x) = write init set / read teardown set
 
-                        // // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
+                        // now we can continue to accumulate either for shuffle RAM, or for batched RAM accesses
 
-                        // evaluate_memory_queries_accumulation(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut other_challenges_ptr,
-                        //     &memory_argument_challenges,
-                        //     &tau_in_domain_by_half_inv,
-                        //     &mut permutation_argument_src,
-                        //     &Mersenne31Quartic::ZERO,
-                        //     write_timestamp_low,
-                        //     write_timestamp_high,
-                        // );
+                        evaluate_memory_queries_accumulation(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut other_challenges_ptr,
+                            &memory_argument_challenges,
+                            &tau_in_domain_by_half_inv,
+                            &mut permutation_argument_src,
+                            &Mersenne31Quartic::ZERO,
+                            write_timestamp_low,
+                            write_timestamp_high,
+                        );
 
-                        // // Same for batched RAM accesses
-                        // if process_batch_ram_access {
-                        //     unreachable!("deprecated");
-                        // }
+                        // Same for batched RAM accesses
+                        if process_batch_ram_access {
+                            unreachable!("deprecated");
+                        }
 
-                        // // Same for registers and indirects
-                        // if process_registers_and_indirect_access {
-                        //     panic!("Please use another prover function for such circuit types");
-                        // }
+                        // Same for registers and indirects
+                        if process_registers_and_indirect_access {
+                            panic!("Please use another prover function for such circuit types");
+                        }
 
                         // if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
                         //     evaluate_machine_state_permutation_assuming_no_decoder(

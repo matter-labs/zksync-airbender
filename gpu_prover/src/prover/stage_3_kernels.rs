@@ -1124,54 +1124,55 @@ pub(super) fn prepare_async_challenge_data(
             helpers.push(*alpha.clone().mul_assign(&challenge));
         }
     }
-    // // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
-    // for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-    //     alpha_offset += 6;
-    // }
-    // for i in 0..shuffle_ram_accesses.num_accesses as usize {
-    //     let access = &shuffle_ram_accesses.accesses[i];
-    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //     alpha_offset += 1;
-    //     let mc = &memory_challenges;
-    //     let mut numerator_constant = mc.gamma;
-    //     if access.is_register_only {
-    //         numerator_constant.add_assign_base(&BF::ONE);
-    //     }
-    //     let mut denom_constant = numerator_constant;
-    //     let write_timestamp_low_constant = *mc
-    //         .timestamp_low_challenge
-    //         .clone()
-    //         .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
-    //     let write_timestamp_high_constant = *mc
-    //         .timestamp_high_challenge
-    //         .clone()
-    //         .mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
-    //     numerator_constant
-    //         .add_assign(&write_timestamp_low_constant)
-    //         .add_assign(&write_timestamp_high_constant);
-    //     numerator_constant.mul_assign(&alpha);
-    //     if i == 0 {
-    //         constants_times_challenges
-    //             .every_row_except_last
-    //             .sub_assign(&numerator_constant);
-    //     }
-    //     helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-    //     if !access.is_register_only {
-    //         helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-    //     }
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-    //     helpers.push(
-    //         *denom_constant
-    //             .mul_assign(&alpha)
-    //             .mul_assign_by_base(&decompression_factor_inv),
-    //     );
-    //     if i > 0 {
-    //         helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
-    //     }
-    // }
+    // for lazy init padding constraints (limbs are zero if "final borrow" is zero)
+    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
+        alpha_offset += 6;
+    }
+    for i in 0..shuffle_ram_accesses.num_accesses as usize {
+        let access = &shuffle_ram_accesses.accesses[i];
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        let mc = &memory_challenges;
+        let mut numerator_constant = mc.gamma;
+        if access.is_register_only {
+            numerator_constant.add_assign_base(&BF::ONE);
+        }
+        let mut denom_constant = numerator_constant;
+        let write_timestamp_low_constant = *mc
+            .timestamp_low_challenge
+            .clone()
+            .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
+        numerator_constant.add_assign(&write_timestamp_low_constant);
+        if !is_unrolled {
+            let write_timestamp_high_constant = *mc
+                .timestamp_high_challenge
+                .clone()
+                .mul_assign_by_base(&memory_timestamp_high_from_circuit_idx);
+            numerator_constant.add_assign(&write_timestamp_high_constant);
+        }
+        numerator_constant.mul_assign(&alpha);
+        if i == 0 {
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&numerator_constant);
+        }
+        helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+        if !access.is_register_only {
+            helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+        }
+        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+        helpers.push(
+            *denom_constant
+                .mul_assign(&alpha)
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+        if i > 0 {
+            helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
+        }
+    }
     // // for lazy init memory accumulator contributions
     // for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
     //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
