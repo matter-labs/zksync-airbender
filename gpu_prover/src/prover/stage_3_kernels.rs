@@ -564,13 +564,24 @@ impl StaticMetadata {
         } else {
             0
         };
-        // lazy init padding constraints (limbs are zero if "final borrow" is zero)
-        // go before shuffle ram accesses, but don't use any helpers.
-        let shuffle_ram_accesses = if process_shuffle_ram_init {
-            let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-            let write_timestamp_in_setup_start =
-                circuit.setup_layout.timestamp_setup_columns.start();
-            ShuffleRamAccesses::new(shuffle_ram_access_sets, write_timestamp_in_setup_start)
+        // lazy init padding constraints go before shuffle ram accesses,
+        // but don't use any helpers.
+        let shuffle_ram_accesses = if is_unrolled {
+            assert_eq!(
+                num_memory_args > 0,
+                circuit.memory_layout.intermediate_state_layout.is_some(),
+            );
+            assert_eq!(
+                num_memory_args > 0,
+                circuit.memory_layout.shuffle_ram_access_sets.len() > 0,
+            );
+            if num_memory_args > 0 {
+                ShuffleRamAccesses::new(circuit, true)
+            } else {
+                ShuffleRamAccesses::default() // lazy inits and teardowns circuit
+            }
+        } else if process_shuffle_ram_init {
+            ShuffleRamAccesses::new(circuit, false)
         } else {
             ShuffleRamAccesses::default()
         };

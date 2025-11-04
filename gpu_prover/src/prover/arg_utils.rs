@@ -920,13 +920,22 @@ pub struct ShuffleRamAccesses {
 }
 
 impl ShuffleRamAccesses {
-    pub fn new(
-        shuffle_ram_access_sets: &Vec<ShuffleRamQueryColumns>,
-        write_timestamp_start: usize,
-    ) -> Self {
+    pub fn new(circuit: &CompiledCircuitArtifact<BF>, is_unrolled: bool) -> Self {
         let mut accesses = [ShuffleRamAccess::default(); MAX_SHUFFLE_RAM_ACCESSES];
+        let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
         let num_accesses = shuffle_ram_access_sets.len();
         assert!(num_accesses <= MAX_SHUFFLE_RAM_ACCESSES);
+        let intermediate_state_layout = &circuit.memory_layout.intermediate_state_layout;
+        let write_timestamp_start = if is_unrolled {
+            intermediate_state_layout
+                .as_ref()
+                .unwrap()
+                .timestamp
+                .start()
+        } else {
+            assert!(intermediate_state_layout.is_none());
+            circuit.setup_layout.timestamp_setup_columns.start()
+        };
         // imitates zksync_airbender's stage2.rs
         for (i, memory_access_columns) in shuffle_ram_access_sets.iter().enumerate() {
             match memory_access_columns {

@@ -617,11 +617,7 @@ impl MultiplicitiesLayout {
                     .mul_assign_by_base(&decompression_factor_inv),
             );
             for j in 0..entry_width - 1 {
-                helpers.push(
-                    *alpha
-                        .clone()
-                        .mul_assign(&linearization_challenges[j]),
-                );
+                helpers.push(*alpha.clone().mul_assign(&linearization_challenges[j]));
             }
         }
     }

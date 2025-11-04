@@ -77,10 +77,7 @@ pub(crate) fn stage2_process_lazy_init_and_ram_access(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(lazy_init_teardown_layouts.process_shuffle_ram_init, true);
-    let write_timestamp_in_setup_start = circuit.setup_layout.timestamp_setup_columns.start();
-    let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-    let shuffle_ram_accesses =
-        ShuffleRamAccesses::new(shuffle_ram_access_sets, write_timestamp_in_setup_start);
+    let shuffle_ram_accesses = ShuffleRamAccesses::new(circuit, false);
     let block_dim = WARP_SIZE * 4;
     let grid_dim = ((1 << log_n) + block_dim - 1) / block_dim;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -137,14 +134,7 @@ pub(crate) fn stage2_process_unrolled_grand_product_contributions<F: Fn(usize) -
     let process_ram_access = intermediate_polys_for_memory_argument.num_elements() > 0;
     let process_mask = intermediate_polys_for_permutation_masking.num_elements() > 0;
     let (shuffle_ram_accesses, ram_access_args_start) = if process_ram_access {
-        let cycle_timestamp_columns = circuit
-            .memory_layout
-            .intermediate_state_layout
-            .unwrap()
-            .timestamp;
-        let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
-        let shuffle_ram_accesses =
-            ShuffleRamAccesses::new(shuffle_ram_access_sets, cycle_timestamp_columns.start());
+        let shuffle_ram_accesses = ShuffleRamAccesses::new(circuit, true);
         let ram_access_args_start =
             translate_e4_offset(intermediate_polys_for_memory_argument.start());
         (shuffle_ram_accesses, ram_access_args_start)
