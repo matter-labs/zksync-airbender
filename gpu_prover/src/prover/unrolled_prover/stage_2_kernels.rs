@@ -535,6 +535,7 @@ mod tests {
     use super::*;
     use crate::device_context::DeviceContext;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
+    use crate::ops_complex::transpose;
     use crate::prover::{
         get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
         get_stage_2_e4_scratch,
@@ -581,7 +582,6 @@ mod tests {
         );
         // double-check argument sizes if desired
         print_sizes();
-        // Repackage row-major data as column-major for GPU
         let range = 0..domain_size;
         let domain_index = 0;
         let num_setup_cols = circuit.setup_layout.total_width;
@@ -603,43 +603,19 @@ mod tests {
             num_stage_2_cols,
             4 * (((num_stage_2_bf_cols + 3) / 4) + num_stage_2_e4_cols)
         );
-        let mut h_setup_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_setup_cols];
-        let mut h_trace_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_trace_cols];
+
+        let h_setup = &setup.ldes[domain_index].trace;
+        let h_trace = &prover_data.stage_1_result.ldes[domain_index].trace;
+        let h_setup_slice = h_setup.as_slice();
+        let h_trace_slice = h_trace.as_slice();
+        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
+        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
+
+        let mut h_stage_2_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_stage_2_cols];
+        let mut lookup_mapping_view = lookup_mapping.row_view(range.clone());
         let mut h_generic_lookups_args_to_table_entries_map: Vec<u32> =
             vec![0; domain_size * num_generic_args];
-        let mut h_stage_2_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_stage_2_cols];
-        // imitating access patterns in zksync_airbender's prover_stages/stage4.rs
-        let mut trace_view = prover_data.stage_1_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut setup_trace_view = setup.ldes[domain_index].trace.row_view(range.clone());
-        let mut lookup_mapping_view = lookup_mapping.row_view(range.clone());
         unsafe {
-            let now = std::time::Instant::now();
-            for i in 0..domain_size {
-                let setup_trace_view_row = setup_trace_view.current_row_ref();
-                let trace_view_row = trace_view.current_row_ref();
-                {
-                    let mut src = setup_trace_view_row.as_ptr();
-                    for j in 0..num_setup_cols {
-                        h_setup_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let mut src = trace_view_row.as_ptr();
-                    for j in 0..num_trace_cols {
-                        h_trace_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                setup_trace_view.advance_row();
-                trace_view.advance_row();
-            }
-            println!(
-                "repacking setup and trace as column major took {:?}",
-                now.elapsed()
-            );
             // Repack lookup_mapping in an array with 1 padding row on the bottom
             // to ensure warp accesses are aligned
             let now = std::time::Instant::now();
@@ -668,9 +644,15 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let mut d_alloc_setup_cols =
+        let num_memory_args = circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_argument
+            .num_elements();
+        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
+        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
+        let mut d_setup_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
-        let mut d_alloc_trace_cols =
+        let mut d_trace_column_major =
             DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
         let mut d_alloc_generic_lookups_args_to_table_entries_map =
             DeviceAllocation::<u32>::alloc(domain_size * num_generic_args).unwrap();
@@ -708,10 +690,10 @@ mod tests {
             DeviceAllocation::<BF>::alloc(col_sums_scratch_elems).unwrap();
 
         let mut d_lookup_challenges = DeviceAllocation::<LookupChallenges>::alloc(1).unwrap();
+        memory_copy_async(&mut d_setup_row_major, h_setup_slice, &stream).unwrap();
+        memory_copy_async(&mut d_trace_row_major, h_trace_slice, &stream).unwrap();
         let mut d_decoder_table_challenges =
             DeviceAllocation::<DecoderTableChallenges>::alloc(1).unwrap();
-        memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
         memory_copy_async(
             &mut d_alloc_generic_lookups_args_to_table_entries_map,
             &h_generic_lookups_args_to_table_entries_map,
@@ -725,8 +707,14 @@ mod tests {
             &stream,
         )
         .unwrap();
-        let d_setup_cols = DeviceMatrix::new(&d_alloc_setup_cols, domain_size);
-        let d_trace_cols = DeviceMatrix::new(&d_alloc_trace_cols, domain_size);
+        let d_setup_row_major_matrix =
+            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
+        let d_trace_row_major_matrix =
+            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
+        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
+        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
+        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
+        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
         let slice = d_trace_cols.slice();
         let stride = d_trace_cols.stride();
         let offset = d_trace_cols.offset();

@@ -593,6 +593,159 @@ enforce_grand_product_lazy_init_teardown_contribution(const LazyInitTeardownLayo
 
 constexpr bf SHIFT_16 = bf{1 << 16};
 
+DEVICE_FORCEINLINE void
+enforce_grand_product_register_and_indirect_access_contributions(const RegisterAndIndirectAccesses &register_and_indirect_accesses,
+                                                                 const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                                 vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                                                 vector_getter<e4, ld_modifier::ca> &alphas,
+                                                                 vector_getter<e4, ld_modifier::ca> &helpers,
+                                                                 const unsigned memory_args_start,
+                                                                 e4 &acc_linear, e4 &acc_quadratic) {
+  const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
+  const bf write_timestamp_high = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col + 1);
+  unsigned flat_indirect_idx = 0;
+  e4 e4_arg_prev{};
+#pragma unroll 1
+  for (unsigned i = 0; i < register_and_indirect_accesses.num_register_accesses; i++) {
+    bf base_low;
+    bf base_high;
+    {
+      const auto &access = register_and_indirect_accesses.register_accesses[i];
+      e4 numerator{};
+      e4 denom{};
+
+      const e4 value_low_helper = (helpers++).get();
+      const e4 value_high_helper = (helpers++).get();
+      if (access.is_write) {
+        const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
+        denom = e4::mul(value_low_helper, read_value_low);
+        const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
+        denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
+
+        // imitate arg construction
+        base_low = bf::into_canonical(read_value_low);
+        base_high = bf::into_canonical(read_value_high);
+
+        const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
+        numerator = e4::mul(value_low_helper, write_value_low);
+        const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
+        numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
+      } else {
+        const bf value_low = memory_cols.get_at_col(access.read_value_col);
+        numerator = e4::mul(value_low_helper, value_low);
+        const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
+        numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
+
+        // imitate arg construction
+        base_low = bf::into_canonical(value_low);
+        base_high = bf::into_canonical(value_high);
+
+        denom = numerator;
+      }
+
+      const e4 timestamp_low_helper = (helpers++).get();
+      const e4 timestamp_high_helper = (helpers++).get();
+
+      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
+      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
+
+      const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
+      denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
+      const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
+      denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
+
+      // adjusted constant contributions
+      const e4 constant = (helpers++).get();
+      denom = e4::add(denom, constant);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i + flat_indirect_idx);
+      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+
+      // flush result
+      if (i == 0) {
+        acc_linear = e4::sub(acc_linear, numerator);
+        e4_arg_prev = e4_arg;
+      } else {
+        numerator = e4::add(numerator, constant);
+        acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+        e4_arg_prev = e4_arg;
+      }
+    }
+
+    const unsigned end = flat_indirect_idx + register_and_indirect_accesses.indirect_accesses_per_register_access[i];
+#pragma unroll 1
+    for (; flat_indirect_idx < end; flat_indirect_idx++) {
+      const auto &access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
+      e4 numerator{};
+      e4 denom{};
+
+      const e4 address_low_helper = (helpers++).get();
+      const e4 address_high_helper = (helpers++).get();
+      if (!access.has_address_derivation_carry_bit) {
+        if (access.has_variable_dependent) {
+          const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
+          const bf t_canonical = bf::into_canonical(t);
+          const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
+          numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
+        } else {
+          numerator = e4::mul(address_low_helper, base_low);
+        }
+        numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
+      } else {
+        const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);
+        numerator = e4::mul(address_low_helper, bf::sub(base_low, bf::mul(carry_bit, SHIFT_16)));
+        numerator = e4::add(numerator, e4::mul(address_high_helper, bf::add(base_high, carry_bit)));
+      }
+
+      const e4 value_low_helper = (helpers++).get();
+      const e4 value_high_helper = (helpers++).get();
+      if (access.has_write) {
+        denom = numerator;
+
+        const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
+        denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
+        const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
+        denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
+
+        const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
+        numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
+        const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
+        numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
+      } else {
+        const bf value_low = memory_cols.get_at_col(access.read_value_col);
+        numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
+        const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
+        numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
+
+        denom = numerator;
+      }
+
+      const e4 timestamp_low_helper = (helpers++).get();
+      const e4 timestamp_high_helper = (helpers++).get();
+
+      numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
+      numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
+
+      const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
+      denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
+      const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
+      denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
+
+      // adjusted constant contributions
+      const e4 constant = (helpers++).get();
+      denom = e4::add(denom, constant);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + flat_indirect_idx + i + 1);
+      acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+
+      // flush result
+      numerator = e4::add(numerator, constant);
+      acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+      e4_arg_prev = e4_arg;
+    }
+  }
+
+  alphas += register_and_indirect_accesses.num_register_accesses + flat_indirect_idx;
+}
+
 constexpr unsigned MAX_PUBLIC_INPUTS_FIRST_ROW = 2;
 constexpr unsigned MAX_PUBLIC_INPUTS_ONE_BEFORE_LAST_ROW = 2;
 constexpr unsigned MAX_BOUNDARY_CONSTRAINTS_FIRST_ROW = 6 * MAX_LAZY_INIT_TEARDOWN_SETS + MAX_PUBLIC_INPUTS_FIRST_ROW;
@@ -850,153 +1003,12 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
     enforce_grand_product_lazy_init_teardown_contribution(lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols, alphas, helpers,
                                                           lazy_init_teardown_args_start, arg_prev_is_initialized, e4_arg_prev, acc_linear, acc_quadratic);
-// 
-//   if (process_registers_and_indirect_access) {
-//     const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
-//     const bf write_timestamp_high = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col + 1);
-//     unsigned flat_indirect_idx = 0;
-//     e4 e4_arg_prev{};
-// #pragma unroll 1
-//     for (unsigned i = 0; i < register_and_indirect_accesses.num_register_accesses; i++) {
-//       bf base_low;
-//       bf base_high;
-//       {
-//         const auto &access = register_and_indirect_accesses.register_accesses[i];
-//         e4 numerator{};
-//         e4 denom{};
-// 
-//         const e4 value_low_helper = (helpers++).get();
-//         const e4 value_high_helper = (helpers++).get();
-//         if (access.is_write) {
-//           const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-//           denom = e4::mul(value_low_helper, read_value_low);
-//           const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-//           denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-// 
-//           // imitate arg construction
-//           base_low = bf::into_canonical(read_value_low);
-//           base_high = bf::into_canonical(read_value_high);
-// 
-//           const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-//           numerator = e4::mul(value_low_helper, write_value_low);
-//           const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-//           numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-//         } else {
-//           const bf value_low = memory_cols.get_at_col(access.read_value_col);
-//           numerator = e4::mul(value_low_helper, value_low);
-//           const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-//           numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-// 
-//           // imitate arg construction
-//           base_low = bf::into_canonical(value_low);
-//           base_high = bf::into_canonical(value_high);
-// 
-//           denom = numerator;
-//         }
-// 
-//         const e4 timestamp_low_helper = (helpers++).get();
-//         const e4 timestamp_high_helper = (helpers++).get();
-// 
-//         numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
-//         numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
-// 
-//         const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-//         denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-//         const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-//         denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-// 
-//         // adjusted constant contributions
-//         const e4 constant = (helpers++).get();
-//         denom = e4::add(denom, constant);
-//         const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i + flat_indirect_idx);
-//         acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-// 
-//         // flush result
-//         if (i == 0) {
-//           acc_linear = e4::sub(acc_linear, numerator);
-//           e4_arg_prev = e4_arg;
-//         } else {
-//           numerator = e4::add(numerator, constant);
-//           acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-//           e4_arg_prev = e4_arg;
-//         }
-//       }
-// 
-//       const unsigned end = flat_indirect_idx + register_and_indirect_accesses.indirect_accesses_per_register_access[i];
-// #pragma unroll 1
-//       for (; flat_indirect_idx < end; flat_indirect_idx++) {
-//         const auto &access = register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-//         e4 numerator{};
-//         e4 denom{};
-// 
-//         const e4 address_low_helper = (helpers++).get();
-//         const e4 address_high_helper = (helpers++).get();
-//         if (!access.has_address_derivation_carry_bit) {
-//           if (access.has_variable_dependent) {
-//             const bf t = memory_cols.get_at_col(access.maybe_variable_dependent_col);
-//             const bf t_canonical = bf::into_canonical(t);
-//             const bf extra_low = bf::mul(bf{access.maybe_variable_dependent_coeff}, t_canonical);
-//             numerator = e4::mul(address_low_helper, bf::add(base_low, extra_low));
-//           } else {
-//             numerator = e4::mul(address_low_helper, base_low);
-//           }
-//           numerator = e4::add(numerator, e4::mul(address_high_helper, base_high));
-//         } else {
-//           const bf carry_bit = memory_cols.get_at_col(access.maybe_address_derivation_carry_bit_col);
-//           numerator = e4::mul(address_low_helper, bf::sub(base_low, bf::mul(carry_bit, SHIFT_16)));
-//           numerator = e4::add(numerator, e4::mul(address_high_helper, bf::add(base_high, carry_bit)));
-//         }
-// 
-//         const e4 value_low_helper = (helpers++).get();
-//         const e4 value_high_helper = (helpers++).get();
-//         if (access.has_write) {
-//           denom = numerator;
-// 
-//           const bf read_value_low = memory_cols.get_at_col(access.read_value_col);
-//           denom = e4::add(denom, e4::mul(value_low_helper, read_value_low));
-//           const bf read_value_high = memory_cols.get_at_col(access.read_value_col + 1);
-//           denom = e4::add(denom, e4::mul(value_high_helper, read_value_high));
-// 
-//           const bf write_value_low = memory_cols.get_at_col(access.maybe_write_value_col);
-//           numerator = e4::add(numerator, e4::mul(value_low_helper, write_value_low));
-//           const bf write_value_high = memory_cols.get_at_col(access.maybe_write_value_col + 1);
-//           numerator = e4::add(numerator, e4::mul(value_high_helper, write_value_high));
-//         } else {
-//           const bf value_low = memory_cols.get_at_col(access.read_value_col);
-//           numerator = e4::add(numerator, e4::mul(value_low_helper, value_low));
-//           const bf value_high = memory_cols.get_at_col(access.read_value_col + 1);
-//           numerator = e4::add(numerator, e4::mul(value_high_helper, value_high));
-// 
-//           denom = numerator;
-//         }
-// 
-//         const e4 timestamp_low_helper = (helpers++).get();
-//         const e4 timestamp_high_helper = (helpers++).get();
-// 
-//         numerator = e4::add(numerator, e4::mul(timestamp_low_helper, write_timestamp_low));
-//         numerator = e4::add(numerator, e4::mul(timestamp_high_helper, write_timestamp_high));
-// 
-//         const bf read_timestamp_low = memory_cols.get_at_col(access.read_timestamp_col);
-//         denom = e4::add(denom, e4::mul(timestamp_low_helper, read_timestamp_low));
-//         const bf read_timestamp_high = memory_cols.get_at_col(access.read_timestamp_col + 1);
-//         denom = e4::add(denom, e4::mul(timestamp_high_helper, read_timestamp_high));
-// 
-//         // adjusted constant contributions
-//         const e4 constant = (helpers++).get();
-//         denom = e4::add(denom, constant);
-//         const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + flat_indirect_idx + i + 1);
-//         acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-// 
-//         // flush result
-//         numerator = e4::add(numerator, constant);
-//         acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-//         e4_arg_prev = e4_arg;
-//       }
-//     }
-// 
-//     alphas += register_and_indirect_accesses.num_register_accesses + flat_indirect_idx;
-//   }
-// 
+
+  // For delegation circuits only (mutually exclusive with the above grand product contributions)
+  if (process_registers_and_indirect_access)
+    enforce_grand_product_register_and_indirect_access_contributions(register_and_indirect_accesses, memory_cols, stage_2_e4_cols, alphas, helpers,
+                                                                     memory_args_start, acc_linear, acc_quadratic);
+
 //   {
 //     // kinda ugly with 3 e4 x e4 muls, but hopefully negligible overall
 //     const e4 memory_arg_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col - 1);

@@ -823,54 +823,54 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             )
                         }
 
-                        // // Same for batched RAM accesses
-                        // if process_batch_ram_access {
-                        //     panic!("deprecated");
-                        // }
+                        // Same for batched RAM accesses
+                        if process_batch_ram_access {
+                            panic!("deprecated");
+                        }
 
-                        // // Same for registers and indirects
-                        // if process_registers_and_indirect_access {
-                        //     let delegation_write_timestamp_contribution = {
-                        //         let write_timestamp_low = *memory_trace_view_row
-                        //             .get_unchecked(
-                        //                 delegation_processor_layout.write_timestamp.start(),
-                        //             );
-                        //         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
-                        //             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        //         t.mul_assign_by_base(&write_timestamp_low);
-                        //         let mut write_timestamp_contribution = t;
+                        // Same for registers and indirects
+                        if process_registers_and_indirect_access {
+                            let delegation_write_timestamp_contribution = {
+                                let write_timestamp_low = *memory_trace_view_row
+                                    .get_unchecked(
+                                        delegation_processor_layout.write_timestamp.start(),
+                                    );
+                                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                t.mul_assign_by_base(&write_timestamp_low);
+                                let mut write_timestamp_contribution = t;
 
-                        //         let write_timestamp_high = *memory_trace_view_row
-                        //             .get_unchecked(
-                        //                 delegation_processor_layout.write_timestamp.start() + 1,
-                        //             );
-                        //         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
-                        //             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                        //         t.mul_assign_by_base(&write_timestamp_high);
-                        //         write_timestamp_contribution.add_assign(&t);
+                                let write_timestamp_high = *memory_trace_view_row
+                                    .get_unchecked(
+                                        delegation_processor_layout.write_timestamp.start() + 1,
+                                    );
+                                let mut t = memory_argument_challenges.memory_argument_linearization_challenges
+                                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                                t.mul_assign_by_base(&write_timestamp_high);
+                                write_timestamp_contribution.add_assign(&t);
 
-                        //         write_timestamp_contribution
-                        //     };
+                                write_timestamp_contribution
+                            };
 
-                        //     use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_register_and_indirect_memory_accesses;
-                        //     evaluate_register_and_indirect_memory_accesses(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &memory_argument_challenges,
-                        //         &mut permutation_argument_src,
-                        //         &delegation_write_timestamp_contribution,
-                        //         &tau_in_domain_by_half_inv,
-                        //     );
-                        // }
+                            use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_register_and_indirect_memory_accesses;
+                            evaluate_register_and_indirect_memory_accesses(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &memory_argument_challenges,
+                                &mut permutation_argument_src,
+                                &delegation_write_timestamp_contribution,
+                                &tau_in_domain_by_half_inv,
+                            );
+                        }
 
                         // // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)
                         // {
