@@ -84,7 +84,8 @@ cuda_kernel!(
     delegation_request_metadata: DelegationRequestMetadata,
     lazy_init_teardown_args_start: u32,
     memory_args_start: u32,
-    memory_grand_product_col: u32,
+    grand_product_src_col: u32,
+    grand_product_dst_col: u32,
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     machine_state_layout: MachineStateLayout,
@@ -138,7 +139,8 @@ pub struct StaticMetadata {
     boundary_constraints: BoundaryConstraints,
     lazy_init_teardown_args_start: usize,
     memory_args_start: usize,
-    memory_grand_product_col: usize,
+    grand_product_src_col: usize,
+    grand_product_dst_col: usize,
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     machine_state_layout: MachineStateLayout,
@@ -657,7 +659,8 @@ impl StaticMetadata {
                 num_helpers_expected += 7;
             }
         }
-        let (_, memory_grand_product_col) = get_grand_product_src_dst_cols(circuit, is_unrolled);
+        let (grand_product_src_col, grand_product_dst_col) =
+            get_grand_product_src_dst_cols(circuit, is_unrolled);
         // Prepare static layout data for constraints on all rows except the last two
         let state_linkage_constraints = if !is_unrolled {
             StateLinkageConstraints::new(circuit)
@@ -756,7 +759,8 @@ impl StaticMetadata {
             boundary_constraints,
             lazy_init_teardown_args_start,
             memory_args_start,
-            memory_grand_product_col,
+            grand_product_src_col,
+            grand_product_dst_col,
             lazy_init_teardown_layouts,
             shuffle_ram_accesses,
             machine_state_layout,
@@ -1292,59 +1296,59 @@ pub(super) fn prepare_async_challenge_data(
         );
     }
     // Helpers for register and indirect access grand product contributions
-    // let mut flat_indirect_idx = 0;
-    // for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
-    //     let register_access = &register_and_indirect_accesses.register_accesses[i];
-    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //     alpha_offset += 1;
-    //     let mc = &memory_challenges;
-    //     let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
-    //     constant.mul_assign(&alpha);
-    //     if i == 0 {
-    //         constants_times_challenges
-    //             .every_row_except_last
-    //             .sub_assign(&constant);
-    //     }
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-    //     helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
-    //     for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
-    //         let indirect_access =
-    //             &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
-    //         flat_indirect_idx += 1;
-    //         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //         alpha_offset += 1;
-    //         // sanity checks based on our known circuit geometries
-    //         if indirect_access.has_write {
-    //             if j == 0 {
-    //                 assert_eq!(j == 0, indirect_access.offset_constant == 0);
-    //             }
-    //         } else {
-    //             assert_eq!(j == 0, indirect_access.offset_constant == 0);
-    //         }
-    //         let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
-    //         let mut constant = *mc
-    //             .address_low_challenge
-    //             .clone()
-    //             .mul_assign_by_base(&offset)
-    //             .add_assign(&mc.gamma)
-    //             .mul_assign(&alpha);
-    //         helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-    //         helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-    //         helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-    //         helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-    //         helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-    //         helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-    //         helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
-    //     }
-    // }
-    // alpha_offset += 1;
-    // assert_eq!(
-    //     alpha_offset,
-    //     h_alphas_for_hardcoded_every_row_except_last.len()
-    // );
+    let mut flat_indirect_idx = 0;
+    for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
+        let register_access = &register_and_indirect_accesses.register_accesses[i];
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        let mc = &memory_challenges;
+        let mut constant = register_access.gamma_plus_one_plus_address_low_contribution;
+        constant.mul_assign(&alpha);
+        if i == 0 {
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&constant);
+        }
+        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+        helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
+        for j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
+            let indirect_access =
+                &register_and_indirect_accesses.indirect_accesses[flat_indirect_idx];
+            flat_indirect_idx += 1;
+            let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+            alpha_offset += 1;
+            // sanity checks based on our known circuit geometries
+            if indirect_access.has_write {
+                if j == 0 {
+                    assert_eq!(j == 0, indirect_access.offset_constant == 0);
+                }
+            } else {
+                assert_eq!(j == 0, indirect_access.offset_constant == 0);
+            }
+            let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
+            let mut constant = *mc
+                .address_low_challenge
+                .clone()
+                .mul_assign_by_base(&offset)
+                .add_assign(&mc.gamma)
+                .mul_assign(&alpha);
+            helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+            helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+            helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+            helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+            helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+            helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+            helpers.push(*constant.mul_assign_by_base(&decompression_factor_inv));
+        }
+    }
+    alpha_offset += 1; // grand product row linkage
+    assert_eq!(
+        alpha_offset,
+        h_alphas_for_hardcoded_every_row_except_last.len()
+    );
     // // Prepare args and helpers for constraints on all rows except the last two
     // alpha_offset = 0;
     // alpha_offset += state_linkage_constraints.num_constraints as usize;
@@ -1483,7 +1487,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         boundary_constraints,
         lazy_init_teardown_args_start,
         memory_args_start,
-        memory_grand_product_col,
+        grand_product_src_col,
+        grand_product_dst_col,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         machine_state_layout,
@@ -1594,7 +1599,8 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         delegation_request_metadata,
         lazy_init_teardown_args_start as u32,
         memory_args_start as u32,
-        memory_grand_product_col as u32,
+        grand_product_src_col as u32,
+        grand_product_dst_col as u32,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         machine_state_layout,

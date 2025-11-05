@@ -775,7 +775,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const bool handle_delegation_requests, const unsigned delegation_aux_poly_col, __grid_constant__ const DelegationChallenges delegation_challenges,
     __grid_constant__ const DelegationProcessingMetadata delegation_processing_metadata,
     __grid_constant__ const DelegationRequestMetadata delegation_request_metadata, const unsigned lazy_init_teardown_args_start,
-    const unsigned memory_args_start, const unsigned memory_grand_product_col, __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
+    const unsigned memory_args_start, const unsigned grand_product_src_col, const unsigned grand_product_dst_col,
+    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
     __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
     __grid_constant__ const MachineStateLayout machine_state_layout,
     __grid_constant__ const MaskArgLayout mask_arg_layout,
@@ -1009,25 +1010,25 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     enforce_grand_product_register_and_indirect_access_contributions(register_and_indirect_accesses, memory_cols, stage_2_e4_cols, alphas, helpers,
                                                                      memory_args_start, acc_linear, acc_quadratic);
 
-//   {
-//     // kinda ugly with 3 e4 x e4 muls, but hopefully negligible overall
-//     const e4 memory_arg_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col - 1);
-//     const e4 grand_product_entry = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-//     e4 grand_product_entry_next{};
-//     if (gid == n - 1) {
-//       stage_2_e4_cols.sub_row(gid);
-//       grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-//       stage_2_e4_cols.add_row(gid);
-//     } else {
-//       stage_2_e4_cols.add_row(1);
-//       grand_product_entry_next = stage_2_e4_cols.get_at_col(memory_grand_product_col);
-//       stage_2_e4_cols.sub_row(1);
-//     }
-//     const e4 alpha = (alphas++).get();
-//     acc_linear = e4::add(acc_linear, e4::mul(alpha, grand_product_entry_next));
-//     const e4 prod = e4::mul(memory_arg_entry, grand_product_entry);
-//     acc_quadratic = e4::sub(acc_quadratic, e4::mul(alpha, prod));
-//   }
+  {
+    // kinda ugly with 3 e4 x e4 muls, but hopefully negligible overall
+    const e4 src_arg = stage_2_e4_cols.get_at_col(grand_product_src_col);
+    const e4 grand_product_entry = stage_2_e4_cols.get_at_col(grand_product_dst_col);
+    e4 grand_product_entry_next{};
+    if (gid == n - 1) {
+      stage_2_e4_cols.sub_row(gid);
+      grand_product_entry_next = stage_2_e4_cols.get_at_col(grand_product_dst_col);
+      stage_2_e4_cols.add_row(gid);
+    } else {
+      stage_2_e4_cols.add_row(1);
+      grand_product_entry_next = stage_2_e4_cols.get_at_col(grand_product_dst_col);
+      stage_2_e4_cols.sub_row(1);
+    }
+    const e4 alpha = (alphas++).get();
+    acc_linear = e4::add(acc_linear, e4::mul(alpha, grand_product_entry_next));
+    const e4 prod = e4::mul(src_arg, grand_product_entry);
+    acc_quadratic = e4::sub(acc_quadratic, e4::mul(alpha, prod));
+  }
 
   // Finalize "every row except last" contributions
   acc_quadratic = e4::mul(acc_quadratic, decompression_factor_squared);
@@ -1114,7 +1115,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
   // // Constraints at first row: grand product == 1, boundary constraints
   // {
-  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
+  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
   //   unsigned i = 0;
   //   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
   //     for (; i < boundary_constraints.num_init_teardown; i++)
@@ -1151,7 +1152,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
   // // One constraint at last row (grand product accumulator)
   // {
-  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(memory_grand_product_col));
+  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
   //   acc_linear = e4::add(acc_linear, (helpers++).get());
   //   acc_linear = e4::mul(acc_linear, denom_invs[3]);
   //   acc = e4::add(acc, acc_linear);

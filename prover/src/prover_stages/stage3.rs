@@ -872,42 +872,42 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             );
                         }
 
-                        // // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)
-                        // {
-                        //     let mut previous = permutation_argument_src.read();
-                        //     previous.mul_assign_by_base(&tau_in_domain_by_half);
+                        // and now we need to make Z(next_row) = Z(this_row) * previous(this_row)
+                        {
+                            let mut previous = permutation_argument_src.read();
+                            previous.mul_assign_by_base(&tau_in_domain_by_half);
 
-                        //     let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
-                        //     let accumulator_this_row = stage_2_trace_view_row
-                        //         .as_ptr()
-                        //         .add(offset)
-                        //         .cast::<Mersenne31Quartic>()
-                        //         .read();
-                        //     let accumulator_next_row = stage_2_trace_view_next_row
-                        //         .as_ptr()
-                        //         .add(offset)
-                        //         .cast::<Mersenne31Quartic>()
-                        //         .read();
+                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
+                            let accumulator_this_row = stage_2_trace_view_row
+                                .as_ptr()
+                                .add(offset)
+                                .cast::<Mersenne31Quartic>()
+                                .read();
+                            let accumulator_next_row = stage_2_trace_view_next_row
+                                .as_ptr()
+                                .add(offset)
+                                .cast::<Mersenne31Quartic>()
+                                .read();
 
-                        //     let mut term_contribution = accumulator_next_row;
-                        //     let mut t = accumulator_this_row;
-                        //     t.mul_assign(&previous);
-                        //     term_contribution.sub_assign(&t);
-                        //     // we are linear over accumulators
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            let mut term_contribution = accumulator_next_row;
+                            let mut t = accumulator_this_row;
+                            t.mul_assign(&previous);
+                            term_contribution.sub_assign(&t);
+                            // we are linear over accumulators
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
 
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row == false {
-                        //             assert_eq!(
-                        //                 term_contribution,
-                        //                 Mersenne31Quartic::ZERO,
-                        //                 "unsatisfied at memory accumulation grand product at row {}",
-                        //                 absolute_row_idx,
-                        //             );
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext4(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            if DEBUG_QUOTIENT {
+                                if is_last_row == false {
+                                    assert_eq!(
+                                        term_contribution,
+                                        Mersenne31Quartic::ZERO,
+                                        "unsatisfied at memory accumulation grand product at row {}",
+                                        absolute_row_idx,
+                                    );
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext4(&mut other_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
                         let divisor = divisors_trace_view_row
                             .as_ptr()
