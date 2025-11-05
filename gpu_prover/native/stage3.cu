@@ -578,6 +578,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const unsigned memory_args_start, const unsigned memory_grand_product_col, __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
     __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
     __grid_constant__ const MachineStateLayout machine_state_layout,
+    __grid_constant__ const MaskArgLayout mask_arg_layout,
     const bool process_registers_and_indirect_access,
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout range_check_16_expressions,
@@ -785,6 +786,17 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     enforce_grand_product_machine_state_contribution(machine_state_layout, memory_cols, stage_2_e4_cols, alphas, helpers, arg_prev_is_initialized,
                                                      e4_arg_prev, acc_linear, acc_quadratic);
 
+  if (mask_arg_layout.process_mask) {
+    const bf execute = memory_cols.get_at_col(mask_arg_layout.execute_col);
+    const e4 e4_arg = stage_2_e4_cols.get_at_col(mask_arg_layout.arg_col);
+    // micro-optimization: accumulate quadratic and linear terms to acc_linear
+    const e4 quadratic_term = e4::mul(e4_arg_prev, bf::neg(execute));
+    const e4 quadratic_term_for_acc_linear = e4::mul(quadratic_term, decompression_factor);
+    const e4 linear_terms = e4::add(e4_arg, execute);
+    const e4 linear_contribution = e4::add(quadratic_term_for_acc_linear, linear_terms);
+    const e4 alpha = (alphas++).get();
+    acc_linear = e4::add(acc_linear, e4::mul(alpha, linear_contribution));
+  }
 //  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
 //     // Enforce lazy init contributions to global memory accumulator
 //     // TODO: try interleaving this with the above to avoid redundant loads

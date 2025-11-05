@@ -712,22 +712,22 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         }
 
                         // // maybe we should mask
-                        // if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {
-                        //     evaluate_permutation_masking(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &mut permutation_argument_src,
-                        //     );
-                        // }
+                        if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {
+                            evaluate_permutation_masking(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &mut permutation_argument_src,
+                            );
+                        }
 
                         // if process_shuffle_ram_init {
                         //     evaluate_memory_init_teardown_accumulation(

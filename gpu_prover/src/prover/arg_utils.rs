@@ -897,6 +897,49 @@ impl Default for MachineStateLayout {
     }
 }
 
+#[derive(Clone)]
+#[repr(C)]
+pub struct MaskArgLayout {
+    pub arg_col: u32,
+    pub execute_col: u32,
+    pub process_mask: bool,
+}
+
+impl MaskArgLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let poly = circuit.stage_2_layout.intermediate_polys_for_permutation_masking;
+        let process_mask = poly.num_elements() > 0;
+        let (arg_col, execute_col) = if process_mask {
+            let intermediate_state_layout =
+                circuit.memory_layout.intermediate_state_layout.unwrap();
+            (
+                translate_e4_offset(poly.start()),
+                intermediate_state_layout.execute.start(),
+            )
+        } else {
+            (0, 0)
+        };
+        Self {
+            arg_col: arg_col as u32,
+            execute_col: execute_col as u32,
+            process_mask,
+        }
+    }
+}
+
+impl Default for MaskArgLayout {
+    fn default() -> Self {
+        Self {
+            arg_col: 0,
+            execute_col: 0,
+            process_mask: false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct ShuffleRamAccess {

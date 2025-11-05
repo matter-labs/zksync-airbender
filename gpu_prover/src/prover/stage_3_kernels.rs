@@ -88,6 +88,7 @@ cuda_kernel!(
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     machine_state_layout: MachineStateLayout,
+    mask_arg_layout: MaskArgLayout,
     process_registers_and_indirect_access: bool,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
     range_check_16_layout: RangeCheck16ArgsLayout,
@@ -141,6 +142,7 @@ pub struct StaticMetadata {
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
     machine_state_layout: MachineStateLayout,
+    mask_arg_layout: MaskArgLayout,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
     timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
     delegation_aux_poly_col: usize,
@@ -604,17 +606,26 @@ impl StaticMetadata {
             }
         }
         // Grand product machine state contributions
-        let machine_state_layout =
-            if circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements () > 0 {
-                num_helpers_expected += NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES;
-                if !arg_prev_is_initialized {
-                    arg_prev_is_initialized = true;
-                }
-                num_helpers_expected += 1;
-                MachineStateLayout::new(circuit, &translate_e4_offset)
-            } else {
-                MachineStateLayout::default()
-            };
+        let machine_state_layout = if circuit
+            .stage_2_layout
+            .intermediate_polys_for_state_permutation
+            .num_elements()
+            > 0
+        {
+            num_helpers_expected += NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES;
+            if !arg_prev_is_initialized {
+                arg_prev_is_initialized = true;
+            }
+            num_helpers_expected += 1;
+            MachineStateLayout::new(circuit, &translate_e4_offset)
+        } else {
+            MachineStateLayout::default()
+        };
+        // Grand product masking contributions (no helper used)
+        let mask_arg_layout = MaskArgLayout::new(circuit, &translate_e4_offset);
+        if mask_arg_layout.process_mask {
+            assert!(arg_prev_is_initialized);
+        }
         // Grand product lazy init and teardown contributions
         assert_eq!(
             circuit
@@ -740,6 +751,7 @@ impl StaticMetadata {
             lazy_init_teardown_layouts,
             shuffle_ram_accesses,
             machine_state_layout,
+            mask_arg_layout,
             range_check_16_multiplicities_layout,
             timestamp_range_check_multiplicities_layout,
             delegation_aux_poly_col,
@@ -784,6 +796,7 @@ pub(super) fn prepare_async_challenge_data(
         boundary_constraints,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
+        mask_arg_layout,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
         delegation_challenges,
@@ -1208,18 +1221,40 @@ pub(super) fn prepare_async_challenge_data(
         }
     }
     // Helpers for machine state grand product contributions
-    if circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
+    if circuit
+        .stage_2_layout
+        .intermediate_polys_for_state_permutation
+        .num_elements()
+        > 0
+    {
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
         alpha_offset += 1;
-        let constant = *alpha.clone().mul_assign(&machine_state_argument_challenges.additive_term);
-        for challenge in machine_state_argument_challenges.linearization_challenges.iter() {
+        let constant = *alpha
+            .clone()
+            .mul_assign(&machine_state_argument_challenges.additive_term);
+        for challenge in machine_state_argument_challenges
+            .linearization_challenges
+            .iter()
+        {
             helpers.push(*alpha.clone().mul_assign(challenge));
         }
         if !arg_prev_is_initialized {
-            constants_times_challenges.every_row_except_last.sub_assign(&constant);
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&constant);
             arg_prev_is_initialized = true;
         }
-        helpers.push(*constant.clone().mul_assign_by_base(&decompression_factor_inv));
+        helpers.push(
+            *constant
+                .clone()
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+    }
+    // Account for grand product masking argument, if present
+    if mask_arg_layout.process_mask {
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        constants_times_challenges.every_row_except_last.sub_assign(&alpha);
     }
     // Helpers for lazy init and teardown grand product contributions
     // for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
@@ -1435,6 +1470,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         machine_state_layout,
+        mask_arg_layout,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
         delegation_aux_poly_col,
@@ -1545,6 +1581,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
         machine_state_layout,
+        mask_arg_layout,
         process_registers_and_indirect_access,
         register_and_indirect_accesses,
         range_check_16_layout,

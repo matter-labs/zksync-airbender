@@ -286,6 +286,12 @@ struct MachineStateLayout {
   const bool process_machine_state;
 };
 
+struct MaskArgLayout {
+  const unsigned arg_col;
+  const unsigned execute_col;
+  const bool process_mask;
+};
+
 constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
 
 struct ShuffleRamAccess {
