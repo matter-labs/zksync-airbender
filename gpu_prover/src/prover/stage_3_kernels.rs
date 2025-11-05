@@ -624,6 +624,7 @@ impl StaticMetadata {
         // Grand product masking contributions (no helper used)
         let mask_arg_layout = MaskArgLayout::new(circuit, &translate_e4_offset);
         if mask_arg_layout.process_mask {
+            assert!(is_unrolled);
             assert!(arg_prev_is_initialized);
         }
         // Grand product lazy init and teardown contributions
@@ -634,6 +635,9 @@ impl StaticMetadata {
                 .num_elements(),
             lazy_init_teardown_layouts.num_init_teardown_sets as usize,
         );
+        if is_unrolled && lazy_init_teardown_layouts.num_init_teardown_sets > 0 {
+            assert!(!arg_prev_is_initialized);
+        }
         let raw_lazy_init_teardown_args_start = circuit
             .stage_2_layout
             .intermediate_polys_for_memory_init_teardown
@@ -641,7 +645,12 @@ impl StaticMetadata {
         let lazy_init_teardown_args_start = translate_e4_offset(raw_lazy_init_teardown_args_start);
         for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
             num_helpers_expected += 7;
+            arg_prev_is_initialized = true;
         }
+        // At this point, process_delegations should be true and arg_prev_is_initialized
+        // should be false, or vice versa.
+        assert!(process_delegations != arg_prev_is_initialized);
+        // Grand product register and indirect access contributions
         for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
             num_helpers_expected += 5;
             for _j in 0..register_and_indirect_accesses.indirect_accesses_per_register_access[i] {
@@ -1254,26 +1263,34 @@ pub(super) fn prepare_async_challenge_data(
     if mask_arg_layout.process_mask {
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
         alpha_offset += 1;
-        constants_times_challenges.every_row_except_last.sub_assign(&alpha);
+        constants_times_challenges
+            .every_row_except_last
+            .sub_assign(&alpha);
     }
     // Helpers for lazy init and teardown grand product contributions
-    // for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
-    //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
-    //     alpha_offset += 1;
-    //     let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
-    //     let mc = &memory_challenges;
-    //     helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
-    //     helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
-    //     helpers.push(
-    //         *alpha_times_gamma
-    //             .clone()
-    //             .mul_assign_by_base(&decompression_factor_inv),
-    //     );
-    // }
+    for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        let alpha_times_gamma = *alpha.clone().mul_assign(&memory_challenges.gamma);
+        let mc = &memory_challenges;
+        helpers.push(*alpha.clone().mul_assign(&mc.address_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.address_high_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.value_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.value_high_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_low_challenge));
+        helpers.push(*alpha.clone().mul_assign(&mc.timestamp_high_challenge));
+        if !arg_prev_is_initialized {
+            constants_times_challenges
+                .every_row_except_last
+                .sub_assign(&alpha_times_gamma);
+            arg_prev_is_initialized = true;
+        }
+        helpers.push(
+            *alpha_times_gamma
+                .clone()
+                .mul_assign_by_base(&decompression_factor_inv),
+        );
+    }
     // Helpers for register and indirect access grand product contributions
     // let mut flat_indirect_idx = 0;
     // for i in 0..register_and_indirect_accesses.num_register_accesses as usize {

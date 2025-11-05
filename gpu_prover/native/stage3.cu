@@ -544,6 +544,53 @@ enforce_grand_product_machine_state_contribution(const MachineStateLayout &layou
   e4_arg_prev = e4_arg;
 }
 
+DEVICE_FORCEINLINE void
+enforce_grand_product_lazy_init_teardown_contribution(const LazyInitTeardownLayouts &layouts,
+                                                      const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                      vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                                      vector_getter<e4, ld_modifier::ca> &alphas,
+                                                      vector_getter<e4, ld_modifier::ca> &helpers,
+                                                      const unsigned lazy_init_teardown_args_start,
+                                                      bool &arg_prev_is_initialized, e4 &e4_arg_prev,
+                                                      e4 &acc_linear, e4 &acc_quadratic) {
+  for (unsigned i = 0; i < layouts.num_init_teardown_sets; i++) {
+    const auto &layout = layouts.layouts[i];
+
+    const bf address_low = memory_cols.get_at_col(layout.init_address_start);
+    const bf address_high = memory_cols.get_at_col(layout.init_address_start + 1);
+    const bf value_low = memory_cols.get_at_col(layout.teardown_value_start);
+    const bf value_high = memory_cols.get_at_col(layout.teardown_value_start + 1);
+    const bf timestamp_low = memory_cols.get_at_col(layout.teardown_timestamp_start);
+    const bf timestamp_high = memory_cols.get_at_col(layout.teardown_timestamp_start + 1);
+
+    e4 numerator = e4::mul((helpers++).get(), address_low);
+    numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
+
+    e4 denom{numerator};
+    denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
+    denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
+    denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
+    denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
+
+    const e4 alpha_times_gamma_adjusted = (helpers++).get();
+    denom = e4::add(denom, alpha_times_gamma_adjusted);
+    const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
+    acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+
+    if (!arg_prev_is_initialized) {
+      acc_linear = e4::sub(acc_linear, numerator);
+      arg_prev_is_initialized = true;
+    } else {
+      numerator = e4::add(numerator, alpha_times_gamma_adjusted);
+      acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+    }
+
+    e4_arg_prev = e4_arg;
+  }
+
+  alphas += layouts.num_init_teardown_sets;
+}
+
 constexpr bf SHIFT_16 = bf{1 << 16};
 
 constexpr unsigned MAX_PUBLIC_INPUTS_FIRST_ROW = 2;
@@ -796,41 +843,13 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const e4 linear_contribution = e4::add(quadratic_term_for_acc_linear, linear_terms);
     const e4 alpha = (alphas++).get();
     acc_linear = e4::add(acc_linear, e4::mul(alpha, linear_contribution));
+    // Asserts on the rust side ensure no circuit actually needs to update
+    // e4_arg_prev and set arg_prev_is_initialized = true here.
   }
-//  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-//     // Enforce lazy init contributions to global memory accumulator
-//     // TODO: try interleaving this with the above to avoid redundant loads
-//     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-//       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-// 
-//       const bf address_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-//       const bf address_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-//       const bf value_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start);
-//       const bf value_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_value_start + 1);
-//       const bf timestamp_low = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start);
-//       const bf timestamp_high = memory_cols.get_at_col(lazy_init_teardown_layout.teardown_timestamp_start + 1);
-// 
-//       e4 numerator = e4::mul((helpers++).get(), address_low);
-//       numerator = e4::add(numerator, e4::mul((helpers++).get(), address_high));
-// 
-//       e4 denom{numerator};
-//       denom = e4::add(denom, e4::mul((helpers++).get(), value_low));
-//       denom = e4::add(denom, e4::mul((helpers++).get(), value_high));
-//       denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_low));
-//       denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_high));
-// 
-//       const e4 alpha_times_gamma_adjusted = (helpers++).get();
-//       denom = e4::add(denom, alpha_times_gamma_adjusted);
-//       const e4 e4_arg = stage_2_e4_cols.get_at_col(lazy_init_teardown_args_start + i);
-//       acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
-// 
-//       numerator = e4::add(numerator, alpha_times_gamma_adjusted);
-//       acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
-//       e4_arg_prev = e4_arg;
-//     }
-// 
-//     alphas += lazy_init_teardown_layouts.num_init_teardown_sets;
-//   }
+
+  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
+    enforce_grand_product_lazy_init_teardown_contribution(lazy_init_teardown_layouts, memory_cols, stage_2_e4_cols, alphas, helpers,
+                                                          lazy_init_teardown_args_start, arg_prev_is_initialized, e4_arg_prev, acc_linear, acc_quadratic);
 // 
 //   if (process_registers_and_indirect_access) {
 //     const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
