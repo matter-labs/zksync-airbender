@@ -435,7 +435,7 @@ enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle
                                                vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
                                                const unsigned memory_args_start,
                                                vector_getter<e4, ld_modifier::ca> &alphas, vector_getter<e4, ld_modifier::ca> &helpers,
-                                               bool &e4_arg_prev_is_initialized, e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
+                                               bool &arg_prev_is_initialized, e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
   // Some write timestamp limb contributions are common across accesses:
   const bf write_timestamp_for_shuffle_ram_low = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
   const bf write_timestamp_for_shuffle_ram_high = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
@@ -495,9 +495,9 @@ enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle
     const e4 e4_arg = stage_2_e4_cols.get_at_col(memory_args_start + i);
     acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
 
-    if (!e4_arg_prev_is_initialized) {
+    if (!arg_prev_is_initialized) {
       acc_linear = e4::sub(acc_linear, numerator);
-      e4_arg_prev_is_initialized = true;
+      arg_prev_is_initialized = true;
     } else {
       numerator = e4::add(numerator, (helpers++).get());
       acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
@@ -505,6 +505,43 @@ enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle
 
     e4_arg_prev = e4_arg;
   }
+}
+
+DEVICE_FORCEINLINE void
+enforce_grand_product_machine_state_contribution(const MachineStateLayout &layout, const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                  vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols, vector_getter<e4, ld_modifier::ca> &alphas,
+                                                  vector_getter<e4, ld_modifier::ca> &helpers, bool &arg_prev_is_initialized, e4 &e4_arg_prev,
+                                                  e4 &acc_linear, e4 &acc_quadratic) {
+  const e4 alpha = (alphas++).get();
+  e4 numerator = e4::mul(alpha, memory_cols.get_at_col(layout.final_pc_start));
+  e4 denom = e4::mul(alpha, memory_cols.get_at_col(layout.initial_pc_start));
+
+  const e4 pc_high_helper = (helpers++).get();
+  numerator = e4::add(numerator, e4::mul(pc_high_helper, memory_cols.get_at_col(layout.final_pc_start + 1)));
+  denom = e4::add(denom, e4::mul(pc_high_helper, memory_cols.get_at_col(layout.initial_pc_start + 1)));
+
+  const e4 timestamp_low_helper = (helpers++).get();
+  numerator = e4::add(numerator, e4::mul(timestamp_low_helper, memory_cols.get_at_col(layout.final_timestamp_start)));
+  denom = e4::add(denom, e4::mul(timestamp_low_helper, memory_cols.get_at_col(layout.initial_timestamp_start)));
+
+  const e4 timestamp_high_helper = (helpers++).get();
+  numerator = e4::add(numerator, e4::mul(timestamp_high_helper, memory_cols.get_at_col(layout.final_timestamp_start + 1)));
+  denom = e4::add(denom, e4::mul(timestamp_high_helper, memory_cols.get_at_col(layout.initial_timestamp_start + 1)));
+
+  const e4 additive_constant = (helpers++).get();
+  denom = e4::add(denom, additive_constant);
+  const e4 e4_arg = stage_2_e4_cols.get_at_col(layout.arg_col);
+  acc_quadratic = e4::add(acc_quadratic, e4::mul(e4_arg, denom));
+
+  if (!arg_prev_is_initialized) {
+    acc_linear = e4::sub(acc_linear, numerator);
+    arg_prev_is_initialized = true;
+  } else {
+    numerator = e4::add(numerator, additive_constant);
+    acc_quadratic = e4::sub(acc_quadratic, e4::mul(e4_arg_prev, numerator));
+  }
+
+  e4_arg_prev = e4_arg;
 }
 
 constexpr bf SHIFT_16 = bf{1 << 16};
@@ -539,7 +576,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     __grid_constant__ const DelegationProcessingMetadata delegation_processing_metadata,
     __grid_constant__ const DelegationRequestMetadata delegation_request_metadata, const unsigned lazy_init_teardown_args_start,
     const unsigned memory_args_start, const unsigned memory_grand_product_col, __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-    __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses, const bool process_registers_and_indirect_access,
+    __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+    __grid_constant__ const MachineStateLayout machine_state_layout,
+    const bool process_registers_and_indirect_access,
     __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout range_check_16_expressions,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout timestamp_range_check_expressions,
@@ -741,6 +780,10 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     enforce_grand_product_ram_access_contributions(shuffle_ram_accesses, memory_or_setup_cols, memory_cols, stage_2_e4_cols, memory_args_start, alphas,
                                                    helpers, arg_prev_is_initialized, e4_arg_prev, acc_linear, acc_quadratic);
   }
+
+  if (machine_state_layout.process_machine_state)
+    enforce_grand_product_machine_state_contribution(machine_state_layout, memory_cols, stage_2_e4_cols, alphas, helpers, arg_prev_is_initialized,
+                                                     e4_arg_prev, acc_linear, acc_quadratic);
 
 //  if (lazy_init_teardown_layouts.process_shuffle_ram_init)
 //     // Enforce lazy init contributions to global memory accumulator

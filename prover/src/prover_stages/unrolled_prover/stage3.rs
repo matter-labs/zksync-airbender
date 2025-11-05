@@ -693,23 +693,23 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             panic!("Please use another prover function for such circuit types");
                         }
 
-                        // if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
-                        //     evaluate_machine_state_permutation_assuming_no_decoder(
-                        //         compiled_circuit,
-                        //         witness_trace_view_row,
-                        //         memory_trace_view_row,
-                        //         setup_trace_view_row,
-                        //         stage_2_trace_view_row,
-                        //         &tau_in_domain,
-                        //         &tau_in_domain_by_half,
-                        //         absolute_row_idx,
-                        //         is_last_row,
-                        //         &mut quotient_term,
-                        //         &mut other_challenges_ptr,
-                        //         &machine_state_argument_challenges,
-                        //         &mut permutation_argument_src,
-                        //     );
-                        // }
+                        if compiled_circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
+                            evaluate_machine_state_permutation_assuming_no_decoder(
+                                compiled_circuit,
+                                witness_trace_view_row,
+                                memory_trace_view_row,
+                                setup_trace_view_row,
+                                stage_2_trace_view_row,
+                                &tau_in_domain,
+                                &tau_in_domain_by_half,
+                                absolute_row_idx,
+                                is_last_row,
+                                &mut quotient_term,
+                                &mut other_challenges_ptr,
+                                &machine_state_argument_challenges,
+                                &mut permutation_argument_src,
+                            );
+                        }
 
                         // // maybe we should mask
                         // if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {

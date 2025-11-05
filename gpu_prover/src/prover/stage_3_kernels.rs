@@ -10,6 +10,7 @@ use cs::definitions::{
     DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_HIGH,
     DELEGATION_ARGUMENT_CHALLENGED_IDX_FOR_TIMESTAMP_LOW,
     EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH, NUM_LOOKUP_ARGUMENT_KEY_PARTS,
+    NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES,
 };
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
@@ -86,6 +87,7 @@ cuda_kernel!(
     memory_grand_product_col: u32,
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
+    machine_state_layout: MachineStateLayout,
     process_registers_and_indirect_access: bool,
     register_and_indirect_accesses: RegisterAndIndirectAccesses,
     range_check_16_layout: RangeCheck16ArgsLayout,
@@ -138,6 +140,7 @@ pub struct StaticMetadata {
     memory_grand_product_col: usize,
     lazy_init_teardown_layouts: LazyInitTeardownLayouts,
     shuffle_ram_accesses: ShuffleRamAccesses,
+    machine_state_layout: MachineStateLayout,
     range_check_16_multiplicities_layout: MultiplicitiesLayout,
     timestamp_range_check_multiplicities_layout: MultiplicitiesLayout,
     delegation_aux_poly_col: usize,
@@ -566,6 +569,7 @@ impl StaticMetadata {
         };
         // lazy init padding constraints go before shuffle ram accesses,
         // but don't use any helpers.
+        // Grand product shuffle ram contributions
         let shuffle_ram_accesses = if is_unrolled {
             assert_eq!(
                 num_memory_args > 0,
@@ -585,6 +589,7 @@ impl StaticMetadata {
         } else {
             ShuffleRamAccesses::default()
         };
+        let mut arg_prev_is_initialized: bool = false;
         for i in 0..shuffle_ram_accesses.num_accesses as usize {
             let access = &shuffle_ram_accesses.accesses[i];
             num_helpers_expected += 1;
@@ -592,11 +597,25 @@ impl StaticMetadata {
                 num_helpers_expected += 1;
             }
             num_helpers_expected += 5;
-            if i > 0 {
+            if !arg_prev_is_initialized {
+                arg_prev_is_initialized = true;
+            } else {
                 num_helpers_expected += 1;
             }
         }
-        // for lazy init memory accumulator contributions
+        // Grand product machine state contributions
+        let machine_state_layout =
+            if circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements () > 0 {
+                num_helpers_expected += NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES;
+                if !arg_prev_is_initialized {
+                    arg_prev_is_initialized = true;
+                }
+                num_helpers_expected += 1;
+                MachineStateLayout::new(circuit, &translate_e4_offset)
+            } else {
+                MachineStateLayout::default()
+            };
+        // Grand product lazy init and teardown contributions
         assert_eq!(
             circuit
                 .stage_2_layout
@@ -720,6 +739,7 @@ impl StaticMetadata {
             memory_grand_product_col,
             lazy_init_teardown_layouts,
             shuffle_ram_accesses,
+            machine_state_layout,
             range_check_16_multiplicities_layout,
             timestamp_range_check_multiplicities_layout,
             delegation_aux_poly_col,
@@ -778,6 +798,7 @@ pub(super) fn prepare_async_challenge_data(
     let ProverCachedData {
         memory_timestamp_high_from_circuit_idx,
         memory_argument_challenges,
+        machine_state_argument_challenges,
         process_shuffle_ram_init,
         handle_delegation_requests,
         process_registers_and_indirect_access,
@@ -1139,8 +1160,8 @@ pub(super) fn prepare_async_challenge_data(
     for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
         alpha_offset += 6;
     }
-    // Helpers for global grand product contributions
-    let mut arg_prev_exists: bool = false;
+    // Helpers for shuffle ram grand product contributions
+    let mut arg_prev_is_initialized: bool = false;
     for i in 0..shuffle_ram_accesses.num_accesses as usize {
         let access = &shuffle_ram_accesses.accesses[i];
         let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
@@ -1177,16 +1198,30 @@ pub(super) fn prepare_async_challenge_data(
                 .mul_assign(&alpha)
                 .mul_assign_by_base(&decompression_factor_inv),
         );
-        if !arg_prev_exists {
+        if !arg_prev_is_initialized {
             constants_times_challenges
                 .every_row_except_last
                 .sub_assign(&numerator_constant);
-            arg_prev_exists = true;
+            arg_prev_is_initialized = true;
         } else {
             helpers.push(*numerator_constant.mul_assign_by_base(&decompression_factor_inv));
         }
     }
-    // for lazy init memory accumulator contributions
+    // Helpers for machine state grand product contributions
+    if circuit.stage_2_layout.intermediate_polys_for_state_permutation.num_elements() > 0 {
+        let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
+        alpha_offset += 1;
+        let constant = *alpha.clone().mul_assign(&machine_state_argument_challenges.additive_term);
+        for challenge in machine_state_argument_challenges.linearization_challenges.iter() {
+            helpers.push(*alpha.clone().mul_assign(challenge));
+        }
+        if !arg_prev_is_initialized {
+            constants_times_challenges.every_row_except_last.sub_assign(&constant);
+            arg_prev_is_initialized = true;
+        }
+        helpers.push(*constant.clone().mul_assign_by_base(&decompression_factor_inv));
+    }
+    // Helpers for lazy init and teardown grand product contributions
     // for _i in 0..lazy_init_teardown_layouts.num_init_teardown_sets as usize {
     //     let alpha = h_alphas_for_hardcoded_every_row_except_last[alpha_offset];
     //     alpha_offset += 1;
@@ -1204,6 +1239,7 @@ pub(super) fn prepare_async_challenge_data(
     //             .mul_assign_by_base(&decompression_factor_inv),
     //     );
     // }
+    // Helpers for register and indirect access grand product contributions
     // let mut flat_indirect_idx = 0;
     // for i in 0..register_and_indirect_accesses.num_register_accesses as usize {
     //     let register_access = &register_and_indirect_accesses.register_accesses[i];
@@ -1398,6 +1434,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         memory_grand_product_col,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
+        machine_state_layout,
         range_check_16_multiplicities_layout,
         timestamp_range_check_multiplicities_layout,
         delegation_aux_poly_col,
@@ -1507,6 +1544,7 @@ pub fn compute_stage_3_composition_quotient_on_coset(
         memory_grand_product_col as u32,
         lazy_init_teardown_layouts,
         shuffle_ram_accesses,
+        machine_state_layout,
         process_registers_and_indirect_access,
         register_and_indirect_accesses,
         range_check_16_layout,
