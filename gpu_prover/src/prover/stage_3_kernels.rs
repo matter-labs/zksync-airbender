@@ -1357,69 +1357,70 @@ pub(super) fn prepare_async_challenge_data(
         alpha_offset += 2;
     }
     assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
-    // // Args and helpers for boundary constraints (first row and second-to-last row)
-    // // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
-    // assert_eq!(
-    //     (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
-    //         as usize
-    //         + 1,
-    //     h_alphas_for_first_row.len()
-    // );
-    // assert_eq!(
-    //     (boundary_constraints.num_init_teardown
-    //         + boundary_constraints.num_public_one_before_last_row) as usize,
-    //     h_alphas_for_one_before_last_row.len()
-    // );
-    // boundary_constraints.prepare_async_challenge_data(
-    //     circuit,
-    //     aux_arguments_boundary_values,
-    //     public_inputs,
-    //     process_shuffle_ram_init,
-    //     h_alphas_for_first_row,
-    //     h_alphas_for_one_before_last_row,
-    //     helpers,
-    //     h_beta_powers,
-    //     decompression_factor,
-    //     constants_times_challenges,
-    // );
-    // // Just one constraint at last row (grand product accumulator)
-    // let mut alpha = h_alphas_for_last_row[0];
-    // alpha.mul_assign(&h_beta_powers[1]);
-    // helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
-    // helpers.push(*alpha.negate().mul_assign(&grand_product_accumulator));
-    // assert_eq!(1, h_alphas_for_last_row.len());
-    // // Constraints at last row and zero
-    // // range check 16 e4 arg sums
-    // let mut alpha_offset = 0;
-    // let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    // alpha_offset += 1;
-    // helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    // // timestamp range check e4 arg sums
-    // if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
-    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    //     alpha_offset += 1;
-    //     helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    // }
-    // // generic lookup e4 arg sums
-    // if generic_lookup_multiplicities_layout.num_dst_cols > 0 {
-    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    //     alpha_offset += 1;
-    //     helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
-    // }
-    // // delegation aux poly sums
-    // if handle_delegation_requests || process_delegations {
-    //     let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
-    //     alpha_offset += 1;
-    //     let mut delegation_accumulator_interpolant_prefactor = sum_over_delegation_poly;
-    //     delegation_accumulator_interpolant_prefactor
-    //         .negate()
-    //         .mul_assign_by_base(&omega)
-    //         .mul_assign_by_base(&decompression_factor_inv);
-    //     helpers.push(delegation_accumulator_interpolant_prefactor);
-    //     helpers.push(*alpha.mul_assign_by_base(&decompression_factor));
-    // }
-    // assert_eq!(alpha_offset, h_alphas_for_last_row_and_at_zero.len());
-    // assert_eq!(helpers.len(), *num_helpers_expected);
+    // Args and helpers for boundary constraints (first row and second-to-last row)
+    // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
+    assert_eq!(
+        (boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row)
+            as usize
+            + 1,
+        h_alphas_for_first_row.len()
+    );
+    assert_eq!(
+        (boundary_constraints.num_init_teardown
+            + boundary_constraints.num_public_one_before_last_row) as usize,
+        h_alphas_for_one_before_last_row.len()
+    );
+    boundary_constraints.prepare_async_challenge_data(
+        circuit,
+        aux_arguments_boundary_values,
+        public_inputs,
+        process_shuffle_ram_init,
+        h_alphas_for_first_row,
+        h_alphas_for_one_before_last_row,
+        helpers,
+        h_beta_powers,
+        decompression_factor,
+        constants_times_challenges,
+    );
+    // Just one constraint at last row (grand product accumulator)
+    let mut alpha = h_alphas_for_last_row[0];
+    alpha.mul_assign(&h_beta_powers[1]);
+    helpers.push(*alpha.clone().mul_assign_by_base(&decompression_factor));
+    helpers.push(*alpha.negate().mul_assign(&grand_product_accumulator));
+    assert_eq!(1, h_alphas_for_last_row.len());
+    // Constraints at last row and zero
+    // range check 16 e4 arg sums
+    let mut alpha_offset = 0;
+    let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+    alpha_offset += 1;
+    helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    // timestamp range check e4 arg sums
+    if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
+        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+        alpha_offset += 1;
+        helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    }
+    // generic lookup e4 arg sums
+    if generic_lookup_multiplicities_layout.num_dst_cols > 0 {
+        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+        alpha_offset += 1;
+        helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    }
+    // delegation aux poly sums
+    if handle_delegation_requests || process_delegations {
+        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+        alpha_offset += 1;
+        let mut delegation_accumulator_interpolant_prefactor = sum_over_delegation_poly;
+        delegation_accumulator_interpolant_prefactor
+            .negate()
+            .mul_assign_by_base(&omega)
+            .mul_assign_by_base(&decompression_factor_inv);
+        helpers.push(delegation_accumulator_interpolant_prefactor);
+        helpers.push(*alpha.mul_assign_by_base(&decompression_factor));
+    }
+    assert_eq!(alpha_offset, h_alphas_for_last_row_and_at_zero.len());
+    assert_eq!(helpers.len(), *num_helpers_expected);
+    assert!(helpers.len() <= MAX_HELPER_VALUES);
     helpers
         .spare_capacity_mut()
         .fill(MaybeUninit::new(E4::ZERO));

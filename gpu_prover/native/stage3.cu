@@ -1109,104 +1109,104 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     acc = e4::add(acc, e4::mul(betas.get(4), acc_linear));
   }
 
-  // const e2 denoms[4] = {x, e2::sub(x, bf::one()), e2::sub(x, omega_inv_squared), e2::sub(x, omega_inv)};
-  // e2 denom_invs[4] = {};
-  // batch_inv_registers<e2, 4, true>(denoms, denom_invs, 4);
+  const e2 denoms[4] = {x, e2::sub(x, bf::one()), e2::sub(x, omega_inv_squared), e2::sub(x, omega_inv)};
+  e2 denom_invs[4] = {};
+  batch_inv_registers<e2, 4, true>(denoms, denom_invs, 4);
 
-  // // Constraints at first row: grand product == 1, boundary constraints
-  // {
-  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
-  //   unsigned i = 0;
-  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
-  //     for (; i < boundary_constraints.num_init_teardown; i++)
-  //       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
-  //   const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row;
-  //   for (; i < lim; i++)
-  //     acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.first_row_cols[i])));
-  //   acc_linear = e4::add(acc_linear, constants_times_challenges->first_row);
-  //   acc_linear = e4::mul(acc_linear, denom_invs[1]);
-  //   acc = e4::add(acc, acc_linear);
-  // }
+  // Constraints at first row: grand product == 1, boundary constraints
+  {
+    e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
+    unsigned i = 0;
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init)
+      for (; i < boundary_constraints.num_init_teardown; i++)
+        acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.first_row_cols[i])));
+    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_first_row;
+    for (; i < lim; i++)
+      acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.first_row_cols[i])));
+    acc_linear = e4::add(acc_linear, constants_times_challenges->first_row);
+    acc_linear = e4::mul(acc_linear, denom_invs[1]);
+    acc = e4::add(acc, acc_linear);
+  }
 
-  // // Boundary constraints at one before last row (at least some should always be present in practice)
-  // if (boundary_constraints.num_init_teardown > 0 || boundary_constraints.num_public_one_before_last_row > 0) {
-  //   e4 acc_linear{};
-  //   unsigned i = 0;
-  //   // TODO: Fix for unrolled circuits
-  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-  //     acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
-  //     i++;
-  //     for (; i < boundary_constraints.num_init_teardown; i++)
-  //       acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
-  //   } else {
-  //     acc_linear = e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
-  //     i++;
-  //   }
-  //   const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_one_before_last_row;
-  //   for (; i < lim; i++)
-  //     acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
-  //   acc_linear = e4::add(acc_linear, constants_times_challenges->one_before_last_row);
-  //   acc_linear = e4::mul(acc_linear, denom_invs[2]);
-  //   acc = e4::add(acc, acc_linear);
-  // }
+  // Boundary constraints at one before last row
+  if (boundary_constraints.num_init_teardown > 0 || boundary_constraints.num_public_one_before_last_row > 0) {
+    e4 acc_linear{};
+    unsigned i = 0;
+    // hopefully ok for unrolled circuits
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
+      acc_linear = e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
+      i++;
+      for (; i < boundary_constraints.num_init_teardown; i++)
+        acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), memory_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
+    } else {
+      acc_linear = e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[0]));
+      i++;
+    }
+    const unsigned lim = boundary_constraints.num_init_teardown + boundary_constraints.num_public_one_before_last_row;
+    for (; i < lim; i++)
+      acc_linear = e4::add(acc_linear, e4::mul((helpers++).get(), witness_cols.get_at_col(boundary_constraints.one_before_last_row_cols[i])));
+    acc_linear = e4::add(acc_linear, constants_times_challenges->one_before_last_row);
+    acc_linear = e4::mul(acc_linear, denom_invs[2]);
+    acc = e4::add(acc, acc_linear);
+  }
 
-  // // One constraint at last row (grand product accumulator)
-  // {
-  //   e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
-  //   acc_linear = e4::add(acc_linear, (helpers++).get());
-  //   acc_linear = e4::mul(acc_linear, denom_invs[3]);
-  //   acc = e4::add(acc, acc_linear);
-  // }
+  // One constraint at last row (grand product accumulator)
+  {
+    e4 acc_linear = e4::mul((helpers++).get(), stage_2_e4_cols.get_at_col(grand_product_dst_col));
+    acc_linear = e4::add(acc_linear, (helpers++).get());
+    acc_linear = e4::mul(acc_linear, denom_invs[3]);
+    acc = e4::add(acc, acc_linear);
+  }
 
-  // // Constraints at last row and x = 0
-  // {
-  //   e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
-  //   // validate col sums for range check 16 lookup e4 args
-  //   {
-  //     const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
-  //     for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
-  //       acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
-  //     // TODO: Fix for unrolled circuits
-  //     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-  //       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-  //       acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
-  //     }
-  //     acc_linear = e4::mul(acc_linear, (helpers++).get());
-  //   }
-  //   // validate col sums for timestamp range check e4 args
-  //   if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
-  //     e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
-  //     const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
-  //     // This start location and the contiguity of e4 args cols are checked on the Rust side.
-  //     const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
-  //         timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
-  //     for (unsigned i = 0; i < num_timestamp_e4_args; i++)
-  //       acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
-  //     acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());
-  //     acc_linear = e4::add(acc_linear, acc_timestamp);
-  //   }
-  //   // validate col sums for generic lookup e4 args
-  //   {
-  //     e4 acc_generic = e4::neg(stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start));
-  //     for (unsigned i = 1; i < generic_lookup_multiplicities_layout.num_dst_cols; i++)
-  //       acc_generic = e4::sub(acc_generic, stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start + i));
-  //     for (unsigned i = 0; i < width_3_lookups_layout.num_lookups; i++)
-  //       acc_generic = e4::add(acc_generic, stage_2_e4_cols.get_at_col(width_3_lookups_layout.e4_arg_cols_start + i));
-  //     acc_generic = e4::mul(acc_generic, (helpers++).get());
-  //     acc_linear = e4::add(acc_linear, acc_generic);
-  //   }
-  //   // validate delegation aux poly sums
-  //   if (handle_delegation_requests || process_delegations) {
-  //     const e4 interpolant = e4::mul((helpers++).get(), x);
-  //     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
-  //     const e4 diff = e4::sub(e4_arg, interpolant);
-  //     const e4 term = e4::mul(diff, (helpers++).get());
-  //     acc_linear = e4::add(acc_linear, term);
-  //   }
-  //   const e2 denom_inv = e2::mul(denom_invs[0], denom_invs[3]);
-  //   acc_linear = e4::mul(acc_linear, denom_inv);
-  //   acc = e4::add(acc, acc_linear);
-  // }
+  // Constraints at last row and x = 0
+  {
+    e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
+    // validate col sums for range check 16 lookup e4 args
+    {
+      const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
+      for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
+        acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(range_check_16_layout.e4_args_start + i));
+      // hopefully ok for unrolled circuits
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+        acc_linear = e4::add(acc_linear, stage_2_e4_cols.get_at_col(lazy_init_teardown_layout.e4_arg_col));
+      }
+      acc_linear = e4::mul(acc_linear, (helpers++).get());
+    }
+    // validate col sums for timestamp range check e4 args
+    if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
+      e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
+      const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
+      // This start location and the contiguity of e4 args cols are checked on the Rust side.
+      const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
+          timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
+      for (unsigned i = 0; i < num_timestamp_e4_args; i++)
+        acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
+      acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());
+      acc_linear = e4::add(acc_linear, acc_timestamp);
+    }
+    // validate col sums for generic lookup e4 args
+    if (generic_lookup_multiplicities_layout.num_dst_cols > 0) {
+      e4 acc_generic = e4::neg(stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start));
+      for (unsigned i = 1; i < generic_lookup_multiplicities_layout.num_dst_cols; i++)
+        acc_generic = e4::sub(acc_generic, stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start + i));
+      for (unsigned i = 0; i < width_3_lookups_layout.num_lookups; i++)
+        acc_generic = e4::add(acc_generic, stage_2_e4_cols.get_at_col(width_3_lookups_layout.e4_arg_cols_start + i));
+      acc_generic = e4::mul(acc_generic, (helpers++).get());
+      acc_linear = e4::add(acc_linear, acc_generic);
+    }
+    // validate delegation aux poly sums
+    if (handle_delegation_requests || process_delegations) {
+      const e4 interpolant = e4::mul((helpers++).get(), x);
+      const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
+      const e4 diff = e4::sub(e4_arg, interpolant);
+      const e4 term = e4::mul(diff, (helpers++).get());
+      acc_linear = e4::add(acc_linear, term);
+    }
+    const e2 denom_inv = e2::mul(denom_invs[0], denom_invs[3]);
+    acc_linear = e4::mul(acc_linear, denom_inv);
+    acc = e4::add(acc, acc_linear);
+  }
 
   quotient.set(acc);
 }

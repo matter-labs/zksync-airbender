@@ -985,253 +985,253 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
                         assert_eq!(every_row_except_last_two_challenges_ptr, alphas_for_every_row_except_last_two.as_ptr_range().end);
 
-                        // // Constraints that happen at first row
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut first_row_challenges_ptr = alphas_for_first_row.as_ptr();
+                        // Constraints that happen at first row
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut first_row_challenges_ptr = alphas_for_first_row.as_ptr();
 
-                        // // first row
+                        // first row
 
-                        // // Note on multiplication by tau^H/2 - only terms containing polynomials should be scaled
+                        // Note on multiplication by tau^H/2 - only terms containing polynomials should be scaled
 
-                        // for (_i, (place, expected_value)) in first_row_boundary_constraints_ref.iter().enumerate() {
-                        //     let value = read_value(*place, witness_trace_view_row, memory_trace_view_row);
-                        //     let mut term_contribution = tau_in_domain_by_half;
-                        //     term_contribution.mul_assign_by_base(&value);
-                        //     term_contribution.sub_assign_base(expected_value);
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_first_row {
-                        //             assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied at boundary constraint {}: {:?} = {:?} at first row", _i, place, expected_value);
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext2(&mut first_row_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                        for (_i, (place, expected_value)) in first_row_boundary_constraints_ref.iter().enumerate() {
+                            let value = read_value(*place, witness_trace_view_row, memory_trace_view_row);
+                            let mut term_contribution = tau_in_domain_by_half;
+                            term_contribution.mul_assign_by_base(&value);
+                            term_contribution.sub_assign_base(expected_value);
+                            if DEBUG_QUOTIENT {
+                                if is_first_row {
+                                    assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied at boundary constraint {}: {:?} = {:?} at first row", _i, place, expected_value);
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext2(&mut first_row_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // // 1 constraint for memory accumulator initial value == 1
-                        // {
-                        //     let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
-                        //     let memory_accumulators_ptr = stage_2_trace_view_row
-                        //         .as_ptr()
-                        //         .add(offset)
-                        //         .cast::<Mersenne31Quartic>();
-                        //     debug_assert!(memory_accumulators_ptr.is_aligned());
-                        //     let accumulator = memory_accumulators_ptr.read();
+                        // 1 constraint for memory accumulator initial value == 1
+                        {
+                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
+                            let memory_accumulators_ptr = stage_2_trace_view_row
+                                .as_ptr()
+                                .add(offset)
+                                .cast::<Mersenne31Quartic>();
+                            debug_assert!(memory_accumulators_ptr.is_aligned());
+                            let accumulator = memory_accumulators_ptr.read();
 
-                        //     let mut term_contribution = accumulator;
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     term_contribution.sub_assign_base(&Mersenne31Field::ONE);
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_first_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at grand product accumulator first value == 1");
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext4(&mut first_row_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            let mut term_contribution = accumulator;
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            term_contribution.sub_assign_base(&Mersenne31Field::ONE);
+                            if DEBUG_QUOTIENT {
+                                if is_first_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at grand product accumulator first value == 1");
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext4(&mut first_row_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_FIRST_ROW_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut first_row_contribution = quotient_term;
-                        // first_row_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_FIRST_ROW_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut first_row_contribution = quotient_term;
+                        first_row_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(first_row_challenges_ptr, alphas_for_first_row.as_ptr_range().end);
+                        assert_eq!(first_row_challenges_ptr, alphas_for_first_row.as_ptr_range().end);
 
-                        // // Constraints that happen at one before last row
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut one_before_last_row_challenges_ptr = alphas_for_one_before_last_row.as_ptr();
+                        // Constraints that happen at one before last row
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut one_before_last_row_challenges_ptr = alphas_for_one_before_last_row.as_ptr();
 
-                        // for (_i, (place, expected_value)) in one_before_last_row_boundary_constraints_ref.iter().enumerate() {
-                        //     let value = read_value(*place, witness_trace_view_row, memory_trace_view_row);
+                        for (_i, (place, expected_value)) in one_before_last_row_boundary_constraints_ref.iter().enumerate() {
+                            let value = read_value(*place, witness_trace_view_row, memory_trace_view_row);
 
-                        //     let mut term_contribution = tau_in_domain_by_half;
-                        //     term_contribution.mul_assign_by_base(&value);
-                        //     term_contribution.sub_assign_base(expected_value);
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_one_before_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied at boundary constraint {}: {:?} = {:?} at one row before last", _i, place, expected_value);
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext2(&mut one_before_last_row_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            let mut term_contribution = tau_in_domain_by_half;
+                            term_contribution.mul_assign_by_base(&value);
+                            term_contribution.sub_assign_base(expected_value);
+                            if DEBUG_QUOTIENT {
+                                if is_one_before_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Complex::ZERO, "unsatisfied at boundary constraint {}: {:?} = {:?} at one row before last", _i, place, expected_value);
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext2(&mut one_before_last_row_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_ONE_BEFORE_LAST_ROW_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut one_before_last_row_contribution = quotient_term;
-                        // one_before_last_row_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_ONE_BEFORE_LAST_ROW_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut one_before_last_row_contribution = quotient_term;
+                        one_before_last_row_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(one_before_last_row_challenges_ptr, alphas_for_one_before_last_row.as_ptr_range().end);
+                        assert_eq!(one_before_last_row_challenges_ptr, alphas_for_one_before_last_row.as_ptr_range().end);
 
-                        // // last row - only grand product accumulator
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut last_row_challenges_ptr = alphas_for_last_row.as_ptr();
+                        // last row - only grand product accumulator
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut last_row_challenges_ptr = alphas_for_last_row.as_ptr();
 
-                        // {
-                        //     let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
-                        //     let memory_accumulators_ptr = stage_2_trace_view_row
-                        //         .as_ptr()
-                        //         .add(offset)
-                        //         .cast::<Mersenne31Quartic>();
-                        //     debug_assert!(memory_accumulators_ptr.is_aligned());
-                        //     let accumulator = memory_accumulators_ptr.read();
+                        {
+                            let offset = compiled_circuit.stage_2_layout.intermediate_poly_for_grand_product.start();
+                            let memory_accumulators_ptr = stage_2_trace_view_row
+                                .as_ptr()
+                                .add(offset)
+                                .cast::<Mersenne31Quartic>();
+                            debug_assert!(memory_accumulators_ptr.is_aligned());
+                            let accumulator = memory_accumulators_ptr.read();
 
-                        //     let mut term_contribution = accumulator;
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     term_contribution.sub_assign(&grand_product_accumulator);
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at grand product accumulator last value");
-                        //         }
-                        //     }
-                        //     add_quotient_term_contribution_in_ext4(&mut last_row_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            let mut term_contribution = accumulator;
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            term_contribution.sub_assign(&grand_product_accumulator);
+                            if DEBUG_QUOTIENT {
+                                if is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at grand product accumulator last value");
+                                }
+                            }
+                            add_quotient_term_contribution_in_ext4(&mut last_row_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_LAST_ROW_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut last_row_contribution = quotient_term;
-                        // last_row_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_LAST_ROW_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut last_row_contribution = quotient_term;
+                        last_row_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(last_row_challenges_ptr, alphas_for_last_row.as_ptr_range().end);
+                        assert_eq!(last_row_challenges_ptr, alphas_for_last_row.as_ptr_range().end);
 
-                        // // and last two rows - sums equality for lookup arguments
+                        // and last two rows - sums equality for lookup arguments
 
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut last_row_and_at_zero_challenges_ptr = alphas_for_last_row_and_at_zero.as_ptr();
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut last_row_and_at_zero_challenges_ptr = alphas_for_last_row_and_at_zero.as_ptr();
 
-                        // // generic approach is \sum multiplicities aux - \sum witness_aux
+                        // generic approach is \sum multiplicities aux - \sum witness_aux
 
-                        // // range check 16
-                        // if compiled_circuit.witness_layout.multiplicities_columns_for_range_check_16.num_elements() > 0 {
-                        //     let multiplicity_aux = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_poly_for_range_check_16_multiplicity.start()).cast::<Mersenne31Quartic>().read();
-                        //     let mut term_contribution = multiplicity_aux;
+                        // range check 16
+                        if compiled_circuit.witness_layout.multiplicities_columns_for_range_check_16.num_elements() > 0 {
+                            let multiplicity_aux = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_poly_for_range_check_16_multiplicity.start()).cast::<Mersenne31Quartic>().read();
+                            let mut term_contribution = multiplicity_aux;
 
-                        //     for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_range_check_16.num_pairs {
-                        //         let el = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_polys_for_range_check_16.ext_4_field_oracles.get_range(i).start).cast::<Mersenne31Quartic>().read();
-                        //         term_contribution.sub_assign(&el);
-                        //     }
-                        //     // add lazy init value
-                        //     if process_shuffle_ram_init {
-                        //         let el = stage_2_trace_view_row.as_ptr().add(lazy_init_address_range_check_16.ext_4_field_oracles.get_range(0).start).cast::<Mersenne31Quartic>().read();
-                        //         term_contribution.sub_assign(&el);
-                        //     }
-                        //     if let Some(_remainder) = compiled_circuit.stage_2_layout.remainder_for_range_check_16 {
-                        //         todo!();
-                        //     }
-                        //     if DEBUG_QUOTIENT {
-                        //         if  is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for range check 16 at last row");
-                        //         }
-                        //     }
-                        //     // linear
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_range_check_16.num_pairs {
+                                let el = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_polys_for_range_check_16.ext_4_field_oracles.get_range(i).start).cast::<Mersenne31Quartic>().read();
+                                term_contribution.sub_assign(&el);
+                            }
+                            // add lazy init value
+                            if process_shuffle_ram_init {
+                                let el = stage_2_trace_view_row.as_ptr().add(lazy_init_address_range_check_16.ext_4_field_oracles.get_range(0).start).cast::<Mersenne31Quartic>().read();
+                                term_contribution.sub_assign(&el);
+                            }
+                            if let Some(_remainder) = compiled_circuit.stage_2_layout.remainder_for_range_check_16 {
+                                todo!();
+                            }
+                            if DEBUG_QUOTIENT {
+                                if  is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for range check 16 at last row");
+                                }
+                            }
+                            // linear
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // // timestamp range check
-                        // if compiled_circuit.witness_layout.multiplicities_columns_for_timestamp_range_check.num_elements() > 0 {
-                        //     let multiplicity_aux = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_poly_for_timestamp_range_check_multiplicity.start()).cast::<Mersenne31Quartic>().read();
-                        //     let mut term_contribution = multiplicity_aux;
+                        // timestamp range check
+                        if compiled_circuit.witness_layout.multiplicities_columns_for_timestamp_range_check.num_elements() > 0 {
+                            let multiplicity_aux = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_poly_for_timestamp_range_check_multiplicity.start()).cast::<Mersenne31Quartic>().read();
+                            let mut term_contribution = multiplicity_aux;
 
-                        //     for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_timestamp_range_checks.num_pairs {
-                        //         let el = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_polys_for_timestamp_range_checks.ext_4_field_oracles.get_range(i).start).cast::<Mersenne31Quartic>().read();
-                        //         term_contribution.sub_assign(&el);
-                        //     }
-                        //     if DEBUG_QUOTIENT {
-                        //         if  is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for timestamp range check at last row");
-                        //         }
-                        //     }
-                        //     // linear
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_timestamp_range_checks.num_pairs {
+                                let el = stage_2_trace_view_row.as_ptr().add(compiled_circuit.stage_2_layout.intermediate_polys_for_timestamp_range_checks.ext_4_field_oracles.get_range(i).start).cast::<Mersenne31Quartic>().read();
+                                term_contribution.sub_assign(&el);
+                            }
+                            if DEBUG_QUOTIENT {
+                                if  is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for timestamp range check at last row");
+                                }
+                            }
+                            // linear
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // // generic lookup
-                        // if compiled_circuit.witness_layout.multiplicities_columns_for_generic_lookup.num_elements() > 0 {
-                        //     assert!(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup.num_elements() > 0);
-                        //     let mut term_contribution = Mersenne31Quartic::ZERO;
-                        //     for i in 0..compiled_circuit.witness_layout.multiplicities_columns_for_generic_lookup.num_elements() {
-                        //         let ptr = stage_2_trace_view_row.as_ptr()
-                        //             .add(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_multiplicities
-                        //             .get_range(i).start)
-                        //             .cast::<Mersenne31Quartic>();
-                        //         assert!(ptr.is_aligned());
-                        //         let multiplicity_aux = ptr.read();
-                        //         term_contribution.add_assign(&multiplicity_aux);
-                        //     }
+                        // generic lookup
+                        if compiled_circuit.witness_layout.multiplicities_columns_for_generic_lookup.num_elements() > 0 {
+                            assert!(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup.num_elements() > 0);
+                            let mut term_contribution = Mersenne31Quartic::ZERO;
+                            for i in 0..compiled_circuit.witness_layout.multiplicities_columns_for_generic_lookup.num_elements() {
+                                let ptr = stage_2_trace_view_row.as_ptr()
+                                    .add(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_multiplicities
+                                    .get_range(i).start)
+                                    .cast::<Mersenne31Quartic>();
+                                assert!(ptr.is_aligned());
+                                let multiplicity_aux = ptr.read();
+                                term_contribution.add_assign(&multiplicity_aux);
+                            }
 
-                        //     for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup.num_elements() {
-                        //         let ptr = stage_2_trace_view_row.as_ptr()
-                        //             .add(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup
-                        //             .get_range(i).start)
-                        //             .cast::<Mersenne31Quartic>();
-                        //         assert!(ptr.is_aligned());
-                        //         let el = ptr.read();
-                        //         term_contribution.sub_assign(&el);
-                        //     }
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for generic lookup at last row");
-                        //         }
-                        //     }
-                        //     // linear
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                            for i in 0..compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup.num_elements() {
+                                let ptr = stage_2_trace_view_row.as_ptr()
+                                    .add(compiled_circuit.stage_2_layout.intermediate_polys_for_generic_lookup
+                                    .get_range(i).start)
+                                    .cast::<Mersenne31Quartic>();
+                                assert!(ptr.is_aligned());
+                                let el = ptr.read();
+                                term_contribution.sub_assign(&el);
+                            }
+                            if DEBUG_QUOTIENT {
+                                if is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at lookups aux polys difference for generic lookup at last row");
+                                }
+                            }
+                            // linear
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            add_quotient_term_contribution_in_ext4(&mut last_row_and_at_zero_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // if handle_delegation_requests || process_delegations {
-                        //     // we need to show the sum of the values everywhere except the last row,
-                        //     // so we show that intermediate poly - interpolant((0, 0), (omega^-1, `value``)) is divisible
-                        //     // by our selected divisor
+                        if handle_delegation_requests || process_delegations {
+                            // we need to show the sum of the values everywhere except the last row,
+                            // so we show that intermediate poly - interpolant((0, 0), (omega^-1, `value``)) is divisible
+                            // by our selected divisor
 
-                        //     // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
-                        //     let mut interpolant_value = delegation_accumulator_interpolant_prefactor;
-                        //     interpolant_value.mul_assign_by_base(&x);
-                        //     let mut term_contribution = stage_2_trace_view_row.as_ptr().add(delegation_processing_aux_poly.start()).cast::<Mersenne31Quartic>().read();
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     term_contribution.sub_assign(&interpolant_value);
+                            // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
+                            let mut interpolant_value = delegation_accumulator_interpolant_prefactor;
+                            interpolant_value.mul_assign_by_base(&x);
+                            let mut term_contribution = stage_2_trace_view_row.as_ptr().add(delegation_processing_aux_poly.start()).cast::<Mersenne31Quartic>().read();
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            term_contribution.sub_assign(&interpolant_value);
 
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at delegation argument set equality at last row");
-                        //         }
-                        //     }
+                            if DEBUG_QUOTIENT {
+                                if is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at delegation argument set equality at last row");
+                                }
+                            }
 
-                        //     add_quotient_term_contribution_in_ext4(
-                        //         &mut last_row_and_at_zero_challenges_ptr,
-                        //         term_contribution,
-                        //         &mut quotient_term
-                        //     );
-                        // }
+                            add_quotient_term_contribution_in_ext4(
+                                &mut last_row_and_at_zero_challenges_ptr,
+                                term_contribution,
+                                &mut quotient_term
+                            );
+                        }
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_LAST_ROW_AND_ZERO_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut last_row_and_zero_contribution = quotient_term;
-                        // last_row_and_zero_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_LAST_ROW_AND_ZERO_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut last_row_and_zero_contribution = quotient_term;
+                        last_row_and_zero_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(last_row_and_at_zero_challenges_ptr, alphas_for_last_row_and_at_zero.as_ptr_range().end);
+                        assert_eq!(last_row_and_at_zero_challenges_ptr, alphas_for_last_row_and_at_zero.as_ptr_range().end);
 
                         // Horner rule for separation of divisors
                         let mut quotient_term = every_row_except_last_contribution;
                         quotient_term.mul_assign(&quotient_beta);
                         quotient_term.add_assign(&every_row_except_last_two_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&first_row_contribution);
+                        quotient_term.add_assign(&first_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&one_before_last_row_contribution);
+                        quotient_term.add_assign(&one_before_last_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&last_row_contribution);
+                        quotient_term.add_assign(&last_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&last_row_and_zero_contribution);
+                        quotient_term.add_assign(&last_row_and_zero_contribution);
 
                         quotient_dst.write(quotient_term);
 
