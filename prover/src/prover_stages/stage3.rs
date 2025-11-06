@@ -918,72 +918,72 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                             quotient_term;
                         every_row_except_last_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(
-                        //     other_challenges_ptr,
-                        //     other_challenges.as_ptr_range().end,
-                        //     "challenges for other terms at every row except last have a size of {}, but {} were used",
-                        //     other_challenges.len(),
-                        //     other_challenges_ptr.offset_from_unsigned(other_challenges.as_ptr()),
-                        // );
+                        assert_eq!(
+                            other_challenges_ptr,
+                            other_challenges.as_ptr_range().end,
+                            "challenges for other terms at every row except last have a size of {}, but {} were used",
+                            other_challenges.len(),
+                            other_challenges_ptr.offset_from_unsigned(other_challenges.as_ptr()),
+                        );
 
-                        // // now all constraints have less places to be encountered
+                        // now all constraints have less places to be encountered
 
-                        // // Constraints that happen everywhere except last two rows
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut every_row_except_last_two_challenges_ptr = alphas_for_every_row_except_last_two.as_ptr();
+                        // Constraints that happen everywhere except last two rows
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut every_row_except_last_two_challenges_ptr = alphas_for_every_row_except_last_two.as_ptr();
 
-                        // // then linking constraints
-                        // for (src, dst) in compiled_circuit.state_linkage_constraints.iter() {
-                        //     // src - dst == 0;
-                        //     let mut diff =
-                        //         read_value(*src, witness_trace_view_row, memory_trace_view_row);
-                        //     let dst_value = read_value(
-                        //         *dst,
-                        //         witness_trace_view_next_row,
-                        //         memory_trace_view_next_row,
-                        //     );
-                        //     diff.sub_assign(&dst_value);
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_two_rows == false {
-                        //             assert_eq!(
-                        //                 diff,
-                        //                 Mersenne31Field::ZERO,
-                        //                 "unsatisfied at link {:?} -> {:?}",
-                        //                 src,
-                        //                 dst
-                        //             );
-                        //         }
-                        //     }
-                        //     let mut term_contribution = tau_in_domain_by_half;
-                        //     term_contribution.mul_assign_by_base(&diff);
-                        //     add_quotient_term_contribution_in_ext2(&mut every_row_except_last_two_challenges_ptr, term_contribution, &mut quotient_term);
-                        // }
+                        // then linking constraints
+                        for (src, dst) in compiled_circuit.state_linkage_constraints.iter() {
+                            // src - dst == 0;
+                            let mut diff =
+                                read_value(*src, witness_trace_view_row, memory_trace_view_row);
+                            let dst_value = read_value(
+                                *dst,
+                                witness_trace_view_next_row,
+                                memory_trace_view_next_row,
+                            );
+                            diff.sub_assign(&dst_value);
+                            if DEBUG_QUOTIENT {
+                                if is_last_two_rows == false {
+                                    assert_eq!(
+                                        diff,
+                                        Mersenne31Field::ZERO,
+                                        "unsatisfied at link {:?} -> {:?}",
+                                        src,
+                                        dst
+                                    );
+                                }
+                            }
+                            let mut term_contribution = tau_in_domain_by_half;
+                            term_contribution.mul_assign_by_base(&diff);
+                            add_quotient_term_contribution_in_ext2(&mut every_row_except_last_two_challenges_ptr, term_contribution, &mut quotient_term);
+                        }
 
-                        // // two constraints to compare sorting of lazy init
-                        // use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_memory_init_teardown_ordering;
-                        // evaluate_memory_init_teardown_ordering(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     memory_trace_view_next_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_two_rows,
-                        //     &mut quotient_term,
-                        //     &mut every_row_except_last_two_challenges_ptr,
-                        // );
+                        // two constraints to compare sorting of lazy init
+                        use crate::prover_stages::unrolled_prover::quotient_parts::evaluate_memory_init_teardown_ordering;
+                        evaluate_memory_init_teardown_ordering(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            memory_trace_view_next_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_two_rows,
+                            &mut quotient_term,
+                            &mut every_row_except_last_two_challenges_ptr,
+                        );
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_EVERYWHERE_EXCEPT_LAST_TWO_ROWS_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut every_row_except_last_two_contribution =
-                        //     quotient_term;
-                        // every_row_except_last_two_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_EVERYWHERE_EXCEPT_LAST_TWO_ROWS_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut every_row_except_last_two_contribution =
+                            quotient_term;
+                        every_row_except_last_two_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(every_row_except_last_two_challenges_ptr, alphas_for_every_row_except_last_two.as_ptr_range().end);
+                        assert_eq!(every_row_except_last_two_challenges_ptr, alphas_for_every_row_except_last_two.as_ptr_range().end);
 
                         // // Constraints that happen at first row
                         // let mut quotient_term = Mersenne31Quartic::ZERO;
@@ -1223,7 +1223,7 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                         // Horner rule for separation of divisors
                         let mut quotient_term = every_row_except_last_contribution;
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&every_row_except_last_two_contribution);
+                        quotient_term.add_assign(&every_row_except_last_two_contribution);
                         quotient_term.mul_assign(&quotient_beta);
                         // quotient_term.add_assign(&first_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);

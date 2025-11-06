@@ -1349,14 +1349,14 @@ pub(super) fn prepare_async_challenge_data(
         alpha_offset,
         h_alphas_for_hardcoded_every_row_except_last.len()
     );
-    // // Prepare args and helpers for constraints on all rows except the last two
-    // alpha_offset = 0;
-    // alpha_offset += state_linkage_constraints.num_constraints as usize;
-    // for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
-    //     // alphas for "next lazy init timestamp > current lazy init timestamp"
-    //     alpha_offset += 2;
-    // }
-    // assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
+    // Prepare args and helpers for constraints on all rows except the last two
+    alpha_offset = 0;
+    alpha_offset += state_linkage_constraints.num_constraints as usize;
+    for _ in 0..lazy_init_teardown_layouts.num_init_teardown_sets {
+        // alphas for "next lazy init timestamp > current lazy init timestamp"
+        alpha_offset += 2;
+    }
+    assert_eq!(alpha_offset, h_alphas_for_every_row_except_last_two.len());
     // // Args and helpers for boundary constraints (first row and second-to-last row)
     // // "+ 1" accounts for the additional grand product == 1 at row 0 constraint
     // assert_eq!(

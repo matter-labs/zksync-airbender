@@ -1045,69 +1045,69 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   // TODO: fold beta powers into corresponding alpha powers
   acc = e4::mul(acc, betas.get(5));
 
-  // // Constraints at every row except last two
-  // if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layouts.process_shuffle_ram_init) {
-  //   e4 acc_linear{e4::zero()};
+  // Constraints at every row except last two
+  if (state_linkage_constraints.num_constraints > 0 || lazy_init_teardown_layouts.process_shuffle_ram_init) {
+    e4 acc_linear{e4::zero()};
 
-  //   {
-  //     auto witness_cols_next_row = witness_cols.copy();
-  //     if (gid < n - 1)
-  //       witness_cols_next_row.add_row(1);
-  //     else
-  //       witness_cols_next_row.sub_row(gid);
+    {
+      auto witness_cols_next_row = witness_cols.copy();
+      if (gid < n - 1)
+        witness_cols_next_row.add_row(1);
+      else
+        witness_cols_next_row.sub_row(gid);
 
-  //     for (unsigned i = 0; i < state_linkage_constraints.num_constraints; i++) {
-  //       const e4 alpha = (alphas_every_row_except_last_two++).get();
-  //       const bf src_val = witness_cols.get_at_col(state_linkage_constraints.srcs[i]);
-  //       const bf dst_val = witness_cols_next_row.get_at_col(state_linkage_constraints.dsts[i]);
-  //       acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(src_val, dst_val)));
-  //     }
-  //   }
+      for (unsigned i = 0; i < state_linkage_constraints.num_constraints; i++) {
+        const e4 alpha = (alphas_every_row_except_last_two++).get();
+        const bf src_val = witness_cols.get_at_col(state_linkage_constraints.srcs[i]);
+        const bf dst_val = witness_cols_next_row.get_at_col(state_linkage_constraints.dsts[i]);
+        acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(src_val, dst_val)));
+      }
+    }
 
-  //   if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
-  //     auto memory_cols_next_row = memory_cols.copy();
-  //     if (gid < n - 1)
-  //       memory_cols_next_row.add_row(1);
-  //     else
-  //       memory_cols_next_row.sub_row(gid);
+    if (lazy_init_teardown_layouts.process_shuffle_ram_init) {
+      auto memory_cols_next_row = memory_cols.copy();
+      if (gid < n - 1)
+        memory_cols_next_row.add_row(1);
+      else
+        memory_cols_next_row.sub_row(gid);
 
-  //     // TODO: Investigate how this is applied for unrolled circuits
-  //     for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
-  //       const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
-  //       const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
-  //       {
-  //         const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
-  //         const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
-  //         const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
-  //         bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
-  //         tmp = bf::add(tmp, this_low);
-  //         tmp = bf::sub(tmp, next_low);
-  //         tmp = bf::sub(tmp, aux_low);
-  //         const e4 alpha = (alphas_every_row_except_last_two++).get();
-  //         acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
-  //       }
-  //       {
-  //         const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
-  //         const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-  //         const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
-  //         const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
-  //         bf tmp = bf::mul(SHIFT_16, final_borrow);
-  //         tmp = bf::add(tmp, this_high);
-  //         tmp = bf::sub(tmp, intermediate_borrow);
-  //         tmp = bf::sub(tmp, next_high);
-  //         tmp = bf::sub(tmp, aux_high);
-  //         const e4 alpha = (alphas_every_row_except_last_two++).get();
-  //         acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
-  //       }
-  //     }
-  //   }
+      // TODO: Investigate how this is applied for unrolled circuits
+      for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
+        const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
+        const bf intermediate_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_intermediate_borrow);
+        {
+          const bf this_low = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start);
+          const bf next_low = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start);
+          const bf aux_low = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_low);
+          bf tmp = bf::mul(SHIFT_16, intermediate_borrow);
+          tmp = bf::add(tmp, this_low);
+          tmp = bf::sub(tmp, next_low);
+          tmp = bf::sub(tmp, aux_low);
+          const e4 alpha = (alphas_every_row_except_last_two++).get();
+          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+        }
+        {
+          const bf final_borrow = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_final_borrow);
+          const bf this_high = memory_cols.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+          const bf next_high = memory_cols_next_row.get_at_col(lazy_init_teardown_layout.init_address_start + 1);
+          const bf aux_high = witness_cols.get_at_col(lazy_init_teardown_layout.init_address_aux_high);
+          bf tmp = bf::mul(SHIFT_16, final_borrow);
+          tmp = bf::add(tmp, this_high);
+          tmp = bf::sub(tmp, intermediate_borrow);
+          tmp = bf::sub(tmp, next_high);
+          tmp = bf::sub(tmp, aux_high);
+          const e4 alpha = (alphas_every_row_except_last_two++).get();
+          acc_linear = e4::add(acc_linear, e4::mul(alpha, tmp));
+        }
+      }
+    }
 
-  //   // Finalize "every row except last two" contributions, which are purely linear
-  //   acc_linear = e4::mul(acc_linear, decompression_factor);
-  //   multiplier = e2::mul(multiplier, e2::sub(x, omega_inv_squared));
-  //   acc_linear = e4::mul(acc_linear, multiplier);
-  //   acc = e4::add(acc, e4::mul(betas.get(4), acc_linear));
-  // }
+    // Finalize "every row except last two" contributions, which are purely linear
+    acc_linear = e4::mul(acc_linear, decompression_factor);
+    multiplier = e2::mul(multiplier, e2::sub(x, omega_inv_squared));
+    acc_linear = e4::mul(acc_linear, multiplier);
+    acc = e4::add(acc, e4::mul(betas.get(4), acc_linear));
+  }
 
   // const e2 denoms[4] = {x, e2::sub(x, bf::one()), e2::sub(x, omega_inv_squared), e2::sub(x, omega_inv)};
   // e2 denom_invs[4] = {};
