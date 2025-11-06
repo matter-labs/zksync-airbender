@@ -945,67 +945,67 @@ pub fn prover_stage_3_for_unrolled_circuit<
 
                         assert_eq!(last_row_challenges_ptr, alphas_for_last_row.as_ptr_range().end);
 
-                        // // and last two rows - sums equality for lookup arguments
+                        // and last two rows - sums equality for lookup arguments
 
-                        // let mut quotient_term = Mersenne31Quartic::ZERO;
-                        // let mut last_row_and_at_zero_challenges_ptr = alphas_for_last_row_and_at_zero.as_ptr();
+                        let mut quotient_term = Mersenne31Quartic::ZERO;
+                        let mut last_row_and_at_zero_challenges_ptr = alphas_for_last_row_and_at_zero.as_ptr();
 
-                        // // generic approach is \sum multiplicities aux - \sum witness_aux
+                        // generic approach is \sum multiplicities aux - \sum witness_aux
 
-                        // evaluate_lookup_arguments_consistency(
-                        //     compiled_circuit,
-                        //     witness_trace_view_row,
-                        //     memory_trace_view_row,
-                        //     setup_trace_view_row,
-                        //     stage_2_trace_view_row,
-                        //     &tau_in_domain,
-                        //     &tau_in_domain_by_half,
-                        //     absolute_row_idx,
-                        //     is_last_row,
-                        //     &mut quotient_term,
-                        //     &mut last_row_and_at_zero_challenges_ptr,
-                        // );
+                        evaluate_lookup_arguments_consistency(
+                            compiled_circuit,
+                            witness_trace_view_row,
+                            memory_trace_view_row,
+                            setup_trace_view_row,
+                            stage_2_trace_view_row,
+                            &tau_in_domain,
+                            &tau_in_domain_by_half,
+                            absolute_row_idx,
+                            is_last_row,
+                            &mut quotient_term,
+                            &mut last_row_and_at_zero_challenges_ptr,
+                        );
 
-                        // if handle_delegation_requests || process_delegations {
-                        //     // we need to show the sum of the values everywhere except the last row,
-                        //     // so we show that intermediate poly - interpolant((0, 0), (omega^-1, `value``)) is divisible
-                        //     // by our selected divisor
+                        if handle_delegation_requests || process_delegations {
+                            // we need to show the sum of the values everywhere except the last row,
+                            // so we show that intermediate poly - interpolant((0, 0), (omega^-1, `value``)) is divisible
+                            // by our selected divisor
 
-                        //     // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
-                        //     let mut interpolant_value = delegation_accumulator_interpolant_prefactor;
-                        //     interpolant_value.mul_assign_by_base(&x);
-                        //     let mut term_contribution = stage_2_trace_view_row.as_ptr().add(delegation_processing_aux_poly.start()).cast::<Mersenne31Quartic>().read();
-                        //     term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
-                        //     term_contribution.sub_assign(&interpolant_value);
+                            // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
+                            let mut interpolant_value = delegation_accumulator_interpolant_prefactor;
+                            interpolant_value.mul_assign_by_base(&x);
+                            let mut term_contribution = stage_2_trace_view_row.as_ptr().add(delegation_processing_aux_poly.start()).cast::<Mersenne31Quartic>().read();
+                            term_contribution.mul_assign_by_base(&tau_in_domain_by_half);
+                            term_contribution.sub_assign(&interpolant_value);
 
-                        //     if DEBUG_QUOTIENT {
-                        //         if is_last_row {
-                        //             assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at delegation argument set equality at last row");
-                        //         }
-                        //     }
+                            if DEBUG_QUOTIENT {
+                                if is_last_row {
+                                    assert_eq!(term_contribution, Mersenne31Quartic::ZERO, "unsatisfied at delegation argument set equality at last row");
+                                }
+                            }
 
-                        //     add_quotient_term_contribution_in_ext4(
-                        //         &mut last_row_and_at_zero_challenges_ptr,
-                        //         term_contribution,
-                        //         &mut quotient_term
-                        //     );
-                        // }
+                            add_quotient_term_contribution_in_ext4(
+                                &mut last_row_and_at_zero_challenges_ptr,
+                                term_contribution,
+                                &mut quotient_term
+                            );
+                        }
 
-                        // let divisor = divisors_trace_view_row
-                        //     .as_ptr()
-                        //     .add(DIVISOR_LAST_ROW_AND_ZERO_OFFSET)
-                        //     .cast::<Mersenne31Complex>()
-                        //     .read();
-                        // let mut last_row_and_zero_contribution = quotient_term;
-                        // last_row_and_zero_contribution.mul_assign_by_base(&divisor);
+                        let divisor = divisors_trace_view_row
+                            .as_ptr()
+                            .add(DIVISOR_LAST_ROW_AND_ZERO_OFFSET)
+                            .cast::<Mersenne31Complex>()
+                            .read();
+                        let mut last_row_and_zero_contribution = quotient_term;
+                        last_row_and_zero_contribution.mul_assign_by_base(&divisor);
 
-                        // assert_eq!(
-                        //     last_row_and_at_zero_challenges_ptr,
-                        //     alphas_for_last_row_and_at_zero.as_ptr_range().end,
-                        //     "challenges for terms at last row and 0 have a size of {}, but {} were used",
-                        //     alphas_for_last_row_and_at_zero.len(),
-                        //     last_row_and_at_zero_challenges_ptr.offset_from_unsigned(alphas_for_last_row_and_at_zero.as_ptr()),
-                        // );
+                        assert_eq!(
+                            last_row_and_at_zero_challenges_ptr,
+                            alphas_for_last_row_and_at_zero.as_ptr_range().end,
+                            "challenges for terms at last row and 0 have a size of {}, but {} were used",
+                            alphas_for_last_row_and_at_zero.len(),
+                            last_row_and_at_zero_challenges_ptr.offset_from_unsigned(alphas_for_last_row_and_at_zero.as_ptr()),
+                        );
 
                         // Horner rule for separation of divisors
                         let mut quotient_term = every_row_except_last_contribution;
@@ -1018,7 +1018,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
                         quotient_term.mul_assign(&quotient_beta);
                         quotient_term.add_assign(&last_row_contribution);
                         quotient_term.mul_assign(&quotient_beta);
-                        // quotient_term.add_assign(&last_row_and_zero_contribution);
+                        quotient_term.add_assign(&last_row_and_zero_contribution);
 
                         quotient_dst.write(quotient_term);
 

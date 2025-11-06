@@ -720,7 +720,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         ));
     }
 
-    if false {
+    if true {
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
 
         let add_sub_circuit = {
@@ -881,7 +881,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
 
         use crate::cs::machine::ops::unrolled::jump_branch_slt::*;
@@ -1040,7 +1040,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
-    if false {
+    if true {
         println!("Will try to prove XOR/AND/OR/SHIFT/CSR circuit");
         use crate::cs::machine::ops::unrolled::shift_binary_csr::*;
 
@@ -1207,7 +1207,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove MUL/DIV circuit");
 
         use crate::cs::machine::ops::unrolled::mul_div::*;
@@ -1370,7 +1370,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove word LOAD/STORE circuit");
 
         const SECOND_WORD_BITS: usize = 4;
@@ -1535,7 +1535,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         println!("Will try to prove subword LOAD/STORE circuit");
 
         use cs::machine::ops::unrolled::load_store::*;
@@ -1835,7 +1835,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
-    if false {
+    if true {
         // now prove delegation circuits
         let mut external_values = ExternalValues {
             challenges: external_challenges,

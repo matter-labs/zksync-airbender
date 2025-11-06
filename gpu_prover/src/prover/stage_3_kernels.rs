@@ -735,6 +735,10 @@ impl StaticMetadata {
             }
             num_helpers_expected += 1;
         }
+        // decoder lookup e4 arg sums
+        if num_decoder_multiplicities_cols > 0 {
+            num_helpers_expected += 1;
+        }
         // generic lookup e4 arg sums
         if num_generic_multiplicities_cols > 0 {
             num_helpers_expected += 1;
@@ -840,7 +844,6 @@ pub(super) fn prepare_async_challenge_data(
         assert!(decoder_table_challenges.is_none());
         DecoderTableChallenges::default()
     };
-    let intermediate_state_layout = &circuit.memory_layout.intermediate_state_layout;
 
     // We keep references to host AND device copies of challenge powers,
     // because host copies come in handy to precompute challenges_times_powers_sum
@@ -1396,6 +1399,12 @@ pub(super) fn prepare_async_challenge_data(
     helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
     // timestamp range check e4 arg sums
     if timestamp_range_check_multiplicities_layout.num_dst_cols > 0 {
+        let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
+        alpha_offset += 1;
+        helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));
+    }
+    // decoder lookup e4 arg sums
+    if decoder_lookup_multiplicities_layout.num_dst_cols > 0 {
         let mut alpha = h_alphas_for_last_row_and_at_zero[alpha_offset];
         alpha_offset += 1;
         helpers.push(*alpha.negate().mul_assign_by_base(&decompression_factor));

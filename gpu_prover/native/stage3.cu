@@ -1161,7 +1161,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
   // Constraints at last row and x = 0
   {
     e4 acc_linear = e4::neg(stage_2_e4_cols.get_at_col(range_check_16_multiplicities_layout.dst_cols_start));
-    // validate col sums for range check 16 lookup e4 args
+    // Validate col sums for range check 16 lookup e4 args
     {
       const unsigned num_range_check_16_e4_args = range_check_16_layout.num_dst_cols + range_check_16_expressions.num_expression_pairs;
       for (unsigned i = 0; i < num_range_check_16_e4_args; i++)
@@ -1173,7 +1173,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       }
       acc_linear = e4::mul(acc_linear, (helpers++).get());
     }
-    // validate col sums for timestamp range check e4 args
+    // Validate col sums for timestamp range check e4 args
     if (timestamp_range_check_multiplicities_layout.num_dst_cols > 0) {
       e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
       const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
@@ -1185,7 +1185,18 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());
       acc_linear = e4::add(acc_linear, acc_timestamp);
     }
-    // validate col sums for generic lookup e4 args
+    // Validate col sums for decoder lookup e4 args
+    if (decoder_lookup_multiplicities_layout.num_dst_cols > 0) {
+      e4 acc_decoder = e4::neg(stage_2_e4_cols.get_at_col(decoder_lookup_multiplicities_layout.dst_cols_start));
+      // There should be only one decoder multiplicity column.
+      // for (unsigned i = 1; i < decoder_lookup_multiplicities_layout.num_dst_cols; i++)
+      //   acc_decoder = e4::sub(acc_decoder, stage_2_e4_cols.get_at_col(decoder_lookup_multiplicities_layout.dst_cols_start + i));
+      // There should be only one decoder lookup column.
+      acc_decoder = e4::add(acc_decoder, stage_2_e4_cols.get_at_col(intermediate_state_lookup_layout.intermediate_poly));
+      acc_decoder = e4::mul(acc_decoder, (helpers++).get());
+      acc_linear = e4::add(acc_linear, acc_decoder);
+    }
+    // Validate col sums for generic lookup e4 args
     if (generic_lookup_multiplicities_layout.num_dst_cols > 0) {
       e4 acc_generic = e4::neg(stage_2_e4_cols.get_at_col(generic_lookup_multiplicities_layout.dst_cols_start));
       for (unsigned i = 1; i < generic_lookup_multiplicities_layout.num_dst_cols; i++)
@@ -1195,7 +1206,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       acc_generic = e4::mul(acc_generic, (helpers++).get());
       acc_linear = e4::add(acc_linear, acc_generic);
     }
-    // validate delegation aux poly sums
+    // Validate delegation aux poly sums
     if (handle_delegation_requests || process_delegations) {
       const e4 interpolant = e4::mul((helpers++).get(), x);
       const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);

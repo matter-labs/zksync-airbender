@@ -543,9 +543,7 @@ mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{
-        run_basic_unrolled_test_with_word_specialization_impl, GpuComparisonArgs,
-    };
+    use prover::tests::{run_basic_unrolled_test_with_word_specialization_impl, GpuComparisonArgs};
     use serial_test::serial;
 
     type BF = BaseField;
@@ -644,10 +642,6 @@ mod tests {
         );
         // Allocate GPU memory
         let stream = CudaStream::default();
-        let num_memory_args = circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .num_elements();
         let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
         let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
         let mut d_setup_column_major =
