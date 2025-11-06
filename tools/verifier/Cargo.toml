@@ -11,7 +11,7 @@ categories = ["cryptography"]
 
 [dependencies]
 verifier = { path = "../../verifier", features = ["verifier_program", "blake2_with_compression"], optional = true }
-full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false, features = []}
+full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false, features = ["verifiers"] }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 reduced_keccak = { path = "../../reduced_keccak", optional = true }
 
@@ -37,9 +37,12 @@ security_100 = ["full_statement_verifier/security_100"]
 # universal_circuit = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression", "reduced_keccak"]
 # universal_circuit_no_delegation = ["full_statement_verifier/verifier_program", "reduced_keccak"]
 
-unrolled_base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-unrolled_recursion_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-unified_reduced_machine = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# unrolled_base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# unrolled_recursion_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# unified_reduced_machine = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+
+recursion_in_unrolled_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+recursion_in_unified_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 
 verifier_tests = ["verifier"]
 # default = ["universal_circuit"]

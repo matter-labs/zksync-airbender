@@ -204,20 +204,34 @@ unsafe fn workload() -> ! {
     riscv_common::zksync_os_finish_success_extended(&output)
 }
 
-#[cfg(feature = "unrolled_base_layer")]
-unsafe fn workload() -> ! {
-    let output = full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer();
-    riscv_common::zksync_os_finish_success_extended(&output);
-}
+// #[cfg(feature = "unrolled_base_layer")]
+// unsafe fn workload() -> ! {
+//     let output = full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
 
-#[cfg(feature = "unrolled_recursion_layer")]
+// #[cfg(feature = "unrolled_recursion_layer")]
+// unsafe fn workload() -> ! {
+//     let output =
+//         full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
+
+// #[cfg(feature = "unified_reduced_machine")]
+// unsafe fn workload() -> ! {
+//     let output =
+//         full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
+
+#[cfg(feature = "recursion_in_unrolled_layer")]
 unsafe fn workload() -> ! {
     let output =
-        full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer();
+        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits();
     riscv_common::zksync_os_finish_success_extended(&output);
 }
 
-#[cfg(feature = "unified_reduced_machine")]
+#[cfg(feature = "recursion_in_unified_layer")]
 unsafe fn workload() -> ! {
     let output =
         full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();

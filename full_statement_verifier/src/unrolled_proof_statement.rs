@@ -2,6 +2,7 @@ use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
 
 use super::*;
+use crate::imports::*;
 
 pub fn caps_flattened(caps: &'_ [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) -> &'_ [u32] {
     unsafe {
@@ -10,8 +11,6 @@ pub fn caps_flattened(caps: &'_ [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) -> &'_ [u
         )
     }
 }
-
-pub const CAP_SIZE: usize = 64;
 
 pub const FINAL_PC_BUFFER_PC_IDX: usize = 0;
 pub const FINAL_PC_BUFFER_TS_LOW_IDX: usize = 1;
@@ -718,5 +717,18 @@ pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
             ),
             RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
         )
+    }
+}
+
+pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
+    // we just branch
+    let op_type = DefaultNonDeterminismSource::read_word();
+    use crate::definitions::*;
+    match op_type {
+        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
+        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
+        _ => {
+            panic!("Uknown op");
+        }
     }
 }

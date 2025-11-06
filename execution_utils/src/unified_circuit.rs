@@ -60,196 +60,54 @@ pub fn compute_unified_setup_for_machine_configuration<C: MachineConfig>(
     )
 }
 
-// #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-// pub fn verify_unrolled_base_layer_for_machine_configuration<C: MachineConfig>(
-//     proof: &UnrolledProgramProof,
-//     setup: &UnrolledProgramSetup,
-// ) -> Result<[u32; 16], ()> {
-//     for (k, v) in proof.circuit_families_proofs.iter() {
-//         println!("{} proofs for family {}", v.len(), k);
-//     }
-
-//     let responses = proof.flatten_into_responses(C::ALLOWED_DELEGATION_CSRS);
-
-//     let params = if setups::is_default_machine_configuration::<C>() {
-//         full_statement_verifier::unrolled_proof_statement::FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-//     } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
-//         full_statement_verifier::unrolled_proof_statement::FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-//     } else if setups::is_reduced_machine_configuration::<C>() {
-//         full_statement_verifier::unrolled_proof_statement::RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-//     } else {
-//         panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-//     };
-
-//     println!("Running the verifier");
-
-//     let families_setups: Vec<_> = setup
-//         .circuit_families_setups
-//         .iter()
-//         .map(|el| *el.1)
-//         .collect();
-//     let inits_and_teardowns_setup = setup.inits_and_teardowns_setup;
-
-//     let result = std::thread::Builder::new()
-//             .name("verifier thread".to_string())
-//             .stack_size(1 << 27)
-//             .spawn(move || {
-
-//         let families_setups_refs: Vec<_> = families_setups.iter().map(|el| el).collect();
-//         let it = responses.into_iter();
-//         prover::nd_source_std::set_iterator(it);
-
-//         #[allow(invalid_value)]
-//         let regs = unsafe {
-//             full_statement_verifier::unrolled_proof_statement::verify_full_statement_for_unrolled_circuits::<true, { setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS }>(
-//                 &families_setups_refs,
-//                 params,
-//                 (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
-//                 full_statement_verifier::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
-//             )
-//         };
-
-//         regs
-//     })
-//     .expect("must spawn verifier thread").join();
-
-//     result.map_err(|_| ())
-// }
-
-// #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-// pub fn verify_unrolled_base_layer_via_full_statement_verifier(
-//     proof: &UnrolledProgramProof,
-//     setup: &UnrolledProgramSetup,
-// ) -> Result<[u32; 16], ()> {
-//     for (k, v) in proof.circuit_families_proofs.iter() {
-//         println!("{} proofs for family {}", v.len(), k);
-//     }
-
-//     let mut responses = setup.flatten_for_recursion();
-//     responses.extend(proof.flatten_into_responses(&[
-//         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-//         common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-//         common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-//     ]));
-
-//     println!("Running the verifier");
-
-//     let result = std::thread::Builder::new()
-//         .name("verifier thread".to_string())
-//         .stack_size(1 << 27)
-//         .spawn(move || {
-//             let it = responses.into_iter();
-//             prover::nd_source_std::set_iterator(it);
-
-//             #[allow(invalid_value)]
-//             let regs = unsafe {
-//                 full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer()
-//             };
-
-//             regs
-//         })
-//         .expect("must spawn verifier thread")
-//         .join();
-
-//     result.map_err(|_| ())
-// }
-
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-pub fn verify_unified_recursion_layer_for_machine_configuration<C: MachineConfig>(
+pub fn flatten_proof_into_responses_for_unified_recursion(
     proof: &UnrolledProgramProof,
     setup: &UnrolledProgramSetup,
     compiled_layouts: &CompiledCircuitsSet,
-) -> Result<[u32; 16], ()> {
-    use crate::unified_circuit::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    assert_eq!(setup.circuit_families_setups.len(), 1);
-    assert!(setup
-        .circuit_families_setups
-        .contains_key(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX));
+    input_is_unrolled: bool,
+) -> Vec<u32> {
+    let mut responses = vec![];
+    let op = if input_is_unrolled {
+        full_statement_verifier::definitions::OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
+    } else {
+        use crate::unified_circuit::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+        assert_eq!(setup.circuit_families_setups.len(), 1);
+        assert!(setup
+            .circuit_families_setups
+            .contains_key(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX));
 
-    assert_eq!(proof.circuit_families_proofs.len(), 1);
-    assert!(proof.inits_and_teardowns_proofs.is_empty());
-    assert!(proof.circuit_families_proofs[&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX].len() > 0);
+        assert_eq!(proof.circuit_families_proofs.len(), 1);
+        assert!(proof.inits_and_teardowns_proofs.is_empty());
+        assert!(proof.circuit_families_proofs[&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX].len() > 0);
 
-    for (k, v) in proof.circuit_families_proofs.iter() {
-        println!("{} proofs for family {}", v.len(), k);
-    }
-
-    let responses = proof.flatten_into_responses(C::ALLOWED_DELEGATION_CSRS, compiled_layouts);
-
-    // let params = if setups::is_default_machine_configuration::<C>() {
-    //     panic!(
-    //         "Trying to use configuration {:?} at recursion layer",
-    //         std::any::type_name::<C>()
-    //     );
-    // } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
-    //     panic!(
-    //         "Trying to use configuration {:?} at recursion layer",
-    //         std::any::type_name::<C>()
-    //     );
-    // } else if setups::is_reduced_machine_configuration::<C>() {
-    //     full_statement_verifier::unrolled_proof_statement::RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-    // } else {
-    //     panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-    // };
-
-    println!("Running the verifier");
-
-    let families_setups: Vec<_> = setup
-        .circuit_families_setups
-        .iter()
-        .map(|el| *el.1)
-        .collect();
-
-    let result = std::thread::Builder::new()
-            .name("verifier thread".to_string())
-            .stack_size(1 << 27)
-            .spawn(move || {
-
-        let families_setups_refs: Vec<_> = families_setups.iter().map(|el| el).collect();
-        let it = responses.into_iter();
-        prover::nd_source_std::set_iterator(it);
-
-        #[allow(invalid_value)]
-        let regs = unsafe {
-            full_statement_verifier::unified_circuit_statement::verify_unified_circuit_statement::<false>(
-                &families_setups_refs[0],
-                full_statement_verifier::unified_circuit_statement::REDUCED_UNIFIED_CIRCUIT_CAPACITY,
-                full_statement_verifier::unified_circuit_statement::REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR,
-                full_statement_verifier::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
-            )
-        };
-
-        regs
-    })
-    .expect("must spawn verifier thread").join();
-
-    result.map_err(|_| ())
-}
-
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-pub fn verify_unrolled_recursion_layer_via_full_statement_verifier(
-    proof: &UnrolledProgramProof,
-    setup: &UnrolledProgramSetup,
-    compiled_layouts: &CompiledCircuitsSet,
-) -> Result<[u32; 16], ()> {
-    use crate::unified_circuit::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    assert_eq!(setup.circuit_families_setups.len(), 1);
-    assert!(setup
-        .circuit_families_setups
-        .contains_key(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX));
-
-    assert_eq!(proof.circuit_families_proofs.len(), 1);
-    assert!(proof.inits_and_teardowns_proofs.is_empty());
-    assert!(proof.circuit_families_proofs[&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX].len() > 0);
-
-    for (k, v) in proof.circuit_families_proofs.iter() {
-        println!("{} proofs for family {}", v.len(), k);
-    }
-
-    let mut responses = setup.flatten_unified_for_recursion();
+        full_statement_verifier::definitions::OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
+    };
+    responses.push(op);
+    responses.extend(setup.flatten_for_recursion());
     responses.extend(proof.flatten_into_responses(&[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     ], compiled_layouts));
+
+    responses
+}
+
+#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
+pub fn verify_proof_in_unified_layer(
+    proof: &UnrolledProgramProof,
+    setup: &UnrolledProgramSetup,
+    compiled_layouts: &CompiledCircuitsSet,
+    input_is_unrolled: bool,
+) -> Result<[u32; 16], ()> {
+    for (k, v) in proof.circuit_families_proofs.iter() {
+        println!("{} proofs for family {}", v.len(), k);
+    }
+
+    let mut responses = flatten_proof_into_responses_for_unified_recursion(
+        proof,
+        setup,
+        compiled_layouts,
+        input_is_unrolled,
+    );
 
     println!("Running the verifier");
 
@@ -259,10 +117,7 @@ pub fn verify_unrolled_recursion_layer_via_full_statement_verifier(
             let it = responses.into_iter();
             prover::nd_source_std::set_iterator(it);
 
-            #[allow(invalid_value)]
-            let regs = unsafe {
-                full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer()
-            };
+            let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
 
             regs
         }).map_err(|_| ());
@@ -279,7 +134,7 @@ pub fn verify_unrolled_recursion_layer_via_full_statement_verifier(
                 let it = responses.into_iter();
                 prover::nd_source_std::set_iterator(it);
 
-                let regs = full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer();
+                let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
 
                 regs
             })
