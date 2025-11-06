@@ -711,7 +711,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
                             );
                         }
 
-                        // // maybe we should mask
+                        // maybe we should mask
                         if compiled_circuit.stage_2_layout.intermediate_polys_for_permutation_masking.num_elements() > 0 {
                             evaluate_permutation_masking(
                                 compiled_circuit,

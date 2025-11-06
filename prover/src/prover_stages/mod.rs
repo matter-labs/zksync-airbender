@@ -158,44 +158,6 @@ pub(crate) fn quotient_compute_aggregated_key_value_in_ext2<const N: usize>(
 }
 
 #[inline(always)]
-pub(crate) fn quotient_compute_aggregated_key_value_debug<const N: usize>(
-    base_value: Mersenne31Field,
-    key_values_to_aggregate: [Mersenne31Field; N],
-    aggregation_challenges: [Mersenne31Quartic; N],
-    additive_part: Mersenne31Quartic,
-    tau_in_domain_by_half: Mersenne31Complex,
-    print_debug: bool,
-) -> Mersenne31Quartic {
-    let mut denom = Mersenne31Quartic::from_base(base_value);
-    if print_debug {
-        println!("base value {}", base_value);
-    }
-    for (a, b) in key_values_to_aggregate
-        .into_iter()
-        .zip(aggregation_challenges.into_iter())
-    {
-        let mut t = b;
-        t.mul_assign_by_base(&a);
-        denom.add_assign(&t);
-        if print_debug {
-            println!("b {} denom {}", b, denom);
-        }
-    }
-
-    // all terms are linear over witness
-    denom.mul_assign_by_base(&tau_in_domain_by_half);
-
-    if print_debug {
-        println!("denom after adjustment {}", denom);
-        println!("additive_part {}", additive_part);
-    }
-
-    denom.add_assign(&additive_part);
-
-    denom
-}
-
-#[inline(always)]
 pub(crate) unsafe fn add_quotient_term_contribution_in_ext2(
     other_challenges_ptr: &mut *const Mersenne31Quartic,
     term_contribution: Mersenne31Complex,
