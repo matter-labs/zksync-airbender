@@ -172,6 +172,7 @@ pub fn compute_deep_quotient_on_main_domain(
     circuit: &CompiledCircuitArtifact<BF>,
     log_n: u32,
     bit_reversed: bool,
+    is_unrolled: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -220,7 +221,7 @@ pub fn compute_deep_quotient_on_main_domain(
             DeviceMatrixChunk::new(e4_slice, stride, offset, n),
         )
     };
-    if cached_data.process_shuffle_ram_init {
+    if !is_unrolled && cached_data.process_shuffle_ram_init {
         assert_eq!(
             circuit.state_linkage_constraints.len(),
             NUM_STATE_LINKAGE_CONSTRAINTS
@@ -229,7 +230,11 @@ pub fn compute_deep_quotient_on_main_domain(
         assert_eq!(circuit.state_linkage_constraints.len(), 0);
     }
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
-    let state_linkage_constraints = StateLinkageConstraints::new(circuit);
+    let state_linkage_constraints = if is_unrolled {
+        StateLinkageConstraints::default()
+    } else {
+        StateLinkageConstraints::new(circuit)
+    };
     let mut memory_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
         map: [DOES_NOT_NEED_Z_OMEGA; MAX_MEMORY_COLS],
     };
@@ -268,7 +273,7 @@ pub fn compute_deep_quotient_on_main_domain(
     let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
     assert_eq!(num_terms_total, scratch_e4.len());
     // prepare data matrix args
-    let (_, stage_2_memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, false);
+    let (_, stage_2_memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, is_unrolled);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();
@@ -347,7 +352,10 @@ pub(crate) mod tests {
         memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
     };
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_delegation_test_impl, run_basic_unrolled_test_with_word_specialization_impl,
+        run_keccak_test_impl, GpuComparisonArgs
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -366,7 +374,7 @@ pub(crate) mod tests {
             log_n,
             circuit_sequence,
             delegation_processing_type,
-            is_unrolled: _,
+            is_unrolled,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
@@ -545,6 +553,7 @@ pub(crate) mod tests {
                 &circuit,
                 log_n as u32,
                 bit_reversed,
+                *is_unrolled,
                 &stream,
             )
             .unwrap();
@@ -577,7 +586,7 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_4_for_main_and_blake() {
+    fn test_stage_4_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -589,9 +598,21 @@ pub(crate) mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_4_for_main_and_keccak() {
+    fn test_stage_4_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_stage_4_unrolled_for_main_and_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

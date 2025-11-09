@@ -178,6 +178,7 @@ pub fn batch_barycentric_eval(
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
     row_chunk_size: u32,
+    is_unrolled: bool,
     log_n: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -259,7 +260,7 @@ pub fn batch_barycentric_eval(
         eval_at_z_omega_offset += 1;
     }
     col_offset += num_memory_cols + num_stage_2_bf_cols;
-    let (_, memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, false);
+    let (_, memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, is_unrolled);
     map[col_offset + memory_grand_product_offset] = eval_at_z_omega_offset as u32;
     assert_eq!(eval_at_z_omega_offset + 1, num_evals_total);
     let (block_dim, grid_dim) = get_batch_partial_reduce_grid_block(n as u32, row_chunk_size);
@@ -332,7 +333,10 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use era_cudart::stream::CudaStream;
     use field::FieldExtension;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_delegation_test_impl, run_basic_unrolled_test_with_word_specialization_impl,
+        run_keccak_test_impl, GpuComparisonArgs
+    };
     use serial_test::serial;
 
     use crate::prover::arg_utils::print_size;
@@ -354,7 +358,7 @@ mod tests {
             log_n,
             circuit_sequence,
             delegation_processing_type,
-            is_unrolled: _,
+            is_unrolled,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
@@ -525,6 +529,7 @@ mod tests {
                 &cached_data,
                 circuit,
                 row_chunk_size,
+                *is_unrolled,
                 log_n as u32,
                 &stream,
             )
@@ -545,7 +550,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_barycentric_for_main_and_blake() {
+    fn test_barycentric_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -557,9 +562,21 @@ mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_barycentric_for_main_and_keccak() {
+    fn test_barycentric_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_barycentric_unrolled_for_main_and_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

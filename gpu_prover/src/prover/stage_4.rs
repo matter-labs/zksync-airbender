@@ -174,6 +174,7 @@ impl StageFourOutput {
             &cached_data,
             circuit,
             row_chunk_size,
+            false, // is_unrolled
             log_domain_size,
             stream,
         )?;
@@ -262,7 +263,8 @@ impl StageFourOutput {
             &cached_data,
             &circuit,
             log_domain_size,
-            false,
+            false, // bit_reversed
+            false, // is_unrolled
             &stream,
         )?;
         assert_eq!(log_lde_factor, 1);
