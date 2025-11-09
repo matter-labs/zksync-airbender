@@ -85,6 +85,9 @@ impl ProgramProof {
         }
         // then for every allowed delegation circuit
         for delegation_type in allowed_delegation_circuits.iter() {
+            if *delegation_type == riscv_transpiler::common_constants::NON_DETERMINISM_CSR {
+                continue;
+            }
             if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
                 responses.push(proofs.len() as u32);
                 for proof in proofs.iter() {

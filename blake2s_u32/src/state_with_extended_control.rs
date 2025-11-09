@@ -2,6 +2,8 @@ use core::mem::MaybeUninit;
 
 // NOTE: here we need struct definition for external crates, but we will panic in implementations instead
 
+use crate::aligned_array::AlignedArray64;
+
 use super::*;
 
 // Here we try different approach to Blake round function, but placing extra burden
@@ -25,7 +27,7 @@ pub struct Blake2RoundFunctionEvaluator {
     // there is no input buffer, and we will use registers to actually pass control flow flags
     // there will be special buffer for witness to write into, that
     // we will take care to initialize, even though we will use only half of it
-    pub input_buffer: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
+    pub input_buffer: AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
     t: u32, // we limit ourselves to <4Gb inputs
 }
 
@@ -79,7 +81,7 @@ impl Blake2RoundFunctionEvaluator {
 
     #[inline(always)]
     pub const fn get_witness_buffer(&mut self) -> &mut [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] {
-        &mut self.input_buffer
+        self.input_buffer.deref_mut_impl()
     }
 
     #[inline(always)]
@@ -100,7 +102,7 @@ impl Blake2RoundFunctionEvaluator {
     #[inline(always)]
     pub unsafe fn run_round_function_with_input<const REDUCED_ROUNDS: bool>(
         &mut self,
-        input_buffer: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
+        input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
         input_size_words: usize,
         last_round: bool,
     ) {
@@ -115,7 +117,7 @@ impl Blake2RoundFunctionEvaluator {
     #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_input_and_byte_len<const REDUCED_ROUNDS: bool>(
         &mut self,
-        input_buffer: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
+        input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
         input_size_bytes: usize,
         last_round: bool,
     ) {
@@ -127,47 +129,28 @@ impl Blake2RoundFunctionEvaluator {
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
 
             if REDUCED_ROUNDS {
-                for round_idx in 0..6 {
-                    let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                let mut control_register =
+                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
+                for round_idx in 0..7 {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             input_buffer.as_ptr(),
-                            round_bitmask,
-                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                            control_register,
                         )
                     };
                 }
-                let round_bitmask = 1 << 6;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        input_buffer.as_ptr(),
-                        round_bitmask,
-                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                    )
-                };
             } else {
-                for round_idx in 0..9 {
-                    let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
+                for round_idx in 0..10 {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             input_buffer.as_ptr(),
-                            round_bitmask,
-                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                            control_register,
                         )
                     };
                 }
-                let round_bitmask = 1 << 9;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        input_buffer.as_ptr(),
-                        round_bitmask,
-                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                    )
-                };
             }
         }
 
@@ -235,47 +218,28 @@ impl Blake2RoundFunctionEvaluator {
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
 
             if REDUCED_ROUNDS {
-                for round_idx in 0..6 {
-                    let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                let mut control_register =
+                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
+                for round_idx in 0..7 {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             self.input_buffer.as_ptr(),
-                            round_bitmask,
-                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                            control_register,
                         )
                     };
                 }
-                let round_bitmask = 1 << 6;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
-                        round_bitmask,
-                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                    )
-                };
             } else {
-                for round_idx in 0..9 {
-                    let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
+                for round_idx in 0..10 {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             self.input_buffer.as_ptr(),
-                            round_bitmask,
-                            BLAKE2S_NORMAL_MODE_FIRST_ROUNDS_CONTROL_REGISTER,
+                            control_register,
                         )
                     };
                 }
-                let round_bitmask = 1 << 9;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
-                        round_bitmask,
-                        BLAKE2S_NORMAL_MODE_LAST_ROUND_CONTROL_REGISTER,
-                    )
-                };
             }
         }
 
@@ -329,53 +293,34 @@ impl Blake2RoundFunctionEvaluator {
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
-            let mut mask = BLAKE2S_COMPRESSION_MODE_FIRST_ROUNDS_BASE_CONTROL_REGISTER
-                | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
-
             if REDUCED_ROUNDS {
-                for round_idx in 0..6 {
+                let mut control_register =
+                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER
+                        | BLAKE2S_COMPRESSION_MODE_EXTRA_BITS
+                        | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
+                for round_idx in 0..7 {
                     let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             self.input_buffer.as_ptr(),
-                            round_bitmask,
-                            mask,
+                            control_register,
                         )
                     };
                 }
-                mask |= BLAKE2S_COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
-                let round_bitmask = 1 << 6;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
-                        round_bitmask,
-                        mask,
-                    )
-                };
             } else {
-                for round_idx in 0..9 {
-                    let round_bitmask = 1 << round_idx;
-                    let _ = unsafe {
+                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER
+                    | BLAKE2S_COMPRESSION_MODE_EXTRA_BITS
+                    | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
+                for round_idx in 0..10 {
+                    control_register = unsafe {
                         blake2s_csr_trigger_delegation(
                             self.state.as_mut_ptr(),
                             self.input_buffer.as_ptr(),
-                            round_bitmask,
-                            mask,
+                            control_register,
                         )
                     };
                 }
-                mask |= BLAKE2S_COMPRESSION_MODE_LAST_ROUND_EXTRA_BITS;
-                let round_bitmask = 1 << 9;
-                let _ = unsafe {
-                    blake2s_csr_trigger_delegation(
-                        self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
-                        round_bitmask,
-                        mask,
-                    )
-                };
             }
         }
 

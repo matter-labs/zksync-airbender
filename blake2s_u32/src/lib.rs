@@ -4,6 +4,7 @@
 // special purpose designated blake2s implementaition, that has no internal buffer,
 // and operates on u32 basis. Has options for reduced number of rounds
 
+mod aligned_array;
 mod asm_utils;
 pub(crate) mod baseline;
 mod mixing_function;
@@ -12,6 +13,8 @@ pub mod vectorized_impls;
 pub use mixing_function::{
     mixing_function, round_function_full_rounds, round_function_reduced_rounds,
 };
+
+pub use aligned_array::{AlignedArray64, AlignedSlice64};
 
 #[cfg(test)]
 mod test;
@@ -78,11 +81,11 @@ pub mod state_with_extended_control_flags {
     use crate::BLAKE2S_BLOCK_SIZE_BYTES;
     use crate::EXNTENDED_CONFIGURED_IV;
 
-    pub const LAST_ROUND_BIT_IDX: usize = 0;
+    pub const REDUCE_ROUNDS_BIT_IDX: usize = 0;
     pub const INPUT_IS_RIGHT_NODE_BIT_IDX: usize = 1;
     pub const COMPRESSION_MODE_BIT_IDX: usize = 2;
 
-    pub const TEST_IF_LAST_ROUND_MASK: u32 = 1 << LAST_ROUND_BIT_IDX;
+    pub const TEST_IF_REDUCE_ROUNDS_MASK: u32 = 1 << REDUCE_ROUNDS_BIT_IDX;
     pub const TEST_IF_INPUT_IS_RIGHT_NODE_MASK: u32 = 1 << INPUT_IS_RIGHT_NODE_BIT_IDX;
     pub const TEST_IF_COMPRESSION_MODE_MASK: u32 = 1 << COMPRESSION_MODE_BIT_IDX;
 

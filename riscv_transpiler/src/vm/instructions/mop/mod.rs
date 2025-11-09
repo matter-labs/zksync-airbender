@@ -10,7 +10,7 @@ pub(crate) fn mop_addmod<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.add_assign(&operand_2);
@@ -28,7 +28,7 @@ pub(crate) fn mop_submod<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.sub_assign(&operand_2);
@@ -46,7 +46,7 @@ pub(crate) fn mop_mulmod<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.mul_assign(&operand_2);

@@ -504,18 +504,18 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
                                     );
                                 }
                                 else {
-                                    println!(
-                                        "Delegation processing with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
-                                        delegation_type,
-                                        mem_abi_offset,
-                                        memory_trace_row.get_unchecked(
-                                            delegation_processor_layout.write_timestamp.start(),
-                                        ),
-                                        memory_trace_row.get_unchecked(
-                                            delegation_processor_layout.write_timestamp.start() + 1,
-                                        ),
-                                    );
-                                    println!("Contribution = {:?}", denom);
+                                    // println!(
+                                    //     "Delegation processing with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
+                                    //     delegation_type,
+                                    //     mem_abi_offset,
+                                    //     memory_trace_row.get_unchecked(
+                                    //         delegation_processor_layout.write_timestamp.start(),
+                                    //     ),
+                                    //     memory_trace_row.get_unchecked(
+                                    //         delegation_processor_layout.write_timestamp.start() + 1,
+                                    //     ),
+                                    // );
+                                    // println!("Contribution = {:?}", denom);
                                 }
                             }
                         }

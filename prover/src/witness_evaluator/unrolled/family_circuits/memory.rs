@@ -203,8 +203,9 @@ pub(crate) unsafe fn process_machine_state_assuming_preprocessed_decoder<
             // and count multiplicity right away
             if execute {
                 assert!(initial_pc % 4 == 0);
-                let idx = initial_pc / 4;
-                decoder_multiplicieties[idx as usize] += 1;
+                let idx = (initial_pc / 4) as usize;
+                assert!(idx < compiled_circuit.executor_family_decoder_table_size);
+                decoder_multiplicieties[idx] += 1;
             }
         }
     }
@@ -372,11 +373,12 @@ pub(crate) unsafe fn process_shuffle_ram_accesses_in_executor_family<
                 timestamp_sub(read_ts_split, write_ts_split);
             assert!(
                 final_borrow,
-                "failed to compare memory access timestamps at row {} for access {}: read is {}, write is {}",
+                "failed to compare memory access timestamps at row {} for access {}: read is {}, write is {}. Cycle timestamp is {}",
                 absolute_row_idx,
                 access_idx,
                 read_ts,
                 write_ts,
+                cycle_ts,
             );
 
             write_boolean_value_into_columns(

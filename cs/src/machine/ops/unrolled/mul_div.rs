@@ -63,130 +63,209 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         let new1 = Register::new(cs);
         let new2 = Register::new(cs);
 
-        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            use crate::cs::witness_placer::*;
-            let rs1_value = placer.get_u32_from_u16_parts(rs1_reg.0.map(|x| x.get_variable()));
-            let rs2_value = placer.get_u32_from_u16_parts(rs2_reg.0.map(|x| x.get_variable()));
-            let rs1_signed_value =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
-                    rs1_value.clone(),
-                );
-            let is_rs2_zero_value = rs2_value.is_zero();
-            let quasi_divisor =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0x7fff_fff); // no overflows/underflows, and it's not 0
-            let rs2_masked_non_zero_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<
-                F,
-            >>::U32::select(
-                &is_rs2_zero_value, &quasi_divisor, &rs2_value
-            );
-            let rs2_signed_value =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
-                    rs2_value.clone(),
-                );
-            let rs2_masked_non_zero_signed_value =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
-                    rs2_masked_non_zero_value.clone(),
-                );
-            let is_rs1_signed_value = if SUPPORT_SIGNED {
-                let is_rs1_signed_var = decoder.perform_rs1_signed().get_variable().unwrap();
-                placer.get_boolean(is_rs1_signed_var)
-            } else {
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false)
-            };
-            let is_rs2_signed_value = if SUPPORT_SIGNED {
-                let is_rs2_signed_var = decoder.perform_rs2_signed().get_variable().unwrap();
-                placer.get_boolean(is_rs2_signed_var)
-            } else {
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false)
-            };
-            let (product_low_value_masked, product_high_value_masked) = {
-                let is_both_signed_value = is_rs1_signed_value.and(&is_rs2_signed_value);
-                let is_one_signed_value = is_rs1_signed_value.or(&is_rs2_signed_value);
-                let (both_product_low_value, both_product_high_value) =
-                    rs1_signed_value.widening_product_bits(&rs2_signed_value);
-                let (one_product_low_value, one_product_high_value) =
-                    rs1_signed_value.mixed_widening_product_bits(&rs2_value);
-                let (none_product_low_value, none_product_high_value) =
-                    rs1_value.split_widening_product(&rs2_value);
-                let product_low_value_masked =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_both_signed_value,
-                        &both_product_low_value,
-                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                            &is_one_signed_value,
-                            &one_product_low_value,
-                            &none_product_low_value,
-                        ),
+        if SUPPORT_SIGNED {
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                use crate::cs::witness_placer::*;
+                let rs1_value = placer.get_u32_from_u16_parts(rs1_reg.0.map(|x| x.get_variable()));
+                let rs2_value = placer.get_u32_from_u16_parts(rs2_reg.0.map(|x| x.get_variable()));
+                let rs1_signed_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
+                        rs1_value.clone(),
                     );
-                let product_high_value_masked =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_both_signed_value,
-                        &both_product_high_value,
-                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                            &is_one_signed_value,
-                            &one_product_high_value,
-                            &none_product_high_value,
-                        ),
-                    );
-                (product_low_value_masked, product_high_value_masked)
-            };
-            let (quotient_value_masked, remainder_value_masked) = {
-                let is_both_signed_value = is_rs1_signed_value.and(&is_rs2_signed_value);
-                let (both_quotient_value, both_remainder_value) = {
-                    let (quot, rem) = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::div_rem_assume_nonzero_divisor_no_overflow(&rs1_signed_value, &rs2_masked_non_zero_signed_value);
-
-                    (quot.as_unsigned(), rem.as_unsigned())
-                };
-                let (none_quotient_value, none_remainder_value) = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::div_rem_assume_nonzero_divisor(&rs1_value, &rs2_masked_non_zero_value);
-                let minus_one =
+                let is_rs2_zero_value = rs2_value.is_zero();
+                let quasi_divisor =
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                        0xffff_ffff,
-                    );
-                let quotient_value_masked =
+                        0x7fff_fff,
+                    ); // no overflows/underflows, and it's not 0
+                let rs2_masked_non_zero_value =
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                         &is_rs2_zero_value,
-                        &minus_one,
-                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                            &is_both_signed_value,
-                            &both_quotient_value,
-                            &none_quotient_value,
-                        ),
+                        &quasi_divisor,
+                        &rs2_value,
                     );
-                let remainder_value_masked =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_rs2_zero_value,
-                        &rs1_value,
-                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                            &is_both_signed_value,
-                            &both_remainder_value,
-                            &none_remainder_value,
-                        ),
+                let rs2_signed_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
+                        rs2_value.clone(),
                     );
-                (quotient_value_masked, remainder_value_masked)
-            };
-            let is_multiplication_value = match is_multiplication {
-                Boolean::Is(var) => placer.get_boolean(var),
-                Boolean::Not(var) => placer.get_boolean(var).negate(),
-                Boolean::Constant(c) => {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(c)
-                }
-            };
-            let new1_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                &is_multiplication_value,
-                &product_low_value_masked,
-                &quotient_value_masked,
-            );
-            let new2_value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                &is_multiplication_value,
-                &product_high_value_masked,
-                &remainder_value_masked,
-            );
-            placer.assign_u32_from_u16_parts(new1.0.map(|x| x.get_variable()), &new1_value);
-            placer.assign_u32_from_u16_parts(new2.0.map(|x| x.get_variable()), &new2_value);
-        };
-        cs.set_values(value_fn);
+                let rs2_masked_non_zero_signed_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::I32::from_unsigned(
+                        rs2_masked_non_zero_value.clone(),
+                    );
+                let is_rs1_signed_value = if SUPPORT_SIGNED {
+                    let is_rs1_signed_var = decoder.perform_rs1_signed().get_variable().unwrap();
+                    placer.get_boolean(is_rs1_signed_var)
+                } else {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false)
+                };
+                let is_rs2_signed_value = if SUPPORT_SIGNED {
+                    let is_rs2_signed_var = decoder.perform_rs2_signed().get_variable().unwrap();
+                    placer.get_boolean(is_rs2_signed_var)
+                } else {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false)
+                };
+                let (product_low_value_masked, product_high_value_masked) = {
+                    let is_both_signed_value = is_rs1_signed_value.and(&is_rs2_signed_value);
+                    let is_one_signed_value = is_rs1_signed_value.or(&is_rs2_signed_value);
+                    let (both_product_low_value, both_product_high_value) =
+                        rs1_signed_value.widening_product_bits(&rs2_signed_value);
+                    let (one_product_low_value, one_product_high_value) =
+                        rs1_signed_value.mixed_widening_product_bits(&rs2_value);
+                    let (none_product_low_value, none_product_high_value) =
+                        rs1_value.split_widening_product(&rs2_value);
+                    let product_low_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_both_signed_value,
+                            &both_product_low_value,
+                            &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                                &is_one_signed_value,
+                                &one_product_low_value,
+                                &none_product_low_value,
+                            ),
+                        );
+                    let product_high_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_both_signed_value,
+                            &both_product_high_value,
+                            &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                                &is_one_signed_value,
+                                &one_product_high_value,
+                                &none_product_high_value,
+                            ),
+                        );
+                    (product_low_value_masked, product_high_value_masked)
+                };
+                let (quotient_value_masked, remainder_value_masked) = {
+                    let is_both_signed_value = is_rs1_signed_value.and(&is_rs2_signed_value);
+                    let (both_quotient_value, both_remainder_value) = {
+                        let (quot, rem) = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<
+                            F,
+                        >>::I32::div_rem_assume_nonzero_divisor_no_overflow(
+                            &rs1_signed_value,
+                            &rs2_masked_non_zero_signed_value,
+                        );
 
-        [[new1, new2]; 2]
+                        (quot.as_unsigned(), rem.as_unsigned())
+                    };
+                    let (none_quotient_value, none_remainder_value) = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::div_rem_assume_nonzero_divisor(&rs1_value, &rs2_masked_non_zero_value);
+                    let minus_one =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                            0xffff_ffff,
+                        );
+                    let quotient_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_rs2_zero_value,
+                            &minus_one,
+                            &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                                &is_both_signed_value,
+                                &both_quotient_value,
+                                &none_quotient_value,
+                            ),
+                        );
+                    let remainder_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_rs2_zero_value,
+                            &rs1_value,
+                            &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                                &is_both_signed_value,
+                                &both_remainder_value,
+                                &none_remainder_value,
+                            ),
+                        );
+                    (quotient_value_masked, remainder_value_masked)
+                };
+                let is_multiplication_value = match is_multiplication {
+                    Boolean::Is(var) => placer.get_boolean(var),
+                    Boolean::Not(var) => placer.get_boolean(var).negate(),
+                    Boolean::Constant(c) => {
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(c)
+                    }
+                };
+                let new1_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_multiplication_value,
+                        &product_low_value_masked,
+                        &quotient_value_masked,
+                    );
+                let new2_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_multiplication_value,
+                        &product_high_value_masked,
+                        &remainder_value_masked,
+                    );
+                placer.assign_u32_from_u16_parts(new1.0.map(|x| x.get_variable()), &new1_value);
+                placer.assign_u32_from_u16_parts(new2.0.map(|x| x.get_variable()), &new2_value);
+            };
+            cs.set_values(value_fn);
+
+            [[new1, new2]; 2]
+        } else {
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                use crate::cs::witness_placer::*;
+                let rs1_value = placer.get_u32_from_u16_parts(rs1_reg.0.map(|x| x.get_variable()));
+                let rs2_value = placer.get_u32_from_u16_parts(rs2_reg.0.map(|x| x.get_variable()));
+                let is_rs2_zero_value = rs2_value.is_zero();
+                let quasi_divisor =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                        0x7fff_fff,
+                    ); // no overflows/underflows, and it's not 0
+                let rs2_masked_non_zero_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_rs2_zero_value,
+                        &quasi_divisor,
+                        &rs2_value,
+                    );
+                let (product_low_value_masked, product_high_value_masked) = {
+                    let (none_product_low_value, none_product_high_value) =
+                        rs1_value.split_widening_product(&rs2_value);
+
+                    (none_product_low_value, none_product_high_value)
+                };
+                let (quotient_value_masked, remainder_value_masked) = {
+                    let (none_quotient_value, none_remainder_value) = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::div_rem_assume_nonzero_divisor(&rs1_value, &rs2_masked_non_zero_value);
+                    let minus_one =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                            0xffff_ffff,
+                        );
+                    let quotient_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_rs2_zero_value,
+                            &minus_one,
+                            &none_quotient_value,
+                        );
+                    let remainder_value_masked =
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_rs2_zero_value,
+                            &rs1_value,
+                            &none_remainder_value,
+                        );
+                    (quotient_value_masked, remainder_value_masked)
+                };
+                let is_multiplication_value = match is_multiplication {
+                    Boolean::Is(var) => placer.get_boolean(var),
+                    Boolean::Not(var) => placer.get_boolean(var).negate(),
+                    Boolean::Constant(c) => {
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(c)
+                    }
+                };
+                let new1_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_multiplication_value,
+                        &product_low_value_masked,
+                        &quotient_value_masked,
+                    );
+                let new2_value =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_multiplication_value,
+                        &product_high_value_masked,
+                        &remainder_value_masked,
+                    );
+                placer.assign_u32_from_u16_parts(new1.0.map(|x| x.get_variable()), &new1_value);
+                placer.assign_u32_from_u16_parts(new2.0.map(|x| x.get_variable()), &new2_value);
+            };
+            cs.set_values(value_fn);
+
+            [[new1, new2]; 2]
+        }
     };
     let quotient_sign = if SUPPORT_SIGNED {
         // THIS WAS INDEPENDENTLY PROVEN CORRECT

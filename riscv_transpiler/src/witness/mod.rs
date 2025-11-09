@@ -1,5 +1,6 @@
 pub mod delegation;
 
+use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
 use std::mem::MaybeUninit;
 
 pub use self::delegation::{DelegationAbiDescription, DelegationWitness};
@@ -110,7 +111,7 @@ impl<
                             VARIABLE_OFFSETS_T,
                         >>()
                         .write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -126,27 +127,27 @@ impl<
 
 pub type BigintDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type BlakeDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
     { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type KeccakDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     'a,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
 
 pub struct UninitDelegationDestinationHolder<
@@ -226,7 +227,7 @@ impl<
                         >>()
                         .as_mut_unchecked()
                         .write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -242,27 +243,27 @@ impl<
 
 pub type UninitBigintDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type UninitBlakeDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    { BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type UninitKeccakDelegationDestinationHolder<'a> = UninitDelegationDestinationHolder<
     'a,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
 
 // Holder for destination buffer for one particular delegation type. It may represent only part
@@ -282,7 +283,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY>
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -335,7 +336,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, F
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -394,7 +395,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -446,7 +447,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMI
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
-                    // For some reason truncating the buffer doesn't work - livetime analysis complains
+                    // For some reason truncating the buffer doesn't work - lifetime analysis complains
                     *first = core::mem::transmute(first.get_unchecked_mut(1..));
                     if first.is_empty() {
                         self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -492,6 +493,73 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
                 first
                     .as_mut_ptr()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
+                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                if first.is_empty() {
+                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                }
+            } else {
+                // nothing
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn write_memory_family_data<const FAMILY_T: u8>(
+        &mut self,
+        data: MemoryOpcodeTracingDataWithTimestamp,
+    ) {
+        unsafe {
+            if self.buffers.len() > 0 {
+                let first = self.buffers.get_unchecked_mut(0);
+                first
+                    .as_mut_ptr()
+                    .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
+                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                if first.is_empty() {
+                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                }
+            } else {
+                // nothing
+            }
+        }
+    }
+
+    fn write_delegation<
+        const DELEGATION_TYPE: u16,
+        const REG_ACCESSES_T: usize,
+        const INDIRECT_READS_T: usize,
+        const INDIRECT_WRITES_T: usize,
+        const VARIABLE_OFFSETS_T: usize,
+    >(
+        &mut self,
+        _data: DelegationWitness<
+            REG_ACCESSES_T,
+            INDIRECT_READS_T,
+            INDIRECT_WRITES_T,
+            VARIABLE_OFFSETS_T,
+        >,
+    ) {
+    }
+}
+
+pub struct UninitUnifiedDestinationHolder<'a> {
+    pub buffers: &'a mut [&'a mut [MaybeUninit<UnifiedOpcodeTracingDataWithTimestamp>]],
+}
+
+impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
+    fn write_non_memory_family_data<const FAMILY_T: u8>(
+        &mut self,
+        data: NonMemoryOpcodeTracingDataWithTimestamp,
+    ) {
+        unsafe {
+            if self.buffers.len() > 0 {
+                let first = self.buffers.get_unchecked_mut(0);
+                first
+                    .as_mut_ptr()
+                    .as_mut_unchecked()
+                    .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
                 // For some reason truncating the buffer doesn't work - livetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
@@ -513,6 +581,7 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
+                    .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
                 // For some reason truncating the buffer doesn't work - livetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
@@ -651,23 +720,42 @@ impl<
 }
 
 pub type BigintDelegationDestinationHolderConstructor = DelegationDestinationHolderConstructor<
-    { common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
-    3,
-    8,
-    8,
-    0,
+    { BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16 },
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
 >;
 pub type BlakeDelegationDestinationHolderConstructor = DelegationDestinationHolderConstructor<
-    { common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
-    4,
-    16,
-    24,
-    0,
+    { BLAKE2S_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
 >;
 pub type KeccakDelegationDestinationHolderConstructor<'a> = DelegationDestinationHolderConstructor<
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16 },
-    2,
-    0,
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
-    { common_constants::keccak_special5::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS },
+    { KECCAK_SPECIAL5_CSR_REGISTER as u16 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnifiedCircuitDestinationHolderConstructor;
+
+impl DestinationHolderConstructor for UnifiedCircuitDestinationHolderConstructor {
+    type Element = UnifiedOpcodeTracingDataWithTimestamp;
+    type Tracer<'a> = UnifiedDestinationHolder<'a>;
+    type UninitTracer<'a> = UninitUnifiedDestinationHolder<'a>;
+
+    fn make_tracer<'a>(buffers: &'a mut [&'a mut [Self::Element]]) -> Self::Tracer<'a> {
+        UnifiedDestinationHolder { buffers }
+    }
+
+    fn make_uninit_tracer<'a>(
+        buffers: &'a mut [&'a mut [MaybeUninit<Self::Element>]],
+    ) -> Self::UninitTracer<'a> {
+        UninitUnifiedDestinationHolder { buffers }
+    }
+}

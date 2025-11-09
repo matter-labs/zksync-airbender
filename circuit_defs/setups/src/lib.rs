@@ -3,7 +3,7 @@
 #![feature(generic_const_exprs)]
 
 use cs::cs::oracle::ExecutorFamilyDecoderData;
-use cs::machine::machine_configurations::pad_bytecode;
+use cs::machine::machine_configurations::{pad_bytecode, pad_bytecode_bytes};
 use cs::tables::TableDriver;
 use definitions::MerkleTreeCap;
 use merkle_trees::DefaultTreeConstructor;
@@ -48,8 +48,12 @@ pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
 
+pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
+    pad_bytecode_bytes::<{ common_constants::rom::ROM_BYTE_SIZE as u32 }>(bytecode);
+}
+
 pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
-    pad_bytecode::<{ risc_v_cycles::MAX_ROM_SIZE as u32 }>(bytecode);
+    pad_bytecode::<{ common_constants::rom::ROM_BYTE_SIZE as u32 }>(bytecode);
 }
 
 pub fn is_default_machine_configuration<C: MachineConfig>() -> bool {
@@ -450,6 +454,27 @@ pub fn compute_unrolled_circuits_params_for_machine_configuration<C: MachineConf
     }
 }
 
+pub fn compute_unified_circuit_params_for_machine_configuration<C: MachineConfig>(
+    binary_image: &[u32],
+    bytecode: &[u32],
+) -> Vec<UnrolledCircuitSetupParams> {
+    if is_default_machine_configuration::<C>() {
+        panic!(
+            "Configuration {:?} is not supported",
+            std::any::type_name::<C>()
+        );
+    } else if is_machine_without_signed_mul_div_configuration::<C>() {
+        panic!(
+            "Configuration {:?} is not supported",
+            std::any::type_name::<C>()
+        );
+    } else if is_reduced_machine_configuration::<C>() {
+        compute_unified_circuit_params_recursion_layer(binary_image, bytecode)
+    } else {
+        panic!("Unknown configuration {:?}", std::any::type_name::<C>());
+    }
+}
+
 pub fn compute_unrolled_circuits_params_base_layer(
     binary_image: &[u32],
     bytecode: &[u32],
@@ -493,13 +518,21 @@ pub fn compute_unrolled_circuits_params_recursion_layer(
     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
 }
 
+pub fn compute_unified_circuit_params_recursion_layer(
+    binary_image: &[u32],
+    bytecode: &[u32],
+) -> Vec<UnrolledCircuitSetupParams> {
+    let eval_fns: Vec<fn(&[u32], &[u32], &Worker) -> UnrolledCircuitPrecomputations<Global>> =
+        vec![unified_reduced_machine_circuit_setup::<Global, Global>];
+    compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
+}
+
 fn compute_unrolled_circuits_params_impl(
     binary_image: &[u32],
     bytecode: &[u32],
     circuits: &[fn(&[u32], &[u32], &Worker) -> UnrolledCircuitPrecomputations<Global, Global>],
 ) -> Vec<UnrolledCircuitSetupParams> {
     assert!(binary_image.len() >= bytecode.len());
-    assert!(binary_image.starts_with(bytecode));
     let worker = prover::worker::Worker::new();
     use prover::merkle_trees::MerkleTreeConstructor;
 
@@ -616,7 +649,7 @@ pub fn generate_delegation_circuits_artifacts() -> String {
     description
 }
 
-pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
     use std::io::Read;
     let mut file = std::fs::File::open(path).expect("must open provided file");
     let mut buffer = vec![];
@@ -626,6 +659,9 @@ pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
     for el in buffer.as_chunks::<4>().0 {
         binary.push(u32::from_le_bytes(*el));
     }
+
+    pad_bytecode_bytes_for_proving(&mut buffer);
+    pad_bytecode_for_proving(&mut binary);
 
     (buffer, binary)
 }
@@ -637,8 +673,8 @@ pub fn compute_and_save_params(
     gen_fn: fn(&[u32], &[u32]) -> Vec<UnrolledCircuitSetupParams>,
 ) {
     use sha3::Digest;
-    let (raw_binary_image, binary_image) = read_binary(binary_image_path);
-    let (raw_bytecode, bytecode) = read_binary(bytecode_path);
+    let (raw_binary_image, binary_image) = read_and_pad_binary(binary_image_path);
+    let (raw_bytecode, bytecode) = read_and_pad_binary(bytecode_path);
     let setups = (gen_fn)(&binary_image, &bytecode);
     let inits_setup = compute_inits_and_teardowns_params(&binary_image, &bytecode);
     let binary_image_hash = sha3::Keccak256::digest(&raw_binary_image);

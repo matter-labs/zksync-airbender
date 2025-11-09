@@ -182,12 +182,12 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
         InstructionFamilyBitmaskRepr, // Instruction specific data
         (bool, bool), // (void sign extending for CSRRW (I-type formally), validate CSR)
     ) {
-        if opcode != OPERATION_SYSTEM {
-            let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
-            (a, b, c, (false, false))
-        } else {
-            let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
+        let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
+        if opcode == OPERATION_SYSTEM && a == true {
+            // only if opcode is supported
             (a, b, c, (true, true))
+        } else {
+            (a, b, c, (false, false))
         }
     }
 }

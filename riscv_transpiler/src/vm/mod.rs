@@ -16,7 +16,7 @@ pub use self::ram_with_rom_region::RamWithRomRegion;
 pub use self::replay_snapshotter::*;
 pub use self::simple_tape::SimpleTape;
 
-pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq {
+pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq + Send + Sync {
     fn bump_bigint(&mut self);
     fn bump_blake2_round_function(&mut self);
     fn bump_keccak_special5(&mut self);
@@ -55,7 +55,7 @@ impl<C: Counters> State<C> {
     }
 }
 
-pub trait Snapshotter<C: Counters>: 'static {
+pub trait Snapshotter<C: Counters> {
     fn take_snapshot(&mut self, state: &State<C>);
     fn append_non_determinism_read(&mut self, value: u32);
     fn append_memory_read(
@@ -251,6 +251,17 @@ impl<C: Counters> VM<C> {
                         InstructionName::Remu => {
                             mul_div::remu::<C, S, R>(state, ram, snapshotter, instr)
                         }
+
+                        InstructionName::ZimopAdd => {
+                            mop::mop_addmod::<C, S, R>(state, ram, snapshotter, instr)
+                        }
+                        InstructionName::ZimopSub => {
+                            mop::mop_submod::<C, S, R>(state, ram, snapshotter, instr)
+                        }
+                        InstructionName::ZimopMul => {
+                            mop::mop_mulmod::<C, S, R>(state, ram, snapshotter, instr)
+                        }
+
                         InstructionName::ZicsrNonDeterminismRead => {
                             zicsr::nd_read::<C, S, R, ND>(state, ram, snapshotter, instr, nd)
                         }
@@ -259,6 +270,9 @@ impl<C: Counters> VM<C> {
                         }
                         InstructionName::ZicsrDelegation => {
                             zicsr::call_delegation::<C, S, R>(state, ram, snapshotter, instr)
+                        }
+                        a @ _ => {
+                            panic!("Unknown instruction {:?}", a);
                         }
                         _ => core::hint::unreachable_unchecked(),
                     }

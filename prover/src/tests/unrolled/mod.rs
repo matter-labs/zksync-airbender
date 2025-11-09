@@ -14,6 +14,7 @@ use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
+use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
@@ -1193,4 +1194,138 @@ pub fn run_basic_unrolled_test_impl(
 
     // assert_eq!(memory_accumulator, Mersenne31Quartic::ONE);
     // assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
+}
+
+#[test]
+fn test_single_non_mem_circuit() {
+    use crate::cs::cs::cs_reference::BasicAssembly;
+    use cs::cs::circuit::Circuit;
+    use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::*;
+    use cs::machine::ops::unrolled::shift_binary_csr::*;
+    use std::path::Path;
+
+    let family_idx = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
+
+    println!("Reading and preprocessing binary");
+    // let (_, text_section) = read_binary(Path::new("../../zksync-os/zksync_os/app.text"));
+    let (_, text_section) = read_binary(Path::new("../tools/verifier/unrolled_base_layer.text"));
+    dbg!(text_section.len());
+    let pc = 1434836;
+    dbg!(text_section[pc / 4]);
+
+    let mut t = process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
+        &text_section,
+        &[Box::new(AddSubLuiAuipcMopDecoder)],
+        1 << 20,
+        &[1984, 1991],
+    );
+    let (_, decoder_data) = t.remove(&family_idx).expect("decoder data");
+
+    let oracle_input =
+        fast_deserialize_from_file::<NonMemTracingFamilyChunk<Global>>("tmp_wit.bin");
+
+    // {
+    //     println!("Deserializing witness");
+    //     let oracle_input = fast_deserialize_from_file::<NonMemTracingFamilyChunk<Global>>(
+    //         "../../zksync-os/tests/instances/eth_runner/family_1_circuit_0_oracle_witness.bin",
+    //     );
+    //     let round = 288655;
+    //     let t = NonMemTracingFamilyChunk {
+    //         data: oracle_input.data[round..][..1].to_vec(),
+    //         num_cycles: oracle_input.num_cycles,
+    //     };
+    //     fast_serialize_to_file(&t, "tmp_wit.bin");
+    //     panic!();
+    // }
+
+    // for round in 0..oracle_input.len() {
+    {
+        // println!("Round = {}", round);
+
+        let oracle = NonMemoryCircuitOracle {
+            // inner: &oracle_input.data[round..][..1],
+            inner: &oracle_input.data,
+            decoder_table: &decoder_data,
+            default_pc_value_in_padding: 4,
+        };
+
+        dbg!(oracle.inner[0]);
+
+        let oracle: NonMemoryCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle_and_preprocessed_decoder(
+            oracle,
+            decoder_data.clone(),
+        );
+
+        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(&mut cs);
+
+        // shift_binop_csrrw_table_addition_fn(&mut cs);
+        // let csr_table = create_csr_table_for_delegation(
+        //     true,
+        //     &[1984, 1991, 1994, 1995],
+        //     TableType::SpecialCSRProperties.to_table_id(),
+        // );
+        // cs.add_table_with_content(
+        //     TableType::SpecialCSRProperties,
+        //     LookupWrapper::Dimensional3(csr_table.clone()),
+        // );
+        // shift_binop_csrrw_circuit_with_preprocessed_bytecode(&mut cs);
+
+        assert!(cs.is_satisfied());
+    }
+}
+
+#[test]
+fn test_bigint_with_replayer_oracle() {
+    use crate::cs::cs::cs_reference::BasicAssembly;
+    use crate::cs::delegation::bigint_with_control::*;
+    use crate::tracers::oracles::transpiler_oracles::delegation::*;
+    use cs::cs::circuit::Circuit;
+    println!("Deserializing witness");
+    let oracle_input = fast_deserialize_from_file::<Vec<BigintDelegationWitness>>(
+        "../../zksync-os/tests/instances/eth_runner/delegation_1994_circuit_0_oracle_witness.bin",
+    );
+
+    let round = 0;
+
+    // for round in 0..oracle_input.len() {
+    {
+        println!("Round = {}", round);
+
+        let oracle = BigintDelegationOracle {
+            cycle_data: &oracle_input[round..][..1],
+            marker: core::marker::PhantomData,
+        };
+
+        dbg!(oracle.cycle_data[0]);
+
+        let oracle: BigintDelegationOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle(oracle);
+        let (output_state_vars, output_extended_state_vars) =
+            define_u256_ops_extended_control_delegation_circuit(&mut cs);
+
+        assert!(cs.is_satisfied());
+
+        let mut produced_state_outputs = vec![];
+
+        use cs::types::Num;
+        use cs::types::Register;
+
+        for (_, input) in output_state_vars.iter().enumerate() {
+            let register = Register(input.map(|el| Num::Var(el)));
+            let value = register.get_value_unsigned(&cs).unwrap();
+            produced_state_outputs.push(value);
+        }
+
+        let register = Register(output_extended_state_vars.map(|el| Num::Var(el)));
+        let result_x12 = register.get_value_unsigned(&cs).unwrap();
+
+        // assert_eq!(expected_x12, result_x12, "x12 diverged for round {}", round);
+
+        // assert_eq!(
+        //     expected_state, produced_state_outputs,
+        //     "state diverged for round {}",
+        //     round
+        // );
+    }
 }

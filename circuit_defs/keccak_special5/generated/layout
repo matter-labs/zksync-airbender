@@ -24153,7 +24153,7 @@
   },
   "executor_family_circuit_next_timestamp_aux_var": null,
   "executor_family_decoder_table_size": 0,
-  "trace_len": 2097152,
+  "trace_len": 4194304,
   "table_offsets": [
     0,
     1,

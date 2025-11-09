@@ -343,13 +343,6 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let (linear_terms_challenges, other_challenges) =
         rest.split_at(compiled_circuit.degree_1_constraints.len());
 
-    #[cfg(feature = "debug_logs")]
-    {
-        dbg!(quadratic_terms_challenges.len());
-        dbg!(linear_terms_challenges.len());
-        dbg!(other_challenges.len());
-    }
-
     assert_eq!(
         quadratic_terms_challenges.len(),
         compiled_constraints.quadratic_terms.len()

@@ -66,8 +66,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
 
     let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
     let (x11, x11_ts) = read_register_with_ts::<C, 3>(state, 11);
-    let (x12, x12_ts) = read_register_with_ts::<C, 3>(state, 12);
-    let (x13, x13_ts) = read_register_with_ts::<C, 3>(state, 13);
+    let x12 = state.registers[12].value;
 
     witness.reg_accesses[0] = RegisterOrIndirectReadWriteData {
         read_value: x10,
@@ -79,23 +78,13 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
         write_value: x11,
         timestamp: TimestampData::from_scalar(x11_ts),
     };
-    witness.reg_accesses[2] = RegisterOrIndirectReadWriteData {
-        read_value: x12,
-        write_value: x12,
-        timestamp: TimestampData::from_scalar(x12_ts),
-    };
-    witness.reg_accesses[3] = RegisterOrIndirectReadWriteData {
-        read_value: x13,
-        write_value: x13,
-        timestamp: TimestampData::from_scalar(x13_ts),
-    };
 
     let input: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] =
         read_words(x11, ram, write_ts, &mut witness.indirect_reads);
     let mut state_accesses: [u32; BLAKE2S_X10_NUM_WRITES] =
         read_words_for_update(x10, ram, write_ts, &mut witness.indirect_writes);
 
-    blake2_round_function_impl(&mut state_accesses, input, x12, x13);
+    let updated_x12 = blake2_round_function_impl(&mut state_accesses, input, x12);
 
     // write back nothing
     for (dst, src) in witness
@@ -105,6 +94,13 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
     {
         dst.write_value = *src;
     }
+
+    let (_old_x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut (updated_x12 as u32));
+    witness.reg_accesses[2] = RegisterOrIndirectReadWriteData {
+        read_value: x12,
+        write_value: updated_x12,
+        timestamp: TimestampData::from_scalar(x12_ts),
+    };
 
     tracer.write_delegation::<{common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16}, _, _, _, _>(witness);
 

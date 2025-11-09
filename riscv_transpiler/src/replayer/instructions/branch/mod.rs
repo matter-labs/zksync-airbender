@@ -12,19 +12,22 @@ pub(crate) fn branch<C: Counters, R: RAM>(
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, 0, &mut 0);
 
     let jump_address = state.pc.wrapping_add(instr.imm);
-    // do unsigned comparison and then resolve it
-    let eq = rs1_value == rs2_value;
-    let unsigned_lt = rs1_value < rs2_value;
-    let signed_lt = (rs1_value as i32) < (rs2_value as i32);
 
-    // ISA has enough bits in funct3 to make it simple logical expression, and for now we rely on compiler to simplify it
     let funct3 = instr.rd;
-    let should_jump = (funct3 == 0 && eq)
-        || (funct3 == 1 && !eq)
-        || (funct3 == 4 && signed_lt)
-        || (funct3 == 5 && !signed_lt)
-        || (funct3 == 6 && unsigned_lt)
-        || (funct3 == 7 && !unsigned_lt);
+    let negate = funct3 & 0b001 > 0; // lowest bit indicates eq <=> ne, lt <=> gte and so on
+
+    // NOTE: we can hope that compiler makes a jump table here
+    let mut should_jump = match funct3 & 0b110 {
+        0b000 => rs1_value == rs2_value,
+        0b100 => (rs1_value as i32) < (rs2_value as i32),
+        0b110 => rs1_value < rs2_value,
+        _ => unsafe {
+            core::hint::unreachable_unchecked();
+        },
+    };
+    if negate {
+        should_jump = !should_jump;
+    }
 
     let jump_address = if should_jump {
         jump_address

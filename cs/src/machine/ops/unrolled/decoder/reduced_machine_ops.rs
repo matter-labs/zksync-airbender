@@ -55,8 +55,35 @@ impl InstructionFamilyBitmaskCircuitParser for ReducedMachineCircuitMask {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct ReducedMachineDecoder;
+#[derive(Debug)]
+pub struct ReducedMachineDecoder {
+    cached_all_opcodes: Vec<Box<dyn crate::machine::DecodableMachineOp>>,
+    cached_all_keys: crate::machine::DecoderOutputExtraKeysHolder,
+    major_keys: Vec<crate::machine::DecoderMajorInstructionFamilyKey>,
+    max_minor_keys: usize,
+}
+
+impl ReducedMachineDecoder {
+    pub fn new() -> Self {
+        use crate::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
+        use crate::machine::Machine;
+
+        let all_keys = <MinimalMachineNoExceptionHandlingWithDelegation as Machine<
+            Mersenne31Field,
+        >>::all_decoder_keys();
+        let major_keys = all_keys.all_major_keys();
+        let max_minor_keys = all_keys.max_minor_keys();
+
+        Self {
+            cached_all_opcodes: <MinimalMachineNoExceptionHandlingWithDelegation as Machine<
+                Mersenne31Field,
+            >>::all_supported_opcodes(),
+            cached_all_keys: all_keys,
+            major_keys,
+            max_minor_keys,
+        }
+    }
+}
 
 impl OpcodeFamilyDecoder for ReducedMachineDecoder {
     type BitmaskCircuitParser = ReducedMachineCircuitMask;
@@ -75,25 +102,16 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
         InstructionType,
         InstructionFamilyBitmaskRepr, // Instruction specific data
     ) {
-        use crate::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
-        use crate::machine::Machine;
-
-        let all_opcodes = <MinimalMachineNoExceptionHandlingWithDelegation as Machine<
-            Mersenne31Field,
-        >>::all_supported_opcodes();
-        let all_keys = <MinimalMachineNoExceptionHandlingWithDelegation as Machine<
-            Mersenne31Field,
-        >>::all_decoder_keys();
-        let major_keys = all_keys.all_major_keys();
-        let max_minor_keys = all_keys.max_minor_keys();
-
         let major_key_offset = FLAGS_SOURCE_OFFSET;
-        let minor_key_offset = major_key_offset + major_keys.len();
-        assert_eq!(REDUCED_MACHINE_NUM_FLAGS, minor_key_offset + max_minor_keys);
+        let minor_key_offset = major_key_offset + self.major_keys.len();
+        assert_eq!(
+            REDUCED_MACHINE_NUM_FLAGS,
+            minor_key_offset + self.max_minor_keys
+        );
 
         let mut result = INVALID_OPCODE_DEFAULTS;
 
-        for supported_opcode in all_opcodes.iter() {
+        for supported_opcode in self.cached_all_opcodes.iter() {
             if let Ok((instr_format, major_key, minor_keys)) =
                 supported_opcode.define_decoder_subspace(opcode, func3, func7)
             {
@@ -131,11 +149,12 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
                 // }
 
                 // flags source
-                let major_index = all_keys.get_major_index(&major_key);
+                let major_index = self.cached_all_keys.get_major_index(&major_key);
                 mask |= (1 << major_index as u32) << major_key_offset;
 
                 for minor in minor_keys.iter() {
-                    let (_major_index, minor_index) = all_keys.get_index_set(&major_key, minor);
+                    let (_major_index, minor_index) =
+                        self.cached_all_keys.get_index_set(&major_key, minor);
                     assert_eq!(_major_index, major_index);
                     mask |= (1 << minor_index as u64) << minor_key_offset;
                 }
@@ -148,6 +167,27 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
         }
 
         result
+    }
+
+    fn define_decoder_subspace_ext(
+        &self,
+        opcode: u8,
+        func3: u8,
+        func7: u8,
+    ) -> (
+        bool, // is valid instruction or not
+        InstructionType,
+        InstructionFamilyBitmaskRepr, // Instruction specific data
+        (bool, bool), // (void sign extending for CSRRW (I-type formally), validate CSR)
+    ) {
+        let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
+        if opcode == OPERATION_SYSTEM && a == true && func3 == 0b001 {
+            // CSRRW only in system space, not MOP one
+            // only if opcode is supported
+            (a, b, c, (true, true))
+        } else {
+            (a, b, c, (false, false))
+        }
     }
 }
 
@@ -162,7 +202,7 @@ fn create_decoder_table_for_reduced_machine() {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    let family = Box::new(ReducedMachineDecoder) as Box<dyn OpcodeFamilyDecoder>;
+    let family = Box::new(ReducedMachineDecoder::new()) as Box<dyn OpcodeFamilyDecoder>;
 
     use crate::machine::*;
     use std::alloc::Global;

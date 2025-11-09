@@ -31,6 +31,8 @@ mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier",
 mul_div_unsigned_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", default-features = false}
 shift_binary_csr_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", default-features = false}
 
+unified_reduced_machine_verifier = {path = "../circuit_defs/unrolled_circuits/unified_reduced_machine/verifier", default-features = false}
+
 # poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}
 
 # setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std

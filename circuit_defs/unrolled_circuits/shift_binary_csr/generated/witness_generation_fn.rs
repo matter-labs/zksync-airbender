@@ -415,7 +415,7 @@ fn eval_fn_14<
     let mut v_13 = v_11;
     W::Field::add_assign(&mut v_13, &v_12);
     let v_14 = W::Field::select(&v_2, &v_13, &v_11);
-    let v_15 = W::Field::constant(Mersenne31Field(16u32));
+    let v_15 = W::Field::constant(Mersenne31Field(52u32));
     let mut v_16 = v_14;
     W::Field::add_assign(&mut v_16, &v_15);
     let v_17 = W::Field::select(&v_3, &v_16, &v_14);

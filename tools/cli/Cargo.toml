@@ -40,7 +40,7 @@ verifier_common = { workspace = true }
 
 full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr"], optional = true }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
-sha3 = { package = "sha3_ce", version = "=0.10.6" }
+sha3 = { package = "sha3", version = "*" }
 
 gpu_prover = { workspace = true, optional = true }
 

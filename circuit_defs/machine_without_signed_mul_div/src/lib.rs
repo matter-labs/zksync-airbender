@@ -14,8 +14,8 @@ pub const NUM_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
 pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];
 pub const TREE_CAP_SIZE: usize = 32;
-pub const MAX_ROM_SIZE: usize = 1 << 22; // bytes
-pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = (MAX_ROM_SIZE.trailing_zeros() - 16) as usize;
+pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
+pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 
 pub const ALLOWED_DELEGATION_CSRS: &[u32] =
     prover::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv::ALLOWED_DELEGATION_CSRS;

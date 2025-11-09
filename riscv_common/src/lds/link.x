@@ -1,4 +1,5 @@
 PROVIDE(_stext = ORIGIN(REGION_TEXT));
+PROVIDE(_rom_size = LENGTH(ROM));
 PROVIDE(_max_hart_id = 0);
 PROVIDE(_hart_stack_size = 64M);
 PROVIDE(_heap_size = 768M);
@@ -39,6 +40,7 @@ PROVIDE(_machine_start_trap = machine_default_start_trap);
 PHDRS
 {
   text PT_LOAD;
+  rodata PT_LOAD;
   data PT_LOAD;
   bss PT_LOAD;
 }
@@ -64,17 +66,6 @@ SECTIONS
     *(.text .text.*);
   } > REGION_TEXT AT > REGION_TEXT :text
 
-  .rodata : ALIGN(4)
-  {
-    *(.srodata .srodata.*);
-    *(.rodata .rodata.*);
-
-    /* 4-byte align the end (VMA) of this section.
-       This is required by LLD to ensure the LMA of the following
-       section will have the correct alignment. */
-    . = ALIGN(4);
-  } > REGION_RODATA AT > REGION_RODATA :text
-
   /* fictitious region that represents the memory available for the stack */
   .stack ORIGIN(REGION_STACK) (NOLOAD) : ALIGN(4096)
   {
@@ -83,6 +74,21 @@ SECTIONS
     . = ALIGN(4);
     _sstack = .;
   } > REGION_STACK
+
+  .rodata : ALIGN(4)
+  {
+    _sirodata = LOADADDR(.rodata);
+    _srodata = .;
+    *(.srodata .srodata.*);
+    *(.rodata .rodata.*);
+
+    /* 4-byte align the end (VMA) of this section.
+       This is required by LLD to ensure the LMA of the following
+       section will have the correct alignment. */
+    . = ALIGN(4);
+
+    _erodata = .;
+  } > REGION_RODATA AT > REGION_RODATAINIT :rodata
 
   .data : ALIGN(4096)
   {
@@ -130,6 +136,9 @@ SECTIONS
 ASSERT(ORIGIN(REGION_TEXT) % 4 == 0, "
 ERROR(riscv-rt): the start of the REGION_TEXT must be 4-byte aligned");
 
+ASSERT(ORIGIN(REGION_RODATAINIT) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_RODATAINIT must be 4-byte aligned");
+
 ASSERT(ORIGIN(REGION_RODATA) % 4 == 0, "
 ERROR(riscv-rt): the start of the REGION_RODATA must be 4-byte aligned");
 
@@ -151,6 +160,12 @@ ERROR(riscv-rt): the start of the REGION_STACK must be 4-byte aligned");
 ASSERT(_stext % 4 == 0, "
 ERROR(riscv-rt): `_stext` must be 4-byte aligned");
 
+ASSERT(_srodata % 4 == 0 && _erodata % 4 == 0, "
+BUG(riscv-rt): .rodata is not 4-byte aligned");
+
+ASSERT(_sirodata % 4 == 0, "
+BUG(riscv-rt): the LMA of .rodata is not 4-byte aligned");
+
 ASSERT(_sdata % 4 == 0 && _edata % 4 == 0, "
 BUG(riscv-rt): .data is not 4-byte aligned");
 
@@ -167,6 +182,10 @@ ASSERT(_stext + SIZEOF(.text) < ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT), "
 ERROR(riscv-rt): The .text section must be placed inside the REGION_TEXT region.
 Set _stext to an address smaller than 'ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT)'");
 
+/* ASSERT(_sirodata + SIZEOF(.rodata) < ORIGIN(REGION_RODATAINIT) + LENGTH(REGION_RODATAINIT), "
+ERROR(riscv-rt): The init data for .rodata section must be placed inside the REGION_RODATAINIT region.
+Set _sirodata to an address smaller than 'ORIGIN(REGION_RODATAINIT) + LENGTH(REGION_RODATAINIT)'"); */
+
 ASSERT(_sidata + SIZEOF(.data) < ORIGIN(REGION_DATAINIT) + LENGTH(REGION_DATAINIT), "
 ERROR(riscv-rt): The init data for .data section must be placed inside the REGION_DATAINIT region.
 Set _sidata to an address smaller than 'ORIGIN(REGION_DATAINIT) + LENGTH(REGION_DATAINIT)'");
@@ -181,11 +200,5 @@ supported. If you are linking to C code compiled using the `gcc` crate
 then modify your build script to compile the C code _without_ the
 -fPIC flag. See the documentation of the `gcc::Config.fpic` method for
 details.");
-
-ASSERT(SIZEOF(.data) == 0, "
-.data section detected in the input files. Global variables with non-trivial
-initialization are not supported yet. Variables with zero-initialization can be
-linked to .bss section instead, as the platform guarantees zero-initialization
-of all RAM space.");
 
 /* Do not exceed this mark in the error messages above                                    | */

@@ -723,7 +723,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(11usize));
-                        a.mul_assign_by_base(&Mersenne31Field(16u32));
+                        a.mul_assign_by_base(&Mersenne31Field(52u32));
                         individual_term.add_assign(&a);
                     }
                     {

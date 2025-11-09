@@ -869,11 +869,11 @@
       "num_elements": 1
     },
     "intermediate_polys_for_memory_init_teardown": {
-      "start": 124,
+      "start": 136,
       "num_elements": 1
     },
     "intermediate_polys_for_memory_argument": {
-      "start": 128,
+      "start": 124,
       "num_elements": 3
     },
     "intermediate_polys_for_state_permutation": {

@@ -38,6 +38,12 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             Placeholder::PcInit => cycle_data.opcode_data.initial_pc,
             Placeholder::PcFin => cycle_data.opcode_data.new_pc,
 
+            Placeholder::FirstRegMem => cycle_data.opcode_data.rs1_value,
+            Placeholder::SecondRegMem => cycle_data.opcode_data.rs2_value,
+            Placeholder::WriteRdReadSetWitness => cycle_data.opcode_data.rd_old_value,
+            Placeholder::WriteRegMemReadWitness => cycle_data.opcode_data.rd_old_value,
+            Placeholder::WriteRegMemWriteValue => cycle_data.opcode_data.rd_value,
+
             Placeholder::ShuffleRamReadValue(access_idx) => match access_idx {
                 0 => cycle_data.opcode_data.rs1_value,
                 1 => cycle_data.opcode_data.rs2_value,

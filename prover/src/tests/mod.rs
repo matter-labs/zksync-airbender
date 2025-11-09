@@ -536,6 +536,22 @@ fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) ->
     bincode::deserialize_from(src).unwrap()
 }
 
+#[cfg(test)]
+#[track_caller]
+fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).expect("must open provided file");
+    let mut buffer = vec![];
+    file.read_to_end(&mut buffer).expect("must read the file");
+    assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
+    let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
+    for el in buffer.as_chunks::<4>().0 {
+        binary.push(u32::from_le_bytes(*el));
+    }
+
+    (buffer, binary)
+}
+
 #[test]
 fn test_bigint_with_control_call() {
     use crate::cs::cs::cs_reference::BasicAssembly;

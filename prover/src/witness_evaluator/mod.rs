@@ -167,10 +167,10 @@ unsafe fn count_special_range_check_multiplicities(
         };
         assert!(
             value.to_reduced_u32() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 expression {:?} at row {}",
-            absolute_row_idx,
+            "invalid value {} in range check 16 expression {:?} at row {:?}",
+            value,
             range_check_expression,
-            value
+            absolute_row_idx,
         );
         let index = value.to_reduced_u32() as usize;
         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
@@ -406,11 +406,14 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
         .num_elements()
         > 0
     {
+        let bound = compiled_circuit.executor_family_decoder_table_size;
+
         // add up and write decoder multiplicities
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
         let mut decoder_multiplicities = decoder_multiplicity_subcounters.pop().unwrap();
+        assert_eq!(bound, decoder_multiplicities.len());
         for el in decoder_multiplicity_subcounters.into_iter() {
             assert_eq!(decoder_multiplicities.len(), el.len());
 
@@ -425,8 +428,8 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
                 .witness_layout
                 .multiplicities_columns_for_decoder_in_executor_families
                 .start();
-            let mut view = exec_trace.row_view(0..1 << TIMESTAMP_COLUMNS_NUM_BITS);
-            for absolute_row_idx in 0..(1 << TIMESTAMP_COLUMNS_NUM_BITS) {
+            let mut view = exec_trace.row_view(0..bound);
+            for absolute_row_idx in 0..bound {
                 let (row, _) = view.current_row_split(num_witness_columns);
                 let multiplicity = *decoder_multiplicities.get_unchecked(absolute_row_idx);
                 debug_assert!(multiplicity < Mersenne31Field::CHARACTERISTICS as u32);

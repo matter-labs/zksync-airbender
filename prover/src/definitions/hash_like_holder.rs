@@ -38,6 +38,12 @@ const _: () = const {
 };
 
 impl<const N: usize> MerkleTreeCap<N> {
+    pub fn dummy() -> Self {
+        Self {
+            cap: [[0u32; DIGEST_SIZE_U32_WORDS]; N],
+        }
+    }
+
     pub fn new<I: NonDeterminismSource>() -> Self {
         unsafe {
             let mut new = Self {

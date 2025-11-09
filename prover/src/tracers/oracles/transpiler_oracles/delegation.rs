@@ -1,4 +1,4 @@
-use common_constants::KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS;
+use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
 use cs::cs::oracle::Oracle;
 use cs::cs::placeholder::Placeholder;
 use cs::definitions::TimestampScalar;
@@ -22,15 +22,28 @@ pub struct DelegationOracle<
     pub marker: core::marker::PhantomData<D>,
 }
 
-pub type BigintDelegationOracle<'a> = DelegationOracle<'a, BigintAbiDescription, 3, 8, 8, 0>;
-pub type Blake2sDelegationOracle<'a> =
-    DelegationOracle<'a, Blake2sRoundFunctionAbiDescription, 4, 16, 24, 0>;
+pub type BigintDelegationOracle<'a> = DelegationOracle<
+    'a,
+    BigintAbiDescription,
+    NUM_BIGINT_REGISTER_ACCESSES,
+    BIGINT_X11_NUM_READS,
+    BIGINT_X10_NUM_WRITES,
+    NUM_BIGINT_VARIABLE_OFFSETS,
+>;
+pub type Blake2sDelegationOracle<'a> = DelegationOracle<
+    'a,
+    Blake2sRoundFunctionAbiDescription,
+    NUM_BLAKE2S_REGISTER_ACCESSES,
+    BLAKE2S_X11_NUM_READS,
+    BLAKE2S_X10_NUM_WRITES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS,
+>;
 pub type KeccakDelegationOracle<'a> = DelegationOracle<
     'a,
     KeccakSpecial5AbiDescription,
-    2,
-    0,
-    { KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2 },
+    NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
+    NUM_KECCAK_SPECIAL5_INDIRECT_READS,
+    KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
 

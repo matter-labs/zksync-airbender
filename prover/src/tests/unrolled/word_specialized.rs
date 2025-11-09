@@ -363,7 +363,7 @@ pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
 // #[ignore = "test has explicit panic inside"]
 #[test]
 fn run_basic_unrolled_test_with_word_specialization() {
-    run_basic_unrolled_test_with_word_specialization_impl(None);
+    run_basic_unrolled_test_with_word_specialization_impl(None, None);
 }
 
 pub fn run_basic_unrolled_test_with_word_specialization_impl(

@@ -15,6 +15,7 @@ use verifier_common::field::{Field, Mersenne31Field, Mersenne31Quartic, PrimeFie
 use verifier_common::prover::definitions::MerkleTreeCap;
 
 mod constants;
+pub mod unified_circuit_statement;
 pub mod unrolled_proof_statement;
 
 use self::constants::*;

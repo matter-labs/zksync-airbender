@@ -622,10 +622,6 @@ pub fn prove_unrolled_execution<
             continue;
         }
 
-        if should_dump_witness {
-            // TODO
-        }
-
         let mut family_caps = vec![];
         let mut family_proofs = vec![];
 
@@ -642,7 +638,19 @@ pub fn prove_unrolled_execution<
             unreachable!()
         };
 
-        for chunk in witness_chunks.into_iter() {
+        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
+            if should_dump_witness {
+                println!(
+                    "Will serialize witness for family {} circuit {}",
+                    family_idx, idx
+                );
+                bincode_serialize_to_file(
+                    &chunk.realloc_to_global(),
+                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
+                );
+                println!("Serialization is done");
+            }
+
             let oracle = NonMemoryCircuitOracle {
                 inner: &chunk.data,
                 decoder_table,
@@ -735,10 +743,6 @@ pub fn prove_unrolled_execution<
             continue;
         }
 
-        if should_dump_witness {
-            // TODO
-        }
-
         let mut family_caps = vec![];
         let mut family_proofs = vec![];
 
@@ -754,7 +758,19 @@ pub fn prove_unrolled_execution<
             unreachable!()
         };
 
-        for chunk in witness_chunks.into_iter() {
+        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
+            if should_dump_witness {
+                println!(
+                    "Will serialize witness for family {} circuit {}",
+                    family_idx, idx
+                );
+                bincode_serialize_to_file(
+                    &chunk.realloc_to_global(),
+                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
+                );
+                println!("Serialization is done");
+            }
+
             let oracle = MemoryCircuitOracle {
                 inner: &chunk.data[..],
                 decoder_table,
@@ -1164,6 +1180,11 @@ pub fn prove_unrolled_execution_with_replayer<
         worker,
     );
 
+    println!(
+        "Execution ended at PC = 0x{:08x} at timestamp {}",
+        final_pc, final_timestamp
+    );
+
     let should_dump_witness = std::env::var(DUMP_WITNESS_VAR)
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
@@ -1205,6 +1226,11 @@ pub fn prove_unrolled_execution_with_replayer<
         &worker,
     );
     assert_eq!(num_trivial, 0);
+
+    println!(
+        "In total {} inits and teardown circuits",
+        inits_and_teardowns.len()
+    );
 
     let register_final_state = register_final_state.map(|el| FinalRegisterValue {
         value: el.current_value,
@@ -1372,7 +1398,22 @@ pub fn prove_unrolled_execution_with_replayer<
                 .unwrap();
             let prec = &delegation_circuits_precomputations[idx].1;
             let mut per_tree_set = vec![];
-            for el in delegation_circuits.iter() {
+            for (idx, el) in delegation_circuits.iter().enumerate() {
+                if should_dump_witness {
+                    println!(
+                        "Will serialize witness for delegation {} circuit {}",
+                        delegation_type, idx
+                    );
+                    bincode_serialize_to_file(
+                        &el[..].to_vec(), // realloc to global
+                        &format!(
+                            "delegation_{}_circuit_{}_oracle_witness.bin",
+                            delegation_type, idx
+                        ),
+                    );
+                    println!("Serialization is done");
+                }
+
                 let caps = commit_memory_tree_for_delegation_circuit_with_replayer_format::<
                     A,
                     DelegationDescription,
@@ -1431,12 +1472,15 @@ pub fn prove_unrolled_execution_with_replayer<
             delegation_memory_trees.push((delegation_type as u32, per_tree_set));
         }
     }
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} delegation circuits memory trees took {:?}",
-    //     delegation_circuits_witness.len(),
-    //     now.elapsed()
-    // );
+    #[cfg(feature = "timing_logs")]
+    println!(
+        "=== Commitment for {} delegation circuits memory trees took {:?}",
+        delegation_memory_trees
+            .iter()
+            .map(|el| el.1.len())
+            .sum::<usize>(),
+        now.elapsed()
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("Will create FS transformation challenge for memory and delegation arguments");
@@ -1510,10 +1554,6 @@ pub fn prove_unrolled_execution_with_replayer<
             continue;
         }
 
-        if should_dump_witness {
-            // TODO
-        }
-
         let mut family_caps = vec![];
         let mut family_proofs = vec![];
 
@@ -1530,7 +1570,19 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
 
-        for chunk in witness_chunks.into_iter() {
+        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
+            if should_dump_witness {
+                println!(
+                    "Will serialize witness for family {} circuit {}",
+                    family_idx, idx
+                );
+                bincode_serialize_to_file(
+                    &chunk.realloc_to_global(),
+                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
+                );
+                println!("Serialization is done");
+            }
+
             let oracle = NonMemoryCircuitOracle {
                 inner: &chunk.data,
                 decoder_table,
@@ -1625,10 +1677,6 @@ pub fn prove_unrolled_execution_with_replayer<
             continue;
         }
 
-        if should_dump_witness {
-            // TODO
-        }
-
         let mut family_caps = vec![];
         let mut family_proofs = vec![];
 
@@ -1644,7 +1692,19 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
 
-        for chunk in witness_chunks.into_iter() {
+        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
+            if should_dump_witness {
+                println!(
+                    "Will serialize witness for family {} circuit {}",
+                    family_idx, idx
+                );
+                bincode_serialize_to_file(
+                    &chunk.realloc_to_global(),
+                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
+                );
+                println!("Serialization is done");
+            }
+
             let oracle = MemoryCircuitOracle {
                 inner: &chunk.data[..],
                 decoder_table,
@@ -1709,20 +1769,10 @@ pub fn prove_unrolled_execution_with_replayer<
             //     serialize_to_file(&proof, &format!("riscv_proof_{}", circuit_sequence));
             // }
 
+            assert!(proof.delegation_argument_accumulator.is_none());
+
             permutation_argument_grand_product
                 .mul_assign(&proof.permutation_grand_product_accumulator);
-            if let Some(delegation_argument_accumulator) = proof.delegation_argument_accumulator {
-                assert_eq!(
-                    family_idx,
-                    common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX
-                );
-                delegation_argument_sum.add_assign(&delegation_argument_accumulator);
-            } else {
-                assert_ne!(
-                    family_idx,
-                    common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX
-                );
-            }
 
             family_caps.push(proof.memory_tree_caps.clone());
             family_proofs.push(proof);
@@ -1917,8 +1967,8 @@ pub fn prove_unrolled_execution_with_replayer<
         )
     }
 
-    assert_eq!(permutation_argument_grand_product, Mersenne31Quartic::ONE);
     assert_eq!(delegation_argument_sum, Mersenne31Quartic::ZERO);
+    assert_eq!(permutation_argument_grand_product, Mersenne31Quartic::ONE);
 
     assert_eq!(&aux_memory_trees, &memory_trees);
     assert_eq!(&aux_inits_and_teardown_trees, &inits_and_teardown_trees);
@@ -2090,7 +2140,7 @@ fn prove_delegation_circuit_with_replayer_format<
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
     use crate::bincode_deserialize_from_file;
     use crate::deserialize_from_file;
@@ -2113,7 +2163,6 @@ mod test {
         pub inits_and_teardowns_proofs: Vec<UnrolledModeProof>,
         pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
         pub register_final_values: [FinalRegisterValue; 32],
-        pub end_params: [u32; 8],
         pub recursion_chain_preimage: Option<[u32; 16]>,
         pub recursion_chain_hash: Option<[u32; 8]>,
     }
@@ -2165,6 +2214,9 @@ mod test {
 
             // then for every allowed delegation circuit
             for delegation_type in allowed_delegation_circuits.iter() {
+                if *delegation_type == common_constants::NON_DETERMINISM_CSR {
+                    continue;
+                }
                 if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
@@ -2187,9 +2239,9 @@ mod test {
     #[test]
     fn test_prove_unrolled_fibonacci() {
         let (_, binary_image) =
-            setups::read_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
+            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
-            setups::read_binary(&Path::new("../../examples/basic_fibonacci/app.text"));
+            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.text"));
 
         // setups::pad_bytecode_for_proving(&mut binary);
 
@@ -2265,24 +2317,27 @@ mod test {
         ) = t;
 
         let (_, binary_image) =
-            setups::read_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
-        let (families, inits_and_teardowns) =
+            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
+        let compiled_circuits_set =
             setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<
                 IMStandardIsaConfigWithUnsignedMulDiv,
             >(&binary_image);
 
         // flatten and set iterator
+        let CompiledCircuitsSet {
+            compiled_circuit_families,
+            compiled_inits_and_teardowns,
+        } = compiled_circuits_set;
 
         let program_proofs = UnrolledProgramProof {
             final_pc,
             final_timestamp,
-            compiled_circuit_families: families,
+            compiled_circuit_families,
             circuit_families_proofs: main_proofs,
-            compiled_inits_and_teardowns: inits_and_teardowns,
+            compiled_inits_and_teardowns: compiled_inits_and_teardowns.unwrap(),
             inits_and_teardowns_proofs,
             delegation_proofs: BTreeMap::from_iter(delegation_proofs.into_iter()),
             register_final_values: register_final_state,
-            end_params: [0u32; 8],
             recursion_chain_hash: None,
             recursion_chain_preimage: None,
         };

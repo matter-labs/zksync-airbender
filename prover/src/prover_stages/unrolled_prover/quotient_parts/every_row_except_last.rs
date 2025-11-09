@@ -1426,15 +1426,6 @@ pub(crate) unsafe fn evaluate_memory_queries_accumulation(
         t.mul_assign_by_base(&read_timestamp_high);
         read_timestamp_contibution.add_assign(&t);
 
-        // timestamp high is STATIC from the index of access, and setup value
-        debug_assert_eq!(
-            compiled_circuit
-                .setup_layout
-                .timestamp_setup_columns
-                .width(),
-            2
-        );
-
         // NOTE on write timestamp: it has literal constants in contribution, so we add it AFTER
         // scaling by tau^H/2
         let mut write_timestamp_contibution = memory_argument_challenges
@@ -1738,11 +1729,6 @@ pub(crate) unsafe fn evaluate_permutation_masking(
 
     if DEBUG_QUOTIENT {
         if is_last_row == false {
-            if term_contribution.is_zero() == false {
-                dbg!(accumulator);
-                dbg!(previous);
-                dbg!(execute);
-            }
             assert_eq!(
                 term_contribution,
                 Mersenne31Quartic::ZERO,

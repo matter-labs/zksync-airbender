@@ -11,6 +11,8 @@ use verifier_common::prover::fft::GoodAllocator;
 use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
+pub use setups;
+
 mod constants;
 mod proofs;
 #[cfg(feature = "verifier_binaries")]
@@ -18,6 +20,7 @@ mod recursion;
 mod recursion_strategy;
 mod verifiers;
 
+pub mod unified_circuit;
 pub mod unrolled;
 
 #[derive(Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,6 +85,88 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
     let final_pc = (start + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
 
     final_pc as u32
+}
+
+pub fn compute_end_parameters<C: MachineConfig, A: GoodAllocator>(
+    expected_final_pc: u32,
+    setup: &trace_and_split::setups::MainCircuitPrecomputations<C, A, impl GoodAllocator>,
+) -> [u32; 8] {
+    let mut result_hasher = Blake2sBufferingTranscript::new();
+    result_hasher.absorb(&[expected_final_pc]);
+
+    let caps = flatten_merkle_caps(&setup.setup.trees);
+    result_hasher.absorb(&caps);
+    let end_params_output = result_hasher.finalize_reset();
+
+    end_params_output.0
+}
+
+pub fn compute_end_parameters_for_unrolled_circuits(
+    expected_final_pc: u32,
+    circuits_families_setups: &[&[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]],
+    inits_and_teardowns_setup: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+) -> [u32; 8] {
+    let mut result_hasher = Blake2sBufferingTranscript::new();
+    let mut buffer = [0u32; 16];
+    buffer[0] = expected_final_pc;
+    result_hasher.absorb(&buffer);
+
+    for setup in circuits_families_setups.iter() {
+        result_hasher.absorb(MerkleTreeCap::flatten(*setup));
+    }
+    result_hasher.absorb(MerkleTreeCap::flatten(inits_and_teardowns_setup));
+    let end_params_output = result_hasher.finalize_reset();
+
+    end_params_output.0
+}
+
+pub fn create_initial_chain_encoding_encoding(
+    base_layer_end_params: &[u32; 8],
+) -> ([u32; 16], [u32; 8]) {
+    let mut chain_hasher = Blake2sBufferingTranscript::new();
+    let mut preimage = [0u32; 16];
+    preimage[8..].copy_from_slice(base_layer_end_params);
+    chain_hasher.absorb(&preimage);
+    let new_chain = chain_hasher.finalize_reset();
+
+    (preimage, new_chain.0)
+}
+
+pub fn continue_chain_encoding(
+    previous_chain_hash: &[u32; 8],
+    previous_chain_preimage: &[u32; 16],
+    verifier_step_end_parameters: &[u32; 8],
+) -> ([u32; 16], [u32; 8]) {
+    if &previous_chain_preimage[8..] == &verifier_step_end_parameters[..] {
+        // we chain the same circuit, so we do not need to chain further
+        (*previous_chain_preimage, *previous_chain_hash)
+    } else {
+        // we should continue the chain
+        let mut chain_hasher = Blake2sBufferingTranscript::new();
+        let mut preimage = [0u32; 16];
+        preimage[..8].copy_from_slice(previous_chain_hash);
+        preimage[8..].copy_from_slice(verifier_step_end_parameters);
+        chain_hasher.absorb(&preimage);
+        let new_chain = chain_hasher.finalize_reset();
+
+        (preimage, new_chain.0)
+    }
+}
+
+pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
+    let mut hasher = Blake2sBufferingTranscript::new();
+    let mut previous = data[0];
+
+    for index in 1..data.len() {
+        // continue the chain, only if the data is different
+        if data[index] != data[index - 1] {
+            hasher.absorb(&previous);
+            hasher.absorb(&data[index]);
+            previous = hasher.finalize_reset().0;
+        }
+    }
+
+    previous
 }
 
 #[cfg(feature = "verifier_binaries")]
@@ -306,69 +391,6 @@ pub mod verifier_binaries {
         };
 
         run_verifier_binary(binary, responses).is_some()
-    }
-
-    pub fn compute_end_parameters<C: MachineConfig, A: GoodAllocator>(
-        expected_final_pc: u32,
-        setup: &trace_and_split::setups::MainCircuitPrecomputations<C, A, impl GoodAllocator>,
-    ) -> [u32; 8] {
-        let mut result_hasher = Blake2sBufferingTranscript::new();
-        result_hasher.absorb(&[expected_final_pc]);
-
-        let caps = flatten_merkle_caps(&setup.setup.trees);
-        result_hasher.absorb(&caps);
-        let end_params_output = result_hasher.finalize_reset();
-
-        end_params_output.0
-    }
-
-    pub fn create_initial_chain_encoding_encoding(
-        base_layer_end_params: &[u32; 8],
-    ) -> ([u32; 16], [u32; 8]) {
-        let mut chain_hasher = Blake2sBufferingTranscript::new();
-        let mut preimage = [0u32; 16];
-        preimage[8..].copy_from_slice(base_layer_end_params);
-        chain_hasher.absorb(&preimage);
-        let new_chain = chain_hasher.finalize_reset();
-
-        (preimage, new_chain.0)
-    }
-
-    pub fn continue_chain_encoding(
-        previous_chain_hash: &[u32; 8],
-        previous_chain_preimage: &[u32; 16],
-        verifier_step_end_parameters: &[u32; 8],
-    ) -> ([u32; 16], [u32; 8]) {
-        if &previous_chain_preimage[8..] == &verifier_step_end_parameters[..] {
-            // we chain the same circuit, so we do not need to chain further
-            (*previous_chain_preimage, *previous_chain_hash)
-        } else {
-            // we should continue the chain
-            let mut chain_hasher = Blake2sBufferingTranscript::new();
-            let mut preimage = [0u32; 16];
-            preimage[..8].copy_from_slice(previous_chain_hash);
-            preimage[8..].copy_from_slice(verifier_step_end_parameters);
-            chain_hasher.absorb(&preimage);
-            let new_chain = chain_hasher.finalize_reset();
-
-            (preimage, new_chain.0)
-        }
-    }
-
-    pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
-        let mut hasher = Blake2sBufferingTranscript::new();
-        let mut previous = data[0];
-
-        for index in 1..data.len() {
-            // continue the chain, only if the data is different
-            if data[index] != data[index - 1] {
-                hasher.absorb(&previous);
-                hasher.absorb(&data[index]);
-                previous = hasher.finalize_reset().0;
-            }
-        }
-
-        previous
     }
 
     #[cfg(all(feature = "verifier_binaries", test))]

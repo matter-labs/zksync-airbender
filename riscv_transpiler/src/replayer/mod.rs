@@ -15,14 +15,14 @@ use risc_v_simulator::machine_mode_only_unrolled::TimestampData;
 mod delegations;
 mod instructions;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct ReplayerRam<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> {
-    pub ram_log: &'a [(u32, (u32, u32))],
+    pub ram_log: &'a mut [&'a [(u32, (u32, u32))]],
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct ReplayerNonDeterminism<'a> {
-    pub non_determinism_reads_log: &'a [u32],
+    pub non_determinism_reads_log: &'a mut [&'a [u32]],
 }
 
 impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
@@ -32,7 +32,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         debug_assert_eq!(address % 4, 0);
         debug_assert!(self.ram_log.len() > 0);
         unsafe {
-            let (value, _) = *self.ram_log.get_unchecked(0);
+            let (value, _) = *self.ram_log.get_unchecked(0).get_unchecked(0);
 
             value
         }
@@ -44,8 +44,15 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         debug_assert_eq!(address % 4, 0);
         debug_assert!(self.ram_log.len() > 0);
         unsafe {
-            let (value, (low, high)) = *self.ram_log.get_unchecked(0);
-            self.ram_log = core::mem::transmute(self.ram_log.get_unchecked(1..));
+            let src = self.ram_log.get_unchecked_mut(0);
+            let (value, (low, high)) = *src.get_unchecked(0);
+            let next = src.get_unchecked(1..);
+            if next.len() > 0 {
+                *src = next;
+            } else {
+                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+            }
+
             let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
             debug_assert!(read_timestamp < timestamp, "trying to read replay log at address 0x{:08x} with timestamp {}, but read timestamp is {}", address, timestamp, read_timestamp);
 
@@ -74,13 +81,20 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         debug_assert_eq!(address % 4, 0);
         debug_assert!(self.ram_log.len() > 0);
         unsafe {
-            let (old_value, (low, high)) = *self.ram_log.get_unchecked(0);
-            self.ram_log = core::mem::transmute(self.ram_log.get_unchecked(1..));
-            let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
-            debug_assert!(read_timestamp < timestamp, "trying to write replay log at address 0x{:08x} with timestamp {}, but read timestamp is {}", address, timestamp, read_timestamp);
+            let src = self.ram_log.get_unchecked_mut(0);
+            let (value, (low, high)) = *src.get_unchecked(0);
+            let next = src.get_unchecked(1..);
+            if next.len() > 0 {
+                *src = next;
+            } else {
+                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+            }
 
-            // println!("Write at address 0x{:08x} at timestamp {} of value {} into value {} and read timestamp {}", address, timestamp, _word, old_value, read_timestamp);
-            (read_timestamp, old_value)
+            let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
+            debug_assert!(read_timestamp < timestamp, "trying to read replay log at address 0x{:08x} with timestamp {}, but read timestamp is {}", address, timestamp, read_timestamp);
+
+            // println!("Read at address 0x{:08x} at timestamp {} into value {} and read timestamp {}", address, timestamp, value, read_timestamp);
+            (read_timestamp, value)
         }
     }
 }
@@ -89,9 +103,15 @@ impl<'a, R: RAM> NonDeterminismCSRSource<R> for ReplayerNonDeterminism<'a> {
     fn read(&mut self) -> u32 {
         debug_assert!(self.non_determinism_reads_log.len() > 0);
         unsafe {
-            let value = *self.non_determinism_reads_log.get_unchecked(0);
-            self.non_determinism_reads_log =
-                core::mem::transmute(self.non_determinism_reads_log.get_unchecked(1..));
+            let src = self.non_determinism_reads_log.get_unchecked_mut(0);
+            let value = *src.get_unchecked(0);
+            let next = src.get_unchecked(1..);
+            if next.len() > 0 {
+                *src = next;
+            } else {
+                self.non_determinism_reads_log =
+                    core::mem::transmute(self.non_determinism_reads_log.get_unchecked_mut(1..));
+            }
 
             value
         }
@@ -203,6 +223,17 @@ impl<C: Counters> ReplayerVM<C> {
                         InstructionName::Mulhu => mul_div::mulhu::<C, R>(state, ram, instr, tracer),
                         InstructionName::Divu => mul_div::divu::<C, R>(state, ram, instr, tracer),
                         InstructionName::Remu => mul_div::remu::<C, R>(state, ram, instr, tracer),
+
+                        InstructionName::ZimopAdd => {
+                            mop::mop_addmod::<C, R>(state, ram, instr, tracer)
+                        }
+                        InstructionName::ZimopSub => {
+                            mop::mop_submod::<C, R>(state, ram, instr, tracer)
+                        }
+                        InstructionName::ZimopMul => {
+                            mop::mop_mulmod::<C, R>(state, ram, instr, tracer)
+                        }
+
                         InstructionName::ZicsrNonDeterminismRead => {
                             zicsr::nd_read::<C, R, ND>(state, ram, instr, tracer, nd)
                         }
@@ -211,6 +242,9 @@ impl<C: Counters> ReplayerVM<C> {
                         }
                         InstructionName::ZicsrDelegation => {
                             zicsr::call_delegation::<C, R>(state, ram, instr, tracer)
+                        }
+                        a @ _ => {
+                            panic!("Unknown instruction {:?}", a);
                         }
                         _ => core::hint::unreachable_unchecked(),
                     }
@@ -295,12 +329,18 @@ mod test {
         // now replay - first from the start
         let mut state = State::initial_with_counters(CountersT::default());
 
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
         let mut ram = ReplayerRam::<5> {
-            ram_log: &snapshotter.reads_buffer,
+            ram_log: &mut ram_log_buffers,
         };
 
+        let mut nd_log_buffers = snapshotter
+            .non_determinism_reads_buffer
+            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
         let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+            non_determinism_reads_log: &mut nd_log_buffers,
         };
 
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); (1 << 22) - 1];
@@ -432,12 +472,7 @@ mod test {
                 let nd_range = starting_snapshot.non_determinism_reads_start
                     ..current_snapshot.non_determinism_reads_end;
 
-                let mut ram = ReplayerRam::<5> {
-                    ram_log: &snapshotter.reads_buffer[ram_range],
-                };
-                let mut nd = ReplayerNonDeterminism {
-                    non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer[nd_range],
-                };
+                let snapshotter_ref = &snapshotter;
 
                 // println!("Thread {}", _i);
                 // for el in chunks.iter() {
@@ -446,6 +481,18 @@ mod test {
 
                 // spawn replayer
                 scope.spawn(move |_| {
+                    let mut ram_log_buffers = snapshotter_ref.reads_buffer.make_range(ram_range);
+                    let mut nd_log_buffers = snapshotter_ref
+                        .non_determinism_reads_buffer
+                        .make_range(nd_range);
+
+                    let mut ram = ReplayerRam::<5> {
+                        ram_log: &mut ram_log_buffers,
+                    };
+
+                    let mut nd = ReplayerNonDeterminism {
+                        non_determinism_reads_log: &mut nd_log_buffers,
+                    };
                     let mut chunks = chunks;
                     let mut tracer =
                         NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
@@ -536,17 +583,21 @@ mod test {
 
         println!("Passed exactly {} cycles", exact_cycles_passed);
 
-        let counters = state.counters;
-
         // now replay - first from the start
         let mut state = State::initial_with_counters(CountersT::default());
 
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
         let mut ram = ReplayerRam::<5> {
-            ram_log: &snapshotter.reads_buffer,
+            ram_log: &mut ram_log_buffers,
         };
 
+        let mut nd_log_buffers = snapshotter
+            .non_determinism_reads_buffer
+            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
         let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+            non_determinism_reads_log: &mut nd_log_buffers,
         };
 
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); (1 << 22) - 1];
@@ -572,164 +623,5 @@ mod test {
             total_snapshots,
             period
         );
-
-        // now let's give an example of parallel processing
-
-        let total_num_add_sub =
-            counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
-
-        println!("In total {} of ADD/SUB family opcodes", total_num_add_sub);
-
-        let circuit_capacity = (1 << 24) - 1;
-
-        let num_circuits = total_num_add_sub.div_ceil(circuit_capacity);
-
-        println!("In total {} of ADD/SUB circuits", num_circuits);
-
-        // allocate ALL of them
-        let mut total_witness =
-            vec![
-                vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); circuit_capacity];
-                num_circuits
-            ];
-
-        // now there is no concrete solution what is the most optimal strategy here, but let's assume that frequency of particular opcodes
-        // is well spread over the cycles
-
-        let worker = worker::Worker::new_with_num_threads(2);
-        let chunk_size = total_num_add_sub.div_ceil(worker.num_cores);
-
-        let mut witness_buffers: Vec<_> = total_witness.iter_mut().map(|el| &mut el[..]).collect();
-
-        let now = std::time::Instant::now();
-        worker.scope(total_snapshots, |scope, geometry| {
-            let tape_ref = &tape;
-            let mut starting_snapshot = snapshotter.initial_snapshot;
-            let mut current_snapshot = starting_snapshot;
-            let mut snapshots_iter = snapshotter.snapshots.iter();
-            for _i in 0..geometry.len() {
-                let mut num_snapshots = 0;
-                'inner: while current_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) - starting_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) < chunk_size
-                {
-                    if let Some(next_snapshot) = snapshots_iter.next() {
-                        num_snapshots += 1;
-                        current_snapshot = *next_snapshot;
-                    } else {
-                        break 'inner;
-                    }
-                }
-
-                let start_chunk_idx = starting_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) / circuit_capacity;
-                let start_chunk_offset = starting_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) % circuit_capacity;
-
-                let end_chunk_idx = current_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) / circuit_capacity;
-                let end_chunk_offset = current_snapshot
-                    .state
-                    .counters
-                    .get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-                ) % circuit_capacity;
-
-                let mut chunks = vec![];
-                let mut offset = start_chunk_offset;
-                unsafe {
-                    // Lazy to go via splits
-                    for src_chunk in start_chunk_idx..=end_chunk_idx {
-                        if src_chunk == end_chunk_idx {
-                            if end_chunk_offset > 0 {
-                                let range = 0..end_chunk_offset;
-                                let chunk = (&mut witness_buffers[src_chunk][range]
-                                    as *mut [NonMemoryOpcodeTracingDataWithTimestamp])
-                                    .as_mut_unchecked();
-                                chunks.push(chunk);
-                            }
-                        } else {
-                            let range = offset..;
-                            offset = 0;
-                            let chunk = (&mut witness_buffers[src_chunk][range]
-                                as *mut [NonMemoryOpcodeTracingDataWithTimestamp])
-                                .as_mut_unchecked();
-                            chunks.push(chunk);
-                        }
-                    }
-                }
-
-                let ram_range =
-                    starting_snapshot.memory_reads_start..current_snapshot.memory_reads_end;
-                let nd_range = starting_snapshot.non_determinism_reads_start
-                    ..current_snapshot.non_determinism_reads_end;
-
-                let mut ram = ReplayerRam::<5> {
-                    ram_log: &snapshotter.reads_buffer[ram_range],
-                };
-                let mut nd = ReplayerNonDeterminism {
-                    non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer[nd_range],
-                };
-
-                // println!("Thread {}", _i);
-                // for el in chunks.iter() {
-                //     println!("Chunk of size {}", el.len());
-                // }
-
-                // spawn replayer
-                scope.spawn(move |_| {
-                    let mut chunks = chunks;
-                    let mut tracer =
-                        NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
-                            buffers: &mut chunks,
-                        };
-                    let mut state = starting_snapshot.state;
-                    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
-                        &mut state,
-                        num_snapshots,
-                        &mut ram,
-                        tape_ref,
-                        period,
-                        &mut nd,
-                        &mut tracer,
-                    );
-                });
-
-                starting_snapshot = current_snapshot;
-            }
-        });
-        let elapsed = now.elapsed();
-
-        println!(
-            "Parallel replay performance is {} MHz ({} total snapshots with period of {} cycles) at {} cores",
-            (cycles_upper_bound as f64) / (elapsed.as_micros() as f64),
-            total_snapshots,
-            period,
-            worker.get_num_cores(),
-        );
-
-        let mut ts = 0;
-        for (i, el) in total_witness.iter().flatten().enumerate() {
-            if i < total_num_add_sub {
-                let cycle_ts = el.cycle_timestamp.as_scalar();
-                assert_ne!(cycle_ts, 0, "timestamp is 0 at position {}", i);
-                assert!(cycle_ts > ts, "timestamp is not ordered at position {}", i);
-                ts = cycle_ts;
-            }
-        }
     }
 }

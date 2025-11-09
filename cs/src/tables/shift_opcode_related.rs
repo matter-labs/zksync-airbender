@@ -221,9 +221,10 @@ pub fn create_sra_16_filler_mask_table<F: PrimeField>(id: u32) -> LookupTable<F,
 
             // we have top word
             let mask = if sign_bit {
-                // there is no mask if we shift by 0,
-                // otherwise - it's some number of top bits being 1s
-                u32::MAX.wrapping_shr(32 - shift_amount)
+                // if we e.g. shift by 5 bits, and top bit is 1, then
+                // highest top 5 bits need to be filled, and the rest - empty
+
+                u32::MAX.unbounded_shl(32 - shift_amount)
             } else {
                 0u32
             };

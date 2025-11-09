@@ -24,7 +24,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
         coset_index: u32,
         leaf_index: u32,
         depth: usize,
-        leaf_encoding: &[u32],
+        leaf_encoding: &AlignedSlice64<u32>,
         merkle_cap: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     ) -> bool {
         // our strategy is:

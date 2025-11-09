@@ -99,15 +99,28 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
     let b = read_u256(x11, ram, write_ts, &mut witness.indirect_reads);
     let a = read_u256_for_update(x10, ram, write_ts, &mut witness.indirect_writes);
 
-    let (_, of) = bigint_impl(a, b, x12);
+    let (result_value, new_x12) = bigint_impl(a, b, x12);
+    let mut new_x12 = new_x12 as u32;
 
     // write back is not needed for RAM, only for register
-    let (_old_x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut (of as u32));
+    let (_old_x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut new_x12);
     witness.reg_accesses[2] = RegisterOrIndirectReadWriteData {
         read_value: x12,
-        write_value: x12,
+        write_value: new_x12,
         timestamp: TimestampData::from_scalar(x12_ts),
     };
+
+    // put result value into witness
+    for ([low, high], src) in witness
+        .indirect_writes
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
+        .zip(result_value.as_limbs().iter())
+    {
+        low.write_value = *src as u32;
+        high.write_value = (*src >> 32) as u32;
+    }
 
     tracer.write_delegation::<{common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16}, _, _, _, _>(witness);
 

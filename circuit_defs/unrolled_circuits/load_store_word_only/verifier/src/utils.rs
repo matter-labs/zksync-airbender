@@ -138,7 +138,7 @@ pub(crate) unsafe fn accumulate_over_row_for_consistency_check(
     // quotient is just a single value
     {
         let mut t = *powers_of_deep_quotient_challenge.get_unchecked(i);
-        let leaf_el = Mersenne31Quartic::from_array_of_base(query.quotient_leaf);
+        let leaf_el = Mersenne31Quartic::from_array_of_base(*query.quotient_leaf);
         i += 1;
         t.mul_assign(&leaf_el);
         // NOTE: we compute quotient at non-main domain first, and then LDE, so we do NOT have adjustment
@@ -226,7 +226,7 @@ pub(crate) unsafe fn accumulate_over_row_for_consistency_check_with_fma(
 
     // quotient is just a single value
     {
-        accumulated_at_z = Mersenne31Quartic::from_array_of_base(query.quotient_leaf);
+        accumulated_at_z = Mersenne31Quartic::from_array_of_base(*query.quotient_leaf);
         // NOTE: we compute quotient at non-main domain first, and then LDE, so we do NOT have adjustment
         // there, and we should cancel one below
         accumulated_at_z.mul_assign_by_base(tau_in_domain_by_half_inversed);

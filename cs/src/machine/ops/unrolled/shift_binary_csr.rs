@@ -52,8 +52,16 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     cs.add_shuffle_ram_query(rs2_mem_query);
     let imm_as_reg = Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el)));
 
+    if let Some(rs1_reg) = rs1_reg.get_value_unsigned(cs) {
+        println!("RS1 value = 0x{:08x}", rs1_reg);
+    }
+
     let use_imm = decoder.use_imm();
     let rs2_value = Register::choose(cs, &use_imm, &imm_as_reg, &rs2_reg);
+
+    if let Some(rs2_value) = rs2_value.get_value_unsigned(cs) {
+        println!("RS2 value = 0x{:08x}", rs2_value);
+    }
 
     let [rs1_low, rs1_high] = rs1_reg.0.map(|el| el.get_variable());
     let [rs2_low, rs2_high] = rs2_value.0.map(|el| el.get_variable());
@@ -73,6 +81,9 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // shifts are simple - truncate shift amount, then lookup
     let (lookup_tuples_sll, sll_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
         let is_sll = decoder.perform_sll();
+        if is_sll.get_value(cs).unwrap_or(false) {
+            println!("SLL");
+        }
         let shift_amount = s0;
         let _unused = s1;
         cs.peek_lookup_value_unconstrained_ext::<1, 2>(
@@ -144,6 +155,9 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // SRL is the same
     let (lookup_tuples_srl, srl_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
         let is_srl = decoder.perform_srl();
+        if is_srl.get_value(cs).unwrap_or(false) {
+            println!("SRL");
+        }
         let shift_amount = s0;
         let _unused = s1;
         cs.peek_lookup_value_unconstrained_ext::<1, 2>(
@@ -215,6 +229,9 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // SRA is different as we always need to know top bit
     let (lookup_tuples_sra, sra_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
         let is_sra = decoder.perform_sra();
+        if is_sra.get_value(cs).unwrap_or(false) {
+            println!("SRA");
+        }
         let shift_amount = s0;
         let _unused = s1;
         cs.peek_lookup_value_unconstrained_ext::<1, 2>(
@@ -232,6 +249,10 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
             ],
             TableType::TruncateShiftAmount.to_num(),
         );
+
+        if let Some(shift_amount) = cs.get_value(shift_amount) {
+            println!("Shift amount = {}", shift_amount.as_u64_reduced());
+        }
 
         // model it as SRL and filling top bits
 
@@ -254,8 +275,15 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::Variable(low_word_fill),
                 LookupInput::Variable(high_word_fill),
             ],
-            TableType::U16GetSignAndHighByte.to_num(),
+            TableType::Sra16BitInputSignFill.to_num(),
         );
+
+        if let Some(low_word_fill) = cs.get_value(low_word_fill) {
+            println!("Low word fill = 0x{:x}", low_word_fill.as_u64_reduced());
+        }
+        if let Some(high_word_fill) = cs.get_value(high_word_fill) {
+            println!("High word fill = 0x{:x}", high_word_fill.as_u64_reduced());
+        }
 
         let low_from_low = s4;
         let high_from_low = s5;
@@ -278,6 +306,19 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
             TableType::SrlWith16BitInputLow.to_num(),
         );
 
+        if let Some(low_from_low) = cs.get_value(low_from_low) {
+            println!(
+                "SRL result low from low = 0x{:x}",
+                low_from_low.as_u64_reduced()
+            );
+        }
+        if let Some(high_from_low) = cs.get_value(high_from_low) {
+            println!(
+                "SRL result high from low = 0x{:x}",
+                high_from_low.as_u64_reduced()
+            );
+        }
+
         cs.peek_lookup_value_unconstrained_ext::<1, 2>(
             &[LookupInput::from(input_expr_high.clone())],
             &[low_from_high, high_from_high],
@@ -294,6 +335,19 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
             TableType::SrlWith16BitInputHigh.to_num(),
         );
 
+        if let Some(low_from_high) = cs.get_value(low_from_high) {
+            println!(
+                "SRL result low from high = 0x{:x}",
+                low_from_high.as_u64_reduced()
+            );
+        }
+        if let Some(high_from_high) = cs.get_value(high_from_high) {
+            println!(
+                "SRL result high from high = 0x{:x}",
+                high_from_high.as_u64_reduced()
+            );
+        }
+
         (
             vec![t0, t1, t2, t3],
             [
@@ -306,6 +360,12 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // binary ops are more complex
     let (lookup_tuples_binops, binops_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
         let is_binary = decoder.perform_binary_op();
+        if is_binary.get_value(cs).unwrap_or(false) {
+            println!("BINARY OP");
+            if let Some(funct3) = cs.get_value(inputs.decoder_data.funct3) {
+                println!("Funct3 = {:03b}", funct3.as_u64_reduced());
+            }
+        }
 
         let rs1_byte_0 = s0;
         let rs1_byte_2 = s1;
@@ -449,9 +509,29 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     let (lookup_tuples_csrrw, csrrw_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
         // we need 2 more variables that are "exclusive", as those can not be polluted by other opcode
         let execute_delegation = cs.add_variable(); // we do not need boolean check
+
+        // cs.require_invariant(execute_delegation, Invariant::Substituted((Placeholder::ExecuteDelegation, 0)));
+        // let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        //     let value =
+        //         placer.get_oracle_boolean(Placeholder::ExecuteDelegation);
+        //     placer.assign_mask(execute_delegation, &value);
+        // };
+        // cs.set_values(value_fn);
+
         let delegation_type = cs.add_variable(); // we also do not need to perform range checks
 
+        // cs.require_invariant(delegation_type, Invariant::Substituted((Placeholder::DelegationType, 0)));
+        // let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        //     let value =
+        //         placer.get_oracle_u16(Placeholder::DelegationType);
+        //     placer.assign_u16(delegation_type, &value);
+        // };
+        // cs.set_values(value_fn);
+
         let is_csrrw = decoder.perform_csrrw();
+        if is_csrrw.get_value(cs).unwrap_or(false) {
+            println!("CSRRW");
+        }
 
         // first let's consult about CSR index. NOTE: our decoder puts it non-signextended into IMM,
         // so we just use lower part of IMM
@@ -558,6 +638,16 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
             witness_early_branch_if_possible(mask.clone(), placer, &inner_evaluator);
         };
         cs.set_values(value_fn);
+
+        if Boolean::Is(execute_delegation)
+            .get_value(cs)
+            .unwrap_or(false)
+        {
+            println!("Execute delegation");
+            if let Some(delegation_type) = cs.get_value(delegation_type) {
+                println!("Delegation type = {}", delegation_type.as_u64_reduced());
+            }
+        }
 
         // add constraints
 
@@ -694,8 +784,20 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     Term::from(is_binary) * (Term::from(1 << 8) * Term::from(binops_outs[3]) + Term::from(binops_outs[2])); // BINARY
     let rd_high = cs.add_variable_from_constraint(rd_high);
 
+    if let Some(rd_low) = cs.get_value(rd_low) {
+        println!("RD low = 0x{:x}", rd_low.as_u64_reduced());
+    }
+    if let Some(rd_high) = cs.get_value(rd_high) {
+        println!("RD high = 0x{:x}", rd_high.as_u64_reduced());
+    }
+
     let rd_reg = Register([Num::Var(rd_low), Num::Var(rd_high)]);
     let is_rd_x0 = Boolean::Is(inputs.decoder_data.rd_is_zero);
+
+    if let Some(rd_reg) = rd_reg.get_value_unsigned(cs) {
+        println!("RD value = 0x{:08x}", rd_reg);
+    }
+
     let rd_mem_query = set_rd_with_mask_as_shuffle_ram(
         cs,
         Num::Var(inputs.decoder_data.rd_index),

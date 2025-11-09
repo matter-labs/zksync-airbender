@@ -17,9 +17,9 @@ use blake2s_u32::SIGMAS;
 use common_constants::delegation_types::blake2s_with_control::*;
 
 // ABI:
-// - registers x10-x13 are used to pass the parameters
+// - registers x10-x12 are used to pass the parameters
 // - x10 and x11 are pointers: x10 is a pointer to 24 words of state + extended state, x11 is a pointer to the input to mix
-// - x12 and x13 are control registers
+// - x12 is a control register, bits 17-19 are used for control mask, bits 20-29 are used for round bitmask
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
@@ -80,7 +80,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         .map(|access_idx| IndirectAccessOffset {
             variable_dependent: None,
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
-            assume_no_alignment_overflow: false,
+            assume_no_alignment_overflow: true,
             is_write_access: false,
         })
         .collect();
@@ -88,20 +88,13 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
-        indirects_alignment_log2: 2, // just aligned by machine words
+        indirects_alignment_log2: 6, // just aligned by machine words
         indirect_accesses: input_accesses,
     };
 
     let x12_request = RegisterAccessRequest {
         register_index: 12,
-        register_write: false,
-        indirects_alignment_log2: 0, // no indirects
-        indirect_accesses: vec![],
-    };
-
-    let x13_request = RegisterAccessRequest {
-        register_index: 13,
-        register_write: false,
+        register_write: true,
         indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
@@ -109,12 +102,10 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let x10_and_indirects = cs.create_register_and_indirect_memory_accesses(x10_request);
     let x11_and_indirects = cs.create_register_and_indirect_memory_accesses(x11_request);
     let x12_and_indirects = cs.create_register_and_indirect_memory_accesses(x12_request);
-    let x13_and_indirects = cs.create_register_and_indirect_memory_accesses(x13_request);
 
     assert_eq!(x10_and_indirects.indirect_accesses.len(), 24);
     assert_eq!(x11_and_indirects.indirect_accesses.len(), 16);
     assert!(x12_and_indirects.indirect_accesses.is_empty());
-    assert!(x13_and_indirects.indirect_accesses.is_empty());
 
     let mut input_state = vec![];
     let mut output_placeholder_state = vec![];
@@ -158,20 +149,16 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         input_words.push(read_value);
     }
 
-    let round_bitmask = {
-        let RegisterAccessType::Read { read_value } = x12_and_indirects.register_access else {
+    let (x12_vars, x12_write_vars) = {
+        let RegisterAccessType::Write {
+            read_value,
+            write_value,
+        } = x12_and_indirects.register_access
+        else {
             panic!()
         };
 
-        read_value
-    };
-
-    let control_mask = {
-        let RegisterAccessType::Read { read_value } = x13_and_indirects.register_access else {
-            panic!()
-        };
-
-        read_value
+        (read_value, write_value)
     };
 
     {
@@ -196,25 +183,27 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             }
         }
 
-        let register = Register::<F>(round_bitmask.map(|el| Num::Var(el)));
+        let register = Register::<F>(x12_vars.map(|el| Num::Var(el)));
         if let Some(value) = register.get_value_unsigned(&*cs) {
-            println!("Round bitmask = 0b{:b}", value);
-        }
-
-        let register = Register::<F>(control_mask.map(|el| Num::Var(el)));
-        if let Some(value) = register.get_value_unsigned(&*cs) {
-            println!("Control bitmask = 0b{:b}", value);
+            println!("Control register = 0b{:b}", value);
         }
     }
 
-    // we can immediately boolean decompose round bitmask's low, and ignore high, and same for control
+    // set updated bitmask for high bits and constraint it
+    let control_register_bits = Boolean::split_into_bitmask::<
+        F,
+        CS,
+        BLAKE2S_NUM_CONTROL_REGISTER_BITS,
+    >(cs, Num::Var(x12_vars[1]));
 
-    let round_bitmask =
-        Boolean::split_into_bitmask::<F, CS, BLAKE2S_MAX_ROUNDS>(cs, Num::Var(round_bitmask[0]));
-    let control_bitmask = Boolean::split_into_bitmask::<F, CS, BLAKE2S_NUM_CONTROL_BITS>(
-        cs,
-        Num::Var(control_mask[0]),
-    );
+    let control_bitmask: [Boolean; BLAKE2S_NUM_CONTROL_BITS] = control_register_bits
+        [0..BLAKE2S_NUM_CONTROL_BITS]
+        .try_into()
+        .unwrap();
+    let round_bitmask: [Boolean; BLAKE2S_MAX_ROUNDS] = control_register_bits
+        [BLAKE2S_NUM_CONTROL_BITS..BLAKE2S_NUM_CONTROL_REGISTER_BITS]
+        .try_into()
+        .unwrap();
 
     {
         for (i, el) in round_bitmask.iter().enumerate() {
@@ -229,9 +218,9 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         //     }
         // }
 
-        if let Some(value) = control_bitmask[LAST_ROUND_BIT_IDX].get_value(&*cs) {
+        if let Some(value) = control_bitmask[REDUCE_ROUNDS_BIT_IDX].get_value(&*cs) {
             if value {
-                println!("Control bitmask contains `last round`");
+                println!("Control bitmask contains `reduce rounds`");
             }
         }
 
@@ -249,9 +238,16 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     }
 
     // now we perform ABI logic convention
-    let perform_final_xor = control_bitmask[LAST_ROUND_BIT_IDX];
+    let reduce_rounds = control_bitmask[REDUCE_ROUNDS_BIT_IDX];
     let input_is_right_node = control_bitmask[INPUT_IS_RIGHT_NODE_BIT_IDX];
     let compression_mode = control_bitmask[COMPRESSION_MODE_BIT_IDX];
+
+    // round is final if it's 10th or if it's 7th and we do reduce rounds
+    let perform_final_xor = Boolean::or(
+        &round_bitmask[9],
+        &Boolean::and(&round_bitmask[6], &reduce_rounds, cs),
+        cs,
+    );
 
     // if round == 0, then
     // - first 8 elements of extended state are taken from IV for compression mode, or unchanged for normal mode
@@ -572,6 +568,36 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // NOTE on final masking: we do NOT need to mask anything here based on the execute/not predicate,
     // because if we do not execute, circuit guarantees that all read values are 0, so we will get 0 at the end here: there will not be
     // a compression mode active, so mixing will mix 0 extended state with 0 input words
+
+    // set value for low bits and constraint it
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        use crate::cs::witness_placer::WitnessComputationalInteger;
+        use crate::cs::witness_placer::WitnessTypeSet;
+
+        let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+        placer.assign_u16(x12_write_vars[0], &zero);
+    };
+    cs.set_values(value_fn);
+    let constraint = Constraint::<F>::empty() + Term::from(x12_write_vars[0]);
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+
+    // now set updated value for high bits and constraint it
+    let mut constraint = Constraint::<F>::empty();
+    let mut shift = 1;
+    for bit in control_bitmask.iter() {
+        constraint = constraint + Term::from(shift) * Term::from(bit.get_variable().unwrap());
+        shift <<= 1;
+    }
+    shift <<= 1; // for the shift bit
+    for bit in round_bitmask.iter().take(BLAKE2S_MAX_ROUNDS - 1) {
+        constraint = constraint + Term::from(shift) * Term::from(bit.get_variable().unwrap());
+        shift <<= 1;
+    }
+    assert_eq!(shift, 1u64 << BLAKE2S_NUM_CONTROL_REGISTER_BITS);
+
+    collapse_max_quadratic_constraint_into(cs, constraint.clone(), x12_write_vars[1]);
+    constraint -= Term::from(x12_write_vars[1]);
+    cs.add_constraint_allow_explicit_linear(constraint);
 
     // we unconditionally set values for extended state
     let mut it = output_placeholder_extended_state.iter_mut();

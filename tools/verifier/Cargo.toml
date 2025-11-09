@@ -11,8 +11,8 @@ categories = ["cryptography"]
 
 [dependencies]
 verifier = { path = "../../verifier", features = ["verifier_program", "blake2_with_compression"], optional = true }
-full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false, features = ["security_80"]}
-riscv_common = { path = "../../riscv_common"}
+full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features=false, features = []}
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 reduced_keccak = { path = "../../reduced_keccak", optional = true }
 
 [workspace]
@@ -27,17 +27,23 @@ strip = true
 
 [features]
 panic_output = ["riscv_common/uart", "riscv_common/custom_panic"]
-base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-recursion_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-recursion_log_23_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-recursion_step_no_delegation = ["full_statement_verifier/verifier_program"]
-final_recursion_step = ["full_statement_verifier/verifier_program"]
-universal_circuit = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression", "reduced_keccak"]
-universal_circuit_no_delegation = ["full_statement_verifier/verifier_program", "reduced_keccak"]
+security_80 = ["full_statement_verifier/security_80"]
+security_100 = ["full_statement_verifier/security_100"]
+# base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# recursion_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# recursion_log_23_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+# recursion_step_no_delegation = ["full_statement_verifier/verifier_program"]
+# final_recursion_step = ["full_statement_verifier/verifier_program"]
+# universal_circuit = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression", "reduced_keccak"]
+# universal_circuit_no_delegation = ["full_statement_verifier/verifier_program", "reduced_keccak"]
+
+unrolled_base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+unrolled_recursion_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
+unified_reduced_machine = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 
 verifier_tests = ["verifier"]
-default = ["universal_circuit"]
-# default = ["verifier_tests"]
+# default = ["universal_circuit"]
+default = ["verifier_tests"]
 
 [profile.cli]
 inherits = "dev"
@@ -50,3 +56,4 @@ lto = "thin"
 [profile.release_with_symbols]
 inherits = "release"
 debug = true
+strip = false

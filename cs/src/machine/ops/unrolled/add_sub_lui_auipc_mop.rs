@@ -23,6 +23,15 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         inputs.decoder_data.circuit_family_extra_mask,
     );
 
+    if let Some(circuit_family_extra_mask) =
+        cs.get_value(inputs.decoder_data.circuit_family_extra_mask)
+    {
+        println!(
+            "circuit_family_extra_mask = 0b{:08b}",
+            circuit_family_extra_mask.as_u64_reduced()
+        );
+    }
+
     // read inputs
     let (rs1_reg, rs1_mem_query) =
         get_rs1_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs1_index), true);
@@ -50,6 +59,20 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
 
     let Register([out_low, out_high]) = out;
 
+    if let Some(rs1_reg) = rs1_reg.get_value_unsigned(cs) {
+        println!("RS1 value = 0x{:08x}", rs1_reg);
+    }
+
+    if let Some(rs2_reg) = rs2_reg.get_value_unsigned(cs) {
+        println!("RS2 value = 0x{:08x}", rs2_reg);
+    }
+
+    if let Some(imm) =
+        Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el))).get_value_unsigned(cs)
+    {
+        println!("IMM value = 0x{:08x}", imm);
+    }
+
     // IMPORTANT: we must NOT allocate any more registers
     let is_add = decoder.perform_add();
     let is_addi = decoder.perform_addi();
@@ -58,7 +81,32 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     let is_auipc = decoder.perform_auipc();
     let is_addmod = decoder.perform_addmod();
     let is_submod = decoder.perform_submod();
-    let is_mulmod = decoder.perform_submod();
+    let is_mulmod = decoder.perform_mulmod();
+
+    if is_add.get_value(cs).unwrap_or(false) {
+        println!("ADD");
+    }
+    if is_addi.get_value(cs).unwrap_or(false) {
+        println!("ADDI");
+    }
+    if is_sub.get_value(cs).unwrap_or(false) {
+        println!("SUB");
+    }
+    if is_lui.get_value(cs).unwrap_or(false) {
+        println!("LUI");
+    }
+    if is_auipc.get_value(cs).unwrap_or(false) {
+        println!("AUIPC");
+    }
+    if is_addmod.get_value(cs).unwrap_or(false) {
+        println!("MOP_ADD");
+    }
+    if is_submod.get_value(cs).unwrap_or(false) {
+        println!("MOP_SUB");
+    }
+    if is_mulmod.get_value(cs).unwrap_or(false) {
+        println!("MOP_MUL");
+    }
 
     // ADD
     let of_var = {
@@ -388,6 +436,10 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         true,
     );
     cs.add_shuffle_ram_query(rd_mem_query);
+
+    if let Some(rd_reg) = rd_reg.get_value_unsigned(cs) {
+        println!("RD value = 0x{:08x}", rd_reg);
+    }
 
     // and we can increment PC without range checks
 

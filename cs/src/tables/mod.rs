@@ -1129,6 +1129,15 @@ impl<F: PrimeField> TableDriver<F> {
     }
 
     pub fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>) {
+        match &table {
+            LookupWrapper::Uninitialized => {
+                panic!(
+                    "Trying to add initialized wrapper for table type {:?}",
+                    table_type
+                );
+            }
+            _ => {}
+        }
         let id = table.get_table_id() as usize;
         assert_eq!(id, table_type.to_table_id() as usize);
         if self.tables[id].is_initialized() {
@@ -1158,11 +1167,16 @@ impl<F: PrimeField> TableDriver<F> {
     #[inline(always)]
     pub fn lookup_values<const N: usize>(&self, keys: &[F], id: u32) -> [F; N] {
         let table = &self.tables[id as usize];
-        debug_assert!(
+        assert!(
             table.is_initialized(),
             "table with id = {:?} is not initialized",
             id
         );
+        // debug_assert!(
+        //     table.is_initialized(),
+        //     "table with id = {:?} is not initialized",
+        //     id
+        // );
         let values = table.lookup_value::<N>(keys);
 
         values
@@ -1177,11 +1191,16 @@ impl<F: PrimeField> TableDriver<F> {
     ) -> (usize, [F; N]) {
         let offset = self.get_start_table_offset(id);
         let table = &self.tables[id as usize];
-        debug_assert!(
+        assert!(
             table.is_initialized(),
             "table with id = {:?} is not initialized",
             id
         );
+        // debug_assert!(
+        //     table.is_initialized(),
+        //     "table with id = {:?} is not initialized",
+        //     id
+        // );
         let (mut index, values) = table.lookup_values_and_get_index::<N>(keys);
         index += offset;
 
@@ -1197,11 +1216,16 @@ impl<F: PrimeField> TableDriver<F> {
     ) -> usize {
         let offset = self.get_start_table_offset(id);
         let table = &self.tables[id as usize];
-        debug_assert!(
+        assert!(
             table.is_initialized(),
             "table with id = {:?} is not initialized",
             id
         );
+        // debug_assert!(
+        //     table.is_initialized(),
+        //     "table with id = {:?} is not initialized",
+        //     id
+        // );
         let mut index = table.lookup_row(keys);
         index += offset;
 

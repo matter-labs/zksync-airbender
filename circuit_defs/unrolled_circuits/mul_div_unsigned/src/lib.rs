@@ -15,14 +15,14 @@ use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
 use prover::*;
 
 pub const FAMILY_IDX: u8 = MUL_DIV_CIRCUIT_FAMILY_IDX;
-pub const TRACE_LEN_LOG2: u32 = 24;
+pub const TRACE_LEN_LOG2: u32 = 23;
 pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
 pub const NUM_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
 pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];
 pub const TREE_CAP_SIZE: usize = 32;
-pub const MAX_ROM_SIZE: usize = 1 << 22; // bytes
-pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = (MAX_ROM_SIZE.trailing_zeros() - 16) as usize;
+pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
+pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 const SUPPORT_SIGNED: bool = false;
 
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
@@ -40,7 +40,7 @@ pub fn get_circuit_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize
     bytecode: &[u32],
 ) -> one_row_compiler::CompiledCircuitArtifact<field::Mersenne31Field> {
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
     use prover::cs::machine::ops::unrolled::mul_div::*;
 
     compile_unrolled_circuit_state_transition(
@@ -61,7 +61,7 @@ pub fn dump_ssa_form_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usi
     bytecode: &[u32],
 ) -> Vec<Vec<prover::cs::cs::witness_placer::graph_description::RawExpression<Mersenne31Field>>> {
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
     use crate::machine::ops::unrolled::dump_ssa_witness_eval_form_for_unrolled_circuit;
     use prover::cs::machine::ops::unrolled::mul_div::*;
 
@@ -82,7 +82,7 @@ pub fn get_table_driver_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: 
     use prover::cs::machine::ops::unrolled::mul_div::*;
 
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
 
     let mut table_driver = TableDriver::<Mersenne31Field>::new();
     mul_div_table_driver_fn(&mut table_driver);
@@ -119,7 +119,7 @@ pub fn get_decoder_table_for_rom_bound<
     Vec<ExecutorFamilyDecoderData, A>,
 ) {
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
 
     use crate::machine::ops::unrolled::process_binary_into_separate_tables_ext;
     let mut t = process_binary_into_separate_tables_ext::<Mersenne31Field, true, A>(

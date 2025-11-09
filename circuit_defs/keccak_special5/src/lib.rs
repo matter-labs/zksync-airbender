@@ -11,7 +11,8 @@ use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
     common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
-pub const DOMAIN_SIZE: usize = 1 << 21;
+pub const TRACE_LEN_LOG2: u32 = 22;
+pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
 pub const NUM_DELEGATION_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
 pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];

@@ -619,10 +619,10 @@ pub fn prover_stage_2_for_unrolled_circuit<
                         {
                             // now write back everything that we batch inversed:
                             // - delegations
-                            // - lazy init/teardown
                             // - memory accesses in any form
                             // - state permutation (if applies)
                             // - masking (if appliies)
+                            // - lazy init/teardown (if applies)
                             // We do not need to write grand product as we write it into "next row"
                             // now we save total accumulated for the next step, and write down batch inverses
 
@@ -1014,7 +1014,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
         unsafe {
             // check sum over aux lookup polys
             let mut trace = stage_2_trace.row_view(0..trace_len);
-            let mut sums = vec![Mersenne31Quartic::ZERO; 3];
+            let mut sums = vec![Mersenne31Quartic::ZERO; 4];
             for row_idx in 0..trace_len {
                 let row = trace.current_row_ref();
                 let last_row = row_idx == trace_len - 1;
@@ -1221,6 +1221,73 @@ pub fn prover_stage_2_for_unrolled_circuit<
                     let _ = dst_iter.next().unwrap();
                 }
 
+                // decoder lookup
+                if compiled_circuit
+                    .stage_2_layout
+                    .intermediate_poly_for_decoder_accesses
+                    .num_elements()
+                    > 0
+                {
+                    assert_eq!(
+                        compiled_circuit
+                            .stage_2_layout
+                            .intermediate_polys_for_decoder_multiplicities
+                            .num_elements(),
+                        1,
+                    );
+                    assert_eq!(
+                        compiled_circuit
+                            .stage_2_layout
+                            .intermediate_poly_for_decoder_accesses
+                            .num_elements(),
+                        1,
+                    );
+                    let mut term_contribution = Mersenne31Quartic::ZERO;
+                    // always single column
+                    {
+                        let multiplicity_aux = row
+                            .as_ptr()
+                            .add(
+                                compiled_circuit
+                                    .stage_2_layout
+                                    .intermediate_polys_for_decoder_multiplicities
+                                    .get_range(0)
+                                    .start,
+                            )
+                            .cast::<Mersenne31Quartic>()
+                            .read();
+                        if last_row {
+                            assert_eq!(multiplicity_aux, Mersenne31Quartic::ZERO);
+                        }
+                        if row_idx >= compiled_circuit.executor_family_decoder_table_size {
+                            assert_eq!(multiplicity_aux, Mersenne31Quartic::ZERO);
+                        }
+                        term_contribution.add_assign(&multiplicity_aux);
+                    }
+                    // also single one
+                    {
+                        let el = row
+                            .as_ptr()
+                            .add(
+                                compiled_circuit
+                                    .stage_2_layout
+                                    .intermediate_poly_for_decoder_accesses
+                                    .get_range(0)
+                                    .start,
+                            )
+                            .cast::<Mersenne31Quartic>()
+                            .read();
+                        if last_row {
+                            assert_eq!(el, Mersenne31Quartic::ZERO);
+                        }
+                        term_contribution.sub_assign(&el);
+                    }
+
+                    dst_iter.next().unwrap().add_assign(&term_contribution);
+                } else {
+                    let _ = dst_iter.next().unwrap();
+                }
+
                 assert!(dst_iter.next().is_none());
 
                 if row_idx == trace_len - 2 {
@@ -1230,6 +1297,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
                             0 => "range checks 16",
                             1 => "timestamp range checks",
                             2 => "generic lookups",
+                            3 => "decoder access",
                             _ => unreachable!(),
                         };
                         if *sum != Mersenne31Quartic::ZERO {
@@ -1251,6 +1319,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
                     0 => "range checks 16",
                     1 => "timestamp range checks",
                     2 => "generic lookups",
+                    3 => "decoder access",
                     _ => unreachable!(),
                 };
                 assert_eq!(

@@ -673,16 +673,16 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                     (
                         Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(8usize),
-                        ColumnAddress::WitnessSubtree(18usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(65536u32),
                         ColumnAddress::WitnessSubtree(9usize),
-                        ColumnAddress::WitnessSubtree(18usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(2147483646u32),
-                        ColumnAddress::WitnessSubtree(18usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                         ColumnAddress::WitnessSubtree(28usize),
                     ),
                 ],
@@ -692,12 +692,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
             StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[(
                     Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(18usize),
+                    ColumnAddress::WitnessSubtree(19usize),
                     ColumnAddress::WitnessSubtree(20usize),
                 )],
                 linear_terms: &[(
                     Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(18usize),
+                    ColumnAddress::WitnessSubtree(19usize),
                 )],
                 constant_term: Mersenne31Field(0u32),
             },
@@ -898,9 +898,14 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(2147483645u32),
+                        Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(8usize),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(8usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(1u32),
@@ -908,9 +913,14 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(2u32),
+                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(10usize),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(10usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(1u32),
@@ -949,8 +959,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(131070u32),
+                        Mersenne31Field(65535u32),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(65535u32),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(2147418111u32),
@@ -1007,9 +1021,14 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(2147483645u32),
+                        Mersenne31Field(2147483646u32),
                         ColumnAddress::WitnessSubtree(9usize),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(9usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(1u32),
@@ -1017,9 +1036,14 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(2u32),
+                        Mersenne31Field(1u32),
                         ColumnAddress::WitnessSubtree(11usize),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(11usize),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(1u32),
@@ -1058,8 +1082,12 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(17usize),
                     ),
                     (
-                        Mersenne31Field(65534u32),
+                        Mersenne31Field(32767u32),
                         ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(32767u32),
+                        ColumnAddress::WitnessSubtree(19usize),
                     ),
                     (
                         Mersenne31Field(2147418111u32),

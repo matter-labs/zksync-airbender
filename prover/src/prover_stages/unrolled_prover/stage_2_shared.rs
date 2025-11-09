@@ -695,6 +695,16 @@ pub(crate) unsafe fn stage2_process_generic_lookup_multiplicity_intermediate_pol
 
             value
         } else {
+            if DEBUG_QUOTIENT {
+                assert_eq!(
+                    *witness_trace_row.get_unchecked(generic_lookup_multiplicities_src_start + i),
+                    Mersenne31Field::ZERO,
+                    "multiplicity for generic lookup is not zero for row {} subset {}",
+                    absolute_row_idx,
+                    i,
+                );
+            }
+
             Mersenne31Quartic::ZERO
         };
 
@@ -773,16 +783,16 @@ pub(crate) fn process_delegation_requests(
                     timestamp_high,
                 );
             } else {
-                println!(
-                    "Delegation request with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
-                    memory_trace_row.get_unchecked(
-                        delegation_request_layout.delegation_type.start(),
-                    ),
-                    mem_abi_offset,
-                    timestamp_low,
-                    timestamp_high,
-                );
-                println!("Contribution = {:?}", denom);
+                // println!(
+                //     "Delegation request with inputs: delegation type = {:?}, abi offset = {:?}, timestamp {:?}|{:?}",
+                //     memory_trace_row.get_unchecked(
+                //         delegation_request_layout.delegation_type.start(),
+                //     ),
+                //     mem_abi_offset,
+                //     timestamp_low,
+                //     timestamp_high,
+                // );
+                // println!("Contribution = {:?}", denom);
             }
         }
     }

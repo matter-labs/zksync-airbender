@@ -1,8 +1,8 @@
+use super::*;
 use crate::verifier_binaries::{
-    compute_chain_encoding, compute_end_parameters, recursion_layer_verifier_vk,
-    recursion_log_23_layer_verifier_vk, universal_circuit_log_23_verifier_vk,
-    universal_circuit_verifier_vk, BASE_LAYER_VERIFIER, RECURSION_LAYER_VERIFIER,
-    UNIVERSAL_CIRCUIT_VERIFIER,
+    recursion_layer_verifier_vk, recursion_log_23_layer_verifier_vk,
+    universal_circuit_log_23_verifier_vk, universal_circuit_verifier_vk, BASE_LAYER_VERIFIER,
+    RECURSION_LAYER_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use crate::{Machine, RecursionStrategy};
 use std::alloc::Global;

@@ -11,14 +11,17 @@ categories.workspace = true
 
 [dependencies]
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
-riscv_common = { workspace = true }
+riscv_common = { workspace = true, default-features = false }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
 riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
+sha3 = { workspace = true }
 serde_json = "*"
+full_statement_verifier = { path = "../full_statement_verifier", optional = true }
+prover_examples = { path = "../circuit_defs/prover_examples", optional = true }
 
 [dev-dependencies]
 bincode = { version = "1.3" }
@@ -26,6 +29,9 @@ prover_examples = { path = "../circuit_defs/prover_examples" }
 full_statement_verifier = { path = "../full_statement_verifier" }
 
 [features]
+verifier_80 = ["full_statement_verifier", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr"]
+verifier_100 = ["full_statement_verifier", "full_statement_verifier/security_100", "full_statement_verifier/replace_csr"]
+prover = ["prover_examples"]
 verifier_binaries = []
 # Will evaluate quotient on main domain for debug
 debug_satisfiable = ["prover_examples/debug_satisfiable"]
@@ -33,5 +39,5 @@ debug_satisfiable = ["prover_examples/debug_satisfiable"]
 precheck_satisfied = ["prover_examples/precheck_satisfied"]
 extended_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
-default = []
+default = ["verifier_80", "prover"]
 # default = ["extended_tests"]

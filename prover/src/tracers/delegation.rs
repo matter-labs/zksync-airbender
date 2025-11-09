@@ -165,7 +165,7 @@ pub fn blake2_with_control_factory_fn<A: GoodAllocator>(
 
     DelegationWitness {
         num_requests,
-        num_register_accesses_per_delegation: 4,
+        num_register_accesses_per_delegation: 3,
         num_indirect_reads_per_delegation: 16,
         num_indirect_writes_per_delegation: 24,
         num_indirect_access_variable_offsets_per_delegation: 0,
@@ -178,7 +178,7 @@ pub fn blake2_with_control_factory_fn<A: GoodAllocator>(
 
         write_timestamp: Vec::with_capacity_in(capacity, allocator.clone()),
 
-        register_accesses: Vec::with_capacity_in(capacity * 4, allocator.clone()),
+        register_accesses: Vec::with_capacity_in(capacity * 3, allocator.clone()),
         indirect_reads: Vec::with_capacity_in(capacity * 16, allocator.clone()),
         indirect_writes: Vec::with_capacity_in(capacity * 24, allocator.clone()),
         indirect_offset_variables: Vec::with_capacity_in(capacity * 0, allocator.clone()),

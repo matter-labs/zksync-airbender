@@ -96,11 +96,11 @@ pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
 }
 
 #[inline(always)]
-pub(crate) fn keccak_special5_impl_decode_control(control: u32) -> (u32, usize, usize) {
+pub(crate) const fn keccak_special5_impl_decode_control(control: u32) -> (u32, usize, usize) {
     let precompile = control & 0b111;
     let iteration = ((control >> 3) & 0b111) as usize;
     let round = (control >> 6) as usize;
-    assert!(
+    debug_assert!(
         (precompile < 7 && iteration < 5 && round < 24)
             || (precompile == 0 && iteration < 5 && round <= 24),
         "the control parameters are invalid"
@@ -109,7 +109,7 @@ pub(crate) fn keccak_special5_impl_decode_control(control: u32) -> (u32, usize, 
 }
 
 #[inline(always)]
-pub(crate) fn keccak_special5_impl_bump_control(
+pub(crate) const fn keccak_special5_impl_bump_control(
     precompile: u32,
     iteration: usize,
     round: usize,

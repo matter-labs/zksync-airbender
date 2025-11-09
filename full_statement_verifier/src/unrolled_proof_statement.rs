@@ -1,5 +1,5 @@
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-use verifier_common::cs::definitions::split_timestamp;
+use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
 
 use super::*;
 
@@ -13,6 +13,10 @@ pub fn caps_flattened(caps: &'_ [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) -> &'_ [u
 
 pub const CAP_SIZE: usize = 64;
 
+pub const FINAL_PC_BUFFER_PC_IDX: usize = 0;
+pub const FINAL_PC_BUFFER_TS_LOW_IDX: usize = 1;
+pub const FINAL_PC_BUFFER_TS_HIGH_IDX: usize = 2;
+
 #[repr(usize)]
 pub enum VerificationFunctionPointer {
     UnrolledNoDelegation(VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, 0, 0, 1>),
@@ -23,8 +27,7 @@ pub const INITS_AND_TEARDOWNS_CAPACITY_PER_SET: u32 =
     (inits_and_teardowns_verifier::concrete::size_constants::TRACE_LEN - 1) as u32;
 pub const MAX_MEMORY_CELLS_TO_INIT: u32 = const {
     let mut max_cells = 1u32 << 30;
-    // TODO: move to constant
-    max_cells -= (1 << 21) >> 2;
+    max_cells -= common_constants::rom::ROM_WORD_SIZE as u32;
 
     max_cells
 };
@@ -81,6 +84,9 @@ pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
 ];
 
+pub const FULL_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
+    const { FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
+
 pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32, // family
     u32, // capacity
@@ -118,6 +124,9 @@ pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
 ];
 
+pub const FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
+    const { FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
+
 pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32, // family
     u32, // capacity
@@ -145,6 +154,9 @@ pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PA
     ),
 ];
 
+pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
+    const { RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
+
 pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -152,6 +164,20 @@ pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
     { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
     0,
 > = inits_and_teardowns_verifier::verify;
+
+#[allow(invalid_value)]
+#[inline(always)]
+pub unsafe fn read_setups<I: NonDeterminismSource, const N: usize>(
+) -> [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; N] {
+    let mut result: [[MaybeUninit<MerkleTreeCap<CAP_SIZE>>; 2]; N] =
+        [[const { core::mem::MaybeUninit::uninit() }; NUM_COSETS]; N];
+
+    for dst in result.iter_mut() {
+        MerkleTreeCap::<CAP_SIZE>::read_caps_into::<I, NUM_COSETS>(dst.as_mut_ptr().cast());
+    }
+
+    result.map(|el| el.map(|el| el.assume_init()))
+}
 
 /// If we recurse over user's program -> we must provide expected final PC,
 /// and setup caps (that encode the program itself!),
@@ -168,14 +194,14 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // capacity per set, setup, verifier function
     inits_and_teardowns_verifier: (
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS, 0>,
+        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS, 0, 0>,
     ),
     // circuit type/delegation type, capacity, setup, verifier function
     delegation_circuits_verifiers: &[(
         u32,
         u32,
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0>,
+        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0, 0>,
     )],
 ) -> [u32; 16] {
     assert_eq!(
@@ -207,9 +233,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
     let final_ts_low = verifier_common::DefaultNonDeterminismSource::read_word();
     let final_ts_high = verifier_common::DefaultNonDeterminismSource::read_word();
-    final_pc_buffer[0] = final_pc;
-    final_pc_buffer[1] = final_ts_low;
-    final_pc_buffer[2] = final_ts_high;
+    final_pc_buffer[FINAL_PC_BUFFER_PC_IDX] = final_pc;
+    final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = final_ts_low;
+    final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = final_ts_high;
 
     transcript.absorb(&final_pc_buffer);
 
@@ -306,8 +332,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
                     // now we should check all invariants about continuity
 
+                    delegation_used |= true;
+
                     if circuit_sequence > 0 {
-                        delegation_used |= true;
                         // and check equality of the setup
                         assert!(MerkleTreeCap::compare(
                             &previous.setup_caps,
@@ -557,12 +584,19 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // so the program ended logical execution and we can conclude that the set of register values is meaningful
 
     let mut result_hasher = Blake2sBufferingTranscript::new();
+    // NOTE: for parameters we are no longer interested in the timestamp when we ended execution,
+    // just on PC
+    final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = 0;
+    final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = 0;
+
     result_hasher.absorb(&final_pc_buffer);
     for setup in circuits_families_setups.iter() {
         result_hasher.absorb(caps_flattened(*setup));
     }
     result_hasher.absorb(caps_flattened(&inits_and_teardowns_verifier.0));
     let end_params_output = result_hasher.finalize_reset();
+
+    // `end_params_output` now fully describes an ending PC + setups (and setups include program binary)
 
     if BASE_LAYER {
         // we REQUIRE that remaining 8 registers are 0 in our convention
@@ -639,4 +673,50 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     }
 
     output
+}
+
+pub fn verify_unrolled_base_layer() -> [u32; 16] {
+    unsafe {
+        let circuits_setups = read_setups::<
+            DefaultNonDeterminismSource,
+            FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
+        >();
+        let circuits_setups_refs = circuits_setups.each_ref();
+        let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
+        verify_full_statement_for_unrolled_circuits::<
+            true,
+            { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
+        >(
+            &circuits_setups_refs,
+            &FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
+            (
+                &inits_and_teardowns_setups[0],
+                INITS_AND_TEARDOWNS_VERIFIER_PTR,
+            ),
+            BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+        )
+    }
+}
+
+pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
+    unsafe {
+        let circuits_setups = read_setups::<
+            DefaultNonDeterminismSource,
+            RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
+        >();
+        let circuits_setups_refs = circuits_setups.each_ref();
+        let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
+        verify_full_statement_for_unrolled_circuits::<
+            false,
+            { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
+        >(
+            &circuits_setups_refs,
+            &RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
+            (
+                &inits_and_teardowns_setups[0],
+                INITS_AND_TEARDOWNS_VERIFIER_PTR,
+            ),
+            RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+        )
+    }
 }

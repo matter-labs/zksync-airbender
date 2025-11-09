@@ -6,7 +6,6 @@
     pointer. Then it calls _start_rust.
 */
 
-.attribute arch, "rv32i"
 .section .init, "ax"
 .global _start
 
@@ -154,6 +153,6 @@ machine_default_start_trap:
 
 /* Make sure there is an abort when linking */
 .section .text.abort
-.globl abort
+.global abort
 abort:
     j abort

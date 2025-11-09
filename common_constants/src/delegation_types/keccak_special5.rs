@@ -38,6 +38,9 @@ macro_rules! keccak_special5_invoke {
     };
 }
 
+pub const NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES: usize = 2;
+pub const NUM_KECCAK_SPECIAL5_INDIRECT_READS: usize = 0;
+
 pub const KECCAK_SPECIAL5_X11_NUM_WRITES: usize = NUM_X10_INDIRECT_U64_WORDS * 2; // 6 u64 r/w
 pub const KECCAK_SPECIAL5_TOTAL_RAM_ACCESSES: usize = KECCAK_SPECIAL5_X11_NUM_WRITES;
 pub const KECCAK_SPECIAL5_BASE_ABI_REGISTER: u32 = 10;

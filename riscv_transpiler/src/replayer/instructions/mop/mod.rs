@@ -10,7 +10,7 @@ pub(crate) fn mop_addmod<C: Counters, R: RAM>(
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
-    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2); // formal
+    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.add_assign(&operand_2);
@@ -45,7 +45,7 @@ pub(crate) fn mop_submod<C: Counters, R: RAM>(
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
-    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2); // formal
+    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.sub_assign(&operand_2);
@@ -80,7 +80,7 @@ pub(crate) fn mop_mulmod<C: Counters, R: RAM>(
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
-    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2); // formal
+    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let mut operand_1 = Mersenne31Field::from_nonreduced_u32(rs1_value);
     let operand_2 = Mersenne31Field::from_nonreduced_u32(rs2_value);
     operand_1.mul_assign(&operand_2);

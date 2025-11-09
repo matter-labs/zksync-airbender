@@ -122,7 +122,7 @@ categories = ["cryptography"]
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
-riscv_common = { path = "./riscv_common" }
+riscv_common = { path = "./riscv_common", default-features = false }
 trace_holder = { path = "./trace_holder" }
 worker = { path = "./worker" }
 fft = { path = "./fft" }
@@ -185,8 +185,7 @@ sha3 = { version = "*", default-features = false }
 
 [profile.dev]
 debug-assertions = true
-opt-level = 1
-lto = "fat"
+opt-level = 0
 codegen-units = 16
 debug = false
 

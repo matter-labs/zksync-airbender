@@ -12,9 +12,9 @@ rustfmt src/generated_inlined_verifier.rs
 cp src/generated.rs ../verifier/src/generated/circuit_layout.rs
 cp src/generated_inlined_verifier.rs ../verifier/src/generated/quotient.rs
 
-CIRCUIT_NAME="shift_binop_csrrw"
+# CIRCUIT_NAME="shift_binop_csrrw"
 
-cargo test -- test::generate_for_unrolled_circuits --exact
-rustfmt generated/*.rs
-cp generated/${CIRCUIT_NAME}_preprocessed_layout.rs ../verifier/src/generated/circuit_layout.rs
-cp generated/${CIRCUIT_NAME}_preprocessed_quotient.rs ../verifier/src/generated/quotient.rs
+# cargo test -- test::generate_for_unrolled_circuits --exact
+# rustfmt generated/*.rs
+# cp generated/${CIRCUIT_NAME}_preprocessed_layout.rs ../verifier/src/generated/circuit_layout.rs
+# cp generated/${CIRCUIT_NAME}_preprocessed_quotient.rs ../verifier/src/generated/quotient.rs

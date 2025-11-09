@@ -5,6 +5,7 @@
 #![feature(bigint_helper_methods)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(maybe_uninit_array_assume_init)]
+#![feature(likely_unlikely)]
 
 // In the first take over the compiler and the corresponding simulator we will first
 // preprocess the bytecode into fixed-width format, and then will do very simple and execution loop
@@ -14,6 +15,8 @@ pub mod ir;
 pub mod replayer;
 pub mod vm;
 pub mod witness;
+
+pub use ::common_constants;
 
 #[cfg(test)]
 mod tests;

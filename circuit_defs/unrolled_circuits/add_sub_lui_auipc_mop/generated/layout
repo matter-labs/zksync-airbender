@@ -1041,7 +1041,7 @@
             "WitnessSubtree": 8
           },
           {
-            "WitnessSubtree": 18
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1050,13 +1050,13 @@
             "WitnessSubtree": 9
           },
           {
-            "WitnessSubtree": 18
+            "WitnessSubtree": 19
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 18
+            "WitnessSubtree": 19
           },
           {
             "WitnessSubtree": 28
@@ -1071,7 +1071,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 18
+            "WitnessSubtree": 19
           },
           {
             "WitnessSubtree": 20
@@ -1082,7 +1082,7 @@
         [
           1,
           {
-            "WitnessSubtree": 18
+            "WitnessSubtree": 19
           }
         ]
       ],
@@ -1423,12 +1423,21 @@
           }
         ],
         [
-          2147483645,
+          2147483646,
           {
             "WitnessSubtree": 8
           },
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 8
+          },
+          {
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1441,12 +1450,21 @@
           }
         ],
         [
-          2,
+          1,
           {
             "WitnessSubtree": 10
           },
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 10
+          },
+          {
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1512,9 +1530,15 @@
           }
         ],
         [
-          131070,
+          65535,
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          65535,
+          {
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1610,12 +1634,21 @@
           }
         ],
         [
-          2147483645,
+          2147483646,
           {
             "WitnessSubtree": 9
           },
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 9
+          },
+          {
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1628,12 +1661,21 @@
           }
         ],
         [
-          2,
+          1,
           {
             "WitnessSubtree": 11
           },
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          1,
+          {
+            "WitnessSubtree": 11
+          },
+          {
+            "WitnessSubtree": 19
           }
         ],
         [
@@ -1699,9 +1741,15 @@
           }
         ],
         [
-          65534,
+          32767,
           {
             "WitnessSubtree": 18
+          }
+        ],
+        [
+          32767,
+          {
+            "WitnessSubtree": 19
           }
         ],
         [

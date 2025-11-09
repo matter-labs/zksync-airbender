@@ -67,12 +67,6 @@ pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodA
         *el.entry("Allocate trace holders").or_default() += t.elapsed();
     });
 
-    #[cfg(feature = "debug_logs")]
-    println!(
-        "Timestamp contribution from circuit sequence is 0x{:08x}",
-        timestamp_high_from_circuit_sequence
-    );
-
     assert_eq!(table_driver.total_tables_len, compiled_circuit.total_tables_size,
         "table size diverged between compilation and evaluation: compilation expected {}, while in evaluation it's initialized for {}",
         table_driver.total_tables_len,
@@ -80,6 +74,8 @@ pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodA
     );
 
     let generic_lookup_multiplicities_total_len = table_driver.total_tables_len;
+    let decoder_lookup_multiplicities_total_len =
+        compiled_circuit.executor_family_decoder_table_size;
 
     let geometry = worker.get_geometry(cycles);
     let mut range_16_multiplicity_subcounters = vec![vec![]; geometry.len()];
@@ -138,7 +134,8 @@ pub fn evaluate_witness_for_executor_family<O: Oracle<Mersenne31Field>, A: GoodA
                         vec![0u32; 1 << TIMESTAMP_COLUMNS_NUM_BITS];
                     let mut generic_lookup_multiplicities =
                         vec![0u32; generic_lookup_multiplicities_total_len];
-                    let mut decoder_multiplicities = vec![0u32; 1 << 20];
+                    let mut decoder_multiplicities =
+                        vec![0u32; decoder_lookup_multiplicities_total_len];
 
                     evaluate_witness_for_executor_family_inner(
                         exec_trace_view,

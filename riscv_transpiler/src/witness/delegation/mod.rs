@@ -9,7 +9,7 @@ pub mod bigint;
 pub mod blake2_round_function;
 pub mod keccak_special5;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DelegationWitness<
     const REG_ACCESSES: usize,
     const INDIRECT_READS: usize,
@@ -17,9 +17,31 @@ pub struct DelegationWitness<
     const VARIABLE_OFFSETS: usize,
 > {
     pub write_timestamp: TimestampScalar,
+    #[serde(with = "serde_big_array::BigArray")]
+    #[serde(bound(
+        deserialize = "[RegisterOrIndirectReadWriteData; REG_ACCESSES]: serde::Deserialize<'de>"
+    ))]
+    #[serde(bound(
+        serialize = "[RegisterOrIndirectReadWriteData; REG_ACCESSES]: serde::Serialize"
+    ))]
     pub reg_accesses: [RegisterOrIndirectReadWriteData; REG_ACCESSES],
+    #[serde(with = "serde_big_array::BigArray")]
+    #[serde(bound(
+        deserialize = "[RegisterOrIndirectReadData; INDIRECT_READS]: serde::Deserialize<'de>"
+    ))]
+    #[serde(bound(serialize = "[RegisterOrIndirectReadData; INDIRECT_READS]: serde::Serialize"))]
     pub indirect_reads: [RegisterOrIndirectReadData; INDIRECT_READS],
+    #[serde(with = "serde_big_array::BigArray")]
+    #[serde(bound(
+        deserialize = "[RegisterOrIndirectReadWriteData; INDIRECT_WRITES]: serde::Deserialize<'de>"
+    ))]
+    #[serde(bound(
+        serialize = "[RegisterOrIndirectReadWriteData; INDIRECT_WRITES]: serde::Serialize"
+    ))]
     pub indirect_writes: [RegisterOrIndirectReadWriteData; INDIRECT_WRITES],
+    #[serde(with = "serde_big_array::BigArray")]
+    #[serde(bound(deserialize = "[u16; VARIABLE_OFFSETS]: serde::Deserialize<'de>"))]
+    #[serde(bound(serialize = "[u16; VARIABLE_OFFSETS]: serde::Serialize"))]
     pub variables_offsets: [u16; VARIABLE_OFFSETS],
 }
 

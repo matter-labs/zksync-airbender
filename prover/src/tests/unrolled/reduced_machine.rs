@@ -163,7 +163,7 @@ pub fn run_unrolled_reduced_test_impl(
         process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
             &text_section,
             // &binary, // text_section,
-            &[Box::new(ReducedMachineDecoder)],
+            &[Box::new(ReducedMachineDecoder::new())],
             1 << 20,
             &[NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER as u16],
         )
@@ -319,11 +319,18 @@ pub fn run_unrolled_reduced_test_impl(
         dbg!(num_calls);
 
         let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+        let mut nd_log_buffers = snapshotter
+            .non_determinism_reads_buffer
+            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
+
         let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
-            ram_log: &snapshotter.reads_buffer,
+            ram_log: &mut ram_log_buffers,
         };
         let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &snapshotter.non_determinism_reads_buffer,
+            non_determinism_reads_log: &mut nd_log_buffers,
         };
         let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];

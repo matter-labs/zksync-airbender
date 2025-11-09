@@ -574,3 +574,11 @@ pub struct LazyInitAndTeardown {
     pub teardown_value: u32,
     pub teardown_timestamp: TimestampData,
 }
+
+impl LazyInitAndTeardown {
+    pub const EMPTY: Self = LazyInitAndTeardown {
+        address: 0,
+        teardown_value: 0,
+        teardown_timestamp: TimestampData::EMPTY,
+    };
+}

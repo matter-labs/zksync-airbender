@@ -14,8 +14,8 @@ pub const NUM_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
 pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];
 pub const TREE_CAP_SIZE: usize = 32;
-pub const MAX_ROM_SIZE: usize = 1 << 22; // bytes
-pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = (MAX_ROM_SIZE.trailing_zeros() - 16) as usize;
+pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
+pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
@@ -32,7 +32,7 @@ pub fn get_circuit_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize
     bytecode: &[u32],
 ) -> one_row_compiler::CompiledCircuitArtifact<field::Mersenne31Field> {
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
     use crate::one_row_compiler::OneRowCompiler;
 
     let compiler = OneRowCompiler::<Mersenne31Field>::default();
@@ -61,7 +61,7 @@ pub fn get_table_driver_for_rom_bound<const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: 
     use crate::tables::TableDriver;
 
     let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
-    assert!(bytecode.len() <= num_bytecode_words);
+    assert_eq!(bytecode.len(), num_bytecode_words);
 
     TableDriver::new()
 }

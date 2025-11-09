@@ -916,7 +916,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(10usize),
                     ),
                     (
-                        Mersenne31Field(16u32),
+                        Mersenne31Field(52u32),
                         ColumnAddress::WitnessSubtree(11usize),
                     ),
                     (
