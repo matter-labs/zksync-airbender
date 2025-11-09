@@ -1726,14 +1726,6 @@ mod tests {
         println!("Time to construct AlphaPowersLayout {:?}", duration);
         assert!(duration < std::time::Duration::from_micros(50));
 
-        let h_setup = &setup.ldes[domain_index].trace;
-        let h_setup_slice = h_setup.as_slice();
-        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
-
-        let h_trace = &prover_data.stage_1_result.ldes[domain_index].trace;
-        let h_trace_slice = h_trace.as_slice();
-        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
-
         let mut h_quotient: Vec<BF> = vec![BF::ZERO; 4 * domain_size];
         let mut h_alpha_powers: Vec<E4> = materialize_powers_serial_starting_with_one::<_, Global>(
             stage_3_output.quotient_alpha,
