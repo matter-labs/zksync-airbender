@@ -545,17 +545,11 @@ void grand_product_machine_state_contributions(const MachineStateChallenges &cha
 
 // one kernel handles all cases, to avoid re-reading e4 column
 EXTERN __launch_bounds__(128, 8) __global__ void ab_unrolled_grand_product_contributions_kernel(
-    __grid_constant__ const MemoryChallenges memory_challenges,
-    __grid_constant__ const MachineStateChallenges machine_state_challenges,
-    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-    __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-    __grid_constant__ const MachineStateLayout machine_state_layout,
-    __grid_constant__ const MaskArgLayout mask_arg_layout,
-    matrix_getter<bf, ld_modifier::cs> memory_cols,
-    vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols,
-    const unsigned ram_access_args_start,
-    const bool process_ram_access,
-    const unsigned log_n) {
+    __grid_constant__ const MemoryChallenges memory_challenges, __grid_constant__ const MachineStateChallenges machine_state_challenges,
+    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+    __grid_constant__ const MachineStateLayout machine_state_layout, __grid_constant__ const MaskArgLayout mask_arg_layout,
+    matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned ram_access_args_start,
+    const bool process_ram_access, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.

@@ -1659,8 +1659,9 @@ mod tests {
     use fft::materialize_powers_serial_starting_with_one;
     use field::Field;
     use prover::tests::{
-        run_basic_delegation_test_impl, run_basic_unrolled_test_with_word_specialization_impl,
-        run_keccak_test_impl, GpuComparisonArgs,
+        run_basic_delegation_test_impl,
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl, run_keccak_test_impl,
+        GpuComparisonArgs,
     };
     use serial_test::serial;
 
@@ -1928,9 +1929,9 @@ mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_3_unrolled_for_main_and_keccak() {
+    fn test_stage_3_unrolled_with_transpiler_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
-        run_basic_unrolled_test_with_word_specialization_impl(
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

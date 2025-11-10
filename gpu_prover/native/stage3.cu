@@ -246,14 +246,11 @@ EXTERN __launch_bounds__(128, 8) __global__
   quotient.set(acc_quadratic);
 }
 
-DEVICE_FORCEINLINE void enforce_intermediate_state_lookup(const IntermediateStateLookupLayout &layout,
-                                                          const matrix_getter<bf, ld_modifier::cg> &witness_cols,
+DEVICE_FORCEINLINE void enforce_intermediate_state_lookup(const IntermediateStateLookupLayout &layout, const matrix_getter<bf, ld_modifier::cg> &witness_cols,
                                                           const matrix_getter<bf, ld_modifier::cg> &memory_cols,
                                                           const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols,
-                                                          vector_getter<e4, ld_modifier::ca> &alphas,
-                                                          vector_getter<e4, ld_modifier::ca> &helpers,
-                                                          e4 &acc_linear, e4 &acc_quadratic,
-                                                          const e2 &decompression_factor) {
+                                                          vector_getter<e4, ld_modifier::ca> &alphas, vector_getter<e4, ld_modifier::ca> &helpers,
+                                                          e4 &acc_linear, e4 &acc_quadratic, const e2 &decompression_factor) {
   e4 alpha = (alphas++).get();
   const bf execute = memory_cols.get_at_col(layout.execute);
   acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::neg(execute)));
@@ -347,27 +344,25 @@ DEVICE_FORCEINLINE void enforce_range_check_expressions_with_constant_terms(cons
   }
 }
 
-DEVICE_FORCEINLINE void enforce_range_check_expressions(const TEMPORARYFlattenedLookupExpressionsLayout &expressions,
-                                                        const matrix_getter<bf, ld_modifier::cg> &witness_cols,
-                                                        const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                                        const matrix_getter<bf, ld_modifier::cg> &stage_2_bf_cols,
-                                                        const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols,
-                                                        vector_getter<e4, ld_modifier::ca> &alphas,
-                                                        vector_getter<e4, ld_modifier::ca> &helpers, e4 &acc_linear, e4 &acc_quadratic) {
-    if (expressions.constant_terms_are_zero) {
+DEVICE_FORCEINLINE void
+enforce_range_check_expressions(const TEMPORARYFlattenedLookupExpressionsLayout &expressions, const matrix_getter<bf, ld_modifier::cg> &witness_cols,
+                                const matrix_getter<bf, ld_modifier::cg> &memory_cols, const matrix_getter<bf, ld_modifier::cg> &stage_2_bf_cols,
+                                const vectorized_e4_matrix_getter<ld_modifier::cg> &stage_2_e4_cols, vector_getter<e4, ld_modifier::ca> &alphas,
+                                vector_getter<e4, ld_modifier::ca> &helpers, e4 &acc_linear, e4 &acc_quadratic) {
+  if (expressions.constant_terms_are_zero) {
 #pragma unroll
-      for (unsigned i{0}, expression_idx{0}, flat_term_idx{0}; i < expressions.num_expression_pairs; i++) {
-        bf a_and_b[2];
-        eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, true);
-        const bf bf_arg = stage_2_bf_cols.get_at_col(expressions.bf_dst_cols[i]);
-        enforce_width_1_bf_arg_construction(a_and_b[0], a_and_b[1], bf_arg, alphas, helpers, acc_linear, acc_quadratic);
-        enforce_width_1_e4_arg_construction(a_and_b[0], a_and_b[1], bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols,
-                                            alphas, helpers, acc_linear, acc_quadratic);
-      }
-    } else {
-      enforce_range_check_expressions_with_constant_terms(expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols,
-                                                          alphas, helpers, acc_linear, acc_quadratic);
+    for (unsigned i{0}, expression_idx{0}, flat_term_idx{0}; i < expressions.num_expression_pairs; i++) {
+      bf a_and_b[2];
+      eval_a_and_b<false>(a_and_b, expressions, expression_idx, flat_term_idx, witness_cols, memory_cols, true);
+      const bf bf_arg = stage_2_bf_cols.get_at_col(expressions.bf_dst_cols[i]);
+      enforce_width_1_bf_arg_construction(a_and_b[0], a_and_b[1], bf_arg, alphas, helpers, acc_linear, acc_quadratic);
+      enforce_width_1_e4_arg_construction(a_and_b[0], a_and_b[1], bf_arg, expressions.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
+                                          acc_quadratic);
     }
+  } else {
+    enforce_range_check_expressions_with_constant_terms(expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                                        acc_quadratic);
+  }
 }
 
 struct MultiplicitiesLayout {
@@ -405,8 +400,8 @@ enforce_lookup_multiplicities(const MultiplicitiesLayout &layout, const matrix_g
 
 DEVICE_FORCEINLINE void enforce_lazy_init_teardown_padding(const LazyInitTeardownLayouts &lazy_init_teardown_layouts,
                                                            const matrix_getter<bf, ld_modifier::cg> &witness_cols,
-                                                           const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                                           vector_getter<e4, ld_modifier::ca> &alphas, e4 &acc_linear, e4 &acc_quadratic) {
+                                                           const matrix_getter<bf, ld_modifier::cg> &memory_cols, vector_getter<e4, ld_modifier::ca> &alphas,
+                                                           e4 &acc_linear, e4 &acc_quadratic) {
   // Enforce that lazy init address, value, and timestamp limbs are zero if "final borrow" is zero
   for (unsigned i = 0; i < lazy_init_teardown_layouts.num_init_teardown_sets; i++) {
     const auto &lazy_init_teardown_layout = lazy_init_teardown_layouts.layouts[i];
@@ -428,14 +423,13 @@ DEVICE_FORCEINLINE void enforce_lazy_init_teardown_padding(const LazyInitTeardow
   }
 }
 
-DEVICE_FORCEINLINE void
-enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle_ram_accesses,
-                                               const matrix_getter<bf, ld_modifier::cg> &memory_or_setup_cols,
-                                               const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                               vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
-                                               const unsigned memory_args_start,
-                                               vector_getter<e4, ld_modifier::ca> &alphas, vector_getter<e4, ld_modifier::ca> &helpers,
-                                               bool &arg_prev_is_initialized, e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
+DEVICE_FORCEINLINE void enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle_ram_accesses,
+                                                                       const matrix_getter<bf, ld_modifier::cg> &memory_or_setup_cols,
+                                                                       const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                                       vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                                                       const unsigned memory_args_start, vector_getter<e4, ld_modifier::ca> &alphas,
+                                                                       vector_getter<e4, ld_modifier::ca> &helpers, bool &arg_prev_is_initialized,
+                                                                       e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
   // Some write timestamp limb contributions are common across accesses:
   const bf write_timestamp_for_shuffle_ram_low = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start);
   const bf write_timestamp_for_shuffle_ram_high = memory_or_setup_cols.get_at_col(shuffle_ram_accesses.write_timestamp_start + 1);
@@ -507,11 +501,12 @@ enforce_grand_product_ram_access_contributions(const ShuffleRamAccesses &shuffle
   }
 }
 
-DEVICE_FORCEINLINE void
-enforce_grand_product_machine_state_contribution(const MachineStateLayout &layout, const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                                  vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols, vector_getter<e4, ld_modifier::ca> &alphas,
-                                                  vector_getter<e4, ld_modifier::ca> &helpers, bool &arg_prev_is_initialized, e4 &e4_arg_prev,
-                                                  e4 &acc_linear, e4 &acc_quadratic) {
+DEVICE_FORCEINLINE void enforce_grand_product_machine_state_contribution(const MachineStateLayout &layout,
+                                                                         const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                                         vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                                                         vector_getter<e4, ld_modifier::ca> &alphas,
+                                                                         vector_getter<e4, ld_modifier::ca> &helpers, bool &arg_prev_is_initialized,
+                                                                         e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
   const e4 alpha = (alphas++).get();
   e4 numerator = e4::mul(alpha, memory_cols.get_at_col(layout.final_pc_start));
   e4 denom = e4::mul(alpha, memory_cols.get_at_col(layout.initial_pc_start));
@@ -545,14 +540,10 @@ enforce_grand_product_machine_state_contribution(const MachineStateLayout &layou
 }
 
 DEVICE_FORCEINLINE void
-enforce_grand_product_lazy_init_teardown_contribution(const LazyInitTeardownLayouts &layouts,
-                                                      const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                                      vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
-                                                      vector_getter<e4, ld_modifier::ca> &alphas,
-                                                      vector_getter<e4, ld_modifier::ca> &helpers,
-                                                      const unsigned lazy_init_teardown_args_start,
-                                                      bool &arg_prev_is_initialized, e4 &e4_arg_prev,
-                                                      e4 &acc_linear, e4 &acc_quadratic) {
+enforce_grand_product_lazy_init_teardown_contribution(const LazyInitTeardownLayouts &layouts, const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                      vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols, vector_getter<e4, ld_modifier::ca> &alphas,
+                                                      vector_getter<e4, ld_modifier::ca> &helpers, const unsigned lazy_init_teardown_args_start,
+                                                      bool &arg_prev_is_initialized, e4 &e4_arg_prev, e4 &acc_linear, e4 &acc_quadratic) {
   for (unsigned i = 0; i < layouts.num_init_teardown_sets; i++) {
     const auto &layout = layouts.layouts[i];
 
@@ -593,14 +584,12 @@ enforce_grand_product_lazy_init_teardown_contribution(const LazyInitTeardownLayo
 
 constexpr bf SHIFT_16 = bf{1 << 16};
 
-DEVICE_FORCEINLINE void
-enforce_grand_product_register_and_indirect_access_contributions(const RegisterAndIndirectAccesses &register_and_indirect_accesses,
-                                                                 const matrix_getter<bf, ld_modifier::cg> &memory_cols,
-                                                                 vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
-                                                                 vector_getter<e4, ld_modifier::ca> &alphas,
-                                                                 vector_getter<e4, ld_modifier::ca> &helpers,
-                                                                 const unsigned memory_args_start,
-                                                                 e4 &acc_linear, e4 &acc_quadratic) {
+DEVICE_FORCEINLINE void enforce_grand_product_register_and_indirect_access_contributions(const RegisterAndIndirectAccesses &register_and_indirect_accesses,
+                                                                                         const matrix_getter<bf, ld_modifier::cg> &memory_cols,
+                                                                                         vectorized_e4_matrix_getter<ld_modifier::cg> stage_2_e4_cols,
+                                                                                         vector_getter<e4, ld_modifier::ca> &alphas,
+                                                                                         vector_getter<e4, ld_modifier::ca> &helpers,
+                                                                                         const unsigned memory_args_start, e4 &acc_linear, e4 &acc_quadratic) {
   const bf write_timestamp_low = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col);
   const bf write_timestamp_high = memory_cols.get_at_col(register_and_indirect_accesses.write_timestamp_col + 1);
   unsigned flat_indirect_idx = 0;
@@ -776,12 +765,10 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     __grid_constant__ const DelegationProcessingMetadata delegation_processing_metadata,
     __grid_constant__ const DelegationRequestMetadata delegation_request_metadata, const unsigned lazy_init_teardown_args_start,
     const unsigned memory_args_start, const unsigned grand_product_src_col, const unsigned grand_product_dst_col,
-    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts,
-    __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-    __grid_constant__ const MachineStateLayout machine_state_layout,
-    __grid_constant__ const MaskArgLayout mask_arg_layout,
-    const bool process_registers_and_indirect_access,
-    __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses, __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
+    __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
+    __grid_constant__ const MachineStateLayout machine_state_layout, __grid_constant__ const MaskArgLayout mask_arg_layout,
+    const bool process_registers_and_indirect_access, __grid_constant__ const RegisterAndIndirectAccesses register_and_indirect_accesses,
+    __grid_constant__ const RangeCheckArgsLayout range_check_16_layout,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout range_check_16_expressions,
     __grid_constant__ const TEMPORARYFlattenedLookupExpressionsLayout timestamp_range_check_expressions,
     __grid_constant__ const IntermediateStateLookupLayout intermediate_state_lookup_layout,
@@ -884,12 +871,12 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     enforce_width_1_e4_arg_construction(a, b, bf_arg, lazy_init_teardown_layout.e4_arg_col, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
   }
 
-  enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers,
-                                  acc_linear, acc_quadratic);
+  enforce_range_check_expressions(timestamp_range_check_expressions, witness_cols, memory_cols, stage_2_bf_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
+                                  acc_quadratic);
 
   if (intermediate_state_lookup_layout.has_decoder) {
-    enforce_intermediate_state_lookup(intermediate_state_lookup_layout, witness_cols, memory_cols, stage_2_e4_cols, alphas, helpers, acc_linear,
-                                      acc_quadratic, decompression_factor);
+    enforce_intermediate_state_lookup(intermediate_state_lookup_layout, witness_cols, memory_cols, stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic,
+                                      decompression_factor);
   }
 
   // TODO (optional): If i add a spurious "setup_cols" argument to the eval_a_and_b overload for non-shuffle-ram expressions,
@@ -909,8 +896,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const bf b_constant_term_adjusted = bf::sub(b_constant_term, memory_timestamp_high_from_circuit_idx);
     const bf linear_contribution_from_a_b_constants = bf::add(bf::mul(a, b_constant_term_adjusted), bf::mul(b, a_constant_term));
     acc_linear = e4::add(acc_linear, e4::mul(alpha, bf::sub(linear_contribution_from_a_b_constants, bf_arg)));
-    enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear,
-                                        acc_quadratic);
+    enforce_width_1_e4_arg_construction(a, b, bf_arg, expressions_for_shuffle_ram.e4_dst_cols[i], stage_2_e4_cols, alphas, helpers, acc_linear, acc_quadratic);
   }
 
   if (process_delegations) {
@@ -946,7 +932,7 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     } else {
       helpers++; // unused
     }
-    const auto& timestamp_src_cols = is_unrolled ? memory_cols : setup_cols;
+    const auto &timestamp_src_cols = is_unrolled ? memory_cols : setup_cols;
     denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_src_cols.get_at_col(metadata.timestamp_col)));
     denom = e4::add(denom, e4::mul((helpers++).get(), timestamp_src_cols.get_at_col(metadata.timestamp_col + 1)));
     const e4 e4_arg = stage_2_e4_cols.get_at_col(delegation_aux_poly_col);
@@ -979,13 +965,13 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
 
   if (shuffle_ram_accesses.num_accesses > 0) {
     const auto &memory_or_setup_cols = is_unrolled ? memory_cols : setup_cols;
-    enforce_grand_product_ram_access_contributions(shuffle_ram_accesses, memory_or_setup_cols, memory_cols, stage_2_e4_cols, memory_args_start, alphas,
-                                                   helpers, arg_prev_is_initialized, e4_arg_prev, acc_linear, acc_quadratic);
+    enforce_grand_product_ram_access_contributions(shuffle_ram_accesses, memory_or_setup_cols, memory_cols, stage_2_e4_cols, memory_args_start, alphas, helpers,
+                                                   arg_prev_is_initialized, e4_arg_prev, acc_linear, acc_quadratic);
   }
 
   if (machine_state_layout.process_machine_state)
-    enforce_grand_product_machine_state_contribution(machine_state_layout, memory_cols, stage_2_e4_cols, alphas, helpers, arg_prev_is_initialized,
-                                                     e4_arg_prev, acc_linear, acc_quadratic);
+    enforce_grand_product_machine_state_contribution(machine_state_layout, memory_cols, stage_2_e4_cols, alphas, helpers, arg_prev_is_initialized, e4_arg_prev,
+                                                     acc_linear, acc_quadratic);
 
   if (mask_arg_layout.process_mask) {
     const bf execute = memory_cols.get_at_col(mask_arg_layout.execute_col);
@@ -1178,8 +1164,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
       e4 acc_timestamp = e4::neg(stage_2_e4_cols.get_at_col(timestamp_range_check_multiplicities_layout.dst_cols_start));
       const unsigned num_timestamp_e4_args = timestamp_range_check_expressions.num_expression_pairs + expressions_for_shuffle_ram.num_expression_pairs;
       // This start location and the contiguity of e4 args cols are checked on the Rust side.
-      const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ?
-          timestamp_range_check_expressions.e4_dst_cols[0] : expressions_for_shuffle_ram.e4_dst_cols[0];
+      const unsigned start_e4_col = (timestamp_range_check_expressions.num_expression_pairs > 0) ? timestamp_range_check_expressions.e4_dst_cols[0]
+                                                                                                 : expressions_for_shuffle_ram.e4_dst_cols[0];
       for (unsigned i = 0; i < num_timestamp_e4_args; i++)
         acc_timestamp = e4::add(acc_timestamp, stage_2_e4_cols.get_at_col(start_e4_col + i));
       acc_timestamp = e4::mul(acc_timestamp, (helpers++).get());

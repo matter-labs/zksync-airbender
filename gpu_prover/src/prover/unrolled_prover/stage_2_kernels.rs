@@ -543,7 +543,9 @@ mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{run_basic_unrolled_test_with_word_specialization_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -1150,11 +1152,11 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_2_unrolled_for_main_and_blake() {
+    fn test_stage_2_unrolled_with_transpiler_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         // Tells the CPU test to use this file's comparison_hook for unrolled ciruits,
         // and comparison_hook from non-unrolled stage_2_kernels for delegation circuits.
-        run_basic_unrolled_test_with_word_specialization_impl(
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(
                 crate::prover::stage_2_kernels::tests::comparison_hook,
