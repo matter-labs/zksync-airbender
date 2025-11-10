@@ -1016,7 +1016,7 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_2_non_unrolled_for_main_and_blake() {
+    fn test_standalone_stage_2_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -1028,7 +1028,7 @@ pub(crate) mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_2_non_unrolled_for_main_and_keccak() {
+    fn test_standalone_stage_2_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
             Some(Box::new(comparison_hook)),
