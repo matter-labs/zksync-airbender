@@ -388,7 +388,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
     };
 
     // let worker = Worker::new_with_num_threads(1);
-    let worker = Worker::new_with_num_threads(32);
+    let worker = Worker::new_with_num_threads(8);
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
