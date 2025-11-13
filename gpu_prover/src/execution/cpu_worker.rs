@@ -54,7 +54,7 @@ pub trait NonDeterminism: NonDeterminismCSRSource<Ram> + Clone {}
 
 impl<T> NonDeterminism for T where T: NonDeterminismCSRSource<Ram> + Clone {}
 
-const SNAPSHOT_PERIOD: usize = 1 << 20;
+const SNAPSHOT_PERIOD: usize = 1 << 22;
 
 pub(crate) fn run_split_simulator(
     batch_id: u64,

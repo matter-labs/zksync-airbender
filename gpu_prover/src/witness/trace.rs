@@ -31,12 +31,10 @@ impl<T, A: GoodAllocator> ChunkedTraceHolder<T, A> {
         panic!("Index out of bounds");
     }
 
-    pub fn get_allocator(self) -> Option<A> {
-        let chunks = self
-            .chunks
+    pub fn into_allocators(self) -> Vec<A> {
+        self.chunks
             .into_iter()
-            .map(|c| Arc::into_inner(c).unwrap())
-            .collect_vec();
-        chunks.get(0).map(|c| c.allocator().clone())
+            .map(|c| Arc::into_inner(c).unwrap().allocator().clone())
+            .collect()
     }
 }

@@ -85,7 +85,7 @@ impl Default for ExecutionProverConfiguration {
             prover_context_config: Default::default(),
             host_allocator_backing_allocation_size: 1 << 26, // 64 MB
             replay_worker_threads_count: 4,
-            host_allocators_per_worker_count: 16, // 1 GB
+            host_allocators_per_worker_count: 64, // 4 GB
             host_allocators_per_device_count: 64, // 4 GB
         }
     }
@@ -450,12 +450,12 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                         } = commitment;
                         trace!("BATCH[{batch_id}] PROVER received memory commitment for circuit {circuit_type:?}[{sequence_id}]");
                         if let Some(inits_and_teardowns) = inits_and_teardowns {
-                            if let Some(allocator) = inits_and_teardowns.get_allocator() {
+                            for allocator in inits_and_teardowns.into_allocators() {
                                 self.free_allocators_sender.send(allocator).unwrap();
                             }
                         }
                         if let Some(tracing_data) = tracing_data {
-                            if let Some(allocator) = tracing_data.get_allocator() {
+                            for allocator in tracing_data.into_allocators() {
                                 self.free_allocators_sender.send(allocator).unwrap();
                             }
                         }
@@ -476,12 +476,12 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
                         } = proof;
                         trace!("BATCH[{batch_id}] PROVER received proof for circuit {circuit_type:?}[{sequence_id}]");
                         if let Some(inits_and_teardowns) = inits_and_teardowns {
-                            if let Some(allocator) = inits_and_teardowns.get_allocator() {
+                            for allocator in inits_and_teardowns.into_allocators() {
                                 self.free_allocators_sender.send(allocator).unwrap();
                             }
                         }
                         if let Some(tracing_data) = tracing_data {
-                            if let Some(allocator) = tracing_data.get_allocator() {
+                            for allocator in tracing_data.into_allocators() {
                                 self.free_allocators_sender.send(allocator).unwrap();
                             }
                         }
@@ -1406,9 +1406,9 @@ mod tests {
             &binary_image,
             &text_section,
         );
-        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![1 << 20, 1 << 16]);
+        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![1 << 26, 0]);
         let (_, result) =
-            prover.get_results(false, 0, &0usize, 1 << 30, non_determinism_source, None);
+            prover.get_results(false, 0, &0usize, 1 << 36, non_determinism_source, None);
         // match result {
         //     ExecutionProverResult::MemoryCommitment(memory_commitment) => {
         //         for (circuit_type, commitment) in memory_commitment

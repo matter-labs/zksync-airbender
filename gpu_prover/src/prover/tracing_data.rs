@@ -39,11 +39,11 @@ pub(crate) enum DelegationTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> DelegationTracingDataHost<A> {
-    pub fn get_allocator(self) -> Option<A> {
+    pub fn into_allocators(self) -> Vec<A> {
         match self {
-            DelegationTracingDataHost::BigIntWithControl(trace) => trace.get_allocator(),
-            DelegationTracingDataHost::Blake2WithCompression(trace) => trace.get_allocator(),
-            DelegationTracingDataHost::KeccakSpecial5(trace) => trace.get_allocator(),
+            DelegationTracingDataHost::BigIntWithControl(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::Blake2WithCompression(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::KeccakSpecial5(trace) => trace.into_allocators(),
         }
     }
 }
@@ -82,11 +82,11 @@ pub(crate) enum UnrolledTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> UnrolledTracingDataHost<A> {
-    pub fn get_allocator(self) -> Option<A> {
+    pub fn into_allocators(self) -> Vec<A> {
         match self {
-            UnrolledTracingDataHost::Memory(trace) => trace.get_allocator(),
-            UnrolledTracingDataHost::NonMemory(trace) => trace.get_allocator(),
-            UnrolledTracingDataHost::Unified(trace) => trace.get_allocator(),
+            UnrolledTracingDataHost::Memory(trace) => trace.into_allocators(),
+            UnrolledTracingDataHost::NonMemory(trace) => trace.into_allocators(),
+            UnrolledTracingDataHost::Unified(trace) => trace.into_allocators(),
         }
     }
 }
@@ -98,10 +98,10 @@ pub(crate) enum TracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> TracingDataHost<A> {
-    pub fn get_allocator(self) -> Option<A> {
+    pub fn into_allocators(self) -> Vec<A> {
         match self {
-            TracingDataHost::Delegation(trace) => trace.get_allocator(),
-            TracingDataHost::Unrolled(trace) => trace.get_allocator(),
+            TracingDataHost::Delegation(trace) => trace.into_allocators(),
+            TracingDataHost::Unrolled(trace) => trace.into_allocators(),
         }
     }
 }
