@@ -84,6 +84,11 @@ impl StageThreeOutput {
             .as_ref()
             .unwrap()
             .get_accessor();
+        let stage_2_decoder_challenges_accessor = stage_2_output
+            .decoder_challenges
+            .as_ref()
+            .unwrap()
+            .get_accessor();
         let stage_2_last_row_accessor = stage_2_output.last_row.as_ref().unwrap().get_accessor();
         let stage_2_offset_for_grand_product_poly = stage_2_output.offset_for_grand_product_poly;
         let offset_for_sum_over_delegation_poly =
@@ -98,8 +103,14 @@ impl StageThreeOutput {
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
-        let static_metadata =
-            StaticMetadata::new(tau, omega_inv, cached_data, &circuit, false, log_domain_size);
+        let static_metadata = StaticMetadata::new(
+            tau,
+            omega_inv,
+            cached_data,
+            &circuit,
+            false,
+            log_domain_size,
+        );
         let static_metadata_clone = static_metadata.clone();
         let get_challenges_and_helpers_fn = move || unsafe {
             let mut transcript_challenges =
@@ -138,7 +149,7 @@ impl StageThreeOutput {
                 &beta_powers,
                 omega,
                 stage_2_lookup_challenges_accessor.get(),
-                None,
+                stage_2_decoder_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
                 &aux_boundary_values,

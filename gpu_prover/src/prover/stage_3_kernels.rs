@@ -788,7 +788,7 @@ pub(super) fn prepare_async_challenge_data(
     h_beta_powers: &[E4],
     omega: E2,
     lookup_challenges: &LookupChallenges,
-    decoder_table_challenges: Option<DecoderTableChallenges>,
+    decoder_table_challenges: &DecoderTableChallenges,
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
     aux_arguments_boundary_values: &[AuxArgumentsBoundaryValues],
@@ -837,13 +837,6 @@ pub(super) fn prepare_async_challenge_data(
         range_check_16_width_1_lookups_access_via_expressions,
         ..
     } = cached_data.clone();
-
-    let decoder_table_challenges = if *is_unrolled {
-        decoder_table_challenges.unwrap()
-    } else {
-        assert!(decoder_table_challenges.is_none());
-        DecoderTableChallenges::default()
-    };
 
     // We keep references to host AND device copies of challenge powers,
     // because host copies come in handy to precompute challenges_times_powers_sum
@@ -1051,7 +1044,7 @@ pub(super) fn prepare_async_challenge_data(
     // decoder lookups
     if circuit.memory_layout.intermediate_state_layout.is_some() {
         intermediate_state_lookup_layout.prepare_async_challenge_data(
-            &decoder_table_challenges,
+            decoder_table_challenges,
             &h_alphas_for_hardcoded_every_row_except_last,
             &mut alpha_offset,
             helpers,
@@ -1756,14 +1749,14 @@ mod tests {
             prover_data.stage_2_result.lookup_argument_gamma,
         );
         let decoder_table_challenges = if *is_unrolled {
-            Some(DecoderTableChallenges::new(
+            DecoderTableChallenges::new(
                 &prover_data
                     .stage_2_result
                     .decoder_table_linearization_challenges,
                 prover_data.stage_2_result.decoder_table_gamma,
-            ))
+            )
         } else {
-            None
+            DecoderTableChallenges::default()
         };
         let static_metadata = StaticMetadata::new(
             tau,
@@ -1828,7 +1821,7 @@ mod tests {
             &h_beta_powers,
             twiddles.omega,
             &lookup_challenges,
-            decoder_table_challenges,
+            &decoder_table_challenges,
             &cached_data,
             &circuit,
             aux_boundary_values,
