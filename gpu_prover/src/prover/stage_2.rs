@@ -193,6 +193,7 @@ impl StageTwoOutput {
             slice::from_ref(unsafe { lookup_challenges_accessor.get() }),
             stream,
         )?;
+        self.lookup_challenges = Some(lookup_challenges);
         if has_decoder {
             memory_copy_async(
                 &mut d_decoder_challenges,
@@ -200,7 +201,7 @@ impl StageTwoOutput {
                 stream,
             )?;
         }
-        self.lookup_challenges = Some(lookup_challenges);
+        self.decoder_challenges = Some(decoder_challenges);
         let witness_evaluations = stage_1_output.witness_holder.get_evaluations(context)?;
         let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
         let memory_evaluations = stage_1_output.memory_holder.get_evaluations(context)?;

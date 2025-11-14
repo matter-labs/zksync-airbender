@@ -378,7 +378,7 @@ fn gpu_worker(
                                 );
                                 sets_count
                             } else {
-                                1
+                                0
                             };
                             vec![AuxArgumentsBoundaryValues::default(); sets_count]
                         };

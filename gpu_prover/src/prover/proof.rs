@@ -11,10 +11,8 @@ use super::stage_5::StageFiveOutput;
 use super::trace_holder::{flatten_tree_caps, get_tree_caps, TreesCacheMode};
 use super::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use super::{device_tracing, BF};
-use crate::circuit_type::CircuitType;
-use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, ShuffleRamInitsAndTeardownsDevice,
-};
+use crate::circuit_type::{CircuitType, UnrolledCircuitType};
+use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
@@ -94,6 +92,13 @@ pub fn prove<'a, A: GoodAllocator>(
     context.log_gpu_mem_usage("initial");
 
     let is_unrolled = matches!(circuit_type, CircuitType::Unrolled(_));
+    // let is_unrolled = match circuit_type {
+    //     CircuitType::Delegation(_) => false,
+    //     CircuitType::Unrolled(circuit_type) => match circuit_type {
+    //         UnrolledCircuitType::InitsAndTeardowns => false,
+    //         _ => true,
+    //     },
+    // };
     let trace_len = circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
@@ -380,10 +385,33 @@ fn initialize_seed<'a>(
         .as_ref()
         .unwrap()
         .get_accessor();
-    let add_aux_boundary_values = !circuit
-        .memory_layout
-        .shuffle_ram_inits_and_teardowns
-        .is_empty();
+    let delegation_argument_challenges = if circuit
+        .stage_2_layout
+        .delegation_processing_aux_poly
+        .is_some()
+    {
+        assert!(
+            external_challenges.delegation_argument.is_some(),
+            "Must have delegation argument challenge if argument is present"
+        );
+        external_challenges.delegation_argument
+    } else {
+        None
+    };
+    let machine_state_permutation_argument_challenges =
+        if circuit.memory_layout.machine_state_layout.is_some()
+            || circuit.memory_layout.intermediate_state_layout.is_some()
+        {
+            assert!(
+                external_challenges
+                    .machine_state_permutation_argument
+                    .is_some(),
+                "Must have machine state permutation argument challenge if argument is present"
+            );
+            external_challenges.machine_state_permutation_argument
+        } else {
+            None
+        };
     let seed_fn = move || unsafe {
         let public_inputs = public_inputs_accessor.get();
         let setup_tree_caps = setup_tree_caps
@@ -398,17 +426,19 @@ fn initialize_seed<'a>(
         input.extend(public_inputs.iter().map(BF::to_reduced_u32));
         input.extend(setup_tree_caps);
         input.extend_from_slice(&external_challenges.memory_argument.flatten());
-        if let Some(delegation_argument_challenges) =
-            external_challenges.delegation_argument.as_ref()
+        if let Some(delegation_argument_challenges) = delegation_argument_challenges {
+            input.extend(delegation_argument_challenges.flatten());
+        }
+        if let Some(machine_state_permutation_argument_challenges) =
+            machine_state_permutation_argument_challenges
         {
-            input.extend_from_slice(&delegation_argument_challenges.flatten());
+            input.extend(machine_state_permutation_argument_challenges.flatten());
         }
-        if add_aux_boundary_values {
-            input.extend(aux_boundary_values.iter().flat_map(|v| v.flatten()));
-        }
+        input.extend(aux_boundary_values.iter().flat_map(|v| v.flatten()));
         input.extend(flatten_tree_caps(&witness_tree_cap_accessors));
         input.extend(flatten_tree_caps(&memory_tree_cap_accessors));
-        seed_accessor.set(Transcript::commit_initial(&input));
+        let seed = Transcript::commit_initial(&input);
+        seed_accessor.set(seed);
     };
     callbacks.schedule(seed_fn, context.get_exec_stream())?;
     Ok(seed)

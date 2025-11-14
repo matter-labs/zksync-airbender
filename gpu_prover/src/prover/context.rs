@@ -52,7 +52,7 @@ impl Default for ProverContextConfig {
             device_slack_static_bytes: 1 << 27,     // 128 MB static slack
             device_slack_per_thread_bytes: 1 << 11, // 2 KB per thread slack
             max_device_allocation_blocks_count: None,
-            host_allocator_blocks_count: 32, // 512 MB host allocator pool
+            host_allocator_blocks_count: 64, // 1 GB host allocator pool
         }
     }
 }
