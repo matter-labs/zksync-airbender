@@ -49,7 +49,10 @@ use crate::field::BaseField;
 use crate::machine_type::MachineType;
 use crate::prover::memory::commit_memory;
 use crate::witness::trace_delegation::DelegationTraceHost;
-use crate::witness::trace_unrolled::{ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsHost, UnrolledMemoryTraceHost, UnrolledNonMemoryTraceHost, UnrolledUnifiedTraceDevice};
+use crate::witness::trace_unrolled::{
+    ShuffleRamInitsAndTeardownsHost, UnrolledMemoryTraceHost, UnrolledNonMemoryTraceHost,
+    UnrolledUnifiedTraceHost,
+};
 use cs::cs::circuit::Circuit;
 use cs::machine::ops::unrolled::{
     compile_unified_circuit_state_transition, materialize_flattened_decoder_table,
@@ -77,10 +80,7 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::{DelegationAbiDescription, UnifiedDestinationHolder};
-use setups::{
-    unified_reduced_machine_circuit_setup,
-    DelegationCircuitPrecomputations,
-};
+use setups::{unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations};
 use setups::{UnrolledCircuitPrecomputations, UnrolledCircuitWitnessEvalFn};
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
@@ -94,7 +94,6 @@ use trace_and_split::{
 };
 use trace_holder::RowMajorTrace;
 use worker::Worker;
-use crate::device_structures::DeviceMatrixMut;
 
 pub const NUM_QUERIES: usize = 53;
 pub const POW_BITS: u32 = 28;
@@ -2681,7 +2680,7 @@ fn compare_proofs(left: &UnrolledModeProof, right: &UnrolledModeProof) {
 // }
 
 #[test]
-fn run_unrolled_reduced_test() {
+fn run_unrolled_reduced_test() -> CudaResult<()> {
     type CountersT = DelegationsCounters;
 
     const SECOND_WORD_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
@@ -3014,18 +3013,54 @@ fn run_unrolled_reduced_test() {
     let prover_context = ProverContext::new(&prover_context_config).unwrap();
     println!("prover_context created in {:?}", instant.elapsed());
 
-    // let h_decoder_table = decoder_table
+    let h_decoder_table = decoder_table
+        .iter()
+        .copied()
+        .map(|d| d.into())
+        .collect_vec();
+    let mut d_decoder_table =
+        prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
+    memory_copy_async(
+        &mut d_decoder_table,
+        &h_decoder_table,
+        prover_context.get_exec_stream(),
+    )?;
+
+    // let (gpu_caps, _) = {
+    //     let log_lde_factor = lde_factor.trailing_zeros();
+    //     let trace_len = circuit.trace_len;
+    //     let log_domain_size = trace_len.trailing_zeros();
+    //     let log_tree_cap_size =
+    //         OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+    //     let inits_and_teardowns = ShuffleRamInitsAndTeardownsHost {
+    //         chunks: vec![Arc::new(inits_and_teardowns[0].lazy_init_data.clone())],
+    //     };
+    //     let mut inits_and_teardowns_transfer =
+    //         InitsAndTeardownsTransfer::new(inits_and_teardowns, &prover_context)?;
+    //     inits_and_teardowns_transfer.schedule_transfer(&prover_context)?;
+    //     let trace = UnrolledUnifiedTraceHost {
+    //         chunks: vec![Arc::new(buffer.clone())],
+    //     };
+    //     let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace));
+    //     let mut transfer = TracingDataTransfer::new(data, &prover_context)?;
+    //     transfer.schedule_transfer(&prover_context)?;
+    //     let job = commit_memory(
+    //         Unrolled(CIRCUIT_TYPE),
+    //         &circuit,
+    //         Some(&d_decoder_table),
+    //         Some(inits_and_teardowns_transfer),
+    //         Some(transfer),
+    //         log_lde_factor,
+    //         log_tree_cap_size,
+    //         &prover_context,
+    //     )?;
+    //     job.finish()?
+    // };
+    //
+    // gpu_caps
     //     .iter()
-    //     .copied()
-    //     .map(|d| d.into())
-    //     .collect_vec();
-    // let mut d_decoder_table =
-    //     prover_context.alloc(decoder_table.len(), AllocationPlacement::Bottom)?;
-    // memory_copy_async(
-    //     &mut d_decoder_table,
-    //     &h_decoder_table,
-    //     prover_context.get_exec_stream(),
-    // )?;
+    //     .zip(caps.iter())
+    //     .for_each(|(gpu_cap, cpu_cap)| assert_eq!(gpu_cap, cpu_cap));
 
     println!("Evaluating full witness");
 
@@ -3097,6 +3132,74 @@ fn run_unrolled_reduced_test() {
     );
     println!("Proving time is {:?}", now.elapsed());
 
+    let (gpu_proof, _) = {
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let trace_len = circuit.trace_len;
+        let log_domain_size = trace_len.trailing_zeros();
+        let log_tree_cap_size =
+            OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+        let setup_row_major = &setup.ldes[0].trace;
+        let mut setup_evaluations = Vec::with_capacity(setup_row_major.as_slice().len());
+        unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+        transpose::transpose(
+            setup_row_major.as_slice(),
+            &mut setup_evaluations,
+            setup_row_major.padded_width,
+            setup_row_major.len(),
+        );
+        setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+        let setup_evaluations = Arc::new(setup_evaluations);
+        let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+            &circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            setup_evaluations.clone(),
+            &prover_context,
+        )?;
+        let mut setup = SetupPrecomputations::new(
+            &circuit,
+            log_lde_factor,
+            log_tree_cap_size,
+            false,
+            setup_trees_and_caps,
+            &prover_context,
+        )?;
+        setup.schedule_transfer(setup_evaluations, &prover_context)?;
+        let inits_and_teardowns = ShuffleRamInitsAndTeardownsHost {
+            chunks: vec![Arc::new(inits_and_teardowns[0].lazy_init_data.clone())],
+        };
+        let mut inits_and_teardowns_transfer =
+            InitsAndTeardownsTransfer::new(inits_and_teardowns, &prover_context)?;
+        inits_and_teardowns_transfer.schedule_transfer(&prover_context)?;
+        let trace = UnrolledUnifiedTraceHost {
+            chunks: vec![Arc::new(buffer.clone())],
+        };
+        let data = TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace));
+        let mut transfer = TracingDataTransfer::new(data, &prover_context)?;
+        transfer.schedule_transfer(&prover_context)?;
+        let job = crate::prover::proof::prove(
+            Unrolled(CIRCUIT_TYPE),
+            Arc::new(circuit.clone()),
+            external_challenges.clone(),
+            aux_boundary_data,
+            &mut setup,
+            Some(&d_decoder_table),
+            Some(inits_and_teardowns_transfer),
+            Some(transfer),
+            &lde_precomputations,
+            None,
+            lde_factor,
+            53,
+            28,
+            Some(proof.pow_nonce),
+            true,
+            TreesCacheMode::CacheNone,
+            &prover_context,
+        )?;
+        job.finish()?
+    };
+    compare_proofs(&proof, &gpu_proof);
+
     assert_eq!(
         proof.delegation_argument_accumulator.unwrap(),
         Mersenne31Quartic::ZERO
@@ -3104,6 +3207,7 @@ fn run_unrolled_reduced_test() {
     permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
 
     assert_eq!(permutation_argument_accumulator, Mersenne31Quartic::ONE);
+    Ok(())
 }
 
 #[test]
@@ -4202,7 +4306,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 Unrolled(UnrolledCircuitType::InitsAndTeardowns),
                 circuit,
                 external_challenges.clone(),
-                vec![],
+                aux_data.aux_boundary_data.clone(),
                 &mut setup,
                 None,
                 Some(transfer),
