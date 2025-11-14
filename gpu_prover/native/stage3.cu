@@ -983,8 +983,9 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_hardcoded_constraints_kernel
     const e4 linear_contribution = e4::add(quadratic_term_for_acc_linear, linear_terms);
     const e4 alpha = (alphas++).get();
     acc_linear = e4::add(acc_linear, e4::mul(alpha, linear_contribution));
-    // Asserts on the rust side ensure no circuit actually needs to update
-    // e4_arg_prev and set arg_prev_is_initialized = true here.
+    // The "unified circuit" is a corner case that has both machine state masking and subsequent shuffle ram init.
+    arg_prev_is_initialized = true;
+    e4_arg_prev = e4_arg;
   }
 
   if (lazy_init_teardown_layouts.process_shuffle_ram_init)
