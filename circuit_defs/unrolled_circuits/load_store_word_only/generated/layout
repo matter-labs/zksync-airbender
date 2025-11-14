@@ -1706,7 +1706,7 @@
     "WitnessSubtree": 18
   },
   "executor_family_decoder_table_size": 1048576,
-  "trace_len": 16777216,
+  "trace_len": 2097152,
   "table_offsets": [
     0,
     1,

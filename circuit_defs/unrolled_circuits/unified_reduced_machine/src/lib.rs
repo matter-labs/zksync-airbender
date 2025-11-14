@@ -14,7 +14,7 @@ use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::*;
 
 pub const FAMILY_IDX: u8 = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-pub const TRACE_LEN_LOG2: u32 = 23;
+pub const TRACE_LEN_LOG2: u32 = 21;
 pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
 pub const NUM_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;

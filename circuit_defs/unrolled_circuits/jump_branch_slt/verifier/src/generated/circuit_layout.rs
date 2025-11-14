@@ -920,5 +920,5 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
         state_linkage_constraints: &[],
         public_inputs: &[],
         lazy_init_address_aux_vars: &[],
-        trace_len_log2: 24usize,
+        trace_len_log2: 21usize,
     };

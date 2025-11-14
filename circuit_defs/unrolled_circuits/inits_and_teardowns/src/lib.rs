@@ -7,7 +7,7 @@ use prover::field::Mersenne31Field;
 use prover::*;
 
 pub const FAMILY_IDX: u8 = INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX;
-pub const TRACE_LEN_LOG2: u32 = 24;
+pub const TRACE_LEN_LOG2: u32 = 21;
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
 pub const NUM_CYCLES: usize = DOMAIN_SIZE - 1;

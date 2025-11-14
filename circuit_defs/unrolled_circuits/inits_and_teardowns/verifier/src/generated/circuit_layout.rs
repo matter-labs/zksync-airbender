@@ -453,5 +453,5 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 final_borrow: ColumnAddress::WitnessSubtree(24usize),
             },
         ],
-        trace_len_log2: 24usize,
+        trace_len_log2: 21usize,
     };
