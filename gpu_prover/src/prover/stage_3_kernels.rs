@@ -637,7 +637,7 @@ impl StaticMetadata {
                 .num_elements(),
             lazy_init_teardown_layouts.num_init_teardown_sets as usize,
         );
-        if is_unrolled && lazy_init_teardown_layouts.num_init_teardown_sets > 0 {
+        if is_unrolled && lazy_init_teardown_layouts.num_init_teardown_sets > 1 {
             assert!(!arg_prev_is_initialized);
         }
         let raw_lazy_init_teardown_args_start = circuit
