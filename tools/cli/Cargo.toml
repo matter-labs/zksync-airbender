@@ -17,6 +17,10 @@ path = "src/lib.rs"
 name = "cli"
 path = "src/main.rs"
 
+[[bin]]
+name = "convert_bincode_to_json"
+path = "src/bin/convert_bincode_to_json.rs"
+
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
 risc_v_cycles = { workspace = true }
@@ -46,6 +50,7 @@ gpu_prover = { workspace = true, optional = true }
 
 env_logger = "0.11"
 base64 = "0.21.7"
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 
 
 [features]
