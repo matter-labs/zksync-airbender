@@ -2298,6 +2298,7 @@ pub(crate) mod test {
         );
     }
 
+    #[cfg(feature = "verifiers")]
     #[test]
     fn test_verify_simple_fib() {
         use setups::*;
@@ -2364,7 +2365,7 @@ pub(crate) mod test {
                             &families_setups,
                             full_statement_verifier::unrolled_proof_statement::FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
                             (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
-                            full_statement_verifier::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+                            full_statement_verifier::imports::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
                         )
                     };
                 })

@@ -11,7 +11,7 @@ mod constants;
 pub mod definitions;
 
 #[cfg(feature = "verifiers")]
-mod imports;
+pub mod imports;
 #[cfg(feature = "verifiers")]
 pub mod legacy_circuits;
 #[cfg(feature = "verifiers")]

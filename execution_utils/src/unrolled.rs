@@ -449,6 +449,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     )
 }
 
+#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
 #[cfg(test)]
 mod test {
     use super::*;
@@ -664,7 +665,7 @@ mod test {
                     &families_setups,
                     params,
                     (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
-                    full_statement_verifier::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+                    full_statement_verifier::imports::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
                 )
             };
         })

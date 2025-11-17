@@ -32,7 +32,7 @@ const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 // #[ignore = "test has explicit panic inside"]
 #[test]
 fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
-    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None);
+    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None, None);
 }
 
 pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
