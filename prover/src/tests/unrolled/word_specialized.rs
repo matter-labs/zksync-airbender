@@ -12,7 +12,9 @@ use cs::machine::ops::unrolled::{
         word_only_load_store_table_addition_fn, word_only_load_store_table_driver_fn,
     },
 };
+use transcript::pow;
 
+use crate::prover_stages::ProofPowConfig;
 use crate::unrolled::{
     evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,
     run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization,
@@ -839,7 +841,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -993,7 +995,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1160,7 +1162,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1323,7 +1325,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1490,7 +1492,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1654,7 +1656,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1794,7 +1796,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1947,7 +1949,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_factor,
                 tree_cap_size,
                 53,
-                28,
+                80,
                 &worker,
             );
             println!(

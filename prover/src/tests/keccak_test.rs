@@ -4,6 +4,7 @@ use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use cs::cs::{circuit::Circuit, cs_reference::BasicAssembly};
 use full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
 use risc_v_simulator::{cycle::IMStandardIsaConfig, delegations::DelegationsCSRProcessor};
+use crate::prover_stages::ProofPowConfig;
 
 const SECOND_WORD_BITS: usize = 4;
 
@@ -333,7 +334,7 @@ pub fn run_keccak_test_impl(
         lde_factor,
         tree_cap_size,
         53,
-        28,
+        80,
         &worker,
     );
     println!("Full machine proving time is {:?}", now.elapsed());
@@ -435,7 +436,7 @@ pub fn run_keccak_test_impl(
                 lde_factor,
                 tree_cap_size,
                 53,
-                28,
+                80,
                 &worker,
             );
             println!(

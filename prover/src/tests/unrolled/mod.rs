@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::prover_stages::ProofPowConfig;
 use crate::tracers::unrolled::tracer::*;
 use crate::unrolled::evaluate_witness_for_executor_family;
 use crate::unrolled::run_unrolled_machine_for_num_cycles;
@@ -592,7 +593,7 @@ pub fn run_basic_unrolled_test_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -697,7 +698,7 @@ pub fn run_basic_unrolled_test_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -818,7 +819,7 @@ pub fn run_basic_unrolled_test_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -931,7 +932,7 @@ pub fn run_basic_unrolled_test_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1045,7 +1046,7 @@ pub fn run_basic_unrolled_test_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());

@@ -12,20 +12,25 @@ compile_error!("multiple security levels selected same time");
 pub const SECURITY_BITS: usize = 80;
 #[cfg(feature = "security_80")]
 pub const POW_BITS: usize = 28;
+#[cfg(feature = "security_80")]
+pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
+    SECURITY_BITS,
+    cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
+    MERSENNE31QUARTIC_SIZE_LOG2
+);
 
 #[cfg(feature = "security_100")]
 pub const SECURITY_BITS: usize = 100;
 #[cfg(feature = "security_100")]
 pub const POW_BITS: usize = 28;
+#[cfg(feature = "security_100")]
+pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
+    SECURITY_BITS,
+    cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
+    MERSENNE31QUARTIC_SIZE_LOG2
+);
 
-pub const fn num_queries_for_security_params(
-    security_bits: usize,
-    pow_bits: usize,
-    lde_factor_log2: usize,
-) -> usize {
-    let bits = security_bits - pow_bits;
-    bits.div_ceil(lde_factor_log2) + 1
-}
+pub use prover::prover_stages::pow_bits_calculator::*;
 
 use core::mem::MaybeUninit;
 

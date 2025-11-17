@@ -4,6 +4,7 @@ use crate::cs::machine::ops::unrolled::*;
 use crate::u32_from_field_elems;
 use crate::NonDeterminismCSRSource;
 use crate::DUMP_WITNESS_VAR;
+use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::TIMESTAMP_STEP;
@@ -21,6 +22,7 @@ use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
+use prover::transcript::pow;
 use prover::unrolled::evaluate_init_and_teardown_witness;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::unrolled::NonMemoryCircuitOracle;
@@ -44,6 +46,7 @@ use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::DelegationCircuitPrecomputations;
 use setups::UnrolledCircuitPrecomputations;
 use setups::UnrolledCircuitWitnessEvalFn;
+use verifier_common::SECURITY_BITS;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -364,6 +367,7 @@ pub fn prove_unrolled_execution<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     let (
         final_pc,
@@ -569,8 +573,21 @@ pub fn prove_unrolled_execution<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(&all_challenges_seed, MEMORY_DELEGATION_POW_BITS as u32, worker).1;
+        #[cfg(feature = "timing_logs")]
+        println!("PoW for {} took {:?}", MEMORY_DELEGATION_POW_BITS, now.elapsed());
+        pow_challenge
+    } else {
+        0
+    };
+
     let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed, MEMORY_DELEGATION_POW_BITS, pow_challenge);
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -703,7 +720,7 @@ pub fn prove_unrolled_execution<
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
                     crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    SECURITY_BITS,
                     &worker,
                 );
             println!(
@@ -822,7 +839,7 @@ pub fn prove_unrolled_execution<
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
                     crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    SECURITY_BITS,
                     &worker,
                 );
             println!(
@@ -907,7 +924,7 @@ pub fn prove_unrolled_execution<
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
                 crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                SECURITY_BITS,
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -1022,7 +1039,7 @@ pub fn prove_unrolled_execution<
                 prec.lde_factor,
                 prec.tree_cap_size,
                 crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                SECURITY_BITS,
                 worker,
             );
             #[cfg(feature = "timing_logs")]
@@ -1079,6 +1096,7 @@ pub fn prove_unrolled_execution<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -1104,6 +1122,7 @@ pub fn prove_unrolled_execution_with_replayer<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     use prover::unrolled::run_unrolled_machine;
 
@@ -1499,8 +1518,21 @@ pub fn prove_unrolled_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(&all_challenges_seed, MEMORY_DELEGATION_POW_BITS as u32, worker).1;
+        #[cfg(feature = "timing_logs")]
+        println!("PoW for {} took {:?}", MEMORY_DELEGATION_POW_BITS, now.elapsed());
+        pow_challenge
+    } else {
+        0
+    };
+
     let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed, MEMORY_DELEGATION_POW_BITS, pow_challenge);
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -1635,7 +1667,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
                     crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    SECURITY_BITS,
                     &worker,
                 );
             println!(
@@ -1756,7 +1788,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
                     crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    SECURITY_BITS,
                     &worker,
                 );
             println!(
@@ -1831,7 +1863,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
                 crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                SECURITY_BITS,
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -1993,6 +2025,7 @@ pub fn prove_unrolled_execution_with_replayer<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -2118,7 +2151,7 @@ fn prove_delegation_circuit_with_replayer_format<
             prec.lde_factor,
             prec.tree_cap_size,
             crate::NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            SECURITY_BITS,
             worker,
         );
         #[cfg(feature = "timing_logs")]

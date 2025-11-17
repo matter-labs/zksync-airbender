@@ -2,7 +2,7 @@ use super::*;
 use crate::tests::unrolled::word_specialized::*;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
-
+use crate::prover_stages::ProofPowConfig;
 use risc_v_simulator::machine_mode_only_unrolled::*;
 use riscv_transpiler::witness::*;
 
@@ -511,7 +511,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -675,7 +675,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -858,7 +858,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1035,7 +1035,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1215,7 +1215,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1398,7 +1398,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1518,7 +1518,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1677,7 +1677,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!(
@@ -1866,7 +1866,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lde_factor,
             tree_cap_size,
             53,
-            28,
+            80,
             &worker,
         );
         println!(

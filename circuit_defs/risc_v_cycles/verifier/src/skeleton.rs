@@ -1,4 +1,4 @@
-use verifier_common::blake2s_u32::AlignedArray64;
+use verifier_common::{SizedProofPowChallenges, blake2s_u32::AlignedArray64};
 
 use super::*;
 
@@ -15,6 +15,7 @@ pub struct ProofSkeleton<
     const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
     const NUM_OPENINGS_AT_Z: usize,
     const NUM_OPENINGS_AT_Z_OMEGA: usize,
+    const NUM_FRI_STEPS: usize,
     const NUM_FRI_STEPS_WITH_ORACLES: usize,
     const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
     const FRI_FINAL_DEGREE: usize,
@@ -42,7 +43,7 @@ pub struct ProofSkeleton<
         [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; NUM_FRI_STEPS_WITH_ORACLES],
     pub fri_final_step_leafs: [[Mersenne31Quartic; FINAL_FRI_STEP_LEAF_SIZE_PER_COSET]; NUM_COSETS],
     pub monomial_coeffs: [Mersenne31Quartic; FRI_FINAL_DEGREE],
-    pub pow_nonce: u64,
+    pub pow_challenges: SizedProofPowChallenges<NUM_FRI_STEPS>,
 }
 
 // NOTE: leaf is tightly packed, we can fill it in the tight loop

@@ -36,6 +36,9 @@ pub mod stage3;
 pub mod stage4;
 pub mod stage5;
 
+pub mod pow_bits_calculator;
+pub use pow_bits_calculator::{ProofPowConfig, ProofPowChallenges};
+
 pub(crate) mod stage2_utils;
 
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
@@ -55,7 +58,7 @@ pub struct Proof {
     pub last_fri_step_plain_leaf_values: Vec<Vec<Mersenne31Quartic>>,
     pub final_monomial_form: Vec<Mersenne31Quartic>,
     pub queries: Vec<QuerySet>,
-    pub pow_nonce: u64,
+    pub pow_challenges: ProofPowChallenges,
     pub circuit_sequence: u16,
     pub delegation_type: u16,
 }
@@ -86,6 +89,44 @@ pub struct CosetBoundColumnMajorTracePart<A: Allocator + Clone> {
 pub struct SetupPrecomputations<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
     pub ldes: Vec<CosetBoundTracePart<N, A>>,
     pub trees: Vec<T>,
+}
+
+#[inline(always)]
+pub(crate) fn get_pow_challenge_and_transcript_challenges(
+    seed: &mut Seed,
+    pow_bits: u32,
+    num_elements: usize,
+    worker: &Worker,
+) -> (u64, Vec<u32>) {
+    let pow_challenge;
+    if pow_bits > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", pow_bits);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        (*seed, pow_challenge) = Transcript::search_pow(seed, pow_bits, worker);
+        #[cfg(feature = "timing_logs")]
+        println!("PoW for {} took {:?}", pow_bits.fri_queries_pow_bits, now.elapsed());
+    } else {
+        #[cfg(feature = "debug_logs")]
+        println!("Skip searching for PoW");
+        pow_challenge = 0;
+    };
+
+    let mut transcript_challenges = if pow_bits > 0 {
+        vec![0u32; (num_elements + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)]
+    } else {
+        vec![0u32; num_elements.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)]
+    };
+
+    Transcript::draw_randomness(seed, &mut transcript_challenges);
+
+    if pow_bits > 0 {
+        // Skip first challenge used for pow
+        transcript_challenges.remove(0);
+    }
+
+    (pow_challenge, transcript_challenges)
 }
 
 #[inline(always)]
@@ -423,7 +464,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
     lde_factor: usize,
     _tree_cap_size: usize,
     num_queries: usize,
-    pow_bits: u32,
+    security_bits: usize,
     worker: &Worker,
 ) -> (ProverData<N, A, DefaultTreeConstructor>, Proof) {
     prove_configured::<N, A, DefaultTreeConstructor>(
@@ -439,7 +480,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
         lde_factor,
         _tree_cap_size,
         num_queries,
-        pow_bits,
+        security_bits,
         worker,
     )
 }
@@ -457,7 +498,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     lde_factor: usize,
     _tree_cap_size: usize,
     num_queries: usize,
-    pow_bits: u32,
+    security_bits: usize,
     worker: &Worker,
 ) -> (ProverData<N, A, T>, Proof) {
     let WitnessEvaluationData {
@@ -567,6 +608,10 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
+    let pow_bits = ProofPowConfig::from_compiled_circuit(security_bits, compiled_circuit, lde_factor, num_queries);
+
+    dbg!(&pow_bits);
+
     let stage_2_output = stage2::prover_stage_2(
         &mut seed,
         compiled_circuit,
@@ -578,6 +623,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -640,6 +686,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -661,6 +708,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -675,17 +723,9 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_factor,
         &optimal_folding,
         num_queries,
+        pow_bits.clone(),
         worker,
     );
-
-    #[cfg(feature = "debug_logs")]
-    println!("Searching for PoW for {} bits", pow_bits);
-
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
-    let (mut seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits, worker);
-    #[cfg(feature = "timing_logs")]
-    println!("PoW for {} took {:?}", pow_bits, now.elapsed());
 
     let mut queries = Vec::with_capacity(num_queries);
     let tree_index_bits = trace_len.trailing_zeros();
@@ -695,25 +735,25 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     let num_required_bits = (query_index_bits as usize) * num_queries;
     let num_required_words =
         num_required_bits.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
-    // we used 1 top word for PoW
-    let num_required_words_padded =
-        (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
 
     #[cfg(feature = "debug_logs")]
     {
         dbg!(query_index_bits);
         dbg!(num_required_bits);
         dbg!(num_required_words);
-        dbg!(num_required_words_padded);
     }
 
-    let mut source = vec![0u32; num_required_words_padded];
-    Transcript::draw_randomness(&mut seed, &mut source);
-    // Remember - skip top word
-    let mut bit_source = BitSource::new(source[1..].to_vec());
+    let (pow_challenge, source) = get_pow_challenge_and_transcript_challenges(
+        &mut seed,
+        pow_bits.fri_queries_pow_bits,
+        num_required_words,
+        worker,
+    );
+    let mut bit_source = BitSource::new(source[..].to_vec());
 
     for _i in 0..num_queries {
         let query_index = assemble_query_index(query_index_bits as usize, &mut bit_source);
+        dbg!(&query_index);
         let tree_index = query_index & tree_index_mask;
         let coset_index = query_index >> tree_index_bits;
         // now we need to make queries to witness, memory, setup, stage_2, quotient, initial FRI oracle, and intermediate
@@ -848,6 +888,15 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         None
     };
 
+    let pow_challenges = ProofPowChallenges {
+        stage_2_pow_challenge: stage_2_output.pow_challenge,
+        stage_3_pow_challenge: stage_3_output.pow_challenge,
+        quotient_z_pow_challenge: stage_4_output.quotient_z_pow_challenge,
+        deep_poly_alpha_pow_challenge: stage_4_output.deep_poly_alpha_pow_challenge,
+        foldings_pow_challenges: stage_5_output.foldings_pow_challenges.clone(),
+        fri_queries_pow_challenge: pow_challenge,
+    };
+
     let proof = Proof {
         external_values: *external_values,
         public_inputs: public_inputs.to_vec(),
@@ -864,7 +913,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         last_fri_step_plain_leaf_values,
         final_monomial_form: stage_5_output.final_monomials.clone(),
         queries,
-        pow_nonce: pow_challenge,
+        pow_challenges,
         circuit_sequence: circuit_sequence as u16,
         delegation_type: cached_data_values.delegation_type.to_reduced_u32() as u16,
     };

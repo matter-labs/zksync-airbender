@@ -23,7 +23,7 @@ pub struct UnrolledModeProof {
     pub last_fri_step_plain_leaf_values: Vec<Vec<Mersenne31Quartic>>,
     pub final_monomial_form: Vec<Mersenne31Quartic>,
     pub queries: Vec<QuerySet>,
-    pub pow_nonce: u64,
+    pub pow_challenges: ProofPowChallenges,
     pub delegation_type: u16,
     pub aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
 }
@@ -45,7 +45,7 @@ pub fn prove_configured_for_unrolled_circuits<
     lde_factor: usize,
     _tree_cap_size: usize,
     num_queries: usize,
-    pow_bits: u32,
+    security_bits: usize,
     worker: &Worker,
 ) -> (ProverData<N, A, T>, UnrolledModeProof) {
     let WitnessEvaluationDataForExecutionFamily {
@@ -162,6 +162,8 @@ pub fn prove_configured_for_unrolled_circuits<
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
+    let pow_bits = ProofPowConfig::from_compiled_circuit(security_bits, compiled_circuit, lde_factor, num_queries);
+
     let stage_2_output = stage2::prover_stage_2_for_unrolled_circuit(
         &mut seed,
         compiled_circuit,
@@ -173,6 +175,7 @@ pub fn prove_configured_for_unrolled_circuits<
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -248,6 +251,7 @@ pub fn prove_configured_for_unrolled_circuits<
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -269,6 +273,7 @@ pub fn prove_configured_for_unrolled_circuits<
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        pow_bits.clone(),
         worker,
     );
 
@@ -283,17 +288,18 @@ pub fn prove_configured_for_unrolled_circuits<
         lde_factor,
         &optimal_folding,
         num_queries,
+        pow_bits.clone(),
         worker,
     );
 
     #[cfg(feature = "debug_logs")]
-    println!("Searching for PoW for {} bits", pow_bits);
+    println!("Searching for PoW for {} bits", pow_bits.fri_queries_pow_bits);
 
     #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
-    let (mut seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits, worker);
+    let (mut seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits.fri_queries_pow_bits, worker);
     #[cfg(feature = "timing_logs")]
-    println!("PoW for {} took {:?}", pow_bits, now.elapsed());
+    println!("PoW for {} took {:?}", pow_bits.fri_queries_pow_bits, now.elapsed());
 
     let mut queries = Vec::with_capacity(num_queries);
     let tree_index_bits = trace_len.trailing_zeros();
@@ -448,6 +454,15 @@ pub fn prove_configured_for_unrolled_circuits<
         None
     };
 
+    let pow_challenges = ProofPowChallenges {
+        stage_2_pow_challenge: stage_2_output.pow_challenge,
+        stage_3_pow_challenge: stage_3_output.pow_challenge,
+        quotient_z_pow_challenge: stage_4_output.quotient_z_pow_challenge,
+        deep_poly_alpha_pow_challenge: stage_4_output.deep_poly_alpha_pow_challenge,
+        foldings_pow_challenges: stage_5_output.foldings_pow_challenges.clone(),
+        fri_queries_pow_challenge: pow_challenge,
+    };
+
     let proof = UnrolledModeProof {
         external_challenges: *external_challenges,
         public_inputs: public_inputs.to_vec(),
@@ -464,7 +479,7 @@ pub fn prove_configured_for_unrolled_circuits<
         last_fri_step_plain_leaf_values,
         final_monomial_form: stage_5_output.final_monomials.clone(),
         queries,
-        pow_nonce: pow_challenge,
+        pow_challenges,
         aux_boundary_values: aux_boundary_values.to_vec(),
         delegation_type: cached_data_values.delegation_type.to_reduced_u32() as u16,
     };
