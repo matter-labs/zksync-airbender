@@ -37,7 +37,7 @@ pub mod stage4;
 pub mod stage5;
 
 pub mod pow_bits_calculator;
-pub use pow_bits_calculator::{ProofPowConfig, ProofPowChallenges};
+pub use pow_bits_calculator::{ProofPowChallenges, ProofPowConfig};
 
 pub(crate) mod stage2_utils;
 
@@ -106,7 +106,11 @@ pub(crate) fn get_pow_challenge_and_transcript_challenges(
         let now = std::time::Instant::now();
         (*seed, pow_challenge) = Transcript::search_pow(seed, pow_bits, worker);
         #[cfg(feature = "timing_logs")]
-        println!("PoW for {} took {:?}", pow_bits.fri_queries_pow_bits, now.elapsed());
+        println!(
+            "PoW for {} took {:?}",
+            pow_bits.fri_queries_pow_bits,
+            now.elapsed()
+        );
     } else {
         #[cfg(feature = "debug_logs")]
         println!("Skip searching for PoW");
@@ -608,7 +612,12 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = ProofPowConfig::from_compiled_circuit(security_bits, compiled_circuit, lde_factor, num_queries);
+    let pow_bits = ProofPowConfig::from_compiled_circuit(
+        security_bits,
+        compiled_circuit,
+        lde_factor,
+        num_queries,
+    );
 
     dbg!(&pow_bits);
 

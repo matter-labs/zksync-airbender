@@ -320,8 +320,13 @@ pub fn prove_unified_for_machine_configuration_into_program_proof<C: MachineConf
         &worker,
     );
 
-    let (main_proofs, delegation_proofs, register_final_state, (final_pc, final_timestamp), pow_challenge) =
-        proofs;
+    let (
+        main_proofs,
+        delegation_proofs,
+        register_final_state,
+        (final_pc, final_timestamp),
+        pow_challenge,
+    ) = proofs;
 
     let program_proofs = UnrolledProgramProof {
         final_pc,
@@ -366,21 +371,26 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
     println!("Performing precomputations for delegation circuits");
     let delegation_precomputations = setups::all_delegation_circuits_precomputations(worker);
 
-    let (main_proofs, delegation_proofs, register_final_state, (final_pc, final_timestamp), pow_challenge) =
-        prover_examples::unified::prove_unified_execution_with_replayer::<
-            C,
-            Global,
-            ROM_SECOND_WORD_BITS,
-        >(
-            cycles_bound,
-            &binary_image,
-            &text_section,
-            non_determinism,
-            &precomputation,
-            &delegation_precomputations,
-            ram_bound,
-            worker,
-        );
+    let (
+        main_proofs,
+        delegation_proofs,
+        register_final_state,
+        (final_pc, final_timestamp),
+        pow_challenge,
+    ) = prover_examples::unified::prove_unified_execution_with_replayer::<
+        C,
+        Global,
+        ROM_SECOND_WORD_BITS,
+    >(
+        cycles_bound,
+        &binary_image,
+        &text_section,
+        non_determinism,
+        &precomputation,
+        &delegation_precomputations,
+        ram_bound,
+        worker,
+    );
 
     (
         main_proofs,

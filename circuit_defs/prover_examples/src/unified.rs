@@ -48,7 +48,6 @@ use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::DelegationCircuitPrecomputations;
 use setups::UnrolledCircuitPrecomputations;
 use setups::UnrolledCircuitWitnessEvalFn;
-use verifier_common::SECURITY_BITS;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -61,6 +60,7 @@ use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
+use verifier_common::SECURITY_BITS;
 
 pub fn prove_unified_execution_with_replayer<
     C: MachineConfig,
@@ -369,16 +369,28 @@ pub fn prove_unified_execution_with_replayer<
         println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let pow_challenge = Transcript::search_pow(&all_challenges_seed, MEMORY_DELEGATION_POW_BITS as u32, worker).1;
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
         #[cfg(feature = "timing_logs")]
-        println!("PoW for {} took {:?}", MEMORY_DELEGATION_POW_BITS, now.elapsed());
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
         pow_challenge
     } else {
         0
     };
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed, MEMORY_DELEGATION_POW_BITS, pow_challenge);
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);

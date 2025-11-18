@@ -16,7 +16,7 @@ pub const POW_BITS: usize = 28;
 pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
     SECURITY_BITS,
     cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
-    MERSENNE31QUARTIC_SIZE_LOG2
+    MERSENNE31QUARTIC_SIZE_LOG2,
 );
 
 #[cfg(feature = "security_100")]
@@ -27,7 +27,7 @@ pub const POW_BITS: usize = 28;
 pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
     SECURITY_BITS,
     cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
-    MERSENNE31QUARTIC_SIZE_LOG2
+    MERSENNE31QUARTIC_SIZE_LOG2,
 );
 
 pub use prover::prover_stages::pow_bits_calculator::*;

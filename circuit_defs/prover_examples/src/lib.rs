@@ -117,7 +117,12 @@ pub fn prove_image_execution<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<IMStandardIsaConfig, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>, u64) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<ND, IMStandardIsaConfig, A>(
         num_instances_upper_bound,
         bytecode,
@@ -142,7 +147,12 @@ pub fn prove_image_execution_on_reduced_machine<
     >,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>, u64) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<
         ND,
         IWithoutByteAccessIsaConfigWithDelegation,
@@ -167,7 +177,12 @@ pub fn prove_image_execution_on_final_reduced_machine<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<IWithoutByteAccessIsaConfig, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>, u64) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<ND, IWithoutByteAccessIsaConfig, A>(
         num_instances_upper_bound,
         bytecode,
@@ -256,7 +271,12 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<C, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>, u64) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     let trace_len = risc_v_circuit_precomputations.compiled_circuit.trace_len;
     let cycles_per_circuit = trace_len - 1;
 
@@ -416,16 +436,29 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
         println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let pow_challenge = Transcript::search_pow(&memory_challenges_seed, MEMORY_DELEGATION_POW_BITS as u32, worker).1;
+        let pow_challenge = Transcript::search_pow(
+            &memory_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
         #[cfg(feature = "timing_logs")]
-        println!("PoW for {} took {:?}", MEMORY_DELEGATION_POW_BITS, now.elapsed());
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
         pow_challenge
     } else {
         0
     };
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed(memory_challenges_seed, true, MEMORY_DELEGATION_POW_BITS, pow_challenge);
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed(
+        memory_challenges_seed,
+        true,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -723,7 +756,12 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
 
     assert_eq!(aux_memory_challenges_seed, memory_challenges_seed);
 
-    (main_proofs, delegation_proofs, final_register_values, pow_challenge)
+    (
+        main_proofs,
+        delegation_proofs,
+        final_register_values,
+        pow_challenge,
+    )
 }
 
 pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(

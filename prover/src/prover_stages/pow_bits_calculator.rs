@@ -22,23 +22,42 @@ impl ProofPowConfig {
         num_queries: usize,
         lde_factor_log2: usize,
     ) -> Self {
-        let foldings_pow_bits = folding_sequence.iter().map(
-            |&folding_factor_log2| {
+        let foldings_pow_bits = folding_sequence
+            .iter()
+            .map(|&folding_factor_log2| {
                 pow_bits_for_folding_round(
                     security_bits,
                     field_size_log2,
                     domain_size_log2,
                     folding_factor_log2,
                 ) as u32
-            },
-        ).collect();
+            })
+            .collect();
         Self {
-            stage_2_pow_bits: pow_bits_for_cq_lookup(security_bits, domain_size_log2, field_size_log2) as u32,
-            stage_3_pow_bits: pow_bits_for_quotient(security_bits, field_size_log2, powers_of_quotient_alpha) as u32,
-            quotient_z_pow_bits: pow_bits_for_deep_z(security_bits, field_size_log2, lde_domain_size_log2) as u32,
-            deep_poly_alpha_pow_bits: pow_bits_for_deep_poly_alpha(security_bits, field_size_log2, domain_size_log2, powers_of_deep_poly_alpha) as u32,
+            stage_2_pow_bits: pow_bits_for_cq_lookup(
+                security_bits,
+                domain_size_log2,
+                field_size_log2,
+            ) as u32,
+            stage_3_pow_bits: pow_bits_for_quotient(
+                security_bits,
+                field_size_log2,
+                powers_of_quotient_alpha,
+            ) as u32,
+            quotient_z_pow_bits: pow_bits_for_deep_z(
+                security_bits,
+                field_size_log2,
+                lde_domain_size_log2,
+            ) as u32,
+            deep_poly_alpha_pow_bits: pow_bits_for_deep_poly_alpha(
+                security_bits,
+                field_size_log2,
+                domain_size_log2,
+                powers_of_deep_poly_alpha,
+            ) as u32,
             foldings_pow_bits,
-            fri_queries_pow_bits: pow_bits_for_queries(security_bits, num_queries, lde_factor_log2) as u32,
+            fri_queries_pow_bits: pow_bits_for_queries(security_bits, num_queries, lde_factor_log2)
+                as u32,
         }
     }
 
@@ -53,9 +72,9 @@ impl ProofPowConfig {
         let lde_domain_size_log2 = domain_size_log2 + lde_factor_log2;
         let field_size_log2 = MERSENNE31QUARTIC_SIZE_LOG2;
         let powers_of_quotient_alpha = compiled_circuit.compute_num_quotient_terms();
-        let powers_of_deep_poly_alpha = compiled_circuit.num_openings_at_z() + compiled_circuit.num_openings_at_z_omega();
-        let optimal_folding =
-            crate::definitions::OPTIMAL_FOLDING_PROPERTIES[domain_size_log2];
+        let powers_of_deep_poly_alpha =
+            compiled_circuit.num_openings_at_z() + compiled_circuit.num_openings_at_z_omega();
+        let optimal_folding = crate::definitions::OPTIMAL_FOLDING_PROPERTIES[domain_size_log2];
         let folding_sequence = &optimal_folding.folding_sequence;
 
         Self::from_parameters(
@@ -93,7 +112,6 @@ pub struct ProofPowChallenges {
     pub fri_queries_pow_challenge: u64,
 }
 
-
 /// PoW before getting challenges for
 /// - memory (linearization + gamma)
 /// - delegation (linearization + gamma)
@@ -120,12 +138,8 @@ pub struct SizedProofPowConfig<const NUM_FOLDINGS: usize> {
     pub stage_3_pow_bits: u32,
     pub quotient_z_pow_bits: u32,
     pub deep_poly_alpha_pow_bits: u32,
-    #[serde(bound(
-        deserialize = "[u32; NUM_FOLDINGS]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[u32; NUM_FOLDINGS]: serde::Serialize"
-    ))]
+    #[serde(bound(deserialize = "[u32; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
+    #[serde(bound(serialize = "[u32; NUM_FOLDINGS]: serde::Serialize"))]
     pub foldings_pow_bits: [u32; NUM_FOLDINGS],
     pub fri_queries_pow_bits: u32,
 }
@@ -137,16 +151,14 @@ impl<const NUM_FOLDINGS: usize> From<SizedProofPowConfig<NUM_FOLDINGS>> for Proo
             stage_3_pow_bits: value.stage_3_pow_bits,
             quotient_z_pow_bits: value.quotient_z_pow_bits,
             deep_poly_alpha_pow_bits: value.deep_poly_alpha_pow_bits,
-            foldings_pow_bits: value
-                .foldings_pow_bits
-                .to_vec(),
+            foldings_pow_bits: value.foldings_pow_bits.to_vec(),
             fri_queries_pow_bits: value.fri_queries_pow_bits,
         }
     }
 }
 
-use field::Mersenne31Field;
 use cs::one_row_compiler::CompiledCircuitArtifact;
+use field::Mersenne31Field;
 impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
     pub const fn from_parameters(
         security_bits: usize,
@@ -172,12 +184,30 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
             i += 1;
         }
         Self {
-            stage_2_pow_bits: pow_bits_for_cq_lookup(security_bits, domain_size_log2, field_size_log2) as u32,
-            stage_3_pow_bits: pow_bits_for_quotient(security_bits, field_size_log2, powers_of_quotient_alpha) as u32,
-            quotient_z_pow_bits: pow_bits_for_deep_z(security_bits, field_size_log2, lde_domain_size_log2) as u32,
-            deep_poly_alpha_pow_bits: pow_bits_for_deep_poly_alpha(security_bits, field_size_log2, domain_size_log2, powers_of_deep_poly_alpha) as u32,
+            stage_2_pow_bits: pow_bits_for_cq_lookup(
+                security_bits,
+                domain_size_log2,
+                field_size_log2,
+            ) as u32,
+            stage_3_pow_bits: pow_bits_for_quotient(
+                security_bits,
+                field_size_log2,
+                powers_of_quotient_alpha,
+            ) as u32,
+            quotient_z_pow_bits: pow_bits_for_deep_z(
+                security_bits,
+                field_size_log2,
+                lde_domain_size_log2,
+            ) as u32,
+            deep_poly_alpha_pow_bits: pow_bits_for_deep_poly_alpha(
+                security_bits,
+                field_size_log2,
+                domain_size_log2,
+                powers_of_deep_poly_alpha,
+            ) as u32,
             foldings_pow_bits,
-            fri_queries_pow_bits: pow_bits_for_queries(security_bits, num_queries, lde_factor_log2) as u32,
+            fri_queries_pow_bits: pow_bits_for_queries(security_bits, num_queries, lde_factor_log2)
+                as u32,
         }
     }
 
@@ -192,9 +222,9 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
         let lde_domain_size_log2 = domain_size_log2 + lde_factor_log2;
         let field_size_log2 = MERSENNE31QUARTIC_SIZE_LOG2;
         let powers_of_quotient_alpha = compiled_circuit.compute_num_quotient_terms();
-        let powers_of_deep_poly_alpha = compiled_circuit.num_openings_at_z() + compiled_circuit.num_openings_at_z_omega();
-        let optimal_folding =
-            crate::definitions::OPTIMAL_FOLDING_PROPERTIES[domain_size_log2];
+        let powers_of_deep_poly_alpha =
+            compiled_circuit.num_openings_at_z() + compiled_circuit.num_openings_at_z_omega();
+        let optimal_folding = crate::definitions::OPTIMAL_FOLDING_PROPERTIES[domain_size_log2];
         let folding_sequence = &optimal_folding.folding_sequence;
 
         Self::from_parameters(
@@ -206,7 +236,7 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
             powers_of_deep_poly_alpha,
             folding_sequence,
             num_queries,
-            lde_factor_log2
+            lde_factor_log2,
         )
     }
 }
@@ -226,12 +256,8 @@ pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
     pub stage_3_pow_challenge: u64,
     pub quotient_z_pow_challenge: u64,
     pub deep_poly_alpha_pow_challenge: u64,
-    #[serde(bound(
-        deserialize = "[u64; NUM_FOLDINGS]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[u64; NUM_FOLDINGS]: serde::Serialize"
-    ))]
+    #[serde(bound(deserialize = "[u64; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
+    #[serde(bound(serialize = "[u64; NUM_FOLDINGS]: serde::Serialize"))]
     pub foldings_pow_challenges: [u64; NUM_FOLDINGS],
     pub fri_queries_pow_challenge: u64,
 }
@@ -246,7 +272,6 @@ pub const fn num_queries_for_security_params(
     let bits = security_bits - pow_bits;
     bits.div_ceil(lde_factor_log2) + 1
 }
-
 
 const fn pow_bits_for_cq_lookup(
     security_bits: usize,

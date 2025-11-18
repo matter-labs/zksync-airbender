@@ -158,12 +158,13 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let ProverCachedData { trace_len, .. } = cached_data.clone();
 
     let num_transcript_challenges = 1usize * 4;
-    let (quotient_z_pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
-        seed,
-        pow_bits.quotient_z_pow_bits,
-        num_transcript_challenges,
-        worker,
-    );
+    let (quotient_z_pow_challenge, transcript_challenges) =
+        get_pow_challenge_and_transcript_challenges(
+            seed,
+            pow_bits.quotient_z_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let z = Mersenne31Quartic::from_coeffs_in_base(
@@ -492,12 +493,13 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     // now we can compute \sum alpha^i f_i(z)
 
     let num_transcript_challenges = 1usize * 4;
-    let (deep_poly_alpha_pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
-        seed,
-        pow_bits.deep_poly_alpha_pow_bits,
-        num_transcript_challenges,
-        worker,
-    );
+    let (deep_poly_alpha_pow_challenge, transcript_challenges) =
+        get_pow_challenge_and_transcript_challenges(
+            seed,
+            pow_bits.deep_poly_alpha_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let deep_poly_alpha = Mersenne31Quartic::from_coeffs_in_base(

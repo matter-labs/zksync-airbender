@@ -1,4 +1,4 @@
-use verifier_common::{SizedProofPowChallenges, blake2s_u32::AlignedArray64};
+use verifier_common::{blake2s_u32::AlignedArray64, SizedProofPowChallenges};
 
 use super::*;
 

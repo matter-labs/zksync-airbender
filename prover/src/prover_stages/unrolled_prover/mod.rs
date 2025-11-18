@@ -162,7 +162,12 @@ pub fn prove_configured_for_unrolled_circuits<
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = ProofPowConfig::from_compiled_circuit(security_bits, compiled_circuit, lde_factor, num_queries);
+    let pow_bits = ProofPowConfig::from_compiled_circuit(
+        security_bits,
+        compiled_circuit,
+        lde_factor,
+        num_queries,
+    );
 
     let stage_2_output = stage2::prover_stage_2_for_unrolled_circuit(
         &mut seed,
@@ -293,13 +298,21 @@ pub fn prove_configured_for_unrolled_circuits<
     );
 
     #[cfg(feature = "debug_logs")]
-    println!("Searching for PoW for {} bits", pow_bits.fri_queries_pow_bits);
+    println!(
+        "Searching for PoW for {} bits",
+        pow_bits.fri_queries_pow_bits
+    );
 
     #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
-    let (mut seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits.fri_queries_pow_bits, worker);
+    let (mut seed, pow_challenge) =
+        Transcript::search_pow(&seed, pow_bits.fri_queries_pow_bits, worker);
     #[cfg(feature = "timing_logs")]
-    println!("PoW for {} took {:?}", pow_bits.fri_queries_pow_bits, now.elapsed());
+    println!(
+        "PoW for {} took {:?}",
+        pow_bits.fri_queries_pow_bits,
+        now.elapsed()
+    );
 
     let mut queries = Vec::with_capacity(num_queries);
     let tree_index_bits = trace_len.trailing_zeros();

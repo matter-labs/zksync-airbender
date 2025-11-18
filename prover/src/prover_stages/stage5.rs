@@ -127,7 +127,10 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let mut intermediate_oracles: Vec<FRIStep<A, T>> = vec![];
     let mut last_fri_step_plain_leaf_values = vec![];
     let folding_with_merkle_tree_formations = folding_description.folding_sequence.len() - 1;
-    assert_eq!(pow_bits.foldings_pow_bits.len(), folding_description.folding_sequence.len());
+    assert_eq!(
+        pow_bits.foldings_pow_bits.len(),
+        folding_description.folding_sequence.len()
+    );
 
     let mut foldings_pow_challenges = vec![];
 
@@ -141,12 +144,13 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         let last_oraclization = i == folding_with_merkle_tree_formations - 1;
         let challenge = {
             let num_transcript_challenges = 1usize * 4;
-            let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
-                seed,
-                pow_bits.foldings_pow_bits[i],
-                num_transcript_challenges,
-                worker,
-            );
+            let (pow_challenge, transcript_challenges) =
+                get_pow_challenge_and_transcript_challenges(
+                    seed,
+                    pow_bits.foldings_pow_bits[i],
+                    num_transcript_challenges,
+                    worker,
+                );
             foldings_pow_challenges.push(pow_challenge);
 
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
@@ -327,12 +331,13 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         let final_folding_challenge = {
             let num_transcript_challenges = 1usize * 4;
             let pow_bits = pow_bits.foldings_pow_bits.last().copied().unwrap();
-            let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
-                seed,
-                pow_bits,
-                num_transcript_challenges,
-                worker,
-            );
+            let (pow_challenge, transcript_challenges) =
+                get_pow_challenge_and_transcript_challenges(
+                    seed,
+                    pow_bits,
+                    num_transcript_challenges,
+                    worker,
+                );
             foldings_pow_challenges.push(pow_challenge);
 
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();

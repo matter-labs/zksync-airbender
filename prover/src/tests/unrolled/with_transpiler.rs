@@ -1,10 +1,10 @@
 use super::*;
-use crate::tests::unrolled::word_specialized::*;
-use riscv_transpiler::replayer::*;
-use std::collections::BTreeSet;
 use crate::prover_stages::ProofPowConfig;
+use crate::tests::unrolled::word_specialized::*;
 use risc_v_simulator::machine_mode_only_unrolled::*;
+use riscv_transpiler::replayer::*;
 use riscv_transpiler::witness::*;
+use std::collections::BTreeSet;
 
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::machine::ops::unrolled::{

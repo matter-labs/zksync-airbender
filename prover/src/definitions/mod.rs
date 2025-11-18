@@ -272,7 +272,8 @@ impl ExternalChallenges {
                             + 1
                             + NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES
                             + 1)
-                            * 4 + 1)
+                            * 4
+                            + 1)
                         .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                     Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
@@ -399,7 +400,8 @@ impl ExternalChallenges {
                         + 1
                         + NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES
                         + 1)
-                        * 4 + 1)
+                        * 4
+                        + 1)
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
@@ -419,13 +421,14 @@ impl ExternalChallenges {
                 );
 
                 let delegation_argument_linearization_challenges: [Mersenne31Quartic;
-                    NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    Mersenne31Quartic::from_coeffs_in_base(
-                        &it.next()
-                            .unwrap_unchecked()
-                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
-                    )
-                });
+                    NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                    core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
                 let delegation_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
                     &it.next()
                         .unwrap_unchecked()
@@ -497,13 +500,14 @@ impl ExternalChallenges {
                 );
 
                 let delegation_argument_linearization_challenges: [Mersenne31Quartic;
-                    NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    Mersenne31Quartic::from_coeffs_in_base(
-                        &it.next()
-                            .unwrap_unchecked()
-                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
-                    )
-                });
+                    NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                    core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
                 let delegation_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
                     &it.next()
                         .unwrap_unchecked()

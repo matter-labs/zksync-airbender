@@ -12,8 +12,8 @@ use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTi
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 
-use crate::prover_stages::ProofPowConfig;
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
+use crate::prover_stages::ProofPowConfig;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_unified_executor;
 
 pub mod reduced_machine {

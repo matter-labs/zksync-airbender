@@ -546,7 +546,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
-        pow_challenge
+        pow_challenge,
     ) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
         C,
         Global,
@@ -569,7 +569,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
-        pow_challenge
+        pow_challenge,
     )
 }
 
@@ -690,7 +690,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
-            pow_challenge
+            pow_challenge,
         ) = prover_examples::unrolled::prove_unrolled_execution::<_, C, Global, 5>(
             cycles_bound,
             &binary_image,
@@ -709,7 +709,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
-            pow_challenge
+            pow_challenge,
         )
     }
 
