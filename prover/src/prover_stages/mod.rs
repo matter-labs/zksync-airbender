@@ -762,7 +762,6 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     for _i in 0..num_queries {
         let query_index = assemble_query_index(query_index_bits as usize, &mut bit_source);
-        dbg!(&query_index);
         let tree_index = query_index & tree_index_mask;
         let coset_index = query_index >> tree_index_bits;
         // now we need to make queries to witness, memory, setup, stage_2, quotient, initial FRI oracle, and intermediate
