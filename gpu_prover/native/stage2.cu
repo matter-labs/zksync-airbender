@@ -547,9 +547,9 @@ void grand_product_machine_state_contributions(const MachineStateChallenges &cha
 EXTERN __launch_bounds__(128, 8) __global__ void ab_unrolled_grand_product_contributions_kernel(
     __grid_constant__ const MemoryChallenges memory_challenges, __grid_constant__ const MachineStateChallenges machine_state_challenges,
     __grid_constant__ const LazyInitTeardownLayouts lazy_init_teardown_layouts, __grid_constant__ const ShuffleRamAccesses shuffle_ram_accesses,
-    __grid_constant__ const MachineStateLayout machine_state_layout, matrix_getter<bf, ld_modifier::cs> memory_cols,
-    vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned ram_access_args_start, const unsigned mask_arg_col, const unsigned execute_col,
-    const bool process_ram_access, const bool process_mask, const unsigned log_n) {
+    __grid_constant__ const MachineStateLayout machine_state_layout, __grid_constant__ const MaskArgLayout mask_arg_layout,
+    matrix_getter<bf, ld_modifier::cs> memory_cols, vectorized_e4_matrix_setter<st_modifier::cs> stage_2_e4_cols, const unsigned ram_access_args_start,
+    const bool process_ram_access, const unsigned log_n) {
   const unsigned n = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   // Zeroing the last row for stage 2 bf and e4 args is handled by lookup_args_kernel.
@@ -571,13 +571,13 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_unrolled_grand_product_contr
                                               num_over_denom_acc);
 
   // apply mask
-  if (process_mask) {
-    const unsigned execute = bf::into_canonical(memory_cols.get_at_col(execute_col)).limb;
+  if (mask_arg_layout.process_mask) {
+    const unsigned execute = bf::into_canonical(memory_cols.get_at_col(mask_arg_layout.execute_col)).limb;
     if (execute) {
-      stage_2_e4_cols.set_at_col(mask_arg_col, num_over_denom_acc);
+      stage_2_e4_cols.set_at_col(mask_arg_layout.arg_col, num_over_denom_acc);
       num_over_denom_acc_is_initialized = true; // just in case
     } else {
-      stage_2_e4_cols.set_at_col(mask_arg_col, e4::one());
+      stage_2_e4_cols.set_at_col(mask_arg_layout.arg_col, e4::one());
       num_over_denom_acc_is_initialized = false; // a funny case, but correct and efficient for the next contribution
     }
   }

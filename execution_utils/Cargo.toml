@@ -20,7 +20,7 @@ clap = { workspace = true }
 serde = { workspace = true }
 sha3 = { workspace = true }
 serde_json = "*"
-full_statement_verifier = { path = "../full_statement_verifier", optional = true }
+full_statement_verifier = { path = "../full_statement_verifier", default-features = false }
 prover_examples = { path = "../circuit_defs/prover_examples", optional = true }
 
 [dev-dependencies]
@@ -29,8 +29,8 @@ prover_examples = { path = "../circuit_defs/prover_examples" }
 full_statement_verifier = { path = "../full_statement_verifier" }
 
 [features]
-verifier_80 = ["full_statement_verifier", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr"]
-verifier_100 = ["full_statement_verifier", "full_statement_verifier/security_100", "full_statement_verifier/replace_csr"]
+verifier_80 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr"]
+verifier_100 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_100", "full_statement_verifier/replace_csr"]
 prover = ["prover_examples"]
 verifier_binaries = []
 # Will evaluate quotient on main domain for debug

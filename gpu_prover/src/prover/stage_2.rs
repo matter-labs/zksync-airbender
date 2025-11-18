@@ -1,9 +1,8 @@
-use super::arg_utils::LookupChallenges;
+use super::arg_utils::{DecoderTableChallenges, LookupChallenges};
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
-pub(crate) use super::stage_2_kernels::*;
 use super::trace_holder::{flatten_tree_caps, TraceHolder, TreesCacheMode};
 use super::{
     get_stage_2_col_sums_scratch, get_stage_2_cub_and_batch_reduce_intermediate_scratch,
@@ -14,7 +13,10 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::set_by_ref;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::definitions::{
+    EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
+    NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES,
+};
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -28,6 +30,7 @@ use std::slice;
 pub(crate) struct StageTwoOutput {
     pub(crate) trace_holder: TraceHolder<BF>,
     pub(crate) lookup_challenges: Option<HostAllocation<LookupChallenges>>,
+    pub(crate) decoder_challenges: Option<HostAllocation<DecoderTableChallenges>>,
     pub(crate) last_row: Option<HostAllocation<[BF]>>,
     pub(crate) offset_for_grand_product_poly: usize,
     pub(crate) offset_for_sum_over_delegation_poly: Option<usize>,
@@ -62,6 +65,7 @@ impl StageTwoOutput {
         Ok(Self {
             trace_holder,
             lookup_challenges: None,
+            decoder_challenges: None,
             last_row: None,
             offset_for_grand_product_poly: 0,
             offset_for_sum_over_delegation_poly: None,
@@ -84,22 +88,54 @@ impl StageTwoOutput {
         let layout = circuit.stage_2_layout;
         let num_stage_2_cols = layout.total_width;
         let mut lookup_challenges = unsafe { context.alloc_host_uninit::<LookupChallenges>() };
+        let mut decoder_challenges =
+            unsafe { context.alloc_host_uninit::<DecoderTableChallenges>() };
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
         let lookup_challenges_accessor = lookup_challenges.get_mut_accessor();
-        let lookup_challenges_fn = move || unsafe {
-            let mut transcript_challenges = [0u32;
-                ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
+        let decoder_challenges_accessor = decoder_challenges.get_mut_accessor();
+        let has_decoder = circuit
+            .setup_layout
+            .preprocessed_decoder_setup_columns
+            .num_elements()
+            > 0;
+        let challenges_fn = move || unsafe {
+            // Imitates logic in prover/serc/prover_stages/unrolled_prover/stage2.rs
+            let lookup_challenges = lookup_challenges_accessor.get_mut();
+            let decoder_challenges = decoder_challenges_accessor.get_mut();
+            if has_decoder {
+                let mut transcript_challenges = [0u32;
+                    ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES
+                        + 1
+                        + EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES
+                        + 1)
+                        * 4)
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
-            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
-            let mut get_challenge =
-                || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
-            let challenges = lookup_challenges_accessor.get_mut();
-            challenges.linearization_challenges = std::array::from_fn(|_| get_challenge());
-            challenges.gamma = get_challenge();
+                Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+                let mut get_challenge =
+                    || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
+                lookup_challenges.linearization_challenges =
+                    std::array::from_fn(|_| get_challenge());
+                lookup_challenges.gamma = get_challenge();
+                decoder_challenges.linearization_challenges =
+                    std::array::from_fn(|_| get_challenge());
+                decoder_challenges.gamma = get_challenge();
+            } else {
+                let mut transcript_challenges = [0u32;
+                    ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
+                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+                let mut get_challenge =
+                    || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
+                lookup_challenges.linearization_challenges =
+                    std::array::from_fn(|_| get_challenge());
+                lookup_challenges.gamma = get_challenge();
+                *decoder_challenges = DecoderTableChallenges::default();
+            }
         };
-        callbacks.schedule(lookup_challenges_fn, stream)?;
+        callbacks.schedule(challenges_fn, stream)?;
         let num_stage_2_bf_cols = layout.num_base_field_polys();
         let num_stage_2_e4_cols = layout.num_ext4_field_polys();
         assert_eq!(
@@ -147,33 +183,67 @@ impl StageTwoOutput {
             context.alloc(col_sums_scratch_elems, AllocationPlacement::BestFit)?;
         let mut d_lookup_challenges =
             context.alloc::<LookupChallenges>(1, AllocationPlacement::BestFit)?;
+        // d_decoder_challenges is only used if has_decoder is true.
+        // We could conditionally allocate it by juggling options if desired.
+        let mut d_decoder_challenges =
+            context.alloc::<DecoderTableChallenges>(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut d_lookup_challenges,
             slice::from_ref(unsafe { lookup_challenges_accessor.get() }),
             stream,
         )?;
+        if has_decoder {
+            memory_copy_async(
+                &mut d_decoder_challenges,
+                slice::from_ref(unsafe { decoder_challenges_accessor.get() }),
+                stream,
+            )?;
+        }
         self.lookup_challenges = Some(lookup_challenges);
         let witness_evaluations = stage_1_output.witness_holder.get_evaluations(context)?;
         let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
         let memory_evaluations = stage_1_output.memory_holder.get_evaluations(context)?;
         let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
-        compute_stage_2_args_on_main_domain(
-            &setup_cols,
-            &d_witness_cols,
-            &d_memory_cols,
-            &d_generic_lookups_args_to_table_entries_map,
-            &mut d_stage_2_cols,
-            &mut d_alloc_e4_scratch,
-            &mut d_alloc_scratch_for_cub_ops,
-            &mut maybe_batch_reduce_intermediates,
-            &mut d_alloc_scratch_for_col_sums,
-            &d_lookup_challenges[0],
-            cached_data,
-            circuit,
-            log_domain_size,
-            stream,
-            context.get_device_properties(),
-        )?;
+        let is_unrolled = false;
+        if is_unrolled {
+            super::unrolled_prover::stage_2_kernels::compute_stage_2_args_on_main_domain(
+                &setup_cols,
+                &d_witness_cols,
+                &d_memory_cols,
+                &d_generic_lookups_args_to_table_entries_map,
+                &mut d_stage_2_cols,
+                &mut d_alloc_e4_scratch,
+                &mut d_alloc_scratch_for_cub_ops,
+                &mut maybe_batch_reduce_intermediates,
+                &mut d_alloc_scratch_for_col_sums,
+                &d_lookup_challenges[0],
+                &d_decoder_challenges[0],
+                cached_data,
+                circuit,
+                log_domain_size,
+                stream,
+                context.get_device_properties(),
+            )?;
+        } else {
+            assert!(!has_decoder);
+            super::stage_2_kernels::compute_stage_2_args_on_main_domain(
+                &setup_cols,
+                &d_witness_cols,
+                &d_memory_cols,
+                &d_generic_lookups_args_to_table_entries_map,
+                &mut d_stage_2_cols,
+                &mut d_alloc_e4_scratch,
+                &mut d_alloc_scratch_for_cub_ops,
+                &mut maybe_batch_reduce_intermediates,
+                &mut d_alloc_scratch_for_col_sums,
+                &d_lookup_challenges[0],
+                cached_data,
+                circuit,
+                log_domain_size,
+                stream,
+                context.get_device_properties(),
+            )?;
+        }
         generic_lookup_mapping.free();
         d_alloc_e4_scratch.free();
         d_alloc_scratch_for_cub_ops.free();
@@ -181,7 +251,12 @@ impl StageTwoOutput {
             allocation.free();
         }
         d_alloc_scratch_for_col_sums.free();
+        // Stage 3 does not use challenge structs on the device.
+        // Instead, it uses the (asynchronously computed) host challenge copies
+        // to (asynchronously) compute a set of helpers.
+        // Therefore, we don't need the device challenges after stage 2.
         d_lookup_challenges.free();
+        d_decoder_challenges.free();
         trace_holder.allocate_to_full(context)?;
         trace_holder.extend_and_commit(0, context)?;
         let mut d_last_row = context.alloc(num_stage_2_cols, AllocationPlacement::BestFit)?;

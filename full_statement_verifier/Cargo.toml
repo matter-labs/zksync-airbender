@@ -13,36 +13,53 @@ categories.workspace = true
 common_constants = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
 
-risc_v_cycles_verifier = {path = "../circuit_defs/risc_v_cycles/verifier", default-features = false}
-reduced_risc_v_machine_verifier = {path = "../circuit_defs/reduced_risc_v_machine/verifier", default-features = false}
-reduced_risc_v_log_23_machine_verifier = {path = "../circuit_defs/reduced_risc_v_log_23_machine/verifier", default-features = false}
-final_reduced_risc_v_machine_verifier = {path = "../circuit_defs/final_reduced_risc_v_machine/verifier", default-features = false}
+risc_v_cycles_verifier = {path = "../circuit_defs/risc_v_cycles/verifier", default-features = false, optional = true }
+reduced_risc_v_machine_verifier = {path = "../circuit_defs/reduced_risc_v_machine/verifier", default-features = false, optional = true }
+reduced_risc_v_log_23_machine_verifier = {path = "../circuit_defs/reduced_risc_v_log_23_machine/verifier", default-features = false, optional = true }
+final_reduced_risc_v_machine_verifier = {path = "../circuit_defs/final_reduced_risc_v_machine/verifier", default-features = false, optional = true }
 
-blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compression/verifier", default-features = false}
-bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false}
-keccak_special5_verifier = {path = "../circuit_defs/keccak_special5/verifier", default-features = false}
+blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compression/verifier", default-features = false, optional = true }
+bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false, optional = true }
+keccak_special5_verifier = {path = "../circuit_defs/keccak_special5/verifier", default-features = false, optional = true }
 
-add_sub_lui_auipc_mop_verifier = {path = "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/verifier", default-features = false}
-inits_and_teardowns_verifier = {path = "../circuit_defs/unrolled_circuits/inits_and_teardowns/verifier", default-features = false}
-jump_branch_slt_verifier = {path = "../circuit_defs/unrolled_circuits/jump_branch_slt/verifier", default-features = false}
-load_store_subword_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_subword_only/verifier", default-features = false}
-load_store_word_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_word_only/verifier", default-features = false}
-mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier", default-features = false}
-mul_div_unsigned_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", default-features = false}
-shift_binary_csr_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", default-features = false}
+add_sub_lui_auipc_mop_verifier = {path = "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/verifier", default-features = false, optional = true }
+jump_branch_slt_verifier = {path = "../circuit_defs/unrolled_circuits/jump_branch_slt/verifier", default-features = false, optional = true }
+load_store_subword_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_subword_only/verifier", default-features = false, optional = true }
+load_store_word_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_word_only/verifier", default-features = false, optional = true }
+mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier", default-features = false, optional = true }
+mul_div_unsigned_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", default-features = false, optional = true }
+shift_binary_csr_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", default-features = false, optional = true }
 
-unified_reduced_machine_verifier = {path = "../circuit_defs/unrolled_circuits/unified_reduced_machine/verifier", default-features = false}
+inits_and_teardowns_verifier = {path = "../circuit_defs/unrolled_circuits/inits_and_teardowns/verifier", default-features = false, optional = true }
+
+unified_reduced_machine_verifier = {path = "../circuit_defs/unrolled_circuits/unified_reduced_machine/verifier", default-features = false, optional = true }
 
 # poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}
 
 # setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std
 
 [features]
-security_80 = ["verifier_common/security_80", "risc_v_cycles_verifier/security_80", "reduced_risc_v_machine_verifier/security_80", "reduced_risc_v_log_23_machine_verifier/security_80", "final_reduced_risc_v_machine_verifier/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
-security_100 = ["verifier_common/security_100", "risc_v_cycles_verifier/security_100", "reduced_risc_v_machine_verifier/security_100", "reduced_risc_v_log_23_machine_verifier/security_100", "final_reduced_risc_v_machine_verifier/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
+verifiers = [
+    "blake2_with_compression_verifier",
+    "bigint_with_control_verifier",
+    "keccak_special5_verifier",
+    "add_sub_lui_auipc_mop_verifier",
+    "jump_branch_slt_verifier",
+    "load_store_subword_only_verifier",
+    "load_store_word_only_verifier",
+    "mul_div_verifier",
+    "mul_div_unsigned_verifier",
+    "shift_binary_csr_verifier",
+
+    "inits_and_teardowns_verifier",
+    
+    "unified_reduced_machine_verifier"
+]
+security_80 = ["verifiers", "verifier_common/security_80", "risc_v_cycles_verifier/security_80", "reduced_risc_v_machine_verifier/security_80", "reduced_risc_v_log_23_machine_verifier/security_80", "final_reduced_risc_v_machine_verifier/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
+security_100 = ["verifiers", "verifier_common/security_100", "risc_v_cycles_verifier/security_100", "reduced_risc_v_machine_verifier/security_100", "reduced_risc_v_log_23_machine_verifier/security_100", "final_reduced_risc_v_machine_verifier/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
 blake2_with_compression = ["verifier_common/blake2_with_compression", "risc_v_cycles_verifier/blake2_with_compression", "reduced_risc_v_machine_verifier/blake2_with_compression", "reduced_risc_v_log_23_machine_verifier/blake2_with_compression", "final_reduced_risc_v_machine_verifier/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression", "keccak_special5_verifier/blake2_with_compression"]
 modular_ops = ["verifier_common/modular_ops", "risc_v_cycles_verifier/modular_ops", "reduced_risc_v_machine_verifier/modular_ops", "reduced_risc_v_log_23_machine_verifier/modular_ops", "final_reduced_risc_v_machine_verifier/modular_ops", "blake2_with_compression_verifier/modular_ops", "bigint_with_control_verifier/modular_ops", "keccak_special5_verifier/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
-default = ["security_80", "replace_csr"]
+default = ["security_80", "replace_csr", "verifiers"]
 # default = ["security_80"]

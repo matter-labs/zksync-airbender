@@ -48,7 +48,6 @@ pub struct TracingDecoderData {
 #[repr(C)]
 pub struct NonMemoryOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub rs2_value: u32,
     pub rd_old_value: u32,
@@ -63,7 +62,6 @@ pub struct NonMemoryOpcodeTracingData {
 #[repr(C)]
 pub struct LoadOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub aligned_ram_address: u32,
     pub aligned_ram_read_value: u32,
@@ -77,7 +75,6 @@ pub struct LoadOpcodeTracingData {
 #[repr(C)]
 pub struct StoreOpcodeTracingData {
     pub initial_pc: u32,
-    pub opcode: u32, // TODO: delete
     pub rs1_value: u32,
     pub aligned_ram_address: u32,
     pub aligned_ram_old_value: u32,
@@ -442,6 +439,7 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
     }
 }
 
+#[deprecated]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaConfig> {
     pub registers: [u32; NUM_REGISTERS],
@@ -450,6 +448,7 @@ pub struct RiscV32StateForUnrolledProver<Config: MachineConfig = IMStandardIsaCo
     _marker: std::marker::PhantomData<Config>,
 }
 
+#[deprecated]
 impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
     pub fn initial(initial_pc: u32) -> Self {
         // we should start in machine mode, the rest is not important and can be by default
@@ -572,7 +571,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.set_register(rd, rd_value);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value,
@@ -592,7 +590,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.set_register(rd, rd_value);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value,
@@ -621,7 +618,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.set_register(rd, rd_value);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value,
@@ -652,7 +648,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.set_register(rd, rd_value);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value,
@@ -695,7 +690,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.get_register(rd);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value: 0,
@@ -791,7 +785,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                     let rd_old_value = self.set_register(rd, rd_value);
                     let tracing_data = NonMemoryOpcodeTracingData {
                         initial_pc: pc,
-                        opcode,
                         rs1_value,
                         rs2_value,
                         rd_value,
@@ -916,7 +909,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         let rd_old_value = self.set_register(rd, rd_value);
                         let tracing_data = NonMemoryOpcodeTracingData {
                             initial_pc: pc,
-                            opcode,
                             rs1_value,
                             rs2_value,
                             rd_value,
@@ -1026,7 +1018,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         let rd_old_value = self.set_register(rd, rd_value);
                         let tracing_data = NonMemoryOpcodeTracingData {
                             initial_pc: pc,
-                            opcode,
                             rs1_value,
                             rs2_value,
                             rd_value,
@@ -1118,7 +1109,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             let rd_old_value = self.set_register(rd, rd_value);
                             let tracing_data = LoadOpcodeTracingData {
                                 initial_pc: pc,
-                                opcode,
                                 rs1_value,
                                 aligned_ram_address: adjusted_load_address & !3,
                                 aligned_ram_read_value: adjusted_ram_read_value,
@@ -1181,7 +1171,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
 
                             let tracing_data = StoreOpcodeTracingData {
                                 initial_pc: pc,
-                                opcode,
                                 rs1_value,
                                 aligned_ram_address: store_address & !3,
                                 rs2_value,
@@ -1239,7 +1228,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                             let rd_old_value = self.set_register(rd, rd_value);
                             let tracing_data = NonMemoryOpcodeTracingData {
                                 initial_pc: pc,
-                                opcode,
                                 rs1_value,
                                 rs2_value,
                                 rd_value,
@@ -1347,7 +1335,6 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
                         let rd_old_value = self.set_register(rd, rd_value);
                         let tracing_data = NonMemoryOpcodeTracingData {
                             initial_pc: pc,
-                            opcode,
                             rs1_value,
                             rs2_value,
                             rd_value,

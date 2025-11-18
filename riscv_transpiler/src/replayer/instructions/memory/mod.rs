@@ -24,7 +24,6 @@ pub(crate) fn sw<C: Counters, R: RAM>(
         opcode_data: unsafe {
             core::mem::transmute(StoreOpcodeTracingData {
                 initial_pc: state.pc,
-                opcode: 0u32,
                 rs1_value,
                 aligned_ram_address: address,
                 aligned_ram_old_value: ram_old_value,
@@ -66,7 +65,6 @@ pub(crate) fn lw<C: Counters, R: RAM>(
     let traced_data = MemoryOpcodeTracingDataWithTimestamp {
         opcode_data: LoadOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             aligned_ram_address: address_for_witness,
             aligned_ram_read_value: ram_value_after_masking,
@@ -110,7 +108,6 @@ pub(crate) fn sh<C: Counters, R: RAM>(
         opcode_data: unsafe {
             core::mem::transmute(StoreOpcodeTracingData {
                 initial_pc: state.pc,
-                opcode: 0u32,
                 rs1_value,
                 aligned_ram_address: aligned_address,
                 aligned_ram_old_value: ram_old_value,
@@ -156,7 +153,6 @@ pub(crate) fn sb<C: Counters, R: RAM>(
         opcode_data: unsafe {
             core::mem::transmute(StoreOpcodeTracingData {
                 initial_pc: state.pc,
-                opcode: 0u32,
                 rs1_value,
                 aligned_ram_address: aligned_address,
                 aligned_ram_old_value: ram_old_value,
@@ -204,7 +200,6 @@ pub(crate) fn lh<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     let traced_data = MemoryOpcodeTracingDataWithTimestamp {
         opcode_data: LoadOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             aligned_ram_address: address_for_witness,
             aligned_ram_read_value: ram_value_after_masking,
@@ -250,7 +245,6 @@ pub(crate) fn lb<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     let traced_data = MemoryOpcodeTracingDataWithTimestamp {
         opcode_data: LoadOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             aligned_ram_address: address_for_witness,
             aligned_ram_read_value: ram_value_after_masking,

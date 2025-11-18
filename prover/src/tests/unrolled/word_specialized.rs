@@ -26,341 +26,8 @@ use super::*;
 
 const SUPPORT_SIGNED: bool = false;
 const INITIAL_PC: u32 = 0;
-const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
+const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
-
-pub(crate) unsafe fn read_u32(trace_row: &[Mersenne31Field], columns: ColumnSet<2>) -> u32 {
-    let low = trace_row[columns.start()].to_reduced_u32();
-    let high = trace_row[columns.start() + 1].to_reduced_u32();
-
-    (high << 16) | low
-}
-
-pub(crate) unsafe fn read_u16(trace_row: &[Mersenne31Field], columns: ColumnSet<1>) -> u16 {
-    let low = trace_row[columns.start()].to_reduced_u32();
-
-    low as u16
-}
-
-pub(crate) unsafe fn read_timestamp(
-    trace_row: &[Mersenne31Field],
-    columns: ColumnSet<2>,
-) -> TimestampScalar {
-    let low = trace_row[columns.start()].to_reduced_u32();
-    let high = trace_row[columns.start() + 1].to_reduced_u32();
-
-    ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
-}
-
-pub(crate) unsafe fn parse_state_permutation_elements(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let intermediate_state_layout = compiled_circuit
-        .memory_layout
-        .intermediate_state_layout
-        .unwrap();
-    let machine_state_layout = compiled_circuit.memory_layout.machine_state_layout.unwrap();
-    // intermediate_state_layout -> machine_state_layout
-    let execute = intermediate_state_layout.execute;
-    let is_active = trace_row[execute.start()].as_boolean();
-    let initial_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
-    let final_ts = read_timestamp(trace_row, machine_state_layout.timestamp);
-
-    let initial_pc = read_u32(trace_row, intermediate_state_layout.pc);
-    let final_pc = read_u32(trace_row, machine_state_layout.pc);
-
-    if is_active {
-        let is_unique = write_set.insert((final_pc, final_ts));
-        if is_unique == false {
-            panic!("Duplicate entry {:?} in write set", (final_pc, final_ts));
-        }
-
-        let is_unique = read_set.insert((initial_pc, initial_ts));
-        if is_unique == false {
-            panic!("Duplicate entry {:?} in read set", (initial_pc, initial_ts));
-        }
-    }
-}
-
-pub(crate) unsafe fn parse_shuffle_ram_accesses(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let intermediate_state_layout = compiled_circuit
-        .memory_layout
-        .intermediate_state_layout
-        .unwrap();
-    let execute = intermediate_state_layout.execute;
-    let is_active = trace_row[execute.start()].as_boolean();
-    if is_active {
-        let base_ts = read_timestamp(trace_row, intermediate_state_layout.timestamp);
-        assert!(base_ts >= INITIAL_TIMESTAMP);
-        for (access_idx, access) in compiled_circuit
-            .memory_layout
-            .shuffle_ram_access_sets
-            .iter()
-            .enumerate()
-        {
-            let read_ts = read_timestamp(trace_row, access.get_read_timestamp_columns());
-            let read_value = read_u32(trace_row, access.get_read_value_columns());
-            let mut write_value = read_value;
-            if let ShuffleRamQueryColumns::Write(write) = access {
-                write_value = read_u32(trace_row, write.write_value);
-            }
-            let write_ts = base_ts + (access_idx as TimestampScalar);
-            let mut is_register = true;
-            let address;
-            match access.get_address() {
-                ShuffleRamAddress::RegisterOnly(reg_idx) => {
-                    let reg_idx = read_u16(trace_row, reg_idx.register_index);
-                    address = reg_idx as u32;
-                }
-                ShuffleRamAddress::RegisterOrRam(reg_or_ram) => {
-                    is_register = read_u16(trace_row, reg_or_ram.is_register) != 0;
-                    address = read_u32(trace_row, reg_or_ram.address);
-                }
-            }
-
-            // if is_register == false && address == 0 {
-            //     // special padding value to make ROM read via RAM read at 0
-            //     assert_eq!(read_value, 0);
-            //     continue;
-            // }
-
-            let to_write = (is_register, address, write_ts, write_value);
-            let is_unique = write_set.insert(to_write);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in write set", to_write);
-            }
-
-            let to_read = (is_register, address, read_ts, read_value);
-            let is_unique = read_set.insert(to_read);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in read set", to_read);
-            }
-        }
-    }
-}
-
-pub(crate) unsafe fn parse_delegation_ram_accesses(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    trace_row: &[Mersenne31Field],
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let delegation_processor_layout = compiled_circuit
-        .memory_layout
-        .delegation_processor_layout
-        .unwrap();
-    let execute = delegation_processor_layout.multiplicity;
-    let is_active = trace_row[execute.start()].as_boolean();
-    if is_active {
-        let write_ts = read_timestamp(trace_row, delegation_processor_layout.write_timestamp);
-        assert_eq!(write_ts % 4, 3);
-        assert!(write_ts >= INITIAL_TIMESTAMP);
-        for (access_idx, access) in compiled_circuit
-            .memory_layout
-            .register_and_indirect_accesses
-            .iter()
-            .enumerate()
-        {
-            // register
-            let base_offset = {
-                let reg_idx = access.register_access.get_register_index();
-                let read_ts = read_timestamp(
-                    trace_row,
-                    access.register_access.get_read_timestamp_columns(),
-                );
-                let read_value =
-                    read_u32(trace_row, access.register_access.get_read_value_columns());
-                let mut write_value = read_value;
-                if let RegisterAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = access.register_access
-                {
-                    write_value = read_u32(trace_row, write_columns);
-                }
-
-                let to_write = (true, reg_idx, write_ts, write_value);
-                let is_unique = write_set.insert(to_write);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in write set", to_write);
-                }
-
-                let to_read = (true, reg_idx, read_ts, read_value);
-                let is_unique = read_set.insert(to_read);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in read set", to_read);
-                }
-
-                read_value
-            };
-
-            for indirect in access.indirect_accesses.iter() {
-                assert!(base_offset >= 1 << 21);
-                let mut offset = indirect.offset_constant();
-                assert_eq!(offset % 4, 0);
-
-                if let Some((var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
-                    let var_value = read_u16(trace_row, var_column);
-                    let var_offset = var_scale.checked_mul(var_value as u32).unwrap();
-                    offset = offset.checked_add(var_offset).unwrap();
-                }
-
-                let (address, of) = base_offset.overflowing_add(offset);
-                assert!(of == false);
-                assert!(address >= 1 << 21);
-                let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
-                let read_value = read_u32(trace_row, indirect.get_read_value_columns());
-                let mut write_value = read_value;
-                if let IndirectAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = indirect
-                {
-                    write_value = read_u32(trace_row, *write_columns);
-                }
-
-                let to_write = (false, address, write_ts, write_value);
-                let is_unique = write_set.insert(to_write);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in write set", to_write);
-                }
-
-                let to_read = (false, address, read_ts, read_value);
-                let is_unique = read_set.insert(to_read);
-                if is_unique == false {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in read set", to_read);
-                }
-            }
-        }
-    } else {
-        // check conventions
-        let base_ts = read_timestamp(trace_row, delegation_processor_layout.write_timestamp);
-        assert_eq!(base_ts, 0);
-        for (_access_idx, access) in compiled_circuit
-            .memory_layout
-            .register_and_indirect_accesses
-            .iter()
-            .enumerate()
-        {
-            // register
-            {
-                let reg_idx = access.register_access.get_register_index();
-                let read_ts = read_timestamp(
-                    trace_row,
-                    access.register_access.get_read_timestamp_columns(),
-                );
-                let read_value =
-                    read_u32(trace_row, access.register_access.get_read_value_columns());
-                let mut write_value = read_value;
-                if let RegisterAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = access.register_access
-                {
-                    write_value = read_u32(trace_row, write_columns);
-                }
-                // assert_eq!(reg_idx, 0);
-                assert_eq!(read_ts, 0);
-                assert_eq!(read_value, 0);
-                assert_eq!(write_value, 0);
-            }
-
-            for indirect in access.indirect_accesses.iter() {
-                if let Some((_var_scale, var_column, _var_idx)) = indirect.variable_dependent() {
-                    let var_value = read_u16(trace_row, var_column);
-                    assert_eq!(var_value, 0);
-                }
-                let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
-                let read_value = read_u32(trace_row, indirect.get_read_value_columns());
-                let mut write_value = read_value;
-                if let IndirectAccessColumns::WriteAccess {
-                    write_value: write_columns,
-                    ..
-                } = indirect
-                {
-                    write_value = read_u32(trace_row, *write_columns);
-                }
-                assert_eq!(read_ts, 0);
-                assert_eq!(read_value, 0);
-                assert_eq!(write_value, 0);
-            }
-        }
-    }
-}
-
-pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_state_permutation_elements(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
-
-pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_shuffle_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
-
-pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
-    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-    witness: &WitnessEvaluationData<N, Global>,
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-) {
-    let mut trace = witness
-        .exec_trace
-        .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
-        unsafe {
-            let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_delegation_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
-            trace.advance_row();
-        }
-    }
-}
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
@@ -369,7 +36,7 @@ fn run_basic_unrolled_test_with_word_specialization() {
 }
 
 pub fn run_basic_unrolled_test_with_word_specialization_impl(
-    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn(&GpuUnrolledComparisonArgs)>>,
+    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
     maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
     // NOTE: these constants must match with ones used in CS crate to produce
@@ -862,7 +529,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &add_sub_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -872,7 +539,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1013,7 +682,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &jump_branch_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1023,7 +692,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1181,7 +852,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         serialize_to_file_if_not_gpu_comparison(&proof, "shift_binop_csrrw_unrolled_proof.json");
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &shift_binop_csrrw_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1191,7 +862,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1339,7 +1012,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         assert!(proof.delegation_argument_accumulator.is_none());
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &mul_div_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1349,7 +1022,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1506,7 +1181,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         assert!(proof.delegation_argument_accumulator.is_none());
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &word_load_store_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1516,7 +1191,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1675,7 +1352,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         );
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &subword_load_store_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1685,7 +1362,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1804,7 +1483,7 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
         serialize_to_file_if_not_gpu_comparison(&proof, "inits_and_teardowns_unrolled_proof.json");
 
         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuUnrolledComparisonArgs {
+            let gpu_comparison_args = GpuComparisonArgs {
                 circuit: &inits_and_teardowns_circuit,
                 setup: &setup,
                 external_challenges: &external_challenges,
@@ -1814,7 +1493,9 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 lde_precomputations: &lde_precomputations,
                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                 log_n: TRACE_LEN_LOG2,
+                circuit_sequence: None,
                 delegation_processing_type: None,
+                is_unrolled: true,
                 prover_data: &prover_data,
             };
             gpu_comparison_hook(&gpu_comparison_args);
@@ -1962,14 +1643,16 @@ pub fn run_basic_unrolled_test_with_word_specialization_impl(
                 let gpu_comparison_args = GpuComparisonArgs {
                     circuit: &circuit,
                     setup: &setup,
-                    external_values: &external_values,
+                    external_challenges: &external_values.challenges,
+                    aux_boundary_values: &[external_values.aux_boundary_values],
                     public_inputs: &vec![],
                     twiddles: &twiddles,
                     lde_precomputations: &lde_precomputations,
                     lookup_mapping: lookup_mapping_for_gpu.unwrap(),
                     log_n: trace_len.trailing_zeros() as usize,
-                    circuit_sequence: 0,
+                    circuit_sequence: None,
                     delegation_processing_type: Some(delegation_type),
+                    is_unrolled: false,
                     prover_data: &prover_data,
                 };
                 gpu_comparison_hook(&gpu_comparison_args);

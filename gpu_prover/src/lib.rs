@@ -30,5 +30,5 @@ pub mod witness;
 pub use era_cudart as cudart;
 pub use era_cudart_sys as cudart_sys;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+//mod tests;

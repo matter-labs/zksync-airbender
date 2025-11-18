@@ -20,7 +20,6 @@ pub(crate) fn mop_addmod<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -55,7 +54,6 @@ pub(crate) fn mop_submod<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -90,7 +88,6 @@ pub(crate) fn mop_mulmod<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,

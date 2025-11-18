@@ -172,6 +172,7 @@ pub fn compute_deep_quotient_on_main_domain(
     circuit: &CompiledCircuitArtifact<BF>,
     log_n: u32,
     bit_reversed: bool,
+    is_unrolled: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -220,7 +221,7 @@ pub fn compute_deep_quotient_on_main_domain(
             DeviceMatrixChunk::new(e4_slice, stride, offset, n),
         )
     };
-    if cached_data.process_shuffle_ram_init {
+    if !is_unrolled && cached_data.process_shuffle_ram_init {
         assert_eq!(
             circuit.state_linkage_constraints.len(),
             NUM_STATE_LINKAGE_CONSTRAINTS
@@ -229,7 +230,11 @@ pub fn compute_deep_quotient_on_main_domain(
         assert_eq!(circuit.state_linkage_constraints.len(), 0);
     }
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
-    let state_linkage_constraints = StateLinkageConstraints::new(circuit);
+    let state_linkage_constraints = if is_unrolled {
+        StateLinkageConstraints::default()
+    } else {
+        StateLinkageConstraints::new(circuit)
+    };
     let mut memory_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
         map: [DOES_NOT_NEED_Z_OMEGA; MAX_MEMORY_COLS],
     };
@@ -268,7 +273,8 @@ pub fn compute_deep_quotient_on_main_domain(
     let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
     assert_eq!(num_terms_total, scratch_e4.len());
     // prepare data matrix args
-    let (_, stage_2_memory_grand_product_offset) = get_grand_product_src_dst_cols(circuit, false);
+    let (_, stage_2_memory_grand_product_offset) =
+        get_grand_product_src_dst_cols(circuit, is_unrolled);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();
@@ -342,12 +348,17 @@ pub(crate) mod tests {
     use crate::device_context::DeviceContext;
     use crate::device_structures::DeviceMatrixMut;
     use crate::ops_complex::bit_reverse_in_place;
+    use crate::ops_complex::transpose;
 
     use era_cudart::memory::{
         memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
     };
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_delegation_test_impl,
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl, run_keccak_test_impl,
+        GpuComparisonArgs,
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -357,7 +368,8 @@ pub(crate) mod tests {
         let GpuComparisonArgs {
             circuit,
             setup,
-            external_values,
+            external_challenges,
+            aux_boundary_values: _,
             public_inputs: _,
             twiddles,
             lde_precomputations: _,
@@ -365,16 +377,17 @@ pub(crate) mod tests {
             log_n,
             circuit_sequence,
             delegation_processing_type,
+            is_unrolled,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
-        let circuit_sequence = *circuit_sequence;
+        let circuit_sequence = circuit_sequence.unwrap_or(0);
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
 
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values.challenges,
+            &external_challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
@@ -384,85 +397,83 @@ pub(crate) mod tests {
         let z = prover_data.deep_poly_result.z;
         let alpha = prover_data.deep_poly_result.alpha;
         // Repackage row-major data as column-major for GPU
-        let range = 0..domain_size;
         let domain_index = 0;
-        let mut trace_view = prover_data.stage_1_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut stage_2_trace_view = prover_data.stage_2_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut setup_trace_view = setup.ldes[domain_index].trace.row_view(range.clone());
-        let mut quotient_trace_view = prover_data.quotient_commitment_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
         let num_setup_cols = circuit.setup_layout.total_width;
         let num_witness_cols = circuit.witness_layout.total_width;
         let num_memory_cols = circuit.memory_layout.total_width;
         let num_trace_cols = num_witness_cols + num_memory_cols;
         let num_stage_2_cols = circuit.stage_2_layout.total_width;
-        // let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
-        // let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
-        let mut h_setup_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_setup_cols];
-        let mut h_trace_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_trace_cols];
-        let mut h_stage_2_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_stage_2_cols];
+        let h_setup = &setup.ldes[domain_index].trace;
+        let h_trace = &prover_data.stage_1_result.ldes[domain_index].trace;
+        let h_stage_2 = &prover_data.stage_2_result.ldes[domain_index].trace;
+        let h_setup_slice = h_setup.as_slice();
+        let h_trace_slice = h_trace.as_slice();
+        let h_stage_2_slice = h_stage_2.as_slice();
+        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
+        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
+        assert_eq!(h_stage_2_slice.len(), domain_size * h_stage_2.padded_width);
+        // Repack composition poly as vectorized BF
         let mut h_composition_col: Vec<BF> = vec![BF::ZERO; 4 * domain_size];
-        // imitating access patterns in zksync_airbender's prover_stages/stage4.rs
+        let mut quotient_trace_view = prover_data.quotient_commitment_result.ldes[domain_index]
+            .trace
+            .row_view(0..domain_size);
         unsafe {
             for i in 0..domain_size {
-                let setup_trace_view_row = setup_trace_view.current_row_ref();
-                let trace_view_row = trace_view.current_row_ref();
-                let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
                 let quotient_trace_view_row = quotient_trace_view.current_row_ref();
-                {
-                    let mut src = setup_trace_view_row.as_ptr();
-                    for j in 0..num_setup_cols {
-                        h_setup_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
+                let src = quotient_trace_view_row.as_ptr().cast::<E4>();
+                assert!(src.is_aligned());
+                let coeffs = src.read().into_coeffs_in_base();
+                for (j, coeff) in coeffs.iter().enumerate() {
+                    h_composition_col[i + j * domain_size] = *coeff;
                 }
-                {
-                    let mut src = trace_view_row.as_ptr();
-                    for j in 0..num_trace_cols {
-                        h_trace_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let mut src = stage_2_trace_view_row.as_ptr();
-                    for j in 0..num_stage_2_cols {
-                        h_stage_2_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let src = quotient_trace_view_row.as_ptr().cast::<E4>();
-                    assert!(src.is_aligned());
-                    let coeffs = src.read().into_coeffs_in_base();
-                    for (j, coeff) in coeffs.iter().enumerate() {
-                        h_composition_col[i + j * domain_size] = *coeff;
-                    }
-                }
-                setup_trace_view.advance_row();
-                trace_view.advance_row();
-                stage_2_trace_view.advance_row();
                 quotient_trace_view.advance_row();
             }
         }
         // Allocate GPU args
         let stream = CudaStream::default();
-        let mut d_alloc_setup_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
-        let mut d_alloc_trace_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
-        let mut d_alloc_stage_2_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
         let mut d_alloc_composition_col = DeviceAllocation::<BF>::alloc(4 * domain_size).unwrap();
         let mut d_z = DeviceAllocation::<E4>::alloc(1).unwrap();
         let mut d_denom_at_z = DeviceAllocation::<E4>::alloc(domain_size).unwrap();
         let num_terms_at_z = circuit.num_openings_at_z();
         let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
         let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+        // Copy CPU setup to device and transpose to column major
+        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
+        let mut d_setup_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
+        memory_copy_async(&mut d_setup_row_major, &h_setup_slice, &stream).unwrap();
+        let d_setup_row_major_matrix =
+            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
+        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
+        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
+        drop(d_setup_row_major_matrix);
+        d_setup_row_major.free().unwrap();
+        // Copy CPU trace to device and transpose to column major
+        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
+        let mut d_trace_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
+        memory_copy_async(&mut d_trace_row_major, &h_trace_slice, &stream).unwrap();
+        let d_trace_row_major_matrix =
+            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
+        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
+        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
+        drop(d_trace_row_major_matrix);
+        d_trace_row_major.free().unwrap();
+        // Copy CPU stage 2 to device and transpose to column major
+        let mut d_stage_2_row_major = DeviceAllocation::<BF>::alloc(h_stage_2_slice.len()).unwrap();
+        let mut d_stage_2_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
+        memory_copy_async(&mut d_stage_2_row_major, &h_stage_2_slice, &stream).unwrap();
+        let d_stage_2_row_major_matrix = DeviceMatrixChunk::new(
+            &d_stage_2_row_major,
+            h_stage_2.padded_width,
+            0,
+            num_stage_2_cols,
+        );
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_stage_2_column_major, domain_size);
+        transpose(&d_stage_2_row_major_matrix, &mut d_stage_2_cols, &stream).unwrap();
+        drop(d_stage_2_row_major_matrix);
+        d_stage_2_row_major.free().unwrap();
         // TODO: In practice, we should also experiment with CudaHostAllocFlags::WRITE_COMBINED
         let mut h_e4_scratch =
             HostAllocation::<E4>::alloc(num_terms_total, CudaHostAllocFlags::DEFAULT).unwrap();
@@ -470,14 +481,8 @@ pub(crate) mod tests {
         let mut d_alloc_quotient = DeviceAllocation::<BF>::alloc(4 * domain_size).unwrap();
         let mut h_quotient =
             HostAllocation::<BF>::alloc(4 * domain_size, CudaHostAllocFlags::DEFAULT).unwrap();
-        memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_stage_2_cols, &h_stage_2_cols, &stream).unwrap();
         memory_copy_async(&mut d_alloc_composition_col, &h_composition_col, &stream).unwrap();
         memory_copy_async(&mut d_z, &[z], &stream).unwrap();
-        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_alloc_setup_cols, domain_size);
-        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_alloc_trace_cols, domain_size);
-        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_alloc_stage_2_cols, domain_size);
         let mut d_composition_col = DeviceMatrixMut::new(&mut d_alloc_composition_col, domain_size);
         let mut d_quotient = DeviceMatrixMut::new(&mut d_alloc_quotient, domain_size);
         for &bit_reversed in [false, true].iter() {
@@ -487,6 +492,22 @@ pub(crate) mod tests {
                 bit_reverse_in_place(&mut d_stage_2_cols, &stream).unwrap();
                 bit_reverse_in_place(&mut d_composition_col, &stream).unwrap();
             }
+            // Mark witness and memory regions in trace
+            let slice = d_trace_cols.slice();
+            let stride = d_trace_cols.stride();
+            let offset = d_trace_cols.offset();
+            let d_witness_cols = DeviceMatrixChunk::new(
+                &slice[0..num_witness_cols * stride],
+                stride,
+                offset,
+                domain_size,
+            );
+            let d_memory_cols = DeviceMatrixChunk::new(
+                &slice[num_witness_cols * stride..],
+                stride,
+                offset,
+                domain_size,
+            );
             compute_deep_denom_at_z_on_main_domain(
                 &mut d_denom_at_z,
                 &d_z[0],
@@ -514,21 +535,6 @@ pub(crate) mod tests {
                 &stream,
             )
             .unwrap();
-            let slice = d_trace_cols.slice();
-            let stride = d_trace_cols.stride();
-            let offset = d_trace_cols.offset();
-            let d_witness_cols = DeviceMatrixChunk::new(
-                &slice[0..num_witness_cols * stride],
-                stride,
-                offset,
-                domain_size,
-            );
-            let d_memory_cols = DeviceMatrixChunk::new(
-                &slice[num_witness_cols * stride..],
-                stride,
-                offset,
-                domain_size,
-            );
             compute_deep_quotient_on_main_domain(
                 &d_setup_cols,
                 &d_witness_cols,
@@ -543,6 +549,7 @@ pub(crate) mod tests {
                 &circuit,
                 log_n as u32,
                 bit_reversed,
+                *is_unrolled,
                 &stream,
             )
             .unwrap();
@@ -575,7 +582,7 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
-    fn test_stage_4_for_main_and_blake() {
+    fn test_standalone_stage_4_non_unrolled_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_delegation_test_impl(
             Some(Box::new(comparison_hook)),
@@ -587,9 +594,21 @@ pub(crate) mod tests {
     #[test]
     #[serial]
     #[ignore]
-    fn test_stage_4_for_main_and_keccak() {
+    fn test_standalone_stage_4_non_unrolled_for_main_and_keccak() {
         let ctx = DeviceContext::create(12).unwrap();
         run_keccak_test_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn test_standalone_stage_4_unrolled_with_transpiler_for_main_and_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

@@ -15,7 +15,6 @@ pub(crate) fn mul<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -47,7 +46,6 @@ pub(crate) fn mulhu<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -83,7 +81,6 @@ pub(crate) fn divu<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,
@@ -119,7 +116,6 @@ pub(crate) fn remu<C: Counters, R: RAM>(
     let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
             initial_pc: state.pc,
-            opcode: 0u32,
             rs1_value,
             rs2_value,
             rd_old_value,

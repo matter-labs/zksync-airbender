@@ -43,7 +43,7 @@ precheck_satisfied = []
 debug_satisfiable = ["prover/debug_satisfiable"]
 # Print logs related to timings only.
 timing_logs = []
-
+verifiers = ["full_statement_verifier/verifiers"]
 
 default = ["timing_logs", "security_80"]
 

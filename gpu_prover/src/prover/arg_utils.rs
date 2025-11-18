@@ -1,7 +1,7 @@
 use cs::definitions::{
-    IndirectAccessColumns, LookupExpression, OptimizedOraclesForLookupWidth1,
-    RegisterAccessColumns, RegisterAndIndirectAccessDescription, ShuffleRamAuxComparisonSet,
-    ShuffleRamInitAndTeardownLayout,
+    DelegationProcessingLayout, DelegationRequestLayout, IndirectAccessColumns, LookupExpression,
+    OptimizedOraclesForLookupWidth1, RegisterAccessColumns, RegisterAndIndirectAccessDescription,
+    ShuffleRamAuxComparisonSet, ShuffleRamInitAndTeardownLayout,
     EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -20,7 +20,6 @@ use prover::definitions::{
     ExternalDelegationArgumentChallenges, ExternalMachineStateArgumentChallenges,
     ExternalMemoryArgumentChallenges,
 };
-use prover::prover_stages::cached_data::ProverCachedData;
 
 use super::{BF, E4};
 use std::mem::size_of;
@@ -91,6 +90,47 @@ pub struct DelegationRequestMetadata {
     pub has_abi_mem_offset_high: bool,
 }
 
+impl DelegationRequestMetadata {
+    pub fn new(
+        circuit: &CompiledCircuitArtifact<BF>,
+        memory_timestamp_high_from_circuit_idx: Option<BF>,
+        layout: &DelegationRequestLayout,
+        is_unrolled: bool,
+    ) -> Self {
+        let (timestamp_columns, memory_timestamp_high_from_circuit_idx) = if is_unrolled {
+            assert!(memory_timestamp_high_from_circuit_idx.is_none());
+            (
+                &circuit
+                    .memory_layout
+                    .intermediate_state_layout
+                    .unwrap()
+                    .timestamp,
+                BF::ZERO,
+            )
+        } else {
+            (
+                &circuit.setup_layout.timestamp_setup_columns,
+                memory_timestamp_high_from_circuit_idx.unwrap(),
+            )
+        };
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
+        };
+        Self {
+            multiplicity_col: layout.multiplicity.start() as u32,
+            timestamp_col: timestamp_columns.start() as u32,
+            memory_timestamp_high_from_circuit_idx,
+            delegation_type_col: layout.delegation_type.start() as u32,
+            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 #[repr(C)]
 pub struct DelegationProcessingMetadata {
@@ -101,51 +141,21 @@ pub struct DelegationProcessingMetadata {
     pub has_abi_mem_offset_high: bool,
 }
 
-pub fn get_delegation_metadata(
-    cached_data: &ProverCachedData,
-    circuit: &CompiledCircuitArtifact<BF>,
-) -> (DelegationRequestMetadata, DelegationProcessingMetadata) {
-    let handle_delegation_requests = cached_data.handle_delegation_requests;
-    let process_delegations = cached_data.process_delegations;
-    let execute_delegation_argument = cached_data.execute_delegation_argument;
-    let delegation_request_layout = cached_data.delegation_request_layout;
-    let delegation_processor_layout = cached_data.delegation_processor_layout;
-    let memory_timestamp_high_from_circuit_idx = cached_data.memory_timestamp_high_from_circuit_idx;
-    let delegation_type = cached_data.delegation_type;
-    assert_eq!(
-        execute_delegation_argument,
-        handle_delegation_requests || process_delegations
-    );
-    // NB: handle_delegation_requests and process_delegations are mutually exclusive
-    if handle_delegation_requests {
-        assert!(!process_delegations);
-        let layout = delegation_request_layout;
-        let request_metadata = DelegationRequestMetadata {
-            multiplicity_col: layout.multiplicity.start() as u32,
-            timestamp_col: circuit.setup_layout.timestamp_setup_columns.start() as u32,
-            memory_timestamp_high_from_circuit_idx,
-            delegation_type_col: layout.delegation_type.start() as u32,
-            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            has_abi_mem_offset_high: true,
+impl DelegationProcessingMetadata {
+    pub fn new(layout: &DelegationProcessingLayout, delegation_type: BF) -> Self {
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
         };
-        (request_metadata, DelegationProcessingMetadata::default())
-    } else if process_delegations {
-        assert!(!handle_delegation_requests); // redundant, for clarity
-        let layout = delegation_processor_layout;
-        let processing_metadata = DelegationProcessingMetadata {
+        Self {
             multiplicity_col: layout.multiplicity.start() as u32,
             delegation_type,
             write_timestamp_col: layout.write_timestamp.start() as u32,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            has_abi_mem_offset_high: true,
-        };
-        (DelegationRequestMetadata::default(), processing_metadata)
-    } else {
-        (
-            DelegationRequestMetadata::default(),
-            DelegationProcessingMetadata::default(),
-        )
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
     }
 }
 
@@ -297,6 +307,16 @@ impl StateLinkageConstraints {
             srcs,
             dsts,
             num_constraints: num_constraints as u32,
+        }
+    }
+}
+
+impl Default for StateLinkageConstraints {
+    fn default() -> Self {
+        Self {
+            srcs: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            dsts: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            num_constraints: 0,
         }
     }
 }
@@ -877,6 +897,49 @@ impl Default for MachineStateLayout {
     }
 }
 
+#[derive(Clone)]
+#[repr(C)]
+pub struct MaskArgLayout {
+    pub arg_col: u32,
+    pub execute_col: u32,
+    pub process_mask: bool,
+}
+
+impl MaskArgLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let poly = circuit.stage_2_layout.intermediate_polys_for_permutation_masking;
+        let process_mask = poly.num_elements() > 0;
+        let (arg_col, execute_col) = if process_mask {
+            let intermediate_state_layout =
+                circuit.memory_layout.intermediate_state_layout.unwrap();
+            (
+                translate_e4_offset(poly.start()),
+                intermediate_state_layout.execute.start(),
+            )
+        } else {
+            (0, 0)
+        };
+        Self {
+            arg_col: arg_col as u32,
+            execute_col: execute_col as u32,
+            process_mask,
+        }
+    }
+}
+
+impl Default for MaskArgLayout {
+    fn default() -> Self {
+        Self {
+            arg_col: 0,
+            execute_col: 0,
+            process_mask: false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct ShuffleRamAccess {
@@ -900,13 +963,22 @@ pub struct ShuffleRamAccesses {
 }
 
 impl ShuffleRamAccesses {
-    pub fn new(
-        shuffle_ram_access_sets: &Vec<ShuffleRamQueryColumns>,
-        write_timestamp_start: usize,
-    ) -> Self {
+    pub fn new(circuit: &CompiledCircuitArtifact<BF>, is_unrolled: bool) -> Self {
         let mut accesses = [ShuffleRamAccess::default(); MAX_SHUFFLE_RAM_ACCESSES];
+        let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
         let num_accesses = shuffle_ram_access_sets.len();
         assert!(num_accesses <= MAX_SHUFFLE_RAM_ACCESSES);
+        let intermediate_state_layout = &circuit.memory_layout.intermediate_state_layout;
+        let write_timestamp_start = if is_unrolled {
+            intermediate_state_layout
+                .as_ref()
+                .unwrap()
+                .timestamp
+                .start()
+        } else {
+            assert!(intermediate_state_layout.is_none());
+            circuit.setup_layout.timestamp_setup_columns.start()
+        };
         // imitates zksync_airbender's stage2.rs
         for (i, memory_access_columns) in shuffle_ram_access_sets.iter().enumerate() {
             match memory_access_columns {

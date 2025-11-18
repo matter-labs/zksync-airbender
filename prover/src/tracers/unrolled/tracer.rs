@@ -80,6 +80,7 @@ impl<A: GoodAllocator> MemTracingFamilyChunk<A> {
     }
 }
 
+#[deprecated]
 pub struct UnrolledGPUFriendlyTracer<
     C: MachineConfig = IMStandardIsaConfig,
     A: GoodAllocator = Global,
@@ -237,108 +238,111 @@ impl<
 
     #[inline]
     fn trace_non_mem_step(&mut self, family: u8, mut data: NonMemoryOpcodeTracingData) {
-        let mut rs1_read_timestamp = TimestampData::EMPTY;
-        let mut rs2_read_timestamp = TimestampData::EMPTY;
-        let mut rd_read_timestamp = TimestampData::EMPTY;
+        panic!("deprecated");
+        // let mut rs1_read_timestamp = TimestampData::EMPTY;
+        // let mut rs2_read_timestamp = TimestampData::EMPTY;
+        // let mut rd_read_timestamp = TimestampData::EMPTY;
 
-        let (rs1, rs2, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
-        if rd == 0 {
-            // easier to re-adjust
-            data.rd_value = 0;
-        }
-        self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
-        self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_read_timestamp);
-        self.update_reg_access_timestamp::<RD_ACCESS_IDX>(rd, &mut rd_read_timestamp);
+        // let (rs1, rs2, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
+        // if rd == 0 {
+        //     // easier to re-adjust
+        //     data.rd_value = 0;
+        // }
+        // self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
+        // self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_read_timestamp);
+        // self.update_reg_access_timestamp::<RD_ACCESS_IDX>(rd, &mut rd_read_timestamp);
 
-        if TRACE_FOR_PROVING {
-            let data = NonMemoryOpcodeTracingDataWithTimestamp {
-                opcode_data: data,
-                rs1_read_timestamp: TimestampData::EMPTY,
-                rs2_read_timestamp: TimestampData::EMPTY,
-                rd_read_timestamp: TimestampData::EMPTY,
-                cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
-            };
-            let dst = &mut self.current_family_chunks[family as usize - 1];
-            dst.data.push(data);
-            if dst.data.len() == dst.num_cycles {
-                let next = (self.opcode_family_chunk_factories[&family])();
-                let completed = core::mem::replace(dst, next);
-                self.completed_family_chunks
-                    .entry(family)
-                    .or_insert(vec![])
-                    .push(completed);
-            }
-        }
+        // if TRACE_FOR_PROVING {
+        //     let data = NonMemoryOpcodeTracingDataWithTimestamp {
+        //         opcode_data: data,
+        //         rs1_read_timestamp: TimestampData::EMPTY,
+        //         rs2_read_timestamp: TimestampData::EMPTY,
+        //         rd_read_timestamp: TimestampData::EMPTY,
+        //         cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
+        //     };
+        //     let dst = &mut self.current_family_chunks[family as usize - 1];
+        //     dst.data.push(data);
+        //     if dst.data.len() == dst.num_cycles {
+        //         let next = (self.opcode_family_chunk_factories[&family])();
+        //         let completed = core::mem::replace(dst, next);
+        //         self.completed_family_chunks
+        //             .entry(family)
+        //             .or_insert(vec![])
+        //             .push(completed);
+        //     }
+        // }
     }
 
     #[inline]
     fn trace_mem_load_step(&mut self, data: LoadOpcodeTracingData) {
-        let mut rs1_read_timestamp = TimestampData::EMPTY;
-        let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
-        let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
+        panic!("deprecated");
+        // let mut rs1_read_timestamp = TimestampData::EMPTY;
+        // let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
+        // let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
 
-        let (rs1, _, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
-        if rd == 0 {
-            debug_assert_eq!(data.rd_value, 0);
-        }
-        self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_READ_ACCESS_IDX>(
-            data.aligned_ram_address as u64,
-            false,
-            &mut rs2_or_ram_read_timestamp,
-        );
-        self.update_reg_access_timestamp::<RD_ACCESS_IDX>(rd, &mut rd_or_ram_read_timestamp);
+        // let (rs1, _, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
+        // if rd == 0 {
+        //     debug_assert_eq!(data.rd_value, 0);
+        // }
+        // self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
+        // self.update_ram_access_timestmap::<RAM_READ_ACCESS_IDX>(
+        //     data.aligned_ram_address as u64,
+        //     false,
+        //     &mut rs2_or_ram_read_timestamp,
+        // );
+        // self.update_reg_access_timestamp::<RD_ACCESS_IDX>(rd, &mut rd_or_ram_read_timestamp);
 
-        if TRACE_FOR_PROVING {
-            let data = MemoryOpcodeTracingDataWithTimestamp {
-                opcode_data: data,
-                discr: MEM_LOAD_TRACE_DATA_MARKER,
-                rs1_read_timestamp,
-                rs2_or_ram_read_timestamp,
-                rd_or_ram_read_timestamp,
-                cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
-            };
-            self.current_mem_family_chunk.data.push(data);
-            if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
-            {
-                let next = (self.mem_family_chunk_factory)();
-                let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
-                self.completed_mem_family_chunks.push(completed);
-            }
-        }
+        // if TRACE_FOR_PROVING {
+        //     let data = MemoryOpcodeTracingDataWithTimestamp {
+        //         opcode_data: data,
+        //         discr: MEM_LOAD_TRACE_DATA_MARKER,
+        //         rs1_read_timestamp,
+        //         rs2_or_ram_read_timestamp,
+        //         rd_or_ram_read_timestamp,
+        //         cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
+        //     };
+        //     self.current_mem_family_chunk.data.push(data);
+        //     if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
+        //     {
+        //         let next = (self.mem_family_chunk_factory)();
+        //         let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
+        //         self.completed_mem_family_chunks.push(completed);
+        //     }
+        // }
     }
 
     fn trace_mem_store_step(&mut self, data: StoreOpcodeTracingData) {
-        let mut rs1_read_timestamp = TimestampData::EMPTY;
-        let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
-        let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
+        panic!("deprecated");
+        // let mut rs1_read_timestamp = TimestampData::EMPTY;
+        // let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
+        // let mut rd_or_ram_read_timestamp = TimestampData::EMPTY;
 
-        let (rs1, rs2, _) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
-        self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
-        self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_or_ram_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_WRITE_ACCESS_IDX>(
-            data.aligned_ram_address as u64,
-            true,
-            &mut rd_or_ram_read_timestamp,
-        );
+        // let (rs1, rs2, _) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
+        // self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
+        // self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_or_ram_read_timestamp);
+        // self.update_ram_access_timestmap::<RAM_WRITE_ACCESS_IDX>(
+        //     data.aligned_ram_address as u64,
+        //     true,
+        //     &mut rd_or_ram_read_timestamp,
+        // );
 
-        if TRACE_FOR_PROVING {
-            let data = MemoryOpcodeTracingDataWithTimestamp {
-                opcode_data: unsafe { core::mem::transmute(data) },
-                discr: MEM_STORE_TRACE_DATA_MARKER,
-                rs1_read_timestamp,
-                rs2_or_ram_read_timestamp,
-                rd_or_ram_read_timestamp,
-                cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
-            };
-            self.current_mem_family_chunk.data.push(data);
-            if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
-            {
-                let next = (self.mem_family_chunk_factory)();
-                let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
-                self.completed_mem_family_chunks.push(completed);
-            }
-        }
+        // if TRACE_FOR_PROVING {
+        //     let data = MemoryOpcodeTracingDataWithTimestamp {
+        //         opcode_data: unsafe { core::mem::transmute(data) },
+        //         discr: MEM_STORE_TRACE_DATA_MARKER,
+        //         rs1_read_timestamp,
+        //         rs2_or_ram_read_timestamp,
+        //         rd_or_ram_read_timestamp,
+        //         cycle_timestamp: TimestampData::from_scalar(self.current_timestamp),
+        //     };
+        //     self.current_mem_family_chunk.data.push(data);
+        //     if self.current_mem_family_chunk.data.len() == self.current_mem_family_chunk.num_cycles
+        //     {
+        //         let next = (self.mem_family_chunk_factory)();
+        //         let completed = core::mem::replace(&mut self.current_mem_family_chunk, next);
+        //         self.completed_mem_family_chunks.push(completed);
+        //     }
+        // }
     }
 
     fn record_delegation(

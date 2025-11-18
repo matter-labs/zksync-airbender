@@ -62,6 +62,24 @@ struct DecoderTableChallenges {
   const e4 gamma;
 };
 
+struct IntermediateStateLookupLayout {
+  const unsigned execute;
+  const unsigned pc;
+  // const unsigned timestamp; // not used for lookup
+  const unsigned rs1_index;
+  const unsigned rs2_index;
+  const unsigned rd_index;
+  // const bool decoder_witness_is_in_memory; // should be false
+  const unsigned rd_is_zero;
+  const unsigned imm;
+  const unsigned funct3;
+  // const unsigned funct7; // should be empty
+  // const unsigned circuit_family; // should be empty
+  const unsigned circuit_family_extra_mask;
+  const unsigned intermediate_poly;
+  const bool has_decoder;
+};
+
 struct RangeCheckArgsLayout {
   const unsigned num_dst_cols;
   const unsigned src_cols_start;
@@ -266,6 +284,12 @@ struct MachineStateLayout {
   const unsigned final_timestamp_start;
   const unsigned arg_col;
   const bool process_machine_state;
+};
+
+struct MaskArgLayout {
+  const unsigned arg_col;
+  const unsigned execute_col;
+  const bool process_mask;
 };
 
 constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
