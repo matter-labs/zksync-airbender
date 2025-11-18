@@ -24,7 +24,7 @@ You can also:
 You can run the RISC-V binary on the emulator, to see the expected outputs and number of used cycles.
 
 ```
-cargo run  run  --bin ../../examples/basic_fibonacci/app.bin 
+cargo run  run  --bin ../../examples/basic_fibonacci/app.bin
 ```
 
 By default it will run for up to 1_000_000 cycles, but you can specify `--cycles` to set number of cycles manually.
