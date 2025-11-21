@@ -117,7 +117,7 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let num_transcript_challenges = 2usize * 4;
     let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
         seed,
-        pow_bits.stage_3_pow_bits,
+        pow_bits.quotient_alpha_pow_bits,
         num_transcript_challenges,
         worker,
     );

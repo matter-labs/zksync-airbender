@@ -113224,8 +113224,8 @@
     }
   ],
   "pow_challenges": {
-    "stage_2_pow_challenge": 0,
-    "stage_3_pow_challenge": 0,
+    "lookup_pow_challenge": 0,
+    "quotient_alpha_pow_challenge": 0,
     "quotient_z_pow_challenge": 0,
     "deep_poly_alpha_pow_challenge": 0,
     "foldings_pow_challenges": [

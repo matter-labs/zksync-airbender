@@ -2203,6 +2203,7 @@ pub(crate) mod test {
     use crate::bincode_deserialize_from_file;
     use crate::deserialize_from_file;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use prover::prover_stages::pow_bits_calculator;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
     use std::path::Path;
@@ -2331,6 +2332,7 @@ pub(crate) mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
+            pow_challenge,
         ) = prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
             1 << 24,
             &binary_image,
@@ -2350,6 +2352,7 @@ pub(crate) mod test {
                 delegation_proofs,
                 register_final_state,
                 (final_pc, final_timestamp),
+                pow_challenge,
             ),
             "tmp_proof.bin",
         );

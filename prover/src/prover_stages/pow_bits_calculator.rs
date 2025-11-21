@@ -2,8 +2,8 @@ pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124; // Mersenne31Quartic size in
 
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ProofPowConfig {
-    pub stage_2_pow_bits: u32,
-    pub stage_3_pow_bits: u32,
+    pub lookup_pow_bits: u32,
+    pub quotient_alpha_pow_bits: u32,
     pub quotient_z_pow_bits: u32,
     pub deep_poly_alpha_pow_bits: u32,
     pub foldings_pow_bits: Vec<u32>,
@@ -34,15 +34,16 @@ impl ProofPowConfig {
             })
             .collect();
         Self {
-            stage_2_pow_bits: pow_bits_for_cq_lookup(
+            lookup_pow_bits: pow_bits_for_cq_lookup(
                 security_bits,
                 domain_size_log2,
                 field_size_log2,
             ) as u32,
-            stage_3_pow_bits: pow_bits_for_quotient(
+            quotient_alpha_pow_bits: pow_bits_for_quotient(
                 security_bits,
                 field_size_log2,
                 powers_of_quotient_alpha,
+                lde_factor_log2,
             ) as u32,
             quotient_z_pow_bits: pow_bits_for_deep_z(
                 security_bits,
@@ -92,8 +93,8 @@ impl ProofPowConfig {
 
     pub fn for_queries_only(pow_bits: u32) -> Self {
         Self {
-            stage_2_pow_bits: 0,
-            stage_3_pow_bits: 0,
+            lookup_pow_bits: 0,
+            quotient_alpha_pow_bits: 0,
             quotient_z_pow_bits: 0,
             deep_poly_alpha_pow_bits: 0,
             foldings_pow_bits: vec![0; 5],
@@ -104,8 +105,8 @@ impl ProofPowConfig {
 
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ProofPowChallenges {
-    pub stage_2_pow_challenge: u64,
-    pub stage_3_pow_challenge: u64,
+    pub lookup_pow_challenge: u64,
+    pub quotient_alpha_pow_challenge: u64,
     pub quotient_z_pow_challenge: u64,
     pub deep_poly_alpha_pow_challenge: u64,
     pub foldings_pow_challenges: Vec<u64>,
@@ -134,8 +135,8 @@ pub const fn pow_bits_for_memory_and_delegation(
 
 #[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SizedProofPowConfig<const NUM_FOLDINGS: usize> {
-    pub stage_2_pow_bits: u32,
-    pub stage_3_pow_bits: u32,
+    pub lookup_pow_bits: u32,
+    pub quotient_alpha_pow_bits: u32,
     pub quotient_z_pow_bits: u32,
     pub deep_poly_alpha_pow_bits: u32,
     #[serde(bound(deserialize = "[u32; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
@@ -147,8 +148,8 @@ pub struct SizedProofPowConfig<const NUM_FOLDINGS: usize> {
 impl<const NUM_FOLDINGS: usize> From<SizedProofPowConfig<NUM_FOLDINGS>> for ProofPowConfig {
     fn from(value: SizedProofPowConfig<NUM_FOLDINGS>) -> Self {
         ProofPowConfig {
-            stage_2_pow_bits: value.stage_2_pow_bits,
-            stage_3_pow_bits: value.stage_3_pow_bits,
+            lookup_pow_bits: value.lookup_pow_bits,
+            quotient_alpha_pow_bits: value.quotient_alpha_pow_bits,
             quotient_z_pow_bits: value.quotient_z_pow_bits,
             deep_poly_alpha_pow_bits: value.deep_poly_alpha_pow_bits,
             foldings_pow_bits: value.foldings_pow_bits.to_vec(),
@@ -184,15 +185,16 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
             i += 1;
         }
         Self {
-            stage_2_pow_bits: pow_bits_for_cq_lookup(
+            lookup_pow_bits: pow_bits_for_cq_lookup(
                 security_bits,
                 domain_size_log2,
                 field_size_log2,
             ) as u32,
-            stage_3_pow_bits: pow_bits_for_quotient(
+            quotient_alpha_pow_bits: pow_bits_for_quotient(
                 security_bits,
                 field_size_log2,
                 powers_of_quotient_alpha,
+                lde_factor_log2,
             ) as u32,
             quotient_z_pow_bits: pow_bits_for_deep_z(
                 security_bits,
@@ -252,8 +254,8 @@ pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usiz
 
 #[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
-    pub stage_2_pow_challenge: u64,
-    pub stage_3_pow_challenge: u64,
+    pub lookup_pow_challenge: u64,
+    pub quotient_alpha_pow_challenge: u64,
     pub quotient_z_pow_challenge: u64,
     pub deep_poly_alpha_pow_challenge: u64,
     #[serde(bound(deserialize = "[u64; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
@@ -270,7 +272,10 @@ pub const fn num_queries_for_security_params(
     lde_factor_log2: usize,
 ) -> usize {
     let bits = security_bits - pow_bits;
-    bits.div_ceil(lde_factor_log2) + 1
+    let init_res = bits.div_ceil(lde_factor_log2);
+
+    // We should add extra 20% of queries
+    init_res + init_res.div_ceil(5)
 }
 
 const fn pow_bits_for_cq_lookup(
@@ -278,7 +283,7 @@ const fn pow_bits_for_cq_lookup(
     domain_size_log2: usize,
     field_size_log2: usize,
 ) -> usize {
-    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 1;
+    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 5;
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
     } else {
@@ -291,7 +296,7 @@ const fn pow_bits_for_memory_argument(
     domain_size_log2: usize,
     field_size_log2: usize,
 ) -> usize {
-    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 1;
+    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 2;
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
     } else {
@@ -305,9 +310,10 @@ const fn pow_bits_for_quotient(
     security_bits: usize,
     challenge_field_size_log2: usize,
     powers_of_alpha: usize,
+    lde_factor_log2: usize,
 ) -> usize {
     let powers_of_alpha_log2 = powers_of_alpha.next_power_of_two().trailing_zeros() as usize;
-    let no_pow_security_bits = challenge_field_size_log2 - powers_of_alpha_log2 - 2;
+    let no_pow_security_bits = challenge_field_size_log2 - powers_of_alpha_log2 - 2 - lde_factor_log2.div_ceil(2);
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
     } else {
@@ -366,10 +372,72 @@ pub const fn pow_bits_for_queries(
     num_queries: usize,
     lde_factor_log2: usize,
 ) -> usize {
-    let no_pow_security_bits = (num_queries - 1) * lde_factor_log2;
+    // We should add extra 20% of queries
+    let queries_contribution = 5 * num_queries.div_ceil(6);
+    let no_pow_security_bits = queries_contribution * lde_factor_log2;
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
     } else {
         0
+    }
+}
+
+pub use worst_case_constants::{worst_pow_config, worst_sized_pow_config};
+mod worst_case_constants {
+    use super::*;
+    // Worst-case constants for PoW bits calculations
+    const TRACE_LEN_LOG2: usize = 24; // add_sub_lui_auipc_mop_verifier
+    const FRI_FACTOR_LOG2: usize = 1; // always
+    const CHALLENGE_FIELD_SIZE_LOG2: usize = MERSENNE31QUARTIC_SIZE_LOG2; // always
+    const NUM_QUOTIENT_TERMS: usize = 928; // blake2_with_compression_verifier
+    const NUM_OPENINGS_AT_Z: usize = 1225; // blake2_with_compression_verifier
+    const NUM_OPENINGS_AT_Z_OMEGA: usize = 13; // inits_and_teardowns_verifier
+    const FRI_FOLDING_FACTOR_LOG2: usize = 4; // from OPTIMAL_FOLDING_PROPERTIES
+    const POW_BITS_FOR_QUERIES: usize = 28; // always
+
+    #[test]
+    fn worst_case_constants() {
+        dbg!(worst_pow_config(80, 5));
+        dbg!(worst_pow_config(100, 5));
+    }
+
+    pub const fn worst_sized_pow_config<const NUM_FRI_STEPS: usize>(security_bits: usize) -> SizedProofPowConfig<NUM_FRI_STEPS> {
+        let num_queries = num_queries_for_security_params(
+            security_bits,
+            POW_BITS_FOR_QUERIES,
+            FRI_FACTOR_LOG2,
+        );
+
+        SizedProofPowConfig::from_parameters(
+            security_bits,
+            TRACE_LEN_LOG2,
+            TRACE_LEN_LOG2 + FRI_FACTOR_LOG2,
+            CHALLENGE_FIELD_SIZE_LOG2,
+            NUM_QUOTIENT_TERMS,
+            NUM_OPENINGS_AT_Z + NUM_OPENINGS_AT_Z_OMEGA,
+            &[FRI_FOLDING_FACTOR_LOG2; NUM_FRI_STEPS],
+            num_queries,
+            FRI_FACTOR_LOG2,
+        )
+    }
+
+    pub fn worst_pow_config(security_bits: usize, num_fri_steps: usize) -> ProofPowConfig {
+        let num_queries = num_queries_for_security_params(
+            security_bits,
+            POW_BITS_FOR_QUERIES,
+            FRI_FACTOR_LOG2,
+        );
+
+        ProofPowConfig::from_parameters(
+            security_bits,
+            TRACE_LEN_LOG2,
+            TRACE_LEN_LOG2 + FRI_FACTOR_LOG2,
+            CHALLENGE_FIELD_SIZE_LOG2,
+            NUM_QUOTIENT_TERMS,
+            NUM_OPENINGS_AT_Z + NUM_OPENINGS_AT_Z_OMEGA,
+            &vec![FRI_FOLDING_FACTOR_LOG2; num_fri_steps],
+            num_queries,
+            FRI_FACTOR_LOG2,
+        )
     }
 }

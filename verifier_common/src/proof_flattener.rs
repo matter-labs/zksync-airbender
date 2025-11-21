@@ -111,10 +111,10 @@ pub fn flatten_proof_for_skeleton(proof: &Proof, lazy_inits_and_teardowns_len: u
     );
 
     // PoW challenges
-    result.push(proof.pow_challenges.stage_2_pow_challenge as u32);
-    result.push((proof.pow_challenges.stage_2_pow_challenge >> 32) as u32);
-    result.push(proof.pow_challenges.stage_3_pow_challenge as u32);
-    result.push((proof.pow_challenges.stage_3_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.lookup_pow_challenge as u32);
+    result.push((proof.pow_challenges.lookup_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_alpha_pow_challenge >> 32) as u32);
     result.push(proof.pow_challenges.quotient_z_pow_challenge as u32);
     result.push((proof.pow_challenges.quotient_z_pow_challenge >> 32) as u32);
     result.push(proof.pow_challenges.deep_poly_alpha_pow_challenge as u32);
@@ -238,10 +238,10 @@ pub fn flatten_unrolled_circuits_proof_for_skeleton(
     );
 
     // PoW challenges
-    result.push(proof.pow_challenges.stage_2_pow_challenge as u32);
-    result.push((proof.pow_challenges.stage_2_pow_challenge >> 32) as u32);
-    result.push(proof.pow_challenges.stage_3_pow_challenge as u32);
-    result.push((proof.pow_challenges.stage_3_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.lookup_pow_challenge as u32);
+    result.push((proof.pow_challenges.lookup_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_alpha_pow_challenge >> 32) as u32);
     result.push(proof.pow_challenges.quotient_z_pow_challenge as u32);
     result.push((proof.pow_challenges.quotient_z_pow_challenge >> 32) as u32);
     result.push(proof.pow_challenges.deep_poly_alpha_pow_challenge as u32);

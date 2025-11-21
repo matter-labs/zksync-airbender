@@ -612,10 +612,8 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = ProofPowConfig::from_compiled_circuit(
+    let pow_bits = pow_bits_calculator::worst_pow_config(
         security_bits,
-        compiled_circuit,
-        lde_factor,
         num_queries,
     );
 
@@ -897,8 +895,8 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     };
 
     let pow_challenges = ProofPowChallenges {
-        stage_2_pow_challenge: stage_2_output.pow_challenge,
-        stage_3_pow_challenge: stage_3_output.pow_challenge,
+        lookup_pow_challenge: stage_2_output.pow_challenge,
+        quotient_alpha_pow_challenge: stage_3_output.pow_challenge,
         quotient_z_pow_challenge: stage_4_output.quotient_z_pow_challenge,
         deep_poly_alpha_pow_challenge: stage_4_output.deep_poly_alpha_pow_challenge,
         foldings_pow_challenges: stage_5_output.foldings_pow_challenges.clone(),

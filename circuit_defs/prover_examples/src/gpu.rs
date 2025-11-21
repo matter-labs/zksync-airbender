@@ -213,8 +213,34 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
         &delegation_memory_trees,
     );
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed(memory_challenges_seed, true);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed(
+        memory_challenges_seed, 
+        true,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge
+    );
 
     let input = final_register_values
         .iter()
