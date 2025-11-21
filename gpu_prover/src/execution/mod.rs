@@ -7,6 +7,7 @@ mod messages;
 mod precomputations;
 pub mod prover;
 mod ram;
+mod simulation_runner;
 mod snapshotter;
 mod tracer;
 mod tracing_data_producers;

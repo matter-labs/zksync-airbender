@@ -6,15 +6,16 @@ use crate::circuit_type::{
 };
 use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
-use crate::execution::cpu_worker::{
-    run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator,
-};
+use crate::execution::cpu_worker::{run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator};
 use crate::execution::gpu_worker::{
     GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult,
 };
 use crate::execution::messages::{
     InitsAndTeardownsData, SimulationResult, TracingData, WorkerResult,
+};
+use crate::execution::tracing_data_producers::{
+    SplitTracingDataProducers, UnifiedTracingDataProducers,
 };
 use crate::machine_type::MachineType;
 use crate::prover::context::ProverContextConfig;
@@ -47,6 +48,7 @@ use std::time::Instant;
 use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
+use type_map::concurrent::TypeMap;
 use worker::Worker;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -77,6 +79,9 @@ struct BinaryHolder {
     execution_kind: ExecutionKind,
     machine_type: MachineType,
     binary_image: Arc<Box<[u32]>>,
+    text_section: Arc<Box<[u32]>>,
+    cycles_bound: Option<u32>,
+    jit_cache: Arc<Mutex<TypeMap>>,
     instruction_tape: Arc<SimpleTape>,
     precomputations: HashMap<UnrolledCircuitType, CircuitPrecomputations>,
 }
@@ -87,7 +92,6 @@ pub struct ExecutionProverConfiguration {
     pub max_thread_pool_threads: Option<usize>,
     pub expected_concurrent_jobs: usize,
     pub replay_worker_threads_count: usize,
-    pub snapshot_period: usize,
     pub host_allocator_backing_allocation_size: usize,
     pub host_allocators_per_job_count: usize,
     pub host_allocators_per_device_count: usize,
@@ -101,7 +105,6 @@ impl Default for ExecutionProverConfiguration {
             max_thread_pool_threads: None,
             expected_concurrent_jobs: 1,
             replay_worker_threads_count: 8,
-            snapshot_period: 1 << 22,                        // 4 MCycles
             host_allocator_backing_allocation_size: 1 << 26, // 64 MB
             host_allocators_per_job_count: 256,              // 16 GB
             host_allocators_per_device_count: 128,           // 8 GB
@@ -201,7 +204,7 @@ impl TraceCache {
 pub struct ExecutionProver {
     configuration: ExecutionProverConfiguration,
     gpu_manager: GpuManager,
-    worker: Worker,
+    worker: Arc<Worker>,
     binary_holders: BTreeMap<usize, BinaryHolder>,
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
@@ -244,6 +247,7 @@ impl ExecutionProver {
             "PROVER thread pool with {} threads created",
             worker.num_cores
         );
+        let worker = Arc::new(worker);
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
         let common_precomputations = get_common_precomputations(&worker);
@@ -282,18 +286,19 @@ impl ExecutionProver {
         key: usize,
         execution_kind: ExecutionKind,
         machine_type: MachineType,
-        mut binary_image: Vec<u32>,
-        mut text_section: Vec<u32>,
+        binary_image: Vec<u32>,
+        text_section: Vec<u32>,
+        cycles_bound: Option<u32>,
     ) {
-        setups::pad_bytecode_for_proving(&mut binary_image);
-        let binary_image = Arc::new(binary_image.into_boxed_slice());
+        info!("PROVER inserting binary with key {key:?}");
+        // setups::pad_bytecode_for_proving(&mut binary_image);
         let preprocess_bytecode_fn = match machine_type {
             MachineType::Full => preprocess_bytecode::<FullMachineDecoderConfig>,
             MachineType::FullUnsigned => preprocess_bytecode::<FullUnsignedMachineDecoderConfig>,
             MachineType::Reduced => preprocess_bytecode::<ReducedMachineDecoderConfig>,
         };
         let preprocessed_bytecode = preprocess_bytecode_fn(&text_section);
-        setups::pad_bytecode_for_proving(&mut text_section);
+        // setups::pad_bytecode_for_proving(&mut text_section);
         let instruction_tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
         let circuit_types = match execution_kind {
             ExecutionKind::Unrolled => {
@@ -320,17 +325,26 @@ impl ExecutionProver {
         };
         let precomputations = circuit_types.into_iter().map(|circuit_type| {
             debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
+            let mut binary_image = binary_image.clone();
+            setups::pad_bytecode_for_proving(&mut binary_image);
+            let mut text_section = text_section.clone();
+            setups::pad_bytecode_for_proving(&mut text_section);
             let precomputations = CircuitPrecomputations::new(CircuitType::Unrolled(circuit_type), &binary_image, &text_section, &self.worker);
             (circuit_type, precomputations)
         }).collect();
+        let binary_image = Arc::new(binary_image.into_boxed_slice());
+        let text_section = Arc::new(text_section.into_boxed_slice());
+        let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
         let holder = BinaryHolder {
             execution_kind,
             machine_type,
             binary_image,
+            text_section,
+            cycles_bound,
             instruction_tape,
+            jit_cache,
             precomputations,
         };
-        info!("PROVER inserting binary with key {key:?}");
         assert!(self.binary_holders.insert(key, holder).is_none());
     }
 
@@ -345,8 +359,7 @@ impl ExecutionProver {
         cache: &mut Option<TraceCache>,
         batch_id: u64,
         binary_key: usize,
-        cycles_limit: usize,
-        non_determinism_source: Arc<Mutex<impl NonDeterminismCSRSource + Send + 'static>>,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
         external_challenges: Option<ExternalChallenges>,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
@@ -427,38 +440,46 @@ impl ExecutionProver {
         } else {
             trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
             {
-                let snapshot_period = self.configuration.snapshot_period;
                 let free_allocators_receiver = self.free_allocators_receiver.clone();
                 let binary_image = holder.binary_image.clone();
-                let instruction_tape = holder.instruction_tape.clone();
+                let text_section = holder.text_section.clone();
+                let cycles_bound = holder.cycles_bound;
+                let jit_cache = holder.jit_cache.clone();
+                let non_determinism_source = non_determinism_source.clone();
                 let work_results_sender = work_results_sender.clone();
                 let abort = abort.clone();
-                self.worker.pool.spawn(move || match execution_kind {
-                    ExecutionKind::Unrolled => run_split_simulator(
-                        batch_id,
-                        machine_type,
-                        binary_image,
-                        instruction_tape,
-                        non_determinism_source.lock().unwrap().deref_mut(),
-                        cycles_limit,
-                        snapshot_period,
-                        split_snapshot_sender,
-                        work_results_sender,
-                        free_allocators_receiver,
-                        abort,
-                    ),
-                    ExecutionKind::Unified => run_unified_simulator(
-                        batch_id,
-                        binary_image,
-                        instruction_tape,
-                        non_determinism_source.lock().unwrap().deref_mut(),
-                        cycles_limit,
-                        snapshot_period,
-                        unified_snapshot_sender,
-                        work_results_sender,
-                        free_allocators_receiver,
-                        abort,
-                    ),
+                let worker = self.worker.clone();
+                self.worker.pool.spawn(move || {
+                    match execution_kind {
+                        ExecutionKind::Unrolled => run_split_simulator(
+                            batch_id,
+                            machine_type,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            non_determinism_source,
+                            split_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                        ),
+                        ExecutionKind::Unified => run_unified_simulator(
+                            batch_id,
+                            machine_type,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            non_determinism_source,
+                            unified_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                        ),
+                    };
                 });
             }
             trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
@@ -975,8 +996,7 @@ impl ExecutionProver {
         cache: &mut Option<TraceCache>,
         batch_id: u64,
         binary_key: usize,
-        cycle_limit: usize,
-        non_determinism_source: Arc<Mutex<impl NonDeterminismCSRSource + Send + 'static>>,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
     ) -> CommitMemoryResult {
         info!("BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}");
         let timer = Instant::now();
@@ -986,7 +1006,6 @@ impl ExecutionProver {
                 cache,
                 batch_id,
                 binary_key,
-                cycle_limit,
                 non_determinism_source,
                 None,
             )
@@ -1017,14 +1036,8 @@ impl ExecutionProver {
         cycle_limit: usize,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> CommitMemoryResult {
-        let non_determinism_source = Arc::new(Mutex::new(non_determinism_source));
-        self.commit_memory_inner(
-            &mut None,
-            batch_id,
-            binary_key,
-            cycle_limit,
-            non_determinism_source,
-        )
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
+        self.commit_memory_inner(&mut None, batch_id, binary_key, non_determinism_source)
     }
 
     fn prove_inner(
@@ -1032,8 +1045,7 @@ impl ExecutionProver {
         cache: &mut Option<TraceCache>,
         batch_id: u64,
         binary_key: usize,
-        cycle_limit: usize,
-        non_determinism_source: Arc<Mutex<impl NonDeterminismCSRSource + Send + 'static>>,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
         external_challenges: ExternalChallenges,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -1044,7 +1056,6 @@ impl ExecutionProver {
                 cache,
                 batch_id,
                 binary_key,
-                cycle_limit,
                 non_determinism_source,
                 Some(external_challenges),
             )
@@ -1073,16 +1084,14 @@ impl ExecutionProver {
         &self,
         batch_id: u64,
         binary_key: usize,
-        cycle_limit: usize,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
         external_challenges: ExternalChallenges,
     ) -> ProveResult {
-        let non_determinism_source = Arc::new(Mutex::new(non_determinism_source));
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.prove_inner(
             &mut None,
             batch_id,
             binary_key,
-            cycle_limit,
             non_determinism_source,
             external_challenges,
         )
@@ -1106,27 +1115,26 @@ impl ExecutionProver {
         &self,
         batch_id: u64,
         binary_key: usize,
-        cycle_limit: usize,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
         let nd_rapper = NonDeterminismWrapper::new(non_determinism_source);
-        let non_determinism_source = Arc::new(Mutex::new(nd_rapper));
+        let non_determinism_source = Arc::new(Mutex::new(Some(nd_rapper)));
         let mut cache = Some(TraceCache::new());
         let timer = Instant::now();
         let memory_commitment_result = self.commit_memory_inner(
             &mut cache,
             batch_id,
             binary_key,
-            cycle_limit,
             non_determinism_source.clone(),
         );
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .unwrap()
             .into_inner()
             .unwrap()
+            .unwrap()
             .into_values();
         let non_determinism_source = QuasiUARTSource::new_with_reads(non_determinism_values);
-        let non_determinism_source = Arc::new(Mutex::new(non_determinism_source));
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         let CommitMemoryResult {
             final_register_values,
             final_pc,
@@ -1158,7 +1166,6 @@ impl ExecutionProver {
             &mut cache,
             batch_id,
             binary_key,
-            cycle_limit,
             non_determinism_source,
             external_challenges,
         );
@@ -1296,10 +1303,10 @@ mod tests {
             MachineType::FullUnsigned,
             binary_image,
             text_section,
+            None,
         );
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![3 << 25, 0]);
-        let base_layer_result =
-            prover.commit_memory_and_prove(0, 0, 1 << 36, non_determinism_source);
+        let base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
         let binary_image = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
         let text_section = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
         prover.add_binary(
@@ -1308,6 +1315,7 @@ mod tests {
             MachineType::Reduced,
             binary_image,
             text_section,
+            None,
         );
 
         drop(prover);

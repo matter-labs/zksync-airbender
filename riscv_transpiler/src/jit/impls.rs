@@ -15,6 +15,10 @@ pub struct JittedCode<I: ContextImpl> {
     _marker: core::marker::PhantomData<I>,
 }
 
+unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
+
+unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
+
 // Register use and mapping
 
 // - x10-x15 (RV) are stored in r10-r15 (X86)

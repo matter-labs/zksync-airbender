@@ -1,25 +1,18 @@
+use crate::get_padded_binary;
 use crate::unrolled::{
     flatten_proof_into_responses_for_unrolled_recursion, UnrolledProgramProof, UnrolledProgramSetup,
-};
-use crate::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, Machine, ProgramProof, ProofList, ProofMetadata,
 };
 use gpu_prover::{
     execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration},
     machine_type::MachineType,
 };
 use setups::{pad_binary, read_and_pad_binary, CompiledCircuitsSet};
-use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 
-use ::prover::{
-    risc_v_simulator::{
-        abstractions::non_determinism::QuasiUARTSource,
-        cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
-    },
-    transcript::{Blake2sBufferingTranscript, Seed},
+use ::prover::risc_v_simulator::{
+    abstractions::non_determinism::QuasiUARTSource,
+    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
 };
-use std::{alloc::Global, fs, io::Read, path::Path};
+use std::{io::Read, path::Path};
 
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).expect(&format!("{filename}"));
@@ -117,6 +110,7 @@ impl UnrolledProver {
             MachineType::FullUnsigned,
             base_level.binary_u32.clone(),
             base_level.text_u32.clone(),
+            None,
         );
         prover.add_binary(
             1,
@@ -124,6 +118,7 @@ impl UnrolledProver {
             MachineType::Reduced,
             recursion_over_base.binary_u32.clone(),
             recursion_over_base.text_u32.clone(),
+            None,
         );
 
         Self {
@@ -140,7 +135,7 @@ impl UnrolledProver {
         println!("Computing proof");
 
         let start_time = std::time::Instant::now();
-        let result = self.prover.commit_memory_and_prove(0, 0, 1 << 36, source);
+        let result = self.prover.commit_memory_and_prove(0, 0, source);
         let base_proof = UnrolledProgramProof {
             final_pc: result.final_pc,
             final_timestamp: result.final_timestamp,
@@ -176,7 +171,7 @@ impl UnrolledProver {
                 true,
             );
             let source = QuasiUARTSource::new_with_reads(witness);
-            let result = self.prover.commit_memory_and_prove(0, 1, 1 << 36, source);
+            let result = self.prover.commit_memory_and_prove(0, 1, source);
             let mut proof = UnrolledProgramProof {
                 final_pc: result.final_pc,
                 final_timestamp: result.final_timestamp,
@@ -218,7 +213,7 @@ impl UnrolledProver {
             );
 
             let source = QuasiUARTSource::new_with_reads(witness);
-            let result = self.prover.commit_memory_and_prove(0, 1, 1 << 36, source);
+            let result = self.prover.commit_memory_and_prove(0, 1, source);
 
             let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
                 &previous_setup.end_params,

@@ -3,7 +3,7 @@ use common_constants::*;
 use std::alloc::Allocator;
 use std::collections::HashSet;
 use std::ptr::NonNull;
-use std::{mem::offset_of, ptr::addr_of_mut};
+use std::mem::offset_of;
 
 #[cfg(target_pointer_width = "64")]
 mod delegations;
@@ -28,7 +28,7 @@ mod tests;
 
 const MAX_RAM_SIZE: usize = 1 << 30; // 1 Gb, as we want to avoid having separate pointers to RAM (that we want to have continuous to perform very simple read/writes), and timestamp bookkeping space
 
-const RAM_SIZE: usize = 1 << 30;
+pub const RAM_SIZE: usize = 1 << 30;
 const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();
 
 // We will measure trace chunk in a number of memory accesses and not in a almost fixed number of cycles that did pass between them.
@@ -41,7 +41,7 @@ pub const MAX_TRACE_CHUNK_LEN: usize = const {
     TRACE_CHUNK_LEN + max
 };
 
-const MAX_NUM_COUNTERS: usize = 16;
+pub const MAX_NUM_COUNTERS: usize = 16;
 
 #[repr(u8)]
 pub enum CounterType {
@@ -64,11 +64,11 @@ const _: () = const {
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
 pub struct MachineState {
-    pub(crate) registers: [u32; 32], // aligned at 16, so we can write XMMs directly into the stack
-    pub(crate) register_timestamps: [TimestampScalar; 32],
-    pub(crate) counters: [u32; MAX_NUM_COUNTERS],
-    pub(crate) pc: u32,
-    pub(crate) timestamp: TimestampScalar,
+    pub registers: [u32; 32], // aligned at 16, so we can write XMMs directly into the stack
+    pub register_timestamps: [TimestampScalar; 32],
+    pub counters: [u32; MAX_NUM_COUNTERS],
+    pub pc: u32,
+    pub timestamp: TimestampScalar,
     pub(crate) context_ptr: *mut (),
 }
 
@@ -120,6 +120,19 @@ impl MachineState {
                 bigint_calls: self.counters[CounterType::BigintDelegation as u8 as usize] as usize,
                 keccak_calls: self.counters[CounterType::KeccakDelegation as u8 as usize] as usize,
             },
+        }
+    }
+}
+
+impl Default for MachineState {
+    fn default() -> Self {
+        Self {
+            registers: [0u32; 32],
+            register_timestamps: [0; 32],
+            counters: [0u32; MAX_NUM_COUNTERS],
+            pc: 0u32,
+            timestamp: INITIAL_TIMESTAMP,
+            context_ptr: core::ptr::null_mut(),
         }
     }
 }

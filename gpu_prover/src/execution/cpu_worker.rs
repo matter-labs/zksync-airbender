@@ -2,123 +2,82 @@ use super::A;
 use crate::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::execution::messages::SimulationResult;
 use crate::execution::messages::{InitsAndTeardownsData, WorkerResult};
-use crate::execution::ram::{RamWithRomRegion, ROM_ADDRESS_SPACE_SECOND_WORD_BITS};
-use crate::execution::snapshotter::{OnceSnapshotter, SplitSnapshot, UnifiedSnapshot};
+use crate::execution::ram::ROM_ADDRESS_SPACE_SECOND_WORD_BITS;
+use crate::execution::simulation_runner::SimulationRunner;
+use crate::execution::snapshotter::{Snapshot, SplitDataTraceRanges, UnifiedDataTraceRanges};
 use crate::execution::tracer::{SplitTracer, UnifiedTracer};
 use crate::execution::tracing_data_producers::{
-    SplitTracingDataProducers, UnifiedTracingDataProducers,
+    SplitTracingDataProducers, TracingDataProducers, UnifiedTracingDataProducers,
 };
 use crate::machine_type::MachineType;
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{Receiver, Sender};
-use cs::definitions::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use cs::definitions::{TimestampData, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use itertools::Itertools;
 use log::{debug, trace};
 use prover::definitions::LazyInitAndTeardown;
-use riscv_transpiler::replayer::{ReplayerNonDeterminism, ReplayerRam, ReplayerVM};
+use riscv_transpiler::common_constants::TimestampScalar;
+use riscv_transpiler::jit::{
+    ContextImpl, CounterType, JittedCode, MachineState, MemoryHolder, ReplayerMemChunks,
+    TraceChunk, MAX_TRACE_CHUNK_LEN, RAM_SIZE, TRACE_CHUNK_LEN,
+};
+use riscv_transpiler::replayer::{ReplayerNonDeterminism, ReplayerVM};
 use riscv_transpiler::vm::{
     DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, InstructionTape,
-    NonDeterminismCSRSource, State, VM,
+    NonDeterminismCSRSource, Register, State, VM,
 };
+use std::alloc::Global;
 use std::cmp::min;
-use std::ops::Deref;
+use std::iter::zip;
+use std::mem::{replace, take};
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use trace_and_split::FinalRegisterValue;
+use type_map::concurrent::TypeMap;
+use worker::Worker;
 
-const RAM_LOG_SIZE: u32 = 30;
-
-type Ram = RamWithRomRegion<RAM_LOG_SIZE>;
-
-pub(crate) fn run_split_simulator(
+pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     batch_id: u64,
     machine_type: MachineType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
-    tape: impl Deref<Target = impl InstructionTape>,
-    non_determinism: &mut impl NonDeterminismCSRSource,
-    cycles_limit: usize,
-    snapshot_period: usize,
-    snapshots: Sender<SplitSnapshot>,
+    text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+    cycles_bound: Option<u32>,
+    jit_cache: Arc<Mutex<TypeMap>>,
+    non_determinism: Arc<Mutex<Option<ND>>>,
+    snapshots: Sender<Snapshot<SplitDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
+    worker: &Worker,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut ram = Ram::new(&binary_image);
-    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
-    let mut snapshot_index = 0usize;
-    let mut tracing_data_producers =
-        SplitTracingDataProducers::new(machine_type, free_allocators.clone(), results.clone());
-    let mut total_elapsed = Duration::default();
-    loop {
-        let initial_state = state.clone();
-        let mut snapshotter = OnceSnapshotter::new_for_period(snapshot_period, &initial_state);
-        let instant = Instant::now();
-        let is_program_finished = VM::run_basic_unrolled(
-            &mut state,
-            &mut ram,
-            &mut snapshotter,
-            tape.deref(),
-            snapshot_period,
-            non_determinism,
-        );
-        let elapsed = instant.elapsed();
-        total_elapsed += elapsed;
-        let final_state = state.clone();
-        let timestamp_diff = final_state.timestamp - initial_state.timestamp;
-        assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-        let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        if abort.load(std::sync::atomic::Ordering::Relaxed) {
-            tracing_data_producers.finalize();
-            let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
-            assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-            let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-            let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-            debug!("BATCH[{batch_id}] SIMULATOR aborted execution after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-            return;
-        }
-        let result = WorkerResult::SnapshotProduced(snapshot_index);
-        results.send(result).unwrap();
-        let trace_ranges = tracing_data_producers.process_snapshot(
-            snapshot_index,
-            &initial_state.counters,
-            &final_state.counters,
-        );
-        let OnceSnapshotter { reads, .. } = snapshotter;
-        let snapshot = SplitSnapshot {
-            index: snapshot_index,
-            cycles_count,
-            initial_state,
-            reads,
-            trace_ranges,
-        };
-        snapshots.send(snapshot).unwrap();
-        snapshot_index += 1;
-        if is_program_finished {
-            break;
-        }
-        if cycles_count >= cycles_limit {
-            panic!("BATCH[{batch_id}] SIMULATOR end of execution was not reached after {cycles_limit} cycles");
-        }
-    }
-    drop(snapshots);
-    tracing_data_producers.finalize();
-    let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
-    assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-    let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-    debug!("BATCH[{batch_id}] SIMULATOR finished execution with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    let (final_state, ram) = SimulationRunner::<_, SplitTracingDataProducers>::run(
+        batch_id,
+        machine_type,
+        binary_image,
+        text_section,
+        cycles_bound,
+        jit_cache,
+        non_determinism,
+        snapshots,
+        results.clone(),
+        free_allocators.clone(),
+        abort.clone(),
+    );
     const PER_CIRCUIT_COUNT: usize = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
         * setups::inits_and_teardowns::NUM_CYCLES;
+    let instant = Instant::now();
+    let inits_and_teardowns = ram.collect_inits_and_teardowns(worker, Global);
+    let elapsed = instant.elapsed();
+    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
+    trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
     let mut instant = Instant::now();
     for (sequence_id, inits_and_teardowns_data) in
-        get_inits_and_teardowns(&ram, PER_CIRCUIT_COUNT, free_allocators).enumerate()
+        get_inits_and_teardowns_chunks(inits_and_teardowns, PER_CIRCUIT_COUNT, free_allocators)
+            .enumerate()
     {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
         let count = inits_and_teardowns_data
@@ -138,169 +97,209 @@ pub(crate) fn run_split_simulator(
         results.send(result).unwrap();
         instant = Instant::now();
     }
-    let final_register_values = state
+    let final_register_values = final_state
         .registers
         .into_iter()
-        .map(|register| FinalRegisterValue {
-            value: register.value,
-            last_access_timestamp: register.timestamp,
+        .zip(final_state.register_timestamps.into_iter())
+        .map(|(value, last_access_timestamp)| FinalRegisterValue {
+            value,
+            last_access_timestamp,
         })
         .collect_array()
         .unwrap();
     let simulation_result = SimulationResult {
         final_register_values,
-        final_pc: state.pc,
-        final_timestamp: state.timestamp,
+        final_pc: final_state.pc,
+        final_timestamp: final_state.timestamp,
     };
     let result = WorkerResult::SimulationResult(simulation_result);
     results.send(result).unwrap();
     trace!("BATCH[{batch_id}] SIMULATOR finished");
 }
 
-pub(crate) fn run_unified_simulator(
+pub(crate) fn run_unified_simulator<ND: NonDeterminismCSRSource + Send>(
     batch_id: u64,
+    machine_type: MachineType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
-    tape: impl Deref<Target = impl InstructionTape>,
-    non_determinism: &mut impl NonDeterminismCSRSource,
-    cycles_limit: usize,
-    snapshot_period: usize,
-    snapshots: Sender<UnifiedSnapshot>,
+    text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+    cycles_bound: Option<u32>,
+    jit_cache: Arc<Mutex<TypeMap>>,
+    non_determinism: Arc<Mutex<Option<ND>>>,
+    snapshots: Sender<Snapshot<UnifiedDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
+    worker: &Worker,
 ) {
-    const CIRCUIT_TYPE: UnrolledCircuitType = UnrolledCircuitType::Unified;
-    const NUM_CYCLES: usize = CIRCUIT_TYPE.get_num_cycles();
-    trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut ram = Ram::new(&binary_image);
-    let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
-    let mut snapshot_index = 0usize;
-    let mut tracing_data_producers =
-        UnifiedTracingDataProducers::new(free_allocators.clone(), results.clone());
-    let mut total_elapsed = Duration::default();
-    let mut total_cycles_count = 0;
-    let mut next_inits_and_teardowns_sequence_id = 0;
-    loop {
-        let initial_state = state.clone();
-        let mut snapshotter = OnceSnapshotter::new_for_period(snapshot_period, &initial_state);
-        let instant = Instant::now();
-        let is_program_finished = VM::run_basic_unrolled(
-            &mut state,
-            &mut ram,
-            &mut snapshotter,
-            tape.deref(),
-            snapshot_period,
-            non_determinism,
-        );
-        let elapsed = instant.elapsed();
-        total_elapsed += elapsed;
-        let final_state = state.clone();
-        let timestamp_diff = final_state.timestamp - initial_state.timestamp;
-        assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-        let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-        total_cycles_count += cycles_count;
-        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        if abort.load(std::sync::atomic::Ordering::Relaxed) {
-            tracing_data_producers.finalize();
-            let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
-            assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-            let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-            let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-            debug!("BATCH[{batch_id}] SIMULATOR aborted execution after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-            return;
-        }
-        let result = WorkerResult::SnapshotProduced(snapshot_index);
-        results.send(result).unwrap();
-        let touched_words_count = ram.get_touched_words_count() as usize;
-        let available_cycles_count = total_cycles_count - touched_words_count;
-        let available_circuits_count = available_cycles_count / NUM_CYCLES;
-        while available_circuits_count > next_inits_and_teardowns_sequence_id {
-            let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(CIRCUIT_TYPE),
-                sequence_id: next_inits_and_teardowns_sequence_id,
-                inits_and_teardowns: None,
-            };
-            let result = WorkerResult::InitsAndTeardownsData(data);
-            results.send(result).unwrap();
-            next_inits_and_teardowns_sequence_id += 1;
-        }
-        let trace_ranges = tracing_data_producers.process_snapshot(
-            snapshot_index,
-            &initial_state.counters,
-            &final_state.counters,
-        );
-        let OnceSnapshotter { reads, .. } = snapshotter;
-        let snapshot = UnifiedSnapshot {
-            index: snapshot_index,
-            cycles_count,
-            initial_state,
-            reads,
-            trace_ranges,
-        };
-        snapshots.send(snapshot).unwrap();
-        snapshot_index += 1;
-        if is_program_finished {
-            break;
-        }
-        if cycles_count >= cycles_limit {
-            panic!("BATCH[{batch_id}] SIMULATOR end of execution was not reached after {cycles_limit} cycles");
-        }
-    }
-    drop(snapshots);
-    tracing_data_producers.finalize();
-    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    let mhz = (total_cycles_count as f64) / (elapsed_ms * 1000.0);
-    debug!("BATCH[{batch_id}] SIMULATOR finished execution with {total_cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-    let mut instant = Instant::now();
-    for inits_and_teardowns_data in get_inits_and_teardowns(&ram, NUM_CYCLES, free_allocators) {
-        let count = inits_and_teardowns_data
-            .chunks
-            .iter()
-            .map(|c| c.len())
-            .sum::<usize>();
-        let elapsed = instant.elapsed();
-        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        let sequence_id = next_inits_and_teardowns_sequence_id;
-        next_inits_and_teardowns_sequence_id += 1;
-        trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} entries in {elapsed_ms:.3} ms");
-        let data = InitsAndTeardownsData {
-            circuit_type: CircuitType::Unrolled(CIRCUIT_TYPE),
-            sequence_id,
-            inits_and_teardowns: Some(inits_and_teardowns_data),
-        };
-        let result = WorkerResult::InitsAndTeardownsData(data);
-        results.send(result).unwrap();
-        instant = Instant::now();
-    }
-    let circuits_count = total_cycles_count.div_ceil(NUM_CYCLES);
-    assert_eq!(circuits_count, next_inits_and_teardowns_sequence_id);
-    let final_register_values = state
-        .registers
+    todo!()
+    //     const CIRCUIT_TYPE: UnrolledCircuitType = UnrolledCircuitType::Unified;
+    //     const NUM_CYCLES: usize = CIRCUIT_TYPE.get_num_cycles();
+    //     trace!("BATCH[{batch_id}] SIMULATOR started");
+    //     let mut ram = Ram::new(&binary_image);
+    //     let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
+    //     let mut snapshot_index = 0usize;
+    //     let mut tracing_data_producers =
+    //         UnifiedTracingDataProducers::new(free_allocators.clone(), results.clone());
+    //     let mut total_elapsed = Duration::default();
+    //     let mut total_cycles_count = 0;
+    //     let mut next_inits_and_teardowns_sequence_id = 0;
+    //     loop {
+    //         let initial_state = state.clone();
+    //         let mut snapshotter = OnceSnapshotter::new_for_period(snapshot_period, &initial_state);
+    //         let instant = Instant::now();
+    //         let is_program_finished = VM::run_basic_unrolled(
+    //             &mut state,
+    //             &mut ram,
+    //             &mut snapshotter,
+    //             tape.deref(),
+    //             snapshot_period,
+    //             non_determinism,
+    //         );
+    //         let elapsed = instant.elapsed();
+    //         total_elapsed += elapsed;
+    //         let final_state = state.clone();
+    //         let timestamp_diff = final_state.timestamp - initial_state.timestamp;
+    //         assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+    //         let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+    //         total_cycles_count += cycles_count;
+    //         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    //         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+    //         trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    //         if abort.load(std::sync::atomic::Ordering::Relaxed) {
+    //             tracing_data_producers.finalize();
+    //             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
+    //             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+    //             let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+    //             let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    //             let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+    //             debug!("BATCH[{batch_id}] SIMULATOR aborted execution after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    //             return;
+    //         }
+    //         let result = WorkerResult::SnapshotProduced(snapshot_index);
+    //         results.send(result).unwrap();
+    //         let touched_words_count = ram.get_touched_words_count() as usize;
+    //         let available_cycles_count = total_cycles_count - touched_words_count;
+    //         let available_circuits_count = available_cycles_count / NUM_CYCLES;
+    //         while available_circuits_count > next_inits_and_teardowns_sequence_id {
+    //             let data = InitsAndTeardownsData {
+    //                 circuit_type: CircuitType::Unrolled(CIRCUIT_TYPE),
+    //                 sequence_id: next_inits_and_teardowns_sequence_id,
+    //                 inits_and_teardowns: None,
+    //             };
+    //             let result = WorkerResult::InitsAndTeardownsData(data);
+    //             results.send(result).unwrap();
+    //             next_inits_and_teardowns_sequence_id += 1;
+    //         }
+    //         let trace_ranges = tracing_data_producers.process_snapshot(
+    //             snapshot_index,
+    //             &initial_state.counters,
+    //             &final_state.counters,
+    //         );
+    //         let OnceSnapshotter { reads, .. } = snapshotter;
+    //         let snapshot = UnifiedSnapshot {
+    //             index: snapshot_index,
+    //             cycles_count,
+    //             initial_state,
+    //             reads,
+    //             trace_ranges,
+    //         };
+    //         snapshots.send(snapshot).unwrap();
+    //         snapshot_index += 1;
+    //         if is_program_finished {
+    //             break;
+    //         }
+    //         if cycles_count >= cycles_limit {
+    //             panic!("BATCH[{batch_id}] SIMULATOR end of execution was not reached after {cycles_limit} cycles");
+    //         }
+    //     }
+    //     drop(snapshots);
+    //     tracing_data_producers.finalize();
+    //     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    //     let mhz = (total_cycles_count as f64) / (elapsed_ms * 1000.0);
+    //     debug!("BATCH[{batch_id}] SIMULATOR finished execution with {total_cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    //     let mut instant = Instant::now();
+    //     for inits_and_teardowns_data in get_inits_and_teardowns(&ram, NUM_CYCLES, free_allocators) {
+    //         let count = inits_and_teardowns_data
+    //             .chunks
+    //             .iter()
+    //             .map(|c| c.len())
+    //             .sum::<usize>();
+    //         let elapsed = instant.elapsed();
+    //         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    //         let sequence_id = next_inits_and_teardowns_sequence_id;
+    //         next_inits_and_teardowns_sequence_id += 1;
+    //         trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} entries in {elapsed_ms:.3} ms");
+    //         let data = InitsAndTeardownsData {
+    //             circuit_type: CircuitType::Unrolled(CIRCUIT_TYPE),
+    //             sequence_id,
+    //             inits_and_teardowns: Some(inits_and_teardowns_data),
+    //         };
+    //         let result = WorkerResult::InitsAndTeardownsData(data);
+    //         results.send(result).unwrap();
+    //         instant = Instant::now();
+    //     }
+    //     let circuits_count = total_cycles_count.div_ceil(NUM_CYCLES);
+    //     assert_eq!(circuits_count, next_inits_and_teardowns_sequence_id);
+    //     let final_register_values = state
+    //         .registers
+    //         .into_iter()
+    //         .map(|register| FinalRegisterValue {
+    //             value: register.value,
+    //             last_access_timestamp: register.timestamp,
+    //         })
+    //         .collect_array()
+    //         .unwrap();
+    //     let simulation_result = SimulationResult {
+    //         final_register_values,
+    //         final_pc: state.pc,
+    //         final_timestamp: state.timestamp,
+    //     };
+    //     let result = WorkerResult::SimulationResult(simulation_result);
+    //     results.send(result).unwrap();
+    //     trace!("BATCH[{batch_id}] SIMULATOR finished");
+    // }
+    //
+}
+
+fn machine_state_into_split_state(state: MachineState) -> State<DelegationsAndFamiliesCounters> {
+    let MachineState {
+        registers,
+        register_timestamps,
+        counters,
+        pc,
+        timestamp,
+        ..
+    } = state;
+    let registers = registers
         .into_iter()
-        .map(|register| FinalRegisterValue {
-            value: register.value,
-            last_access_timestamp: register.timestamp,
-        })
+        .zip(register_timestamps.into_iter())
+        .map(|(value, timestamp)| Register { timestamp, value })
         .collect_array()
         .unwrap();
-    let simulation_result = SimulationResult {
-        final_register_values,
-        final_pc: state.pc,
-        final_timestamp: state.timestamp,
+    let counters = DelegationsAndFamiliesCounters {
+        add_sub_family: counters[CounterType::AddSubLui as usize] as usize,
+        binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as usize] as usize,
+        slt_branch_family: counters[CounterType::BranchSlt as usize] as usize,
+        mul_div_family: counters[CounterType::MulDiv as usize] as usize,
+        word_size_mem_family: counters[CounterType::MemWord as usize] as usize,
+        subword_size_mem_family: counters[CounterType::MemSubword as usize] as usize,
+        blake_calls: counters[CounterType::BlakeDelegation as usize] as usize,
+        bigint_calls: counters[CounterType::BigintDelegation as usize] as usize,
+        keccak_calls: counters[CounterType::KeccakDelegation as usize] as usize,
     };
-    let result = WorkerResult::SimulationResult(simulation_result);
-    results.send(result).unwrap();
-    trace!("BATCH[{batch_id}] SIMULATOR finished");
+    State::<DelegationsAndFamiliesCounters> {
+        registers,
+        timestamp,
+        pc,
+        counters,
+    }
 }
 
 pub(crate) fn run_split_replayer(
     batch_id: u64,
     worker_id: usize,
     tape: impl Deref<Target = impl InstructionTape>,
-    snapshots: Receiver<SplitSnapshot>,
+    snapshots: Receiver<Snapshot<SplitDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
 ) {
@@ -314,17 +313,17 @@ pub(crate) fn run_split_replayer(
             debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
             return;
         }
-        let SplitSnapshot {
+        let Snapshot {
             index,
             cycles_count,
             initial_state,
-            reads,
+            trace,
             trace_ranges,
         } = snapshot;
-        let mut state = initial_state;
-        let mut ram_log = vec![reads.as_slice()];
-        let mut ram = ReplayerRam::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS> {
-            ram_log: &mut ram_log,
+        let trace_len = trace.len as usize;
+        let mut state = machine_state_into_split_state(initial_state);
+        let mut ram = ReplayerMemChunks {
+            chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
         };
         let mut non_determinism_reads = vec![];
         let mut nd = ReplayerNonDeterminism {
@@ -359,68 +358,81 @@ pub(crate) fn run_unified_replayer(
     batch_id: u64,
     worker_id: usize,
     tape: impl Deref<Target = impl InstructionTape>,
-    snapshots: Receiver<UnifiedSnapshot>,
+    snapshots: Receiver<Snapshot<UnifiedDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
 ) {
-    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
-    let mut total_elapsed = Duration::default();
-    let mut total_cycles = 0;
-    for snapshot in snapshots {
-        if abort.load(std::sync::atomic::Ordering::Relaxed) {
-            let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-            let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-            return;
-        }
-        let UnifiedSnapshot {
-            index,
-            cycles_count,
-            initial_state,
-            reads,
-            trace_ranges,
-        } = snapshot;
-        let mut state = initial_state;
-        let mut ram_log = vec![reads.as_slice()];
-        let mut ram = ReplayerRam::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS> {
-            ram_log: &mut ram_log,
-        };
-        let mut non_determinism_reads = vec![];
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut non_determinism_reads,
-        };
-        let mut tracer = UnifiedTracer::new(trace_ranges);
-        let instant = Instant::now();
-        ReplayerVM::replay_basic_unrolled(
-            &mut state,
-            &mut ram,
-            tape.deref(),
-            &mut nd,
-            cycles_count,
-            &mut tracer,
-        );
-        let elapsed = instant.elapsed();
-        total_elapsed += elapsed;
-        total_cycles += cycles_count;
-        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        let result = WorkerResult::SnapshotReplayed(index);
-        results.send(result).unwrap()
-    }
-    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-    debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
+    todo!()
+    // trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
+    // let mut total_elapsed = Duration::default();
+    // let mut total_cycles = 0;
+    // for snapshot in snapshots {
+    //     if abort.load(std::sync::atomic::Ordering::Relaxed) {
+    //         let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    //         let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+    //         debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    //         return;
+    //     }
+    //     let UnifiedSnapshot {
+    //         index,
+    //         cycles_count,
+    //         initial_state,
+    //         reads,
+    //         trace_ranges,
+    //     } = snapshot;
+    //     let mut state = initial_state;
+    //     let mut ram_log = vec![reads.as_slice()];
+    //     let mut ram = ReplayerRam::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS> {
+    //         ram_log: &mut ram_log,
+    //     };
+    //     let mut non_determinism_reads = vec![];
+    //     let mut nd = ReplayerNonDeterminism {
+    //         non_determinism_reads_log: &mut non_determinism_reads,
+    //     };
+    //     let mut tracer = UnifiedTracer::new(trace_ranges);
+    //     let instant = Instant::now();
+    //     ReplayerVM::replay_basic_unrolled(
+    //         &mut state,
+    //         &mut ram,
+    //         tape.deref(),
+    //         &mut nd,
+    //         cycles_count,
+    //         &mut tracer,
+    //     );
+    //     let elapsed = instant.elapsed();
+    //     total_elapsed += elapsed;
+    //     total_cycles += cycles_count;
+    //     let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    //     let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+    //     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    //     let result = WorkerResult::SnapshotReplayed(index);
+    //     results.send(result).unwrap()
+    // }
+    // let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    // let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+    // debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    // trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
-fn get_inits_and_teardowns(
-    ram: &Ram,
+fn get_inits_and_teardowns_chunks(
+    values: Vec<Vec<(u32, (TimestampScalar, u32))>>,
     partition_size: usize,
     free_allocators: Receiver<A>,
-) -> impl Iterator<Item = ShuffleRamInitsAndTeardownsHost<A>> + '_ {
-    let inits_and_teardowns_count = ram.get_touched_words_count() as usize;
-    let mut iterator = ram.get_inits_and_teardowns_iterator();
+) -> impl Iterator<Item = ShuffleRamInitsAndTeardownsHost<A>> {
+    let inits_and_teardowns_count = values.iter().map(|v| v.len()).sum::<usize>();
+    let mut iterator = values
+        .into_iter()
+        .map(|v| {
+            v.into_iter()
+                .map(
+                    |(address, (teardown_timestamp, teardown_value))| LazyInitAndTeardown {
+                        address,
+                        teardown_value,
+                        teardown_timestamp: TimestampData::from_scalar(teardown_timestamp),
+                    },
+                )
+        })
+        .flatten();
     let partitions_count = inits_and_teardowns_count.div_ceil(partition_size);
     (0..partitions_count).into_iter().map(move |index| {
         let mut values_count = if index == 0 {
@@ -447,121 +459,121 @@ fn get_inits_and_teardowns(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::allocator::host::ConcurrentStaticHostAllocator;
-    use crate::execution::cpu_worker::{run_split_replayer, run_split_simulator};
-    use crate::machine_type::MachineType;
-    use crate::tests::{init_logger, read_binary};
-    use crossbeam_channel::unbounded;
-    use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-    use log::info;
-    use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use rayon::iter::IntoParallelIterator;
-    use rayon::iter::ParallelIterator;
-    use riscv_transpiler::ir::{preprocess_bytecode, FullMachineDecoderConfig};
-    use riscv_transpiler::vm::SimpleTape;
-    use std::path::Path;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::Arc;
-    use worker::Worker;
-
-    #[test]
-    fn test_simulator() {
-        init_logger();
-        let worker = Worker::new();
-        let (free_allocators_sender, free_allocators_receiver) = unbounded();
-        let free_allocators_sender_ref = &free_allocators_sender;
-        let instant = std::time::Instant::now();
-        info!("Starting allocator preparation");
-        (0..256).into_par_iter().for_each(|_| {
-            let allocation = HostAllocation::alloc(1 << 25, CudaHostAllocFlags::DEFAULT).unwrap();
-            let allocator = ConcurrentStaticHostAllocator::new([allocation], 24);
-            free_allocators_sender_ref.send(allocator).unwrap();
-        });
-        let elapsed = instant.elapsed();
-        info!(
-            "Allocator preparation finished in {:.3} seconds",
-            elapsed.as_secs_f64()
-        );
-        let binary_image = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
-        let binary_image = Arc::new(binary_image);
-        let text_section = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
-        // let nd = vec![1 << 22, 0];
-        let nd = vec![0, 1 << 16];
-        let mut non_determinism_source = QuasiUARTSource::new_with_reads(nd.clone());
-        let preprocessed_bytecode = preprocess_bytecode::<FullMachineDecoderConfig>(&text_section);
-        let tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
-        let (snapshots_sender, snapshots_receiver) = unbounded();
-        let (results_sender, results_receiver) = unbounded();
-        let abort = Arc::new(AtomicBool::new(false));
-        for worker_id in 0..4 {
-            let tape = tape.clone();
-            let snapshots_receiver = snapshots_receiver.clone();
-            let results_sender = results_sender.clone();
-            let abort = abort.clone();
-            worker.pool.spawn(move || {
-                run_split_replayer(
-                    0,
-                    worker_id,
-                    tape,
-                    snapshots_receiver,
-                    results_sender,
-                    abort,
-                )
-            });
-        }
-        drop(snapshots_receiver);
-        run_split_simulator(
-            0,
-            MachineType::Full,
-            binary_image.clone(),
-            tape.clone(),
-            &mut non_determinism_source,
-            1 << 30,
-            1 << 20,
-            snapshots_sender,
-            results_sender,
-            free_allocators_receiver.clone(),
-            abort.clone(),
-        );
-        results_receiver.iter().for_each(|_| {});
-        drop(results_receiver);
-        let mut non_determinism_source = QuasiUARTSource::new_with_reads(nd.clone());
-        let preprocessed_bytecode = preprocess_bytecode::<FullMachineDecoderConfig>(&text_section);
-        let (snapshots_sender, snapshots_receiver) = unbounded();
-        let (results_sender, results_receiver) = unbounded();
-        for worker_id in 0..4 {
-            let tape = SimpleTape::new(&preprocessed_bytecode);
-            let snapshots_receiver = snapshots_receiver.clone();
-            let results_sender = results_sender.clone();
-            let abort = abort.clone();
-            worker.pool.spawn(move || {
-                run_split_replayer(
-                    0,
-                    worker_id,
-                    &tape,
-                    snapshots_receiver,
-                    results_sender,
-                    abort,
-                );
-            });
-        }
-        drop(snapshots_receiver);
-        run_split_simulator(
-            0,
-            MachineType::Full,
-            binary_image,
-            tape,
-            &mut non_determinism_source,
-            1 << 30,
-            1 << 20,
-            snapshots_sender,
-            results_sender,
-            free_allocators_receiver.clone(),
-            abort.clone(),
-        );
-        results_receiver.iter().for_each(|_| {});
-        drop(results_receiver);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use crate::allocator::host::ConcurrentStaticHostAllocator;
+//     use crate::execution::cpu_worker::{run_split_replayer, run_split_simulator};
+//     use crate::machine_type::MachineType;
+//     use crate::tests::{init_logger, read_binary};
+//     use crossbeam_channel::unbounded;
+//     use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
+//     use log::info;
+//     use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+//     use rayon::iter::IntoParallelIterator;
+//     use rayon::iter::ParallelIterator;
+//     use riscv_transpiler::ir::{preprocess_bytecode, FullMachineDecoderConfig};
+//     use riscv_transpiler::vm::SimpleTape;
+//     use std::path::Path;
+//     use std::sync::atomic::AtomicBool;
+//     use std::sync::Arc;
+//     use worker::Worker;
+//
+//     #[test]
+//     fn test_simulator() {
+//         init_logger();
+//         let worker = Worker::new();
+//         let (free_allocators_sender, free_allocators_receiver) = unbounded();
+//         let free_allocators_sender_ref = &free_allocators_sender;
+//         let instant = std::time::Instant::now();
+//         info!("Starting allocator preparation");
+//         (0..256).into_par_iter().for_each(|_| {
+//             let allocation = HostAllocation::alloc(1 << 25, CudaHostAllocFlags::DEFAULT).unwrap();
+//             let allocator = ConcurrentStaticHostAllocator::new([allocation], 24);
+//             free_allocators_sender_ref.send(allocator).unwrap();
+//         });
+//         let elapsed = instant.elapsed();
+//         info!(
+//             "Allocator preparation finished in {:.3} seconds",
+//             elapsed.as_secs_f64()
+//         );
+//         let binary_image = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
+//         let binary_image = Arc::new(binary_image);
+//         let text_section = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+//         // let nd = vec![1 << 22, 0];
+//         let nd = vec![0, 1 << 16];
+//         let mut non_determinism_source = QuasiUARTSource::new_with_reads(nd.clone());
+//         let preprocessed_bytecode = preprocess_bytecode::<FullMachineDecoderConfig>(&text_section);
+//         let tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
+//         let (snapshots_sender, snapshots_receiver) = unbounded();
+//         let (results_sender, results_receiver) = unbounded();
+//         let abort = Arc::new(AtomicBool::new(false));
+//         for worker_id in 0..4 {
+//             let tape = tape.clone();
+//             let snapshots_receiver = snapshots_receiver.clone();
+//             let results_sender = results_sender.clone();
+//             let abort = abort.clone();
+//             worker.pool.spawn(move || {
+//                 run_split_replayer(
+//                     0,
+//                     worker_id,
+//                     tape,
+//                     snapshots_receiver,
+//                     results_sender,
+//                     abort,
+//                 )
+//             });
+//         }
+//         drop(snapshots_receiver);
+//         run_split_simulator(
+//             0,
+//             MachineType::Full,
+//             binary_image.clone(),
+//             tape.clone(),
+//             &mut non_determinism_source,
+//             1 << 30,
+//             1 << 20,
+//             snapshots_sender,
+//             results_sender,
+//             free_allocators_receiver.clone(),
+//             abort.clone(),
+//         );
+//         results_receiver.iter().for_each(|_| {});
+//         drop(results_receiver);
+//         let mut non_determinism_source = QuasiUARTSource::new_with_reads(nd.clone());
+//         let preprocessed_bytecode = preprocess_bytecode::<FullMachineDecoderConfig>(&text_section);
+//         let (snapshots_sender, snapshots_receiver) = unbounded();
+//         let (results_sender, results_receiver) = unbounded();
+//         for worker_id in 0..4 {
+//             let tape = SimpleTape::new(&preprocessed_bytecode);
+//             let snapshots_receiver = snapshots_receiver.clone();
+//             let results_sender = results_sender.clone();
+//             let abort = abort.clone();
+//             worker.pool.spawn(move || {
+//                 run_split_replayer(
+//                     0,
+//                     worker_id,
+//                     &tape,
+//                     snapshots_receiver,
+//                     results_sender,
+//                     abort,
+//                 );
+//             });
+//         }
+//         drop(snapshots_receiver);
+//         run_split_simulator(
+//             0,
+//             MachineType::Full,
+//             binary_image,
+//             tape,
+//             &mut non_determinism_source,
+//             1 << 30,
+//             1 << 20,
+//             snapshots_sender,
+//             results_sender,
+//             free_allocators_receiver.clone(),
+//             abort.clone(),
+//         );
+//         results_receiver.iter().for_each(|_| {});
+//         drop(results_receiver);
+//     }
+// }

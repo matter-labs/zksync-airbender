@@ -20,7 +20,7 @@ cs = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true }
-riscv_transpiler = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }
 trace_and_split = { workspace = true }
 verifier_common = { workspace = true }
@@ -34,6 +34,7 @@ crossbeam-utils = "0.8"
 nvtx = "1"
 rayon = "1"
 transpose = "0.2"
+type-map = "0.5"
 
 [features]
 default = ["security_80"]

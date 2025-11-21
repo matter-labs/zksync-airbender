@@ -4,7 +4,9 @@ use crate::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use crate::execution::messages::{TracingData, WorkerResult};
-use crate::execution::snapshotter::{PtrRange, SplitDataTraceRanges, UnifiedDataTraceRanges};
+use crate::execution::snapshotter::{
+    DataTraceRanges, PtrRange, SplitDataTraceRanges, UnifiedDataTraceRanges,
+};
 use crate::machine_type::MachineType;
 use crate::prover::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
@@ -16,13 +18,13 @@ use prover::risc_v_simulator::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use riscv_transpiler::vm::{DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters};
+use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use std::cmp::min;
 use std::collections::{BTreeSet, VecDeque};
-use std::mem::replace;
+use std::mem::{replace, transmute};
 use std::sync::Arc;
 
 trait TracingDataProducerType: Sized {
@@ -146,6 +148,25 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
     }
 }
 
+pub(crate) trait TracingDataProducers {
+    type Ranges: DataTraceRanges + Send;
+
+    fn new(
+        machine_type: MachineType,
+        free_allocators: Receiver<A>,
+        results: Sender<WorkerResult<A>>,
+    ) -> Self;
+
+    fn process_snapshot(
+        &mut self,
+        snapshot_index: usize,
+        initial_counters: &[u32; MAX_NUM_COUNTERS],
+        final_counters: &[u32; MAX_NUM_COUNTERS],
+    ) -> Self::Ranges;
+
+    fn finalize(self);
+}
+
 pub(super) struct SplitTracingDataProducers {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness>,
@@ -158,8 +179,10 @@ pub(super) struct SplitTracingDataProducers {
     subword_size_mem_family_producer: TracingDataProducer<MemoryOpcodeTracingDataWithTimestamp>,
 }
 
-impl SplitTracingDataProducers {
-    pub fn new(
+impl TracingDataProducers for SplitTracingDataProducers {
+    type Ranges = SplitDataTraceRanges;
+
+    fn new(
         machine_type: MachineType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
@@ -244,71 +267,80 @@ impl SplitTracingDataProducers {
         }
     }
 
-    pub fn process_snapshot(
+    fn process_snapshot(
         &mut self,
         snapshot_index: usize,
-        initial_counters: &DelegationsAndFamiliesCounters,
-        final_counters: &DelegationsAndFamiliesCounters,
-    ) -> SplitDataTraceRanges {
+        initial_counters: &[u32; MAX_NUM_COUNTERS],
+        final_counters: &[u32; MAX_NUM_COUNTERS],
+    ) -> Self::Ranges {
         let mut trace_ranges = SplitDataTraceRanges::default();
-        self.blake_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.blake_calls,
-            final_counters.blake_calls,
-            &mut trace_ranges.blake_calls,
-        );
-        self.bigint_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.bigint_calls,
-            final_counters.bigint_calls,
-            &mut trace_ranges.bigint_calls,
-        );
-        self.keccak_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.keccak_calls,
-            final_counters.keccak_calls,
-            &mut trace_ranges.keccak_calls,
-        );
-        self.add_sub_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.add_sub_family,
-            final_counters.add_sub_family,
-            &mut trace_ranges.add_sub_family,
-        );
-        self.binary_shift_csr_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.binary_shift_csr_family,
-            final_counters.binary_shift_csr_family,
-            &mut trace_ranges.binary_shift_csr_family,
-        );
-        self.slt_branch_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.slt_branch_family,
-            final_counters.slt_branch_family,
-            &mut trace_ranges.slt_branch_family,
-        );
-        self.mul_div_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.mul_div_family,
-            final_counters.mul_div_family,
-            &mut trace_ranges.mul_div_family,
-        );
-        self.word_size_mem_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.word_size_mem_family,
-            final_counters.word_size_mem_family,
-            &mut trace_ranges.word_size_mem_family,
-        );
-        self.subword_size_mem_family_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.subword_size_mem_family,
-            final_counters.subword_size_mem_family,
-            &mut trace_ranges.subword_size_mem_family,
-        );
+        for i in 0..CounterType::FormalEnd as u8 {
+            let counter_type = unsafe { transmute(i) };
+            let index = i as usize;
+            let initial_count = initial_counters[index] as usize;
+            let final_count = final_counters[index] as usize;
+            match counter_type {
+                CounterType::AddSubLui => self.add_sub_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.add_sub_family,
+                ),
+                CounterType::BranchSlt => self.slt_branch_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.slt_branch_family,
+                ),
+                CounterType::ShiftBinaryCsr => self.binary_shift_csr_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.binary_shift_csr_family,
+                ),
+                CounterType::MulDiv => self.mul_div_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.mul_div_family,
+                ),
+                CounterType::MemWord => self.word_size_mem_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.word_size_mem_family,
+                ),
+                CounterType::MemSubword => self.subword_size_mem_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.subword_size_mem_family,
+                ),
+                CounterType::BlakeDelegation => self.blake_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.blake_calls,
+                ),
+                CounterType::BigintDelegation => self.bigint_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.bigint_calls,
+                ),
+                CounterType::KeccakDelegation => self.keccak_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.keccak_calls,
+                ),
+                _ => unreachable!(),
+            }
+        }
         trace_ranges
     }
 
-    pub fn finalize(self) {
+    fn finalize(self) {
         self.blake_producer.finalize();
         self.bigint_producer.finalize();
         self.keccak_producer.finalize();
@@ -328,8 +360,15 @@ pub(super) struct UnifiedTracingDataProducers {
     cycles_producer: TracingDataProducer<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
-impl UnifiedTracingDataProducers {
-    pub fn new(free_allocators: Receiver<A>, results: Sender<WorkerResult<A>>) -> Self {
+impl TracingDataProducers for UnifiedTracingDataProducers {
+    type Ranges = UnifiedDataTraceRanges;
+
+    fn new(
+        machine_type: MachineType,
+        free_allocators: Receiver<A>,
+        results: Sender<WorkerResult<A>>,
+    ) -> Self {
+        assert_eq!(machine_type, MachineType::Reduced);
         let blake_producer = TracingDataProducer::<Blake2sRoundFunctionDelegationWitness>::new(
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
             free_allocators.clone(),
@@ -358,41 +397,61 @@ impl UnifiedTracingDataProducers {
         }
     }
 
-    pub fn process_snapshot(
+    fn process_snapshot(
         &mut self,
         snapshot_index: usize,
-        initial_counters: &DelegationsAndUnifiedCounters,
-        final_counters: &DelegationsAndUnifiedCounters,
-    ) -> UnifiedDataTraceRanges {
+        initial_counters: &[u32; MAX_NUM_COUNTERS],
+        final_counters: &[u32; MAX_NUM_COUNTERS],
+    ) -> Self::Ranges {
         let mut trace_ranges = UnifiedDataTraceRanges::default();
-        self.blake_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.blake_calls,
-            final_counters.blake_calls,
-            &mut trace_ranges.blake_calls,
-        );
-        self.bigint_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.bigint_calls,
-            final_counters.bigint_calls,
-            &mut trace_ranges.bigint_calls,
-        );
-        self.keccak_producer.process_snapshot(
-            snapshot_index,
-            initial_counters.keccak_calls,
-            final_counters.keccak_calls,
-            &mut trace_ranges.keccak_calls,
-        );
+        let mut cycles_initial_count = 0;
+        let mut cycles_final_count = 0;
+        for i in 0..CounterType::FormalEnd as u8 {
+            let counter_type = unsafe { transmute(i) };
+            let index = i as usize;
+            let initial_count = initial_counters[index] as usize;
+            let final_count = final_counters[index] as usize;
+            match counter_type {
+                CounterType::AddSubLui
+                | CounterType::BranchSlt
+                | CounterType::ShiftBinaryCsr
+                | CounterType::MulDiv
+                | CounterType::MemWord
+                | CounterType::MemSubword => {
+                    cycles_initial_count += initial_count;
+                    cycles_final_count += final_count;
+                }
+                CounterType::BlakeDelegation => self.blake_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.blake_calls,
+                ),
+                CounterType::BigintDelegation => self.bigint_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.bigint_calls,
+                ),
+                CounterType::KeccakDelegation => self.keccak_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.keccak_calls,
+                ),
+                _ => unreachable!(),
+            }
+        }
         self.cycles_producer.process_snapshot(
             snapshot_index,
-            initial_counters.cycles,
-            final_counters.cycles,
+            cycles_initial_count,
+            cycles_final_count,
             &mut trace_ranges.cycles,
         );
         trace_ranges
     }
 
-    pub fn finalize(self) {
+    fn finalize(self) {
         self.blake_producer.finalize();
         self.bigint_producer.finalize();
         self.keccak_producer.finalize();

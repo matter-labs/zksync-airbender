@@ -878,6 +878,7 @@ impl UnrolledProver {
             MachineType::FullUnsigned,
             base_level.binary_u32.clone(),
             base_level.text_u32.clone(),
+            None,
         );
         prover.add_binary(
             1,
@@ -885,6 +886,7 @@ impl UnrolledProver {
             MachineType::Reduced,
             recursion_over_base.binary_u32.clone(),
             recursion_over_base.text_u32.clone(),
+            None,
         );
 
         Self {
@@ -901,7 +903,7 @@ impl UnrolledProver {
         println!("Computing proof");
 
         let start_time = std::time::Instant::now();
-        let result = self.prover.commit_memory_and_prove(0, 0, 1 << 36, source);
+        let result = self.prover.commit_memory_and_prove(0, 0, source);
         let base_proof = UnrolledProgramProof {
             final_pc: result.final_pc,
             final_timestamp: result.final_timestamp,
@@ -937,7 +939,7 @@ impl UnrolledProver {
                 true,
             );
             let source = QuasiUARTSource::new_with_reads(witness);
-            let result = self.prover.commit_memory_and_prove(0, 1, 1 << 36, source);
+            let result = self.prover.commit_memory_and_prove(0, 1, source);
             let mut proof = UnrolledProgramProof {
                 final_pc: result.final_pc,
                 final_timestamp: result.final_timestamp,
@@ -979,7 +981,7 @@ impl UnrolledProver {
             );
 
             let source = QuasiUARTSource::new_with_reads(witness);
-            let result = self.prover.commit_memory_and_prove(0, 1, 1 << 36, source);
+            let result = self.prover.commit_memory_and_prove(0, 1, source);
 
             let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
                 &previous_setup.end_params,
