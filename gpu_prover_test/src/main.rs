@@ -49,25 +49,27 @@ mod tests {
             .map(|el| u32::from_be_bytes(*el))
             .collect();
         let source = QuasiUARTSource::new_with_reads(witness);
-        let (binary, binary_u32) =
-            read_binary(Path::new("../../zksync-os/zksync_os/app.bin"));
+        let (binary, binary_u32) = read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
         let (padded_binary, padded_binary_u32) =
-            read_and_pad_binary(Path::new("../../zksync-os/zksync_os/app.bin"));
-        let (text, text_u32) = read_binary(Path::new("../../zksync-os/zksync_os/app.text"));
+            read_and_pad_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
+        let (text, text_u32) = read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
         let (padded_text, padded_text_u32) =
-            read_and_pad_binary(Path::new("../../zksync-os/zksync_os/app.text"));
-        info!("Computing setup");
-        let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(&padded_binary, &padded_text);
-        serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
-        let compiled_layouts =
-            execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
-                IMStandardIsaConfigWithUnsignedMulDiv,
-            >(&padded_binary_u32);
-        serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
-            .unwrap();
-        let mut configuration = ExecutionProverConfiguration::default();
+            read_and_pad_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
+        // info!("Computing setup");
+        // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
+        //     IMStandardIsaConfigWithUnsignedMulDiv,
+        // >(&padded_binary, &padded_text);
+        // serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
+        // let compiled_layouts =
+        //     execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
+        //         IMStandardIsaConfigWithUnsignedMulDiv,
+        //     >(&padded_binary_u32);
+        // serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
+        //     .unwrap();
+        let configuration = ExecutionProverConfiguration {
+            replay_worker_threads_count: 8,
+            ..Default::default()
+        };
         let mut prover = ExecutionProver::with_configuration(configuration);
         prover.add_binary(
             0,
@@ -91,7 +93,7 @@ mod tests {
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
         };
-        serde_json::to_writer_pretty(File::create("proof.json").unwrap(), &proof).unwrap();
+        // serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &proof).unwrap();
     }
 
     #[test]
@@ -222,33 +224,32 @@ mod tests {
         );
         let source = QuasiUARTSource::new_with_reads(witness);
 
-        let (binary, binary_u32) = read_and_pad_binary(Path::new(
+        let (binary, binary_u32) = read_binary(Path::new(
             "../tools/verifier/recursion_in_unrolled_layer.bin",
         ));
-        let (text, text_u32) = read_and_pad_binary(Path::new(
+        let (text, text_u32) = read_binary(Path::new(
             "../tools/verifier/recursion_in_unrolled_layer.text",
         ));
 
-        info!("Computing setup");
-        let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
-            IWithoutByteAccessIsaConfigWithDelegation,
-        >(&binary, &text);
-        serde_json::to_writer_pretty(
-            File::create("setup_recursion_over_base.json").unwrap(),
-            &setup,
-        )
-        .unwrap();
-        let layouts = execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
-            IWithoutByteAccessIsaConfigWithDelegation,
-        >(&binary_u32);
-        serde_json::to_writer_pretty(
-            File::create("layouts_recursion_over_base.json").unwrap(),
-            &layouts,
-        )
-        .unwrap();
+        // info!("Computing setup");
+        // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
+        //     IWithoutByteAccessIsaConfigWithDelegation,
+        // >(&binary, &text);
+        // serde_json::to_writer_pretty(
+        //     File::create("setup_recursion_over_base.json").unwrap(),
+        //     &setup,
+        // )
+        // .unwrap();
+        // let layouts = execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
+        //     IWithoutByteAccessIsaConfigWithDelegation,
+        // >(&binary_u32);
+        // serde_json::to_writer_pretty(
+        //     File::create("layouts_recursion_over_base.json").unwrap(),
+        //     &layouts,
+        // )
+        // .unwrap();
 
         let mut configuration = ExecutionProverConfiguration::default();
-        configuration.replay_worker_threads_count = 8;
         let mut prover = ExecutionProver::with_configuration(configuration);
         prover.add_binary(
             0,

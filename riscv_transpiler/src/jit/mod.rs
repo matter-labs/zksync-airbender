@@ -3,7 +3,7 @@ use common_constants::*;
 use std::alloc::Allocator;
 use std::collections::HashSet;
 use std::ptr::NonNull;
-use std::mem::offset_of;
+use std::{mem::offset_of, ptr::addr_of_mut};
 
 #[cfg(target_pointer_width = "64")]
 mod delegations;
@@ -120,19 +120,6 @@ impl MachineState {
                 bigint_calls: self.counters[CounterType::BigintDelegation as u8 as usize] as usize,
                 keccak_calls: self.counters[CounterType::KeccakDelegation as u8 as usize] as usize,
             },
-        }
-    }
-}
-
-impl Default for MachineState {
-    fn default() -> Self {
-        Self {
-            registers: [0u32; 32],
-            register_timestamps: [0; 32],
-            counters: [0u32; MAX_NUM_COUNTERS],
-            pc: 0u32,
-            timestamp: INITIAL_TIMESTAMP,
-            context_ptr: core::ptr::null_mut(),
         }
     }
 }

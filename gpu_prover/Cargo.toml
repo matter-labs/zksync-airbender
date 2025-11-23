@@ -27,8 +27,10 @@ verifier_common = { workspace = true }
 worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
+
 era_cudart = "0.154"
 era_cudart_sys = "0.154"
+
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
 nvtx = "1"

@@ -10,6 +10,7 @@ use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFu
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use crate::execution::cpu_worker::LockedBoxedTraceChunk;
 // pub(crate) struct OnceSnapshotter {
 //     pub period: usize,
 //     pub initial_timestamp: TimestampScalar,
@@ -83,7 +84,8 @@ pub(crate) struct Snapshot<R: DataTraceRanges> {
     pub index: usize,
     pub cycles_count: usize,
     pub initial_state: MachineState,
-    pub trace: Box<TraceChunk>,
+    pub trace: LockedBoxedTraceChunk,
+    pub final_state: MachineState,
     pub trace_ranges: R,
 }
 

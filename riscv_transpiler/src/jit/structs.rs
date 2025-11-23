@@ -53,8 +53,8 @@ impl TraceChunk {
 
 #[repr(C, align(4096))]
 pub struct MemoryHolder {
-    pub(crate) memory: [u32; NUM_RAM_WORDS],
-    pub(crate) timestamps: [TimestampScalar; NUM_RAM_WORDS],
+    pub memory: [u32; NUM_RAM_WORDS],
+    pub timestamps: [TimestampScalar; NUM_RAM_WORDS],
 }
 
 impl MemoryHolder {

@@ -20,6 +20,7 @@ use std::collections::VecDeque;
 struct TracerRanges<T: Copy + 'static> {
     queue: VecDeque<PtrRange<T>>,
     current: PtrRange<T>,
+    count: usize,
 }
 
 impl<T: Copy + 'static> TracerRanges<T> {
@@ -27,6 +28,7 @@ impl<T: Copy + 'static> TracerRanges<T> {
         Self {
             queue,
             current: PtrRange::default(),
+            count: 0,
         }
     }
 
@@ -43,6 +45,7 @@ impl<T: Copy + 'static> TracerRanges<T> {
         }
         *(self.current.start as *mut U) = value;
         self.current.start = self.current.start.add(1);
+        self.count += 1;
     }
 }
 

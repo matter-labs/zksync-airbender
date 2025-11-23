@@ -2,34 +2,27 @@ use super::A;
 use crate::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::execution::messages::SimulationResult;
 use crate::execution::messages::{InitsAndTeardownsData, WorkerResult};
-use crate::execution::ram::ROM_ADDRESS_SPACE_SECOND_WORD_BITS;
 use crate::execution::simulation_runner::SimulationRunner;
 use crate::execution::snapshotter::{Snapshot, SplitDataTraceRanges, UnifiedDataTraceRanges};
-use crate::execution::tracer::{SplitTracer, UnifiedTracer};
-use crate::execution::tracing_data_producers::{
-    SplitTracingDataProducers, TracingDataProducers, UnifiedTracingDataProducers,
-};
+use crate::execution::tracer::SplitTracer;
+use crate::execution::tracing_data_producers::SplitTracingDataProducers;
 use crate::machine_type::MachineType;
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{Receiver, Sender};
-use cs::definitions::{TimestampData, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use cs::definitions::TimestampData;
+use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
 use log::{debug, trace};
 use prover::definitions::LazyInitAndTeardown;
+use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::common_constants::TimestampScalar;
-use riscv_transpiler::jit::{
-    ContextImpl, CounterType, JittedCode, MachineState, MemoryHolder, ReplayerMemChunks,
-    TraceChunk, MAX_TRACE_CHUNK_LEN, RAM_SIZE, TRACE_CHUNK_LEN,
-};
-use riscv_transpiler::replayer::{ReplayerNonDeterminism, ReplayerVM};
+use riscv_transpiler::jit::{CounterType, MachineState, ReplayerMemChunks, TraceChunk};
+use riscv_transpiler::replayer::ReplayerVM;
 use riscv_transpiler::vm::{
-    DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, InstructionTape,
-    NonDeterminismCSRSource, Register, State, VM,
+    DelegationsAndFamiliesCounters, InstructionTape, NonDeterminismCSRSource, Register, State, VM,
 };
 use std::alloc::Global;
 use std::cmp::min;
-use std::iter::zip;
-use std::mem::{replace, take};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -37,6 +30,35 @@ use std::time::{Duration, Instant};
 use trace_and_split::FinalRegisterValue;
 use type_map::concurrent::TypeMap;
 use worker::Worker;
+
+pub(crate) struct LockedBoxedTraceChunk {
+    pub chunk: Box<TraceChunk, A>,
+}
+
+impl LockedBoxedTraceChunk {
+    pub fn new() -> Self {
+        const LOG_CHUNK_SIZE: u32 = 20;
+        let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
+        let allocation = HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).unwrap();
+        let allocator = A::new(vec![allocation], LOG_CHUNK_SIZE);
+        let chunk = unsafe { Box::<TraceChunk, _>::new_uninit_in(allocator).assume_init() };
+        Self { chunk }
+    }
+}
+
+impl Deref for LockedBoxedTraceChunk {
+    type Target = TraceChunk;
+
+    fn deref(&self) -> &Self::Target {
+        &self.chunk
+    }
+}
+
+impl DerefMut for LockedBoxedTraceChunk {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.chunk
+    }
+}
 
 pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     batch_id: u64,
@@ -46,6 +68,8 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
     non_determinism: Arc<Mutex<Option<ND>>>,
+    free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
+    free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
     snapshots: Sender<Snapshot<SplitDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
@@ -61,11 +85,17 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
         cycles_bound,
         jit_cache,
         non_determinism,
+        free_trace_chunks_sender,
+        free_trace_chunks_receiver,
         snapshots,
         results.clone(),
         free_allocators.clone(),
         abort.clone(),
     );
+    if abort.load(std::sync::atomic::Ordering::Relaxed) {
+        debug!("BATCH[{batch_id}] SIMULATOR aborted");
+        return;
+    }
     const PER_CIRCUIT_COUNT: usize = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
         * setups::inits_and_teardowns::NUM_CYCLES;
     let instant = Instant::now();
@@ -125,6 +155,8 @@ pub(crate) fn run_unified_simulator<ND: NonDeterminismCSRSource + Send>(
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
     non_determinism: Arc<Mutex<Option<ND>>>,
+    free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
+    free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
     snapshots: Sender<Snapshot<UnifiedDataTraceRanges>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
@@ -300,35 +332,41 @@ pub(crate) fn run_split_replayer(
     worker_id: usize,
     tape: impl Deref<Target = impl InstructionTape>,
     snapshots: Receiver<Snapshot<SplitDataTraceRanges>>,
+    free_trace_chunks: Sender<LockedBoxedTraceChunk>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
 ) {
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
     let mut total_elapsed = Duration::default();
     let mut total_cycles = 0;
+    let mut is_aborted = false;
     for snapshot in snapshots {
-        if abort.load(std::sync::atomic::Ordering::Relaxed) {
+        if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
+            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
+            is_aborted = true;
             let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
             let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
             debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-            return;
         }
         let Snapshot {
             index,
             cycles_count,
             initial_state,
             trace,
+            final_state,
             trace_ranges,
         } = snapshot;
+        if is_aborted {
+            free_trace_chunks.send(trace).unwrap();
+            continue;
+        }
         let trace_len = trace.len as usize;
         let mut state = machine_state_into_split_state(initial_state);
+        let final_state = machine_state_into_split_state(final_state);
         let mut ram = ReplayerMemChunks {
             chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
         };
-        let mut non_determinism_reads = vec![];
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut non_determinism_reads,
-        };
+        let mut nd = QuasiUARTSource::new_with_reads(vec![]);
         let mut tracer = SplitTracer::new(trace_ranges);
         let instant = Instant::now();
         ReplayerVM::replay_basic_unrolled(
@@ -340,6 +378,10 @@ pub(crate) fn run_split_replayer(
             &mut tracer,
         );
         let elapsed = instant.elapsed();
+        free_trace_chunks.send(trace).unwrap();
+        assert_eq!(state.pc, final_state.pc);
+        assert_eq!(state.timestamp, final_state.timestamp);
+        assert_eq!(state.registers, final_state.registers);
         total_elapsed += elapsed;
         total_cycles += cycles_count;
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
@@ -350,7 +392,9 @@ pub(crate) fn run_split_replayer(
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-    debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    if !is_aborted {
+        debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    }
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
@@ -359,6 +403,7 @@ pub(crate) fn run_unified_replayer(
     worker_id: usize,
     tape: impl Deref<Target = impl InstructionTape>,
     snapshots: Receiver<Snapshot<UnifiedDataTraceRanges>>,
+    free_trace_chunks: Sender<LockedBoxedTraceChunk>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
 ) {

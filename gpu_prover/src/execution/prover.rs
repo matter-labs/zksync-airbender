@@ -6,7 +6,10 @@ use crate::circuit_type::{
 };
 use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
-use crate::execution::cpu_worker::{run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator};
+use crate::execution::cpu_worker::{
+    run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator,
+    LockedBoxedTraceChunk,
+};
 use crate::execution::gpu_worker::{
     GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult,
@@ -25,7 +28,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::TimestampScalar;
 use itertools::Itertools;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use prover::definitions::{AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
@@ -209,6 +212,7 @@ pub struct ExecutionProver {
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
     free_allocators_receiver: Receiver<A>,
+    trace_chunks_cache: Mutex<Vec<LockedBoxedTraceChunk>>,
 }
 
 impl ExecutionProver {
@@ -268,6 +272,14 @@ impl ExecutionProver {
             let allocator = A::new([allocation], host_allocation_log_chunk_size);
             free_allocators_sender_ref.send(allocator).unwrap();
         });
+        let trace_chunks_count =
+            expected_concurrent_jobs * configuration.replay_worker_threads_count * 2;
+        info!("PROVER creating trace chunks cache with {trace_chunks_count} chunks");
+        let trace_chunks_cache = (0..trace_chunks_count)
+            .into_par_iter()
+            .map(|_| LockedBoxedTraceChunk::new())
+            .collect();
+        let trace_chunks_cache = Mutex::new(trace_chunks_cache);
         gpu_wait_group.wait();
         info!("PROVER initialized");
         Self {
@@ -278,6 +290,7 @@ impl ExecutionProver {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
+            trace_chunks_cache,
         }
     }
 
@@ -372,10 +385,26 @@ impl ExecutionProver {
         assert!(proving ^ external_challenges.is_none());
         let replayers_count = self.configuration.replay_worker_threads_count;
         let holder = &self.binary_holders[&binary_key];
+        let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
+        let trace_chunks_count = replayers_count * 2;
+        {
+            let mut trace_chunks_cache = self.trace_chunks_cache.lock().unwrap();
+            let cache_len = trace_chunks_cache.len();
+            if cache_len < trace_chunks_count {
+                warn!("BATCH[{batch_id}] PROVER trace chunks cache underflow: requested {trace_chunks_count}, available {cache_len}");
+                for _ in 0..(trace_chunks_count - cache_len) {
+                    trace_chunks_cache.push(LockedBoxedTraceChunk::new());
+                }
+            }
+            for _ in 0..trace_chunks_count {
+                let trace_chunk = trace_chunks_cache.pop().unwrap();
+                free_trace_chunks_sender.send(trace_chunk).unwrap();
+            }
+        }
         let (work_results_sender, work_results_receiver) = unbounded();
         let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
-        let (split_snapshot_sender, split_snapshot_receiver) = bounded(replayers_count);
-        let (unified_snapshot_sender, unified_snapshot_receiver) = bounded(replayers_count);
+        let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
+        let (unified_snapshot_sender, unified_snapshot_receiver) = unbounded();
         let gpu_work_batch = GpuWorkBatch {
             batch_id,
             receiver: gpu_work_requests_receiver,
@@ -436,10 +465,12 @@ impl ExecutionProver {
             false
         };
         if abort_signaled {
-            trace!("BATCH[{batch_id}] skipping simulation as all proof requests have been served from cache");
+            debug!("BATCH[{batch_id}] skipping simulation as all proof requests have been served from cache");
         } else {
             trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
             {
+                let free_trace_chunks_sender = free_trace_chunks_sender.clone();
+                let free_trace_chunks_receiver = free_trace_chunks_receiver.clone();
                 let free_allocators_receiver = self.free_allocators_receiver.clone();
                 let binary_image = holder.binary_image.clone();
                 let text_section = holder.text_section.clone();
@@ -459,6 +490,8 @@ impl ExecutionProver {
                             cycles_bound,
                             jit_cache,
                             non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
                             split_snapshot_sender,
                             work_results_sender,
                             free_allocators_receiver,
@@ -473,6 +506,8 @@ impl ExecutionProver {
                             cycles_bound,
                             jit_cache,
                             non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
                             unified_snapshot_sender,
                             work_results_sender,
                             free_allocators_receiver,
@@ -486,6 +521,7 @@ impl ExecutionProver {
             for worker_id in 0..replayers_count {
                 let instruction_tape = holder.instruction_tape.clone();
                 let split_snapshot_receiver = split_snapshot_receiver.clone();
+                let free_trace_chunks_sender = free_trace_chunks_sender.clone();
                 let unified_snapshot_receiver = unified_snapshot_receiver.clone();
                 let work_results_sender = work_results_sender.clone();
                 let abort = abort.clone();
@@ -495,6 +531,7 @@ impl ExecutionProver {
                         worker_id,
                         instruction_tape,
                         split_snapshot_receiver,
+                        free_trace_chunks_sender,
                         work_results_sender,
                         abort,
                     ),
@@ -503,12 +540,14 @@ impl ExecutionProver {
                         worker_id,
                         instruction_tape,
                         unified_snapshot_receiver,
+                        free_trace_chunks_sender,
                         work_results_sender,
                         abort,
                     ),
                 });
             }
         }
+        drop(free_trace_chunks_sender);
         drop(split_snapshot_receiver);
         drop(work_results_sender);
         let mut uninitialized_tracing_data = BTreeMap::new();
@@ -861,7 +900,7 @@ impl ExecutionProver {
                     && gpu_work_requests_sender.is_some()
                     && cache.total_requests_count == sent_requests_count
                 {
-                    trace!("BATCH[{batch_id}] PROVER aborting simulation as all remaining proof requests have been served from cache");
+                    debug!("BATCH[{batch_id}] PROVER all remaining proof requests have been served from cache, signaling abort of simulation");
                     gpu_work_requests_sender = None;
                     abort.store(true, std::sync::atomic::Ordering::Relaxed);
                     simulation_result = cache.simulation_result.clone();
@@ -898,6 +937,13 @@ impl ExecutionProver {
                 cache.total_requests_count = sent_requests_count;
                 cache.simulation_result = simulation_result.clone();
             }
+        }
+        assert_eq!(free_trace_chunks_receiver.len(), trace_chunks_count);
+        {
+            let mut guard = self.trace_chunks_cache.lock().unwrap();
+            free_trace_chunks_receiver
+                .iter()
+                .for_each(|c| guard.push(c));
         }
         let SimulationResult {
             final_register_values,
@@ -1276,8 +1322,12 @@ impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapp
         value
     }
 
-    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, ram: &R, value: u32) {
-        self.inner.write_with_memory_access(ram, value);
+    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32) {
+        self.inner.write_with_memory_access(ram, value)
+    }
+
+    fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {
+        self.inner.write_with_memory_access_dyn(ram, value)
     }
 }
 

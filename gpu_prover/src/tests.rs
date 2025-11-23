@@ -71,7 +71,7 @@ use prover::prover_stages::Proof;
 use prover::risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use riscv_transpiler::ir::{preprocess_bytecode, Instruction, ReducedMachineDecoderConfig};
-use riscv_transpiler::replayer::{ReplayerNonDeterminism, ReplayerRam, ReplayerVM};
+use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     DelegationsCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
 };
@@ -2928,13 +2928,10 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     let mut ram_log_buffers = snapshotter
         .reads_buffer
         .make_range(0..snapshotter.reads_buffer.len());
-    let mut nd_log_buffers = vec![];
     let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
         ram_log: &mut ram_log_buffers,
     };
-    let mut nd = ReplayerNonDeterminism {
-        non_determinism_reads_log: &mut nd_log_buffers,
-    };
+    let mut nd = QuasiUARTSource::new_with_reads(vec![]);
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
     let mut buffers = vec![&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
