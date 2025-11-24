@@ -236,10 +236,10 @@ pub fn gpu_prove_image_execution_for_machine_with_gpu_tracers<
     };
 
     let external_challenges = ExternalChallenges::draw_from_transcript_seed(
-        memory_challenges_seed, 
+        memory_challenges_seed,
         true,
         MEMORY_DELEGATION_POW_BITS,
-        pow_challenge
+        pow_challenge,
     );
 
     let input = final_register_values

@@ -207,7 +207,10 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
 
     // draw quotient linearization challenges
     let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(2usize * 4, POW_CONFIG.quotient_alpha_pow_bits as usize)],
+        [u32; transcript_challenge_array_size(
+            2usize * 4,
+            POW_CONFIG.quotient_alpha_pow_bits as usize,
+        )],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(

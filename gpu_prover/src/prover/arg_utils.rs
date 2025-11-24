@@ -910,7 +910,9 @@ impl MaskArgLayout {
         circuit: &CompiledCircuitArtifact<BF>,
         translate_e4_offset: &F,
     ) -> Self {
-        let poly = circuit.stage_2_layout.intermediate_polys_for_permutation_masking;
+        let poly = circuit
+            .stage_2_layout
+            .intermediate_polys_for_permutation_masking;
         let process_mask = poly.num_elements() > 0;
         let (arg_col, execute_col) = if process_mask {
             let intermediate_state_layout =
