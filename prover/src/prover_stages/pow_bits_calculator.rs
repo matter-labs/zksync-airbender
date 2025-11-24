@@ -313,7 +313,8 @@ const fn pow_bits_for_quotient(
     lde_factor_log2: usize,
 ) -> usize {
     let powers_of_alpha_log2 = powers_of_alpha.next_power_of_two().trailing_zeros() as usize;
-    let no_pow_security_bits = challenge_field_size_log2 - powers_of_alpha_log2 - 2 - lde_factor_log2.div_ceil(2);
+    let no_pow_security_bits =
+        challenge_field_size_log2 - powers_of_alpha_log2 - 2 - lde_factor_log2.div_ceil(2);
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
     } else {
@@ -373,7 +374,7 @@ pub const fn pow_bits_for_queries(
     lde_factor_log2: usize,
 ) -> usize {
     // We should add extra 20% of queries
-    let queries_contribution = 5 * num_queries.div_ceil(6);
+    let queries_contribution = 5 * num_queries / 6;
     let no_pow_security_bits = queries_contribution * lde_factor_log2;
     if security_bits > no_pow_security_bits {
         security_bits - no_pow_security_bits
@@ -401,12 +402,11 @@ mod worst_case_constants {
         dbg!(worst_pow_config(100, 5));
     }
 
-    pub const fn worst_sized_pow_config<const NUM_FRI_STEPS: usize>(security_bits: usize) -> SizedProofPowConfig<NUM_FRI_STEPS> {
-        let num_queries = num_queries_for_security_params(
-            security_bits,
-            POW_BITS_FOR_QUERIES,
-            FRI_FACTOR_LOG2,
-        );
+    pub const fn worst_sized_pow_config<const NUM_FRI_STEPS: usize>(
+        security_bits: usize,
+    ) -> SizedProofPowConfig<NUM_FRI_STEPS> {
+        let num_queries =
+            num_queries_for_security_params(security_bits, POW_BITS_FOR_QUERIES, FRI_FACTOR_LOG2);
 
         SizedProofPowConfig::from_parameters(
             security_bits,
@@ -422,11 +422,8 @@ mod worst_case_constants {
     }
 
     pub fn worst_pow_config(security_bits: usize, num_fri_steps: usize) -> ProofPowConfig {
-        let num_queries = num_queries_for_security_params(
-            security_bits,
-            POW_BITS_FOR_QUERIES,
-            FRI_FACTOR_LOG2,
-        );
+        let num_queries =
+            num_queries_for_security_params(security_bits, POW_BITS_FOR_QUERIES, FRI_FACTOR_LOG2);
 
         ProofPowConfig::from_parameters(
             security_bits,

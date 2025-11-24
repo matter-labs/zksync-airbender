@@ -162,10 +162,7 @@ pub fn prove_configured_for_unrolled_circuits<
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = pow_bits_calculator::worst_pow_config(
-        security_bits,
-        num_queries,
-    );
+    let pow_bits = pow_bits_calculator::worst_pow_config(security_bits, num_queries);
 
     let stage_2_output = stage2::prover_stage_2_for_unrolled_circuit(
         &mut seed,
