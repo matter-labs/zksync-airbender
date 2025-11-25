@@ -316,7 +316,7 @@ impl Profiler {
                                     && false
                                         == SymbolInfo::is_address_traceable(
                                             &ctx,
-                                            &mut unit_data,
+                                            &unit_data,
                                             *pc as u64,
                                             &frame,
                                         )
@@ -351,6 +351,10 @@ impl Profiler {
             for (k, v) in extra_cache.into_iter() {
                 cache.insert(k, v);
             }
+        }
+
+        if traces.len() > 0 {
+            assert!(cache.len() > 0);
         }
 
         (traces, cache)
@@ -1018,12 +1022,12 @@ where
     StacktraceCollectionResult::UserCode(stacktrace)
 }
 
-fn get_address_frames_impl<'a>(
-    ctx: &Context<EndianSlice<'a, RunTimeEndian>>,
+fn get_address_frames_impl<'a, 'b>(
+    ctx: &'b Context<EndianSlice<'a, RunTimeEndian>>,
     unit_data: &mut HashMap<UnitSectionOffset, UnitInfo<'a>>,
     address: u64,
 ) -> Option<(
-    Vec<Frame<'a, EndianSlice<'a, RunTimeEndian>>>,
+    Vec<Frame<'b, EndianSlice<'a, RunTimeEndian>>>,
     UnitSectionOffset,
 )> {
     let (_dw, unit, unit_info) =
@@ -1170,10 +1174,7 @@ fn get_address_frames_impl<'a>(
                 );
             });
 
-        // Safety: The borrow checker assumes that the frame lives for 'const (derived from
-        // `ctx` field in `Self`). The actual lifetime is the lifetime of `self`. So we're
-        // adjusting the lifetime args in the return type accordingly.
-        unsafe { result.push(std::mem::transmute(frame)) };
+        result.push(frame);
     }
 
     Some((result, unit.header.offset()))
