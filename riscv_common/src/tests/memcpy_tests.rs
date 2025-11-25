@@ -2,7 +2,7 @@ use rand::Rng;
 
 #[test]
 fn test_memcopy() {
-    const MAX_SIZE: usize = 256;
+    const MAX_SIZE: usize = 1024;
     let mut rng = rand::rng();
 
     for size in 0..MAX_SIZE {
@@ -26,6 +26,9 @@ fn test_memcopy() {
 
                 let source = &input[src_offset..][..size];
                 let output = &mut output[dst_offset..][..size];
+
+                assert_eq!(source[..].as_ptr().addr() % 4, src_unalignment);
+                assert_eq!(output[..].as_ptr().addr() % 4, dst_unalignment);
 
                 unsafe {
                     crate::memcpy::memcpy_impl(output.as_mut_ptr(), source.as_ptr(), size);

@@ -51,17 +51,22 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
         let mut src = src.cast::<u32>();
         let mut dest = dest.cast::<u32>();
-        while n >= 16 * WORD_SIZE {
+
+        {
             const BYTE_COPY_SIZE: usize = WORD_SIZE * 16;
             const WORD_COPY_SIZE: usize = 16;
+            while n >= 16 * WORD_SIZE {
+                debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
 
-            seq_macro::seq!(N in 0..16 {
-                dest.add(N).write(src.add(N).read());
-            });
+                seq_macro::seq!(N in 0..16 {
+                    dest.add(N).write(src.add(N).read());
+                });
 
-            src = src.add(WORD_COPY_SIZE);
-            dest = dest.add(WORD_COPY_SIZE);
-            n -= BYTE_COPY_SIZE;
+                src = src.add(WORD_COPY_SIZE);
+                dest = dest.add(WORD_COPY_SIZE);
+                n -= BYTE_COPY_SIZE;
+            }
         }
 
         // continue unrolling, but now we know that at most we need 1 iteration each time
@@ -74,6 +79,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
             const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
 
             if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                 seq_macro::seq!(N in 0..8 {
                     dest.add(N).write(src.add(N).read());
                 });
@@ -89,6 +96,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
             const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
 
             if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                 seq_macro::seq!(N in 0..4 {
                     dest.add(N).write(src.add(N).read());
                 });
@@ -104,6 +113,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
             const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
 
             if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                 seq_macro::seq!(N in 0..2 {
                     dest.add(N).write(src.add(N).read());
                 });
@@ -119,6 +130,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
             const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
 
             if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                 dest.write(src.read());
 
                 src = src.add(WORD_COPY_SIZE);
@@ -133,6 +146,9 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
             const BYTE_COPY_SIZE: usize = 2;
 
             if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % core::mem::size_of::<u16>(), 0);
+                debug_assert_eq!(dest.addr() % core::mem::size_of::<u16>(), 0);
+
                 dest.write(src.read());
 
                 src = src.add(1);
@@ -188,6 +204,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
                 // so we shift right the previous word, and left - recently read one
 
                 while n >= 17 {
+                    debug_assert_eq!(src.addr() % WORD_SIZE, 3);
+                    debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(1 + N * 8).cast::<u32>().read();
                         dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 24 | word_1 << 8);
@@ -215,6 +233,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
                 debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
 
                 while n >= 18 {
+                    debug_assert_eq!(src.addr() % WORD_SIZE, 2);
+                    debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(2 + N * 8).cast::<u32>().read();
                         dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 16 | word_1 << 16);
@@ -240,6 +260,8 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
                 debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
 
                 while n >= 19 {
+                    debug_assert_eq!(src.addr() % WORD_SIZE, 1);
+                    debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(3 + N * 8).cast::<u32>().read();
                         dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 8 | word_1 << 24);
