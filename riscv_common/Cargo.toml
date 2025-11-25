@@ -12,6 +12,7 @@ categories.workspace = true
 [dependencies]
 heapless = { version = "*", default-features = false, optional = true }
 common_constants = { path = "../common_constants" }
+seq-macro.workspace = true
 
 [features]
 uart = ["heapless"]

@@ -1,12 +1,38 @@
-core::arch::global_asm!(include_str!("asm/start.s"));
+core::arch::global_asm!(include_str!("../asm/start.s"));
+
+// #[cfg(not(feature = "no_memcpy_override"))]
+// core::arch::global_asm!(include_str!("../asm/memcpy.s"));
 
 #[cfg(not(feature = "no_memcpy_override"))]
-core::arch::global_asm!(include_str!("asm/memcpy.s"));
+mod memcpy;
 
 #[cfg(not(feature = "no_memset_override"))]
-core::arch::global_asm!(include_str!("asm/memset.s"));
+core::arch::global_asm!(include_str!("../asm/memset.s"));
 
 pub use ::common_constants;
+
+#[export_name = "_setup_interrupts"]
+pub unsafe fn custom_setup_interrupts() {
+    extern "C" {
+        fn _machine_start_trap();
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct MachineTrapFrame {
+    pub registers: [u32; 32],
+}
+
+/// Exception (trap) handler in rust.
+/// Called from the asm/asm.S
+#[link_section = ".trap.rust"]
+#[export_name = "_machine_start_trap_rust"]
+pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) -> usize {
+    {
+        unsafe { core::hint::unreachable_unchecked() }
+    }
+}
 
 extern "C" {
     // Boundary of ROM region
