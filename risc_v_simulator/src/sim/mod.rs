@@ -106,15 +106,33 @@ where
         //     profiler.write_stacktrace();
         // }
 
+        // if let Some(profiler) = self.profiler.as_mut() {
+        //     println!("Profiler begins execution");
+        //     let binary = profiler.symbol_info.buffer.clone();
+        //     let cache = crate::profiler::produce_cache_for_binary(&binary);
+
+        //     let (traces, cache) = profiler.trace_frames(&binary);
+        //     println!(
+        //         "Writing stacktrace, in total {} frames visited",
+        //         traces.len()
+        //     );
+        //     profiler.write_stacktrace_impl(&traces, &cache);
+        // }
+
         if let Some(profiler) = self.profiler.as_mut() {
-            println!("Profiler begins execution");
+            println!("Beging stack tracing");
+
+            println!("Computing caches");
             let binary = profiler.symbol_info.buffer.clone();
-            let (traces, cache) = profiler.trace_frames(&binary);
+            let cache = crate::profiler::produce_cache_for_binary(&binary);
+            let aggregated_cache = crate::profiler::produce_aggregated_cache_for_binary(&binary);
+            let raw_frames =
+                core::mem::replace(&mut profiler.stacktraces.raw_frames, Default::default());
             println!(
-                "Writing stacktrace, in total {} frames visited",
-                traces.len()
+                "Writing stacktrace, in total {} frames collected",
+                raw_frames.len()
             );
-            profiler.write_stacktrace_impl(&traces, &cache);
+            profiler.write_stacktrace_impl_cached(&raw_frames, &cache, &aggregated_cache);
         }
 
         RunResult {

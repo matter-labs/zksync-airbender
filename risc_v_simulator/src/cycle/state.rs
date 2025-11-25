@@ -118,7 +118,7 @@ where
         let mut fp = self.state.observable.registers[8];
 
         if fp == 0 {
-            return (0, Vec::new());
+            return (pc, Vec::new());
         }
 
         loop {

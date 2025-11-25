@@ -4,7 +4,7 @@ use crate::{
     sim::RiscV32MachineSetup,
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     hash::Hasher,
     io::Read,
     mem::size_of,
@@ -433,6 +433,76 @@ impl Profiler {
             names
                 .join(";")
                 .op(|x| format!("{} {}", x, c).to_owned().to(|x| mapped.push(x)));
+        }
+
+        let mut opts = inferno::flamegraph::Options::default();
+
+        opts.reverse_stack_order = self.reverse_graph;
+
+        inferno::flamegraph::from_lines(&mut opts, mapped.iter().map(|x| x.as_str()), file)
+            .unwrap();
+    }
+
+    pub(crate) fn write_stacktrace_impl_cached(
+        &self,
+        frames: &[(u32, Vec<u32>)],
+        plain_cache: &[(u32, Vec<String>)],
+        aggregated_cache: &BTreeMap<u32, Vec<String>>,
+    ) {
+        // NOTE: we may have a VERY different PC, but be within the same(!) function,
+        // that may be called by different(!) callers
+
+        #[derive(PartialEq, Eq, Hash)]
+        struct Frame<'a> {
+            equivalent_pc: u32,
+            callsite: &'a [u32],
+        }
+
+        let file = match std::fs::File::create(&self.output_path) {
+            Err(why) => panic!("couldn't create file {}", why),
+            Ok(file) => file,
+        };
+
+        let mut counters: HashMap<Frame<'_>, usize> = HashMap::new();
+
+        // first we need to count all encountered PCs, even if stack frames below them are different
+
+        let mut mapped = Vec::with_capacity(frames.len());
+
+        for (pc, callsites) in frames.iter() {
+            if let Some((next_back_pc, next_back_frames)) =
+                aggregated_cache.range(..=*pc).next_back()
+            {
+                if next_back_frames.is_empty() == false {
+                    let frame = Frame {
+                        equivalent_pc: *next_back_pc,
+                        callsite: &callsites[..],
+                    };
+                    *counters.entry(frame).or_default() += 1;
+                }
+            }
+        }
+
+        // now go over counters
+        for (frame, count) in counters.into_iter() {
+            let Frame {
+                equivalent_pc,
+                callsite,
+            } = frame;
+            let source = Some(&equivalent_pc).into_iter().chain(callsite.iter());
+            let mut names = source.flat_map(|pc| {
+                assert_eq!(*pc % 4, 0);
+                let idx = *pc / 4;
+                let (expected_pc, names) = &plain_cache[idx as usize];
+                assert_eq!(*expected_pc, *pc);
+
+                names.iter()
+            });
+
+            use itertools::Itertools;
+            let concatenated = names.join(";");
+            let flamegraph_formatted = format!("{} {}", concatenated, count);
+            mapped.push(flamegraph_formatted);
         }
 
         let mut opts = inferno::flamegraph::Options::default();
@@ -882,7 +952,7 @@ pub(crate) enum StacktraceCollectionResult {
 
 #[derive(Debug)]
 pub(crate) struct StacktraceSet {
-    raw_frames: Vec<(u32, Vec<u32>)>,
+    pub(crate) raw_frames: Vec<(u32, Vec<u32>)>,
     traces: HashMap<Stacktrace, usize>,
 }
 

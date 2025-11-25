@@ -8,6 +8,7 @@ pub mod cycle;
 pub mod machine_mode_only_unrolled;
 pub mod mmio;
 pub mod mmu;
+pub mod profiler;
 mod qol;
 pub mod runner;
 pub mod sim;

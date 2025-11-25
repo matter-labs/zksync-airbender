@@ -5,13 +5,12 @@ fn test_memcopy() {
     const MAX_SIZE: usize = 1024;
     let mut rng = rand::rng();
 
+    let mut input = vec![0u8; 2 * MAX_SIZE];
+    for i in 0..2 * MAX_SIZE {
+        input[i] = rng.random();
+    }
+
     for size in 0..MAX_SIZE {
-        let mut input = vec![0u8; 2 * MAX_SIZE];
-
-        for i in 0..MAX_SIZE {
-            input[i] = rng.random();
-        }
-
         for src_unalignment in 0..4 {
             for dst_unalignment in 0..4 {
                 let mut output = vec![0u8; 2 * MAX_SIZE];

@@ -26,6 +26,8 @@ rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 ruint = { version = "1.16", optional = true }
 serde = { workspace = true }
 rayon =  { version = "1" }
+addr2line_new = {package = "addr2line", version = "0.25"}
+itertools = { workspace = true }
 
 [dev-dependencies]
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
