@@ -315,10 +315,7 @@ impl Profiler {
                                 if i == 0
                                     && false
                                         == SymbolInfo::is_address_traceable(
-                                            &ctx,
-                                            &unit_data,
-                                            *pc as u64,
-                                            &frame,
+                                            &ctx, &unit_data, *pc as u64, &frame,
                                         )
                                 {
                                     // We're in a service code.
@@ -415,16 +412,23 @@ impl Profiler {
                 .frames
                 .iter()
                 .rev()
-                .map(|frame| {
+                .filter_map(|frame| {
                     cache
                         .get(&frame.section_offset)
-                        .unwrap()
-                        .frames
-                        .get(&frame.unit_offset)
-                        .unwrap()
-                        .name
-                        .as_str()
+                        .map(|info| info.frames.get(&frame.unit_offset))
+                        .flatten()
+                        .map(|info| info.name.as_str())
                 })
+                // .map(|frame| {
+                //     cache
+                //         .get(&frame.section_offset)
+                //         .unwrap()
+                //         .frames
+                //         .get(&frame.unit_offset)
+                //         .unwrap()
+                //         .name
+                //         .as_str()
+                // })
                 .collect::<Vec<_>>();
             names
                 .join(";")

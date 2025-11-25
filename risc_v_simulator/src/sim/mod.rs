@@ -110,7 +110,10 @@ where
             println!("Profiler begins execution");
             let binary = profiler.symbol_info.buffer.clone();
             let (traces, cache) = profiler.trace_frames(&binary);
-            println!("Writing stacktrace");
+            println!(
+                "Writing stacktrace, in total {} frames visited",
+                traces.len()
+            );
             profiler.write_stacktrace_impl(&traces, &cache);
         }
 
