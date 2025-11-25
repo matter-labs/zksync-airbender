@@ -72,27 +72,12 @@ where
 
         for cycle in 0..self.cycles as usize {
             if let Some(profiler) = self.profiler.as_mut() {
-                profiler.pre_cycle::<S, C>(
-                    &mut self.machine,
-                    // &mut self.state,
-                    // &mut self.memory_source,
-                    // &mut self.memory_tracer,
-                    // &mut self.mmu,
-                    cycle,
-                );
+                profiler.pre_cycle::<S, C>(&mut self.machine, cycle);
             }
 
             fn_pre(self, cycle);
 
             self.machine.cycle();
-
-            // RiscV32Machine::<C>::cycle(
-            //     &mut self.state,
-            //     &mut self.memory_source,
-            //     &mut self.memory_tracer,
-            //     &mut self.mmu,
-            //     &mut self.non_determinism_source,
-            // );
 
             fn_post(self, cycle);
 
@@ -129,13 +114,8 @@ where
             profiler.write_stacktrace();
         }
 
-        // let (state, memory_source, non_determinism_source, memory_tracer) = self.machine.deconstruct();
-
         RunResult {
             state: self.machine.state().clone(),
-            // memory_source,
-            // memory_tracer,
-            // non_determinism_source,
             reached_end: self.reached_end,
             measurements: RunResultMeasurements {
                 time: RunResultTimes {
