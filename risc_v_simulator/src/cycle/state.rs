@@ -135,7 +135,7 @@ where
 
             // TODO: remove once the issue with non complying functions is solved.
             if fpp < 8 {
-                return (0, Vec::new());
+                break;
             }
 
             let addr = mem_read::<_, _, _>(
@@ -158,13 +158,13 @@ where
 
             // TODO: Remove once the issue with non complying functions is solved.
             if addr < 4 {
-                return (0, Vec::new());
+                break;
             }
             if next as u64 == fpp {
-                return (0, Vec::new());
+                break;
             }
             if addr == 0 {
-                return (0, Vec::new());
+                break;
             }
 
             // Subbing one instruction because the frame's return address point to instruction

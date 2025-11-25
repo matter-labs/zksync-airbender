@@ -241,96 +241,106 @@ impl Profiler {
 
     pub(crate) fn trace_frames(&mut self) {
         let raw_frames = core::mem::replace(&mut self.stacktraces.raw_frames, Default::default());
+        if raw_frames.len() == 0 {
+            return;
+        }
 
         let threads = 8;
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build_global();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(8)
+            .build()
+            .unwrap();
         let chunk_size = raw_frames.len().div_ceil(threads);
         let buffer = self.symbol_info.buffer.clone();
 
-        let mut result: Vec<HashMap<Stacktrace, usize>> = raw_frames
-            .par_chunks(chunk_size)
-            .map(|frames| {
-                let mut unit_data = HashMap::new();
-                let mut traces = HashMap::<Stacktrace, usize>::new();
+        let mut result = pool.scope(|_| {
+            let result: Vec<HashMap<Stacktrace, usize>> = raw_frames
+                .par_chunks(chunk_size)
+                .map(|frames| {
+                    let mut unit_data = HashMap::new();
+                    let mut traces = HashMap::<Stacktrace, usize>::new();
 
-                let ctx = {
-                    let object = object::File::parse(&buffer[..]).unwrap();
+                    let ctx = {
+                        let object = object::File::parse(&buffer[..]).unwrap();
 
-                    let endian = match object.is_little_endian() {
-                        true => RunTimeEndian::Little,
-                        false => RunTimeEndian::Big,
-                    };
-
-                    let load_section = |id: SectionId| -> Result<_, ()> {
-                        let name = id.name();
-
-                        match object.section_by_name(name) {
-                            Some(section) => match section.uncompressed_data().unwrap() {
-                                std::borrow::Cow::Borrowed(section) => {
-                                    Ok(EndianSlice::new(section, endian))
-                                }
-                                std::borrow::Cow::Owned(_) => {
-                                    unreachable!("We're following the borrowed path.")
-                                }
-                            },
-                            None => Ok(EndianSlice::new(&[][..], endian)),
-                        }
-                    };
-
-                    let dwarf = addr2line::gimli::Dwarf::load(load_section)
-                        .expect("Debug symbols could not be loaded.");
-
-                    let ctx = Context::from_dwarf(dwarf).unwrap();
-
-                    ctx
-                };
-
-                'outer: for (pc, frames) in frames.iter() {
-                    let mut stackframes = Vec::with_capacity(8);
-
-                    for (i, addr) in frames.iter().enumerate() {
-                        let r = get_address_frames_impl(&ctx, &mut unit_data, *addr as u64);
-
-                        let (frames, section_offset) = match r {
-                            Some(r) => r,
-                            // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
-                            None => break,
+                        let endian = match object.is_little_endian() {
+                            true => RunTimeEndian::Little,
+                            false => RunTimeEndian::Big,
                         };
 
-                        for frame in frames {
-                            let offset = frame.dw_die_offset.unwrap();
-                            stackframes.push(FrameKey {
-                                section_offset,
-                                unit_offset: offset,
-                            });
+                        let load_section = |id: SectionId| -> Result<_, ()> {
+                            let name = id.name();
 
-                            if i == 0
-                                && false
-                                    == SymbolInfo::is_address_traceable(
-                                        &ctx,
-                                        &mut unit_data,
-                                        *pc as u64,
-                                        &frame,
-                                    )
-                            {
-                                // We're in a service code.
-                                continue 'outer;
+                            match object.section_by_name(name) {
+                                Some(section) => match section.uncompressed_data().unwrap() {
+                                    std::borrow::Cow::Borrowed(section) => {
+                                        Ok(EndianSlice::new(section, endian))
+                                    }
+                                    std::borrow::Cow::Owned(_) => {
+                                        unreachable!("We're following the borrowed path.")
+                                    }
+                                },
+                                None => Ok(EndianSlice::new(&[][..], endian)),
                             }
+                        };
+
+                        let dwarf = addr2line::gimli::Dwarf::load(load_section)
+                            .expect("Debug symbols could not be loaded.");
+
+                        let ctx = Context::from_dwarf(dwarf).unwrap();
+
+                        ctx
+                    };
+
+                    'outer: for (pc, frames) in frames.iter() {
+                        let mut stackframes = Vec::with_capacity(8);
+
+                        for (i, addr) in frames.iter().enumerate() {
+                            let r = get_address_frames_impl(&ctx, &mut unit_data, *addr as u64);
+
+                            let (frames, section_offset) = match r {
+                                Some(r) => r,
+                                // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
+                                None => break,
+                            };
+
+                            for frame in frames {
+                                let offset = frame.dw_die_offset.unwrap();
+                                stackframes.push(FrameKey {
+                                    section_offset,
+                                    unit_offset: offset,
+                                });
+
+                                if i == 0
+                                    && false
+                                        == SymbolInfo::is_address_traceable(
+                                            &ctx,
+                                            &mut unit_data,
+                                            *pc as u64,
+                                            &frame,
+                                        )
+                                {
+                                    // We're in a service code.
+                                    continue 'outer;
+                                }
+                            }
+                        }
+
+                        if stackframes.len() > 0 {
+                            let stacktrace = Stacktrace::new(stackframes);
+                            traces
+                                .entry(stacktrace)
+                                .and_modify(|x| *x += 1)
+                                .or_insert(1);
                         }
                     }
 
-                    if stackframes.len() > 0 {
-                        let stacktrace = Stacktrace::new(stackframes);
-                        traces
-                            .entry(stacktrace)
-                            .and_modify(|x| *x += 1)
-                            .or_insert(1);
-                    }
-                }
+                    traces
+                })
+                .collect();
 
-                traces
-            })
-            .collect();
+            result
+        });
 
         let mut traces = result.pop().unwrap();
         for extra in result.into_iter() {
@@ -879,7 +889,7 @@ where
 
         // TODO: remove once the issue with non complying functions is solved.
         if fpp < 8 {
-            return StacktraceCollectionResult::Failed;
+            break;
         }
 
         let addr = mem_read::<_, _, _>(
@@ -902,13 +912,13 @@ where
 
         // TODO: Remove once the issue with non complying functions is solved.
         if addr < 4 {
-            return StacktraceCollectionResult::Failed;
+            break;
         }
         if next as u64 == fpp {
-            return StacktraceCollectionResult::Failed;
+            break;
         }
         if addr == 0 {
-            return StacktraceCollectionResult::Failed;
+            break;
         }
 
         // Subbing one instruction because the frame's return address point to instruction
