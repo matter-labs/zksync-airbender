@@ -296,13 +296,13 @@ impl Profiler {
                     'outer: for (pc, frames) in frames.iter() {
                         let mut stackframes = Vec::with_capacity(8);
 
-                        for (i, addr) in frames.iter().enumerate() {
+                        'inner: for (i, addr) in frames.iter().enumerate() {
                             let r = get_address_frames_impl(&ctx, &mut unit_data, *addr as u64);
 
                             let (frames, section_offset) = match r {
                                 Some(r) => r,
                                 // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
-                                None => break,
+                                None => break 'inner,
                             };
 
                             for frame in frames {
