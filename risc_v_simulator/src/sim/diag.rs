@@ -468,8 +468,11 @@ impl Profiler {
         // first we need to count all encountered PCs, even if stack frames below them are different
 
         let mut mapped = Vec::with_capacity(frames.len());
-
-        for (pc, callsites) in frames.iter() {
+        println!("Counting frame populaiton");
+        for (i, (pc, callsites)) in frames.iter().enumerate() {
+            if i > 0 && i % 10_000_000 == 0 {
+                println!("{} frames counted", i);
+            }
             if let Some((next_back_pc, next_back_frames)) =
                 aggregated_cache.range(..=*pc).next_back()
             {
@@ -484,12 +487,21 @@ impl Profiler {
         }
 
         // now go over counters
-        for (frame, count) in counters.into_iter() {
+        println!("Formatting for flamegraph");
+        for (i, (frame, count)) in counters.into_iter().enumerate() {
+            if i > 0 && i % 10_000_000 == 0 {
+                println!("{} frames formatted", i);
+            }
+
             let Frame {
                 equivalent_pc,
                 callsite,
             } = frame;
-            let source = Some(&equivalent_pc).into_iter().chain(callsite.iter());
+            // let source = Some(&equivalent_pc).into_iter().chain(callsite.iter());
+            let source = callsite
+                .iter()
+                .rev()
+                .chain(Some(&equivalent_pc).into_iter());
             let mut names = source.flat_map(|pc| {
                 assert_eq!(*pc % 4, 0);
                 let idx = *pc / 4;
@@ -506,9 +518,9 @@ impl Profiler {
         }
 
         let mut opts = inferno::flamegraph::Options::default();
-
         opts.reverse_stack_order = self.reverse_graph;
 
+        println!("Generating flamegraph from lines");
         inferno::flamegraph::from_lines(&mut opts, mapped.iter().map(|x| x.as_str()), file)
             .unwrap();
     }
