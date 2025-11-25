@@ -91,15 +91,6 @@ where
         &self.state.observable
     }
 
-    // fn deconstruct(self) -> (RiscV32ObservableState, MS, ND, TR) {
-    //     (
-    //         self.state.observable,
-    //         self.memory_source,
-    //         self.non_determinism_source,
-    //         self.memory_tracer,
-    //     )
-    // }
-
     fn collect_stacktrace(
         &mut self,
         symbol_info: &crate::sim::diag::SymbolInfo,
@@ -115,6 +106,78 @@ where
             &mut self.mmu,
             cycle,
         )
+    }
+
+    fn collect_stacktrace_raw(&mut self, cycle: usize) -> (u32, Vec<u32>) {
+        let mut callstack = Vec::with_capacity(6);
+        let pc = self.state.observable.pc;
+
+        // Current frame
+        callstack.push(self.state.observable.pc as u32);
+
+        let mut fp = self.state.observable.registers[8];
+
+        if fp == 0 {
+            return (0, Vec::new());
+        }
+
+        loop {
+            let mut trap = TrapReason::NoTrap;
+
+            let fpp = self.mmu.map_virtual_to_physical(
+                fp,
+                crate::cycle::state::Mode::Machine,
+                crate::abstractions::memory::AccessType::MemLoad,
+                &mut self.memory_source,
+                &mut self.memory_tracer,
+                &mut trap,
+            );
+
+            // TODO: remove once the issue with non complying functions is solved.
+            if fpp < 8 {
+                return (0, Vec::new());
+            }
+
+            let addr = mem_read::<_, _, _>(
+                &mut self.memory_source,
+                &mut self.memory_tracer,
+                fpp - 4,
+                size_of::<u32>() as u32,
+                crate::abstractions::memory::AccessType::MemLoad,
+                &mut trap,
+            );
+
+            let next = mem_read::<_, _, _>(
+                &mut self.memory_source,
+                &mut self.memory_tracer,
+                fpp - 8,
+                size_of::<u32>() as u32,
+                crate::abstractions::memory::AccessType::MemLoad,
+                &mut trap,
+            );
+
+            // TODO: Remove once the issue with non complying functions is solved.
+            if addr < 4 {
+                return (0, Vec::new());
+            }
+            if next as u64 == fpp {
+                return (0, Vec::new());
+            }
+            if addr == 0 {
+                return (0, Vec::new());
+            }
+
+            // Subbing one instruction because the frame's return address point to instruction
+            // that follows the call, not the call itself. In case of inlining this can be
+            // several frames away.
+            let addr = addr - 4;
+
+            callstack.push(addr as u32);
+
+            fp = next;
+        }
+
+        (pc, callstack)
     }
 }
 

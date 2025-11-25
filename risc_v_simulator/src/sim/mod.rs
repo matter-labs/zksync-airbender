@@ -115,9 +115,17 @@ where
 
         let exec_time = now.elapsed();
 
+        // if let Some(profiler) = self.profiler.as_mut() {
+        //     println!("Profiler begins execution");
+        //     profiler.print_stats();
+        //     profiler.write_stacktrace();
+        // }
+
         if let Some(profiler) = self.profiler.as_mut() {
             println!("Profiler begins execution");
+            profiler.trace_frames();
             profiler.print_stats();
+            println!("Writing stacktrace");
             profiler.write_stacktrace();
         }
 
@@ -168,7 +176,6 @@ where
     MMU: MMUImplementation<MS, TR, C>,
     C: MachineConfig,
 {
-    // fn initial(entry_addr: u32) -> Self;
     fn cycle(&mut self);
 
     fn state(&self) -> &RiscV32ObservableState;
@@ -179,6 +186,8 @@ where
         dwarf_cache: &mut diag::DwarfCache,
         cycle: usize,
     ) -> diag::StacktraceCollectionResult;
+
+    fn collect_stacktrace_raw(&mut self, cycle: usize) -> (u32, Vec<u32>);
 }
 
 pub enum BinarySource<'a> {

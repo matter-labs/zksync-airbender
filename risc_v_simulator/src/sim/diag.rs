@@ -6,6 +6,7 @@ use crate::{
 use std::{
     collections::HashMap,
     hash::Hasher,
+    io::Read,
     mem::size_of,
     path::{Path, PathBuf},
 };
@@ -21,6 +22,12 @@ use addr2line::{
 use cs::definitions::TimestampScalar;
 use memmap2::Mmap;
 use object::{File, Object, ObjectSection};
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
+    },
+    slice::ParallelSlice,
+};
 
 use crate::{
     abstractions::{mem_read, memory::MemorySource, tracer::Tracer},
@@ -70,174 +77,267 @@ impl Profiler {
         })
     }
 
-    pub(crate) fn pre_cycle<S, C>(
-        &mut self,
-        machine: &mut S::M,
-        // state: &RS,
-        // memory_source: &mut MS,
-        // memory_tracer: &mut TR,
-        // mmu: &mut MMU,
-        cycle: usize,
-    ) where
-        // RS: RiscV32Machine<ND, MS, C>,
-        // ND: NonDeterminismCSRSource<MS>,
-        // MS: MemorySource,
-        // TR: Tracer<C>,
-        // MMU: MMUImplementation<MS, TR, C>,
+    pub(crate) fn pre_cycle<S, C>(&mut self, machine: &mut S::M, cycle: usize)
+    where
         C: MachineConfig,
         S: RiscV32MachineSetup,
     {
         if cycle % self.frequency_recip == 0 {
             self.stats.samples_total += 1;
-            let st = machine.collect_stacktrace(&self.symbol_info, &mut self.dwarf_cache, cycle);
-            match st {
-                StacktraceCollectionResult::Failed => {
-                    self.stats.samples_failed += 1;
-                }
-                StacktraceCollectionResult::ServiceCode => {
-                    self.stats.samples_service += 1;
-                }
-                StacktraceCollectionResult::Skipped => {
-                    self.stats.samples_skipped += 1;
-                }
-                StacktraceCollectionResult::UserCode(stacktrace) => {
-                    self.stats.samples_success += 1;
-                    self.stacktraces.absorb(stacktrace)
-                }
+            let (pc, frames) = machine.collect_stacktrace_raw(cycle);
+            if frames.len() > 0 {
+                self.stacktraces.raw_frames.push((pc, frames));
             }
-            // self.collect_stacktrace(state, memory_source, memory_tracer, mmu, cycle);
+
+            // let st = machine.collect_stacktrace(&self.symbol_info, &mut self.dwarf_cache, cycle);
+            // match st {
+            //     StacktraceCollectionResult::Failed => {
+            //         self.stats.samples_failed += 1;
+            //     }
+            //     StacktraceCollectionResult::ServiceCode => {
+            //         self.stats.samples_service += 1;
+            //     }
+            //     StacktraceCollectionResult::Skipped => {
+            //         self.stats.samples_skipped += 1;
+            //     }
+            //     StacktraceCollectionResult::UserCode(stacktrace) => {
+            //         self.stats.samples_success += 1;
+            //         self.stacktraces.absorb(stacktrace)
+            //     }
+            // }
         }
     }
 
-    fn collect_stacktrace<RS, ND, MS, TR, MMU, C>(
-        &mut self,
-        state: &RS,
-        memory_source: &mut MS,
-        memory_tracer: &mut TR,
-        mmu: &mut MMU,
-        cycle: usize,
-    ) where
-        RS: RiscV32Machine<ND, MS, TR, MMU, C>,
-        ND: NonDeterminismCSRSource<MS>,
-        MS: MemorySource,
-        TR: Tracer<C>,
-        MMU: MMUImplementation<MS, TR, C>,
-        C: MachineConfig,
-    {
-        self.stats.samples_total += 1;
+    // fn collect_stacktrace<RS, ND, MS, TR, MMU, C>(
+    //     &mut self,
+    //     state: &RS,
+    //     memory_source: &mut MS,
+    //     memory_tracer: &mut TR,
+    //     mmu: &mut MMU,
+    //     cycle: usize,
+    // ) where
+    //     RS: RiscV32Machine<ND, MS, TR, MMU, C>,
+    //     ND: NonDeterminismCSRSource<MS>,
+    //     MS: MemorySource,
+    //     TR: Tracer<C>,
+    //     MMU: MMUImplementation<MS, TR, C>,
+    //     C: MachineConfig,
+    // {
+    //     self.stats.samples_total += 1;
 
-        let symbol_info = &self.symbol_info;
+    //     let symbol_info = &self.symbol_info;
 
-        let mut callstack = Vec::with_capacity(6);
+    //     let mut callstack = Vec::with_capacity(6);
 
-        // Current frame
-        callstack.push(state.state().pc as u64);
+    //     // Current frame
+    //     callstack.push(state.state().pc as u64);
 
-        let mut fp = state.state().registers[8];
+    //     let mut fp = state.state().registers[8];
 
-        if fp == 0 {
-            self.stats.samples_skipped += 1;
-            return;
-        }
+    //     if fp == 0 {
+    //         self.stats.samples_skipped += 1;
+    //         return;
+    //     }
 
-        loop {
-            let mut trap = TrapReason::NoTrap;
+    //     loop {
+    //         let mut trap = TrapReason::NoTrap;
 
-            let fpp = mmu.map_virtual_to_physical(
-                fp,
-                crate::cycle::state::Mode::Machine,
-                crate::abstractions::memory::AccessType::MemLoad,
-                memory_source,
-                memory_tracer,
-                &mut trap,
-            );
+    //         let fpp = mmu.map_virtual_to_physical(
+    //             fp,
+    //             crate::cycle::state::Mode::Machine,
+    //             crate::abstractions::memory::AccessType::MemLoad,
+    //             memory_source,
+    //             memory_tracer,
+    //             &mut trap,
+    //         );
 
-            // TODO: remove once the issue with non complying functions is solved.
-            if fpp < 8 {
-                break;
-            }
+    //         // TODO: remove once the issue with non complying functions is solved.
+    //         if fpp < 8 {
+    //             break;
+    //         }
 
-            let addr = mem_read::<_, _, _>(
-                memory_source,
-                memory_tracer,
-                fpp - 4,
-                size_of::<u32>() as u32,
-                crate::abstractions::memory::AccessType::MemLoad,
-                &mut trap,
-            );
+    //         let addr = mem_read::<_, _, _>(
+    //             memory_source,
+    //             memory_tracer,
+    //             fpp - 4,
+    //             size_of::<u32>() as u32,
+    //             crate::abstractions::memory::AccessType::MemLoad,
+    //             &mut trap,
+    //         );
 
-            let next = mem_read::<_, _, _>(
-                memory_source,
-                memory_tracer,
-                fpp - 8,
-                size_of::<u32>() as u32,
-                crate::abstractions::memory::AccessType::MemLoad,
-                &mut trap,
-            );
+    //         let next = mem_read::<_, _, _>(
+    //             memory_source,
+    //             memory_tracer,
+    //             fpp - 8,
+    //             size_of::<u32>() as u32,
+    //             crate::abstractions::memory::AccessType::MemLoad,
+    //             &mut trap,
+    //         );
 
-            // TODO: Remove once the issue with non complying functions is solved.
-            if addr < 4 {
-                break;
-            }
-            if next as u64 == fpp {
-                break;
-            }
-            if addr == 0 {
-                break;
-            }
+    //         // TODO: Remove once the issue with non complying functions is solved.
+    //         if addr < 4 {
+    //             break;
+    //         }
+    //         if next as u64 == fpp {
+    //             break;
+    //         }
+    //         if addr == 0 {
+    //             break;
+    //         }
 
-            // Subbing one instruction because the frame's return address point to instruction
-            // that follows the call, not the call itself. In case of inlining this can be
-            // several frames away.
-            let addr = addr - 4;
+    //         // Subbing one instruction because the frame's return address point to instruction
+    //         // that follows the call, not the call itself. In case of inlining this can be
+    //         // several frames away.
+    //         let addr = addr - 4;
 
-            callstack.push(addr as u64);
+    //         callstack.push(addr as u64);
 
-            fp = next;
-        }
+    //         fp = next;
+    //     }
 
-        let mut stackframes = Vec::with_capacity(8);
+    //     let mut stackframes = Vec::with_capacity(8);
 
-        for (i, addr) in callstack.iter().enumerate() {
-            let r = symbol_info.get_address_frames(&mut self.dwarf_cache, *addr);
+    //     for (i, addr) in callstack.iter().enumerate() {
+    //         let r = symbol_info.get_address_frames(&mut self.dwarf_cache, *addr);
 
-            let (frames, section_offset) = match r {
-                Some(r) => r,
-                // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
-                None => break,
-            };
+    //         let (frames, section_offset) = match r {
+    //             Some(r) => r,
+    //             // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
+    //             None => break,
+    //         };
 
-            for frame in frames {
-                let offset = frame.dw_die_offset.unwrap();
-                stackframes.push(FrameKey {
-                    section_offset,
-                    unit_offset: offset,
-                });
+    //         for frame in frames {
+    //             let offset = frame.dw_die_offset.unwrap();
+    //             stackframes.push(FrameKey {
+    //                 section_offset,
+    //                 unit_offset: offset,
+    //             });
 
-                if i == 0
-                    && false
-                        == symbol_info.is_address_traceable(
-                            &self.dwarf_cache,
-                            state.state().pc as u64,
-                            &frame,
-                        )
-                {
-                    // We're in a service code.
-                    self.stats.samples_service += 1;
-                    return;
+    //             if i == 0
+    //                 && false
+    //                     == symbol_info.is_address_traceable(
+    //                         &self.dwarf_cache,
+    //                         state.state().pc as u64,
+    //                         &frame,
+    //                     )
+    //             {
+    //                 // We're in a service code.
+    //                 self.stats.samples_service += 1;
+    //                 return;
+    //             }
+    //         }
+    //     }
+
+    //     if stackframes.len() == 0 {
+    //         self.stats.samples_failed += 1;
+    //         return;
+    //     }
+    //     self.stats.samples_success += 1;
+
+    //     let stacktrace = Stacktrace::new(stackframes);
+
+    //     self.stacktraces.absorb(stacktrace);
+    // }
+
+    pub(crate) fn trace_frames(&mut self) {
+        let raw_frames = core::mem::replace(&mut self.stacktraces.raw_frames, Default::default());
+
+        let chunk_size = raw_frames.len().div_ceil(rayon::current_num_threads());
+        let buffer = self.symbol_info.buffer.clone();
+
+        let mut result: Vec<HashMap<Stacktrace, usize>> = raw_frames
+            .par_chunks(chunk_size)
+            .map(|frames| {
+                let mut unit_data = HashMap::new();
+                let mut traces = HashMap::<Stacktrace, usize>::new();
+
+                let ctx = {
+                    let object = object::File::parse(&buffer[..]).unwrap();
+
+                    let endian = match object.is_little_endian() {
+                        true => RunTimeEndian::Little,
+                        false => RunTimeEndian::Big,
+                    };
+
+                    let load_section = |id: SectionId| -> Result<_, ()> {
+                        let name = id.name();
+
+                        match object.section_by_name(name) {
+                            Some(section) => match section.uncompressed_data().unwrap() {
+                                std::borrow::Cow::Borrowed(section) => {
+                                    Ok(EndianSlice::new(section, endian))
+                                }
+                                std::borrow::Cow::Owned(_) => {
+                                    unreachable!("We're following the borrowed path.")
+                                }
+                            },
+                            None => Ok(EndianSlice::new(&[][..], endian)),
+                        }
+                    };
+
+                    let dwarf = addr2line::gimli::Dwarf::load(load_section)
+                        .expect("Debug symbols could not be loaded.");
+
+                    let ctx = Context::from_dwarf(dwarf).unwrap();
+
+                    ctx
+                };
+
+                'outer: for (pc, frames) in frames.iter() {
+                    let mut stackframes = Vec::with_capacity(8);
+
+                    for (i, addr) in frames.iter().enumerate() {
+                        let r = get_address_frames_impl(&ctx, &mut unit_data, *addr as u64);
+
+                        let (frames, section_offset) = match r {
+                            Some(r) => r,
+                            // None if stackframes.len() != 0 => panic!("Non top frame couldn't be retrieved."),
+                            None => break,
+                        };
+
+                        for frame in frames {
+                            let offset = frame.dw_die_offset.unwrap();
+                            stackframes.push(FrameKey {
+                                section_offset,
+                                unit_offset: offset,
+                            });
+
+                            if i == 0
+                                && false
+                                    == SymbolInfo::is_address_traceable(
+                                        &ctx,
+                                        &mut unit_data,
+                                        *pc as u64,
+                                        &frame,
+                                    )
+                            {
+                                // We're in a service code.
+                                continue 'outer;
+                            }
+                        }
+                    }
+
+                    if stackframes.len() > 0 {
+                        let stacktrace = Stacktrace::new(stackframes);
+                        traces
+                            .entry(stacktrace)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1);
+                    }
                 }
+
+                traces
+            })
+            .collect();
+
+        let mut traces = result.pop().unwrap();
+        for extra in result.into_iter() {
+            for (k, v) in extra.into_iter() {
+                traces.entry(k).and_modify(|x| *x += v).or_insert(v);
             }
         }
 
-        if stackframes.len() == 0 {
-            self.stats.samples_failed += 1;
-            return;
-        }
-        self.stats.samples_success += 1;
-
-        let stacktrace = Stacktrace::new(stackframes);
-
-        self.stacktraces.absorb(stacktrace);
+        self.stacktraces.traces = traces;
     }
 
     pub(crate) fn write_stacktrace(&self) {
@@ -319,16 +419,17 @@ pub(crate) struct SymbolInfo {
     ctx: Context<EndianSlice<'static, RunTimeEndian>>,
     object: object::File<'static>,
     // Holds the slice that all above fields reference.
-    mmap: Mmap,
+    buffer: Vec<u8>,
 }
 
 impl SymbolInfo {
     fn new<P: AsRef<Path>>(path: P) -> Self {
-        let x = std::fs::File::open(path).unwrap();
-        let mmap = unsafe { memmap2::Mmap::map(&x).unwrap() };
+        let mut buffer = vec![];
+        let mut x = std::fs::File::open(path).unwrap();
+        x.read_to_end(&mut buffer).unwrap();
 
         // Safety: map contains a raw pointer, so it is safe to move.
-        let object = object::File::parse(&*mmap).unwrap();
+        let object = object::File::parse(&buffer[..]).unwrap();
         let object = unsafe { std::mem::transmute::<_, File<'static>>(object) };
 
         let endian = match object.is_little_endian() {
@@ -355,25 +456,27 @@ impl SymbolInfo {
 
         let ctx = Context::from_dwarf(dwarf).unwrap();
 
-        SymbolInfo { mmap, object, ctx }
+        SymbolInfo {
+            object,
+            ctx,
+            buffer,
+        }
     }
 
     fn is_address_traceable(
-        &self,
-        cache: &DwarfCache,
+        ctx: &Context<EndianSlice<'_, RunTimeEndian>>,
+        unit_data: &HashMap<UnitSectionOffset, UnitInfo<'_>>,
         address: u64,
         frame: &Frame<'_, EndianSlice<'_, RunTimeEndian>>,
     ) -> bool {
-        let (_dw, unit) = self
-            .ctx
+        let (_dw, unit) = ctx
             .find_dwarf_and_unit(address)
             .skip_all_loads()
             .expect("Frame existence implies unit.");
 
         let mut tracked = false;
 
-        let r = cache
-            .unit_data
+        let r = unit_data
             .get(&unit.header.offset())
             .expect("Unit info should've been created on frame loading.")
             .frames
@@ -714,12 +817,14 @@ pub(crate) enum StacktraceCollectionResult {
 
 #[derive(Debug)]
 pub(crate) struct StacktraceSet {
+    raw_frames: Vec<(u32, Vec<u32>)>,
     traces: HashMap<Stacktrace, usize>,
 }
 
 impl StacktraceSet {
     fn new() -> Self {
         Self {
+            raw_frames: Vec::new(),
             traces: HashMap::new(),
         }
     }
@@ -755,7 +860,6 @@ where
     let mut fp = state.registers[8];
 
     if fp == 0 {
-        // self.stats.samples_skipped += 1;
         return StacktraceCollectionResult::Skipped;
     }
 
@@ -773,7 +877,7 @@ where
 
         // TODO: remove once the issue with non complying functions is solved.
         if fpp < 8 {
-            break;
+            return StacktraceCollectionResult::Failed;
         }
 
         let addr = mem_read::<_, _, _>(
@@ -796,13 +900,13 @@ where
 
         // TODO: Remove once the issue with non complying functions is solved.
         if addr < 4 {
-            break;
+            return StacktraceCollectionResult::Failed;
         }
         if next as u64 == fpp {
-            break;
+            return StacktraceCollectionResult::Failed;
         }
         if addr == 0 {
-            break;
+            return StacktraceCollectionResult::Failed;
         }
 
         // Subbing one instruction because the frame's return address point to instruction
@@ -834,24 +938,186 @@ where
             });
 
             if i == 0
-                && false == symbol_info.is_address_traceable(dwarf_cache, state.pc as u64, &frame)
+                && false
+                    == SymbolInfo::is_address_traceable(
+                        &symbol_info.ctx,
+                        &dwarf_cache.unit_data,
+                        state.pc as u64,
+                        &frame,
+                    )
             {
                 // We're in a service code.
-                // self.stats.samples_service += 1;
                 return StacktraceCollectionResult::ServiceCode;
             }
         }
     }
 
     if stackframes.len() == 0 {
-        // self.stats.samples_failed += 1;
         return StacktraceCollectionResult::Failed;
     }
-    // self.stats.samples_success += 1;
 
     let stacktrace = Stacktrace::new(stackframes);
 
     StacktraceCollectionResult::UserCode(stacktrace)
+}
 
-    // self.stacktraces.absorb(stacktrace);
+fn get_address_frames_impl<'a>(
+    ctx: &Context<EndianSlice<'a, RunTimeEndian>>,
+    unit_data: &mut HashMap<UnitSectionOffset, UnitInfo<'a>>,
+    address: u64,
+) -> Option<(
+    Vec<Frame<'a, EndianSlice<'a, RunTimeEndian>>>,
+    UnitSectionOffset,
+)> {
+    let (_dw, unit, unit_info) =
+        if let Some((dw, unit)) = ctx.find_dwarf_and_unit(address).skip_all_loads() {
+            let unit_locator = unit.header.offset();
+
+            let unit_info = unit_data.entry(unit_locator).or_insert_with(|| {
+                let (line_program, sequences) = unit
+                    .line_program
+                    .clone()
+                    .unwrap()
+                    .clone()
+                    .sequences()
+                    .unwrap();
+
+                UnitInfo {
+                    line_program_complete: line_program,
+                    line_sequences: sequences,
+                    frames: HashMap::new(),
+                }
+            });
+
+            (dw, unit, unit_info)
+        } else {
+            return None;
+        };
+
+    let mut frames = ctx.find_frames(address);
+
+    let mut frames = loop {
+        match frames {
+            LookupResult::Output(r) => break r,
+            LookupResult::Load {
+                load: _,
+                continuation,
+            } => {
+                // Not using split DWARF.
+                frames = continuation.resume(None);
+            }
+        }
+    }
+    .unwrap();
+
+    let mut result = Vec::with_capacity(8);
+
+    while let Ok(Some(frame)) = frames.next() {
+        let mut tracked = false;
+
+        if false
+            && frame
+                .function
+                .as_ref()
+                .unwrap()
+                .demangle()
+                .unwrap()
+                .contains("talc::talc::Talc<O>::malloc")
+        {
+            tracked = true;
+            // panic!("found!!!!!! {}", frame.function.as_ref().unwrap().demangle().unwrap());
+        }
+
+        unit_info
+            .frames
+            .entry(frame.dw_die_offset.unwrap())
+            .or_insert_with(|| {
+                let sequence = &unit_info.line_sequences;
+                for s in sequence {
+                    if address >= s.start && address < s.end {
+                        let mut sm = unit_info.line_program_complete.resume_from(&s);
+
+                        let mut prologue_end = None;
+                        let mut epilogue_begin = None;
+                        let mut no_return = false;
+                        let mut is_inlined = false;
+
+                        while let Ok(Some((_h, r))) = sm.next_row() {
+                            assert!(r.address() <= s.end);
+
+                            if r.prologue_end() {
+                                prologue_end = Some(r.address())
+                            }
+                            if r.epilogue_begin() {
+                                epilogue_begin = Some(r.address())
+                            }
+                        }
+
+                        let cursor = unit
+                            .entries_at_offset(frame.dw_die_offset.unwrap())
+                            .unwrap()
+                            .op(|x| {
+                                x.next_entry()
+                                    .expect("A unit must exist at the provided offset.");
+                            });
+
+                        let die = cursor.current().unwrap();
+
+                        match die.tag() {
+                            gimli::DW_TAG_inlined_subroutine => is_inlined = true,
+                            _ => (),
+                        }
+
+                        let mut attrs = die.attrs();
+
+                        while let Ok(Some(attr)) = attrs.next() {
+                            match attr.name() {
+                                // gimli::DW_AT_noreturn if epilogue_begin.is_some() => {
+                                //     panic!("Non returning functions shouln't have an epilogue.")
+                                // }
+                                gimli::DW_AT_noreturn => no_return = true,
+                                _ => (),
+                            }
+                        }
+
+                        let r = FrameInfo {
+                            prologue_end: prologue_end.expect(
+                                format!("A function must have a prologue. 0x{:08x}", address)
+                                    .as_str(),
+                            ),
+                            epilogue_begin: epilogue_begin.unwrap_or_else(|| u64::MAX),
+                            no_return,
+                            is_inlined,
+                            is_tracked: tracked,
+                            name: frame
+                                .function
+                                .as_ref()
+                                .unwrap()
+                                .demangle()
+                                .unwrap()
+                                .to_string(),
+                        };
+
+                        if tracked {
+                            println!("{:#?}", r);
+                        }
+
+                        return r;
+                    }
+                }
+
+                panic!(
+                    "An line sequence was not found for frame {:?}, addr {}",
+                    frame.function.as_ref().unwrap().demangle(),
+                    address
+                );
+            });
+
+        // Safety: The borrow checker assumes that the frame lives for 'const (derived from
+        // `ctx` field in `Self`). The actual lifetime is the lifetime of `self`. So we're
+        // adjusting the lifetime args in the return type accordingly.
+        unsafe { result.push(std::mem::transmute(frame)) };
+    }
+
+    Some((result, unit.header.offset()))
 }
