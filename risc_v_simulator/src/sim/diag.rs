@@ -242,7 +242,9 @@ impl Profiler {
     pub(crate) fn trace_frames(&mut self) {
         let raw_frames = core::mem::replace(&mut self.stacktraces.raw_frames, Default::default());
 
-        let chunk_size = raw_frames.len().div_ceil(rayon::current_num_threads());
+        let threads = 8;
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build_global();
+        let chunk_size = raw_frames.len().div_ceil(threads);
         let buffer = self.symbol_info.buffer.clone();
 
         let mut result: Vec<HashMap<Stacktrace, usize>> = raw_frames
