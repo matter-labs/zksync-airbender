@@ -1,11 +1,11 @@
-#[cfg(not(target_endian = "little"))]
-mod assert {
-    compile_error!("unsupported arch - only LE is supported");
-}
+#[allow(dead_code)]
+#[inline(always)]
+pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    #[cfg(not(target_endian = "little"))]
+    {
+        compile_error!("unsupported arch - only LE is supported");
+    }
 
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     // Somewhat opinionated implementation of memcopy. We will try to unroll where we can,
     // and aim for good "happy cases" where dest % size_of::<usize> == src % size_of::<usize>
 
@@ -19,14 +19,13 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 
     // first happy case to align both source and dest to the word size
 
-    const WORD_SIZE: usize = const {
-        core::mem::size_of::<u32>()
-    };
+    const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
 
     while n > 0 && src.addr() % WORD_SIZE != 0 {
         dest.write(src.read());
         src = src.add(1);
         dest = dest.add(1);
+        n -= 1;
     }
 
     // So source is aligned to word size
@@ -44,9 +43,11 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
         // 6f0: 00e52023     	sw	a4, 0x0(a0)
         // 6f4: 0045a703     	lw	a4, 0x4(a1)
         // 6f8: 00e52223     	sw	a4, 0x4(a0)
-        
-        debug_assert_eq!(src.addr() % WORD_SIZE, 0);
-        debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+
+        if n > 0 {
+            debug_assert_eq!(src.addr() % WORD_SIZE, 0);
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+        }
 
         let mut src = src.cast::<u32>();
         let mut dest = dest.cast::<u32>();
@@ -162,7 +163,6 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
         debug_assert_eq!(src.addr() % WORD_SIZE, 0);
 
         const BYTE_COPY_SIZE: usize = 16;
-        const WORD_COPY_SIZE: usize = 4;
 
         let mut word_0;
         let mut word_1;
@@ -182,7 +182,6 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
                 // and now by word
                 debug_assert_eq!(src.addr() % WORD_SIZE, 3);
                 debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                let mut dest = dest.cast::<u32>();
 
                 // NOTE on shifts - we assume LE. We previously read memory [0x12, 0x34, 0x56, 0x78]
                 // as integer 0x12345678, but we want to write only 0x12 into the lowest bits,
@@ -191,13 +190,13 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
                 while n >= 17 {
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(1 + N * 8).cast::<u32>().read();
-                        dest.add(0 + 2 * N).write(word_0 >> 24 | word_1 << 8);
+                        dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 24 | word_1 << 8);
                         word_0 = src.add(5 + N * 8).cast::<u32>().read();
-                        dest.add(1 + 2 * N).write(word_1 >> 24 | word_0 << 8);
+                        dest.cast::<u32>().add(1 + 2 * N).write(word_1 >> 24 | word_0 << 8);
                     });
 
                     src = src.add(BYTE_COPY_SIZE);
-                    dest = dest.add(WORD_COPY_SIZE);
+                    dest = dest.add(BYTE_COPY_SIZE);
                     n -= BYTE_COPY_SIZE;
                 }
             }
@@ -214,18 +213,17 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 
                 debug_assert_eq!(src.addr() % WORD_SIZE, 2);
                 debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                let mut dest = dest.cast::<u32>();
 
                 while n >= 18 {
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(2 + N * 8).cast::<u32>().read();
-                        dest.add(0 + 2 * N).write(word_0 >> 16 | word_1 << 16);
+                        dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 16 | word_1 << 16);
                         word_0 = src.add(6 + N * 8).cast::<u32>().read();
-                        dest.add(1 + 2 * N).write(word_1 >> 16 | word_0 << 16);
+                        dest.cast::<u32>().add(1 + 2 * N).write(word_1 >> 16 | word_0 << 16);
                     });
 
                     src = src.add(BYTE_COPY_SIZE);
-                    dest = dest.add(WORD_COPY_SIZE);
+                    dest = dest.add(BYTE_COPY_SIZE);
                     n -= BYTE_COPY_SIZE;
                 }
             }
@@ -240,18 +238,17 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 
                 debug_assert_eq!(src.addr() % WORD_SIZE, 1);
                 debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                let mut dest = dest.cast::<u32>();
 
                 while n >= 19 {
                     seq_macro::seq!(N in 0..2 {
                         word_1 = src.add(3 + N * 8).cast::<u32>().read();
-                        dest.add(0 + 2 * N).write(word_0 >> 8 | word_1 << 24);
+                        dest.cast::<u32>().add(0 + 2 * N).write(word_0 >> 8 | word_1 << 24);
                         word_0 = src.add(7 + N * 8).cast::<u32>().read();
-                        dest.add(1 + 2 * N).write(word_1 >> 8 | word_0 << 24);
+                        dest.cast::<u32>().add(1 + 2 * N).write(word_1 >> 8 | word_0 << 24);
                     });
 
                     src = src.add(BYTE_COPY_SIZE);
-                    dest = dest.add(WORD_COPY_SIZE);
+                    dest = dest.add(BYTE_COPY_SIZE);
                     n -= BYTE_COPY_SIZE;
                 }
             }
@@ -315,7 +312,7 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
     {
         if n > 0 {
             dest.write(src.read());
-        } 
+        }
     }
 
     return_value

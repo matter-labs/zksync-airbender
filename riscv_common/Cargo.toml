@@ -14,6 +14,9 @@ heapless = { version = "*", default-features = false, optional = true }
 common_constants = { path = "../common_constants" }
 seq-macro.workspace = true
 
+[dev-dependencies]
+rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
+
 [features]
 uart = ["heapless"]
 custom_panic = []
