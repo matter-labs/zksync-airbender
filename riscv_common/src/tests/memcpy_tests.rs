@@ -30,9 +30,11 @@ fn test_memcopy() {
                 assert_eq!(source[..].as_ptr().addr() % 4, src_unalignment);
                 assert_eq!(output[..].as_ptr().addr() % 4, dst_unalignment);
 
-                unsafe {
-                    crate::memcpy::memcpy_impl(output.as_mut_ptr(), source.as_ptr(), size);
-                }
+                let ret_value = unsafe {
+                    crate::memcpy::memcpy_impl(output.as_mut_ptr(), source.as_ptr(), size)
+                };
+
+                assert_eq!(ret_value, output[..].as_mut_ptr());
 
                 if source != output {
                     dbg!(source);

@@ -1503,6 +1503,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
             println!("trap: {:?}, pc: {:08x}, instr: {:08x}", trap, pc, instr);
 
             if Config::HANDLE_EXCEPTIONS == false {
+                println!("Partial simulator state = {:?}", self);
                 panic!("Simulator encountered an exception");
             } else {
                 let trap = trap.as_register_value();
