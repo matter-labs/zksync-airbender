@@ -17,6 +17,7 @@ use crate::execution::gpu_worker::{
 use crate::execution::messages::{
     InitsAndTeardownsData, SimulationResult, TracingData, WorkerResult,
 };
+use crate::execution::simulation_runner::LockedBoxedMemoryHolder;
 use crate::execution::tracing_data_producers::{
     SplitTracingDataProducers, UnifiedTracingDataProducers,
 };
@@ -208,11 +209,12 @@ pub struct ExecutionProver {
     configuration: ExecutionProverConfiguration,
     gpu_manager: GpuManager,
     worker: Arc<Worker>,
+    memory_holders_cache: Mutex<Vec<LockedBoxedMemoryHolder>>,
+    trace_chunks_cache: Mutex<Vec<LockedBoxedTraceChunk>>,
     binary_holders: BTreeMap<usize, BinaryHolder>,
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
     free_allocators_receiver: Receiver<A>,
-    trace_chunks_cache: Mutex<Vec<LockedBoxedTraceChunk>>,
 }
 
 impl ExecutionProver {
@@ -231,18 +233,19 @@ impl ExecutionProver {
     pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
         let ExecutionProverConfiguration {
             prover_context_config,
-            max_thread_pool_threads: thread_pool_threads_count,
+            max_thread_pool_threads,
             expected_concurrent_jobs,
+            replay_worker_threads_count,
             host_allocator_backing_allocation_size,
             host_allocators_per_job_count,
             host_allocators_per_device_count,
-            ..
+            min_free_host_allocators_per_job: _,
         } = configuration.clone();
         let device_count = get_device_count().unwrap() as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
         let gpu_wait_group = WaitGroup::new();
         let gpu_manager = GpuManager::new(gpu_wait_group.clone(), prover_context_config);
-        let worker = if let Some(thread_pool_threads_count) = thread_pool_threads_count {
+        let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {
             Worker::new_with_num_threads(thread_pool_threads_count)
         } else {
             Worker::new()
@@ -252,6 +255,19 @@ impl ExecutionProver {
             worker.num_cores
         );
         let worker = Arc::new(worker);
+        info!("PROVER creating memory holders cache with {expected_concurrent_jobs} entries");
+        let memory_holders_cache = (0..expected_concurrent_jobs)
+            .into_par_iter()
+            .map(|_| LockedBoxedMemoryHolder::new())
+            .collect();
+        let memory_holders_cache = Mutex::new(memory_holders_cache);
+        let trace_chunks_count = expected_concurrent_jobs * replay_worker_threads_count * 2;
+        info!("PROVER creating trace chunks cache with {trace_chunks_count} entries");
+        let trace_chunks_cache = (0..trace_chunks_count)
+            .into_par_iter()
+            .map(|_| LockedBoxedTraceChunk::new())
+            .collect();
+        let trace_chunks_cache = Mutex::new(trace_chunks_cache);
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
         let common_precomputations = get_common_precomputations(&worker);
@@ -272,25 +288,18 @@ impl ExecutionProver {
             let allocator = A::new([allocation], host_allocation_log_chunk_size);
             free_allocators_sender_ref.send(allocator).unwrap();
         });
-        let trace_chunks_count =
-            expected_concurrent_jobs * configuration.replay_worker_threads_count * 2;
-        info!("PROVER creating trace chunks cache with {trace_chunks_count} chunks");
-        let trace_chunks_cache = (0..trace_chunks_count)
-            .into_par_iter()
-            .map(|_| LockedBoxedTraceChunk::new())
-            .collect();
-        let trace_chunks_cache = Mutex::new(trace_chunks_cache);
         gpu_wait_group.wait();
         info!("PROVER initialized");
         Self {
             configuration,
             gpu_manager,
             worker,
+            memory_holders_cache,
+            trace_chunks_cache,
             binary_holders,
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
-            trace_chunks_cache,
         }
     }
 
@@ -383,16 +392,27 @@ impl ExecutionProver {
             }
         }
         assert!(proving ^ external_challenges.is_none());
+        let memory_holder = {
+            let mut memory_holders_cache = self.memory_holders_cache.lock().unwrap();
+            let memory_holder = if memory_holders_cache.is_empty() {
+                warn!("BATCH[{batch_id}] PROVER memory holders cache is empty, creating a new memory holder");
+                LockedBoxedMemoryHolder::new()
+            } else {
+                memory_holders_cache.pop().unwrap()
+            };
+            Arc::new(Mutex::new(memory_holder))
+        };
+
         let replayers_count = self.configuration.replay_worker_threads_count;
-        let holder = &self.binary_holders[&binary_key];
         let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
         let trace_chunks_count = replayers_count * 2;
         {
             let mut trace_chunks_cache = self.trace_chunks_cache.lock().unwrap();
             let cache_len = trace_chunks_cache.len();
             if cache_len < trace_chunks_count {
-                warn!("BATCH[{batch_id}] PROVER trace chunks cache underflow: requested {trace_chunks_count}, available {cache_len}");
-                for _ in 0..(trace_chunks_count - cache_len) {
+                let diff = trace_chunks_count - cache_len;
+                warn!("BATCH[{batch_id}] PROVER trace chunks cache underflow: requested {trace_chunks_count}, available {cache_len}, creating {diff} new trace chunks");
+                for _ in 0..diff {
                     trace_chunks_cache.push(LockedBoxedTraceChunk::new());
                 }
             }
@@ -401,6 +421,7 @@ impl ExecutionProver {
                 free_trace_chunks_sender.send(trace_chunk).unwrap();
             }
         }
+        let binary_holder = &self.binary_holders[&binary_key];
         let (work_results_sender, work_results_receiver) = unbounded();
         let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
         let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
@@ -429,7 +450,7 @@ impl ExecutionProver {
                         self.common_precomputations[&circuit_type].clone()
                     }
                     CircuitType::Unrolled(circuit_type) => {
-                        holder.precomputations[&circuit_type].clone()
+                        binary_holder.precomputations[&circuit_type].clone()
                     }
                 };
                 let request = ProofRequest {
@@ -449,8 +470,8 @@ impl ExecutionProver {
             }
         }
         let mut gpu_work_requests_sender = Some(gpu_work_requests_sender);
-        let execution_kind = holder.execution_kind;
-        let machine_type = holder.machine_type;
+        let execution_kind = binary_holder.execution_kind;
+        let machine_type = binary_holder.machine_type;
         let abort = Arc::new(AtomicBool::new(false));
         let mut simulation_result = None;
         let mut abort_signaled = if let Some(cache) = cache.as_ref() {
@@ -465,17 +486,18 @@ impl ExecutionProver {
             false
         };
         if abort_signaled {
-            debug!("BATCH[{batch_id}] skipping simulation as all proof requests have been served from cache");
+            debug!("BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation");
         } else {
             trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
             {
+                let memory_holder = memory_holder.clone();
                 let free_trace_chunks_sender = free_trace_chunks_sender.clone();
                 let free_trace_chunks_receiver = free_trace_chunks_receiver.clone();
                 let free_allocators_receiver = self.free_allocators_receiver.clone();
-                let binary_image = holder.binary_image.clone();
-                let text_section = holder.text_section.clone();
-                let cycles_bound = holder.cycles_bound;
-                let jit_cache = holder.jit_cache.clone();
+                let binary_image = binary_holder.binary_image.clone();
+                let text_section = binary_holder.text_section.clone();
+                let cycles_bound = binary_holder.cycles_bound;
+                let jit_cache = binary_holder.jit_cache.clone();
                 let non_determinism_source = non_determinism_source.clone();
                 let work_results_sender = work_results_sender.clone();
                 let abort = abort.clone();
@@ -489,6 +511,7 @@ impl ExecutionProver {
                             text_section,
                             cycles_bound,
                             jit_cache,
+                            memory_holder,
                             non_determinism_source,
                             free_trace_chunks_sender,
                             free_trace_chunks_receiver,
@@ -505,6 +528,7 @@ impl ExecutionProver {
                             text_section,
                             cycles_bound,
                             jit_cache,
+                            memory_holder,
                             non_determinism_source,
                             free_trace_chunks_sender,
                             free_trace_chunks_receiver,
@@ -519,7 +543,7 @@ impl ExecutionProver {
             }
             trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
             for worker_id in 0..replayers_count {
-                let instruction_tape = holder.instruction_tape.clone();
+                let instruction_tape = binary_holder.instruction_tape.clone();
                 let split_snapshot_receiver = split_snapshot_receiver.clone();
                 let free_trace_chunks_sender = free_trace_chunks_sender.clone();
                 let unified_snapshot_receiver = unified_snapshot_receiver.clone();
@@ -623,7 +647,7 @@ impl ExecutionProver {
                     self.common_precomputations[&circuit_type].clone()
                 }
                 CircuitType::Unrolled(circuit_type) => {
-                    holder.precomputations[&circuit_type].clone()
+                    binary_holder.precomputations[&circuit_type].clone()
                 }
             };
             if proving {
@@ -937,6 +961,12 @@ impl ExecutionProver {
                 cache.total_requests_count = sent_requests_count;
                 cache.simulation_result = simulation_result.clone();
             }
+        }
+        {
+            let memory_holder = Arc::into_inner(memory_holder).unwrap();
+            let memory_holder = memory_holder.into_inner().unwrap();
+            let mut holders = self.memory_holders_cache.lock().unwrap();
+            holders.push(memory_holder);
         }
         assert_eq!(free_trace_chunks_receiver.len(), trace_chunks_count);
         {

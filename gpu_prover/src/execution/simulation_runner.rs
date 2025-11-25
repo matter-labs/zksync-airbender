@@ -6,6 +6,9 @@ use crate::execution::A;
 use crate::machine_type::MachineType;
 use crossbeam_channel::{Receiver, Sender};
 use cs::definitions::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use era_cudart::memory::{CudaHostRegisterFlags, HostRegistration};
+use era_cudart::result::CudaResultWrap;
+use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::jit::{
@@ -13,13 +16,59 @@ use riscv_transpiler::jit::{
     MAX_TRACE_CHUNK_LEN, RAM_SIZE, TRACE_CHUNK_LEN,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
-use std::mem::{replace, transmute};
+use std::mem::replace;
 use std::ops::{Deref, DerefMut};
+use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
+use riscv_transpiler::common_constants::ROM_WORD_SIZE;
+
+pub(crate) struct LockedBoxedMemoryHolder {
+    pub holder: Box<MemoryHolder>,
+}
+
+impl LockedBoxedMemoryHolder {
+    pub fn new() -> Self {
+        unsafe {
+            let mut holder = Box::<MemoryHolder>::new_zeroed().assume_init();
+            cudaHostRegister(
+                holder.as_mut() as *mut MemoryHolder as *mut c_void,
+                size_of::<MemoryHolder>(),
+                CudaHostRegisterFlags::DEFAULT.bits(),
+            )
+            .wrap()
+            .unwrap();
+            Self { holder }
+        }
+    }
+}
+
+impl Deref for LockedBoxedMemoryHolder {
+    type Target = MemoryHolder;
+
+    fn deref(&self) -> &Self::Target {
+        &self.holder
+    }
+}
+
+impl DerefMut for LockedBoxedMemoryHolder {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.holder
+    }
+}
+
+impl Drop for LockedBoxedMemoryHolder {
+    fn drop(&mut self) {
+        unsafe {
+            cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void)
+                .wrap()
+                .unwrap();
+        }
+    }
+}
 
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
@@ -28,7 +77,7 @@ pub(crate) struct SimulationRunner<
     batch_id: u64,
     non_determinism_source: ND,
     free_trace_chunks: Receiver<LockedBoxedTraceChunk>,
-    snapshots: Sender<Snapshot<P::Ranges>>,
+    snapshots: Option<Sender<Snapshot<P::Ranges>>>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
     state: MachineState,
@@ -59,7 +108,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
             batch_id,
             non_determinism_source,
             free_trace_chunks,
-            snapshots,
+            snapshots: Some(snapshots),
             results,
             abort,
             state: MachineState::initial(),
@@ -80,15 +129,15 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
         text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
         cycles_bound: Option<u32>,
         jit_cache: Arc<Mutex<TypeMap>>,
-        non_determinism_source: Arc<Mutex<Option<ND>>>,
+        memory_holder: &mut MemoryHolder,
+        non_determinism_source: ND,
         free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
         free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
         snapshots: Sender<Snapshot<P::Ranges>>,
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
-    ) -> (MachineState, Box<MemoryHolder>) {
-        trace!("getting jit code from cache or compiling new one");
+    ) -> (MachineState, ND) {
         let jitted_code = {
             let mut guard = jit_cache.lock().unwrap();
             let entry = guard.get::<Arc<JittedCode<Self>>>();
@@ -103,30 +152,18 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
                 jitted_code
             }
         };
-        trace!("allocating memory holder for simulation");
-        let mut memory_holder = unsafe { Box::<MemoryHolder>::new_uninit().assume_init() };
-        trace!("zeroing memory holder memory");
-        memory_holder.memory.fill(0);
-        trace!("zeroing memory holder timestamps");
-        memory_holder.timestamps.fill(0);
-        trace!("copying binary image into memory holder");
-        memory_holder.memory[..binary_image.len()].copy_from_slice(&binary_image);
-        trace!("receiving free trace");
+        let binary_image_len = binary_image.len();
+        memory_holder.memory[..binary_image_len].copy_from_slice(&binary_image);
+        memory_holder.memory[binary_image_len..ROM_WORD_SIZE].fill(0);
         let mut trace = free_trace_chunks_receiver
             .recv()
             .expect("must receive a trace chunk for simulation");
         trace.chunk.len = 0;
         let trace_ref = unsafe { NonNull::new_unchecked(trace.chunk.as_mut()) };
-        trace!("getting ND");
-        let mut nd_guard = non_determinism_source.lock().unwrap();
-        let nd = nd_guard
-            .take()
-            .expect("Non-determinism source must be provided for simulation");
-        trace!("creating simulation runner");
         let mut runner = Self::new(
             machine_type,
             batch_id,
-            nd,
+            non_determinism_source,
             free_trace_chunks_receiver,
             snapshots,
             results,
@@ -138,24 +175,23 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
         let mut context = Context {
             implementation: runner,
         };
-        trace!("running");
-        jitted_code.run_over_prepared_memory(&mut context, &mut memory_holder, trace_ref);
+        jitted_code.run_over_prepared_memory(&mut context, memory_holder, trace_ref);
         let Context {
             implementation: mut runner,
         } = context;
-        trace!("getting final state");
         let final_state = runner.take_final_state().expect("must finish execution");
-        *nd_guard = Some(runner.non_determinism_source);
         if let Some(trace) = runner.trace.take() {
             free_trace_chunks_sender.send(trace).unwrap();
         }
-        let timestamp_diff = final_state.timestamp - INITIAL_TIMESTAMP;
-        assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-        let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-        let elapsed_ms = runner.total_elapsed.as_secs_f64() * 1000.0;
-        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        debug!("BATCH[{batch_id}] SIMULATOR finished execution with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        (final_state, memory_holder)
+        if !runner.is_aborted {
+            let timestamp_diff = final_state.timestamp - INITIAL_TIMESTAMP;
+            assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+            let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+            let elapsed_ms = runner.total_elapsed.as_secs_f64() * 1000.0;
+            let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+            debug!("BATCH[{batch_id}] SIMULATOR finished execution with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        }
+        (final_state, runner.non_determinism_source)
     }
 
     fn process_trace(&mut self, machine_state: &MachineState, elapsed: Duration) {
@@ -163,27 +199,34 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
             return;
         }
         let batch_id = self.batch_id;
-        if self.abort.load(std::sync::atomic::Ordering::Relaxed) {
-            self.tracing_data_producers.take().unwrap().finalize();
-            debug!("BATCH[{batch_id}] SIMULATOR stopping snapshot production due to abort signal");
-            self.is_aborted = true;
-            return;
-        }
-        let trace = self.trace.take().unwrap();
         let snapshot_index = self.snapshot_index;
         self.snapshot_index += 1;
-        let result = WorkerResult::SnapshotProduced(snapshot_index);
-        self.results.send(result).unwrap();
         let mut machine_state = *machine_state;
-        machine_state.timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP); // align timestamp, needs to be fixed in the VM
+        let timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP); // align timestamp, needs to be fixed in the VM
+        machine_state.timestamp = timestamp;
         let final_state = machine_state;
         let initial_state = replace(&mut self.state, machine_state);
-        let timestamp_diff = machine_state.timestamp - initial_state.timestamp;
+        let timestamp_diff = timestamp - initial_state.timestamp;
         assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
         let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
         trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        if self.abort.load(std::sync::atomic::Ordering::Relaxed) {
+            self.tracing_data_producers.take().unwrap().finalize();
+            assert!(self.snapshots.take().is_some());
+            let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
+            assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+            let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+            let elapsed_ms = self.total_elapsed.as_secs_f64() * 1000.0;
+            let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+            debug!("BATCH[{batch_id}] SIMULATOR stopping snapshot production due to abort signal after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+            self.is_aborted = true;
+            return;
+        }
+        let trace = self.trace.take().unwrap();
+        let result = WorkerResult::SnapshotProduced(snapshot_index);
+        self.results.send(result).unwrap();
         let counters_diff = machine_state
             .counters
             .iter()
@@ -210,7 +253,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
             final_state,
             trace_ranges,
         };
-        self.snapshots.send(snapshot).unwrap();
+        self.snapshots.as_ref().unwrap().send(snapshot).unwrap();
     }
 }
 

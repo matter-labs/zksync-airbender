@@ -2,7 +2,7 @@ use super::A;
 use crate::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::execution::messages::SimulationResult;
 use crate::execution::messages::{InitsAndTeardownsData, WorkerResult};
-use crate::execution::simulation_runner::SimulationRunner;
+use crate::execution::simulation_runner::{LockedBoxedMemoryHolder, SimulationRunner};
 use crate::execution::snapshotter::{Snapshot, SplitDataTraceRanges, UnifiedDataTraceRanges};
 use crate::execution::tracer::SplitTracer;
 use crate::execution::tracing_data_producers::SplitTracingDataProducers;
@@ -13,15 +13,17 @@ use cs::definitions::TimestampData;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
 use log::{debug, trace};
+use prover::common_constants;
 use prover::definitions::LazyInitAndTeardown;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::common_constants::TimestampScalar;
-use riscv_transpiler::jit::{CounterType, MachineState, ReplayerMemChunks, TraceChunk};
+use riscv_transpiler::jit::{
+    CounterType, MachineState, MemoryHolder, ReplayerMemChunks, TraceChunk,
+};
 use riscv_transpiler::replayer::ReplayerVM;
 use riscv_transpiler::vm::{
     DelegationsAndFamiliesCounters, InstructionTape, NonDeterminismCSRSource, Register, State, VM,
 };
-use std::alloc::Global;
 use std::cmp::min;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicBool;
@@ -67,6 +69,7 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
+    memory_holder: Arc<Mutex<LockedBoxedMemoryHolder>>,
     non_determinism: Arc<Mutex<Option<ND>>>,
     free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -77,73 +80,80 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     worker: &Worker,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let (final_state, ram) = SimulationRunner::<_, SplitTracingDataProducers>::run(
-        batch_id,
-        machine_type,
-        binary_image,
-        text_section,
-        cycles_bound,
-        jit_cache,
-        non_determinism,
-        free_trace_chunks_sender,
-        free_trace_chunks_receiver,
-        snapshots,
-        results.clone(),
-        free_allocators.clone(),
-        abort.clone(),
-    );
-    if abort.load(std::sync::atomic::Ordering::Relaxed) {
-        debug!("BATCH[{batch_id}] SIMULATOR aborted");
-        return;
-    }
-    const PER_CIRCUIT_COUNT: usize = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
-        * setups::inits_and_teardowns::NUM_CYCLES;
-    let instant = Instant::now();
-    let inits_and_teardowns = ram.collect_inits_and_teardowns(worker, Global);
-    let elapsed = instant.elapsed();
-    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-    let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
-    trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
-    let mut instant = Instant::now();
-    for (sequence_id, inits_and_teardowns_data) in
-        get_inits_and_teardowns_chunks(inits_and_teardowns, PER_CIRCUIT_COUNT, free_allocators)
-            .enumerate()
-    {
-        let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
-        let count = inits_and_teardowns_data
-            .chunks
-            .iter()
-            .map(|c| c.len())
-            .sum::<usize>();
+    let mut memory_holder = memory_holder.lock().unwrap();
+    let mut non_determinism_guard = non_determinism.lock().unwrap();
+    let non_determinism_source = non_determinism_guard.take().unwrap();
+    let (final_state, non_determinism_source) =
+        SimulationRunner::<_, SplitTracingDataProducers>::run(
+            batch_id,
+            machine_type,
+            binary_image,
+            text_section,
+            cycles_bound,
+            jit_cache,
+            &mut memory_holder,
+            non_determinism_source,
+            free_trace_chunks_sender,
+            free_trace_chunks_receiver,
+            snapshots,
+            results.clone(),
+            free_allocators.clone(),
+            abort.clone(),
+        );
+    *non_determinism_guard = Some(non_determinism_source);
+    if !abort.load(std::sync::atomic::Ordering::Relaxed) {
+        const PER_CIRCUIT_COUNT: usize = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
+            * setups::inits_and_teardowns::NUM_CYCLES;
+        let instant = Instant::now();
+        let inits_and_teardowns = collect_inits_and_teardowns(&mut memory_holder, worker);
         let elapsed = instant.elapsed();
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} entries in {elapsed_ms:.3} ms");
-        let data = InitsAndTeardownsData {
-            circuit_type,
-            sequence_id,
-            inits_and_teardowns: Some(inits_and_teardowns_data),
+        let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
+        trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
+        let mut instant = Instant::now();
+        for (sequence_id, inits_and_teardowns_data) in
+            get_inits_and_teardowns_chunks(inits_and_teardowns, PER_CIRCUIT_COUNT, free_allocators)
+                .enumerate()
+        {
+            let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
+            let count = inits_and_teardowns_data
+                .chunks
+                .iter()
+                .map(|c| c.len())
+                .sum::<usize>();
+            let elapsed = instant.elapsed();
+            let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+            trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} entries in {elapsed_ms:.3} ms");
+            let data = InitsAndTeardownsData {
+                circuit_type,
+                sequence_id,
+                inits_and_teardowns: Some(inits_and_teardowns_data),
+            };
+            let result = WorkerResult::InitsAndTeardownsData(data);
+            results.send(result).unwrap();
+            instant = Instant::now();
+        }
+        let final_register_values = final_state
+            .registers
+            .into_iter()
+            .zip(final_state.register_timestamps.into_iter())
+            .map(|(value, last_access_timestamp)| FinalRegisterValue {
+                value,
+                last_access_timestamp,
+            })
+            .collect_array()
+            .unwrap();
+        let simulation_result = SimulationResult {
+            final_register_values,
+            final_pc: final_state.pc,
+            final_timestamp: final_state.timestamp,
         };
-        let result = WorkerResult::InitsAndTeardownsData(data);
+        let result = WorkerResult::SimulationResult(simulation_result);
         results.send(result).unwrap();
-        instant = Instant::now();
+    } else {
+        trace!("BATCH[{batch_id}] SIMULATOR resetting memory due to abort");
+        MemoryHolder::reset(&mut memory_holder.holder);
     }
-    let final_register_values = final_state
-        .registers
-        .into_iter()
-        .zip(final_state.register_timestamps.into_iter())
-        .map(|(value, last_access_timestamp)| FinalRegisterValue {
-            value,
-            last_access_timestamp,
-        })
-        .collect_array()
-        .unwrap();
-    let simulation_result = SimulationResult {
-        final_register_values,
-        final_pc: final_state.pc,
-        final_timestamp: final_state.timestamp,
-    };
-    let result = WorkerResult::SimulationResult(simulation_result);
-    results.send(result).unwrap();
     trace!("BATCH[{batch_id}] SIMULATOR finished");
 }
 
@@ -154,6 +164,7 @@ pub(crate) fn run_unified_simulator<ND: NonDeterminismCSRSource + Send>(
     text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
+    memory_holder: Arc<Mutex<LockedBoxedMemoryHolder>>,
     non_determinism: Arc<Mutex<Option<ND>>>,
     free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -459,25 +470,60 @@ pub(crate) fn run_unified_replayer(
     // trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
+fn collect_inits_and_teardowns(
+    holder: &mut MemoryHolder,
+    worker: &Worker,
+) -> Vec<Vec<LazyInitAndTeardown>> {
+    let mut chunks = vec![vec![]; worker.get_num_cores()];
+    let mut dst = &mut chunks[..];
+    worker.scope(holder.memory.len(), |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+            let range = chunk_start..(chunk_start + chunk_size);
+            let (el, rest) = dst.split_at_mut(1);
+            dst = rest;
+            let values = &holder.memory[range.clone()];
+            let timestamps = &holder.timestamps[range];
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let values_ptr = values.as_ptr() as *mut u32;
+                let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;
+                let el = &mut el[0];
+                for idx in 0..chunk_size {
+                    let timestamp_ptr = timestamps_ptr.add(idx);
+                    let timestamp = *timestamp_ptr;
+                    if timestamp != 0 {
+                        *timestamp_ptr = 0;
+                        let value_ptr = values_ptr.add(idx);
+                        let mut teardown_value = *value_ptr;
+                        *value_ptr = 0;
+                        let address = (chunk_start + idx) << 2;
+                        if address < common_constants::rom::ROM_BYTE_SIZE {
+                            teardown_value = 0;
+                        }
+                        let teardown_timestamp = TimestampData::from_scalar(timestamp);
+                        let value = LazyInitAndTeardown {
+                            address: address as u32,
+                            teardown_value,
+                            teardown_timestamp,
+                        };
+                        el.push(value);
+                    }
+                }
+            });
+        }
+    });
+
+    chunks
+}
+
 fn get_inits_and_teardowns_chunks(
-    values: Vec<Vec<(u32, (TimestampScalar, u32))>>,
+    values: Vec<Vec<LazyInitAndTeardown>>,
     partition_size: usize,
     free_allocators: Receiver<A>,
 ) -> impl Iterator<Item = ShuffleRamInitsAndTeardownsHost<A>> {
     let inits_and_teardowns_count = values.iter().map(|v| v.len()).sum::<usize>();
-    let mut iterator = values
-        .into_iter()
-        .map(|v| {
-            v.into_iter()
-                .map(
-                    |(address, (teardown_timestamp, teardown_value))| LazyInitAndTeardown {
-                        address,
-                        teardown_value,
-                        teardown_timestamp: TimestampData::from_scalar(teardown_timestamp),
-                    },
-                )
-        })
-        .flatten();
+    let mut iterator = values.into_iter().flat_map(|v| v.into_iter());
     let partitions_count = inits_and_teardowns_count.div_ceil(partition_size);
     (0..partitions_count).into_iter().map(move |index| {
         let mut values_count = if index == 0 {

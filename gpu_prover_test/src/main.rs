@@ -35,6 +35,7 @@ mod tests {
         init_logger();
 
         let block_number = 23620012;
+        //let block_number = 23873944;
 
         let mut file = File::open(&format!("{}_witness", block_number)).expect("should open file");
         let mut witness = vec![];
@@ -49,28 +50,26 @@ mod tests {
             .map(|el| u32::from_be_bytes(*el))
             .collect();
         let source = QuasiUARTSource::new_with_reads(witness);
-        let (binary, binary_u32) = read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
+        let (binary, binary_u32) =
+            read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
         let (padded_binary, padded_binary_u32) =
             read_and_pad_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
-        let (text, text_u32) = read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
+        let (text, text_u32) =
+            read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
         let (padded_text, padded_text_u32) =
             read_and_pad_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
-        // info!("Computing setup");
-        // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
-        //     IMStandardIsaConfigWithUnsignedMulDiv,
-        // >(&padded_binary, &padded_text);
-        // serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
-        // let compiled_layouts =
-        //     execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
-        //         IMStandardIsaConfigWithUnsignedMulDiv,
-        //     >(&padded_binary_u32);
-        // serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
-        //     .unwrap();
-        let configuration = ExecutionProverConfiguration {
-            replay_worker_threads_count: 8,
-            ..Default::default()
-        };
-        let mut prover = ExecutionProver::with_configuration(configuration);
+        info!("Computing setup");
+        let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(&padded_binary, &padded_text);
+        serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
+        let compiled_layouts =
+            execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
+                IMStandardIsaConfigWithUnsignedMulDiv,
+            >(&padded_binary_u32);
+        serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
+            .unwrap();
+        let mut prover = ExecutionProver::with_configuration(Default::default());
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -93,35 +92,35 @@ mod tests {
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
         };
-        // serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &proof).unwrap();
+        serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &proof).unwrap();
     }
 
     #[test]
     fn prove_base_layer() {
         init_logger();
-        // let (binary, binary_u32) =
-        //     read_and_pad_binary(Path::new("../examples/hashed_fibonacci/app.bin"));
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new("../examples/hashed_fibonacci/app.bin"));
         // read_and_pad_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.bin"));
         let (binary, binary_u32) =
-        //    read_binary(Path::new("../examples/hashed_fibonacci/app.bin"));
-        read_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.bin"));
-        // let (text, text_u32) =
-        //     read_and_pad_binary(Path::new("../examples/hashed_fibonacci/app.text"));
+           read_binary(Path::new("../examples/hashed_fibonacci/app.bin"));
+        // read_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.bin"));
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new("../examples/hashed_fibonacci/app.text"));
         // // read_and_pad_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.text"));
         let (text, text_u32) =
-            // read_binary(Path::new("../examples/hashed_fibonacci/app.text"));
+            read_binary(Path::new("../examples/hashed_fibonacci/app.text"));
         read_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.text"));
-        // println!("Computing setup");
-        // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
-        //     IMStandardIsaConfigWithUnsignedMulDiv,
-        // >(&binary, &text);
-        // serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
-        // let compiled_layouts =
-        //     execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
-        //         IMStandardIsaConfigWithUnsignedMulDiv,
-        //     >(&binary_u32);
-        // serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
-        //     .unwrap();
+        println!("Computing setup");
+        let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(&padded_binary, &padded_text);
+        serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
+        let compiled_layouts =
+            execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
+                IMStandardIsaConfigWithUnsignedMulDiv,
+            >(&padded_binary_u32);
+        serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
+            .unwrap();
         println!("Computing proof");
 
         let mut configuration = ExecutionProverConfiguration::default();
@@ -135,7 +134,10 @@ mod tests {
             text_u32.clone(),
             None,
         );
-        let source = QuasiUARTSource::new_with_reads(vec![0, 0]);
+        let source = QuasiUARTSource::new_with_reads(vec![1 << 24, 1 << 18]);
+        info!("warmup");
+        let _result = prover.commit_memory_and_prove(0, 0, source.clone());
+        info!("computing GPU proof");
         let result = prover.commit_memory_and_prove(0, 0, source.clone());
         let gpu_proof = UnrolledProgramProof {
             final_pc: result.final_pc,
@@ -149,14 +151,14 @@ mod tests {
         };
         serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &gpu_proof).unwrap();
 
-        // let worker = Worker::new_with_num_threads(8);
-        // let cpu_proof =
-        //     execution_utils::unrolled::prove_unrolled_for_machine_configuration_into_program_proof::<
-        //         IMStandardIsaConfigWithUnsignedMulDiv,
-        //     >(&binary_u32, &text_u32, 1 << 31, source, 1 << 30, &worker);
-        // serde_json::to_writer_pretty(File::create("cpu_proof.json").unwrap(), &cpu_proof).unwrap();
-        //
-        // compare_program_proofs(&cpu_proof, &gpu_proof);
+        let worker = Worker::new();
+        let cpu_proof =
+            execution_utils::unrolled::prove_unrolled_for_machine_configuration_into_program_proof::<
+                IMStandardIsaConfigWithUnsignedMulDiv,
+            >(&padded_binary_u32, &padded_text_u32, 1 << 31, source, 1 << 30, &worker);
+        serde_json::to_writer_pretty(File::create("cpu_proof.json").unwrap(), &cpu_proof).unwrap();
+
+        compare_program_proofs(&cpu_proof, &gpu_proof);
     }
 
     #[cfg(feature = "verifier_80")]
