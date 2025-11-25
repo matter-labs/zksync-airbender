@@ -50,7 +50,7 @@ pub struct ProfilerStats {
 pub(crate) struct Profiler {
     // Safety: DwarfCache references data in symbol info.
     dwarf_cache: DwarfCache,
-    symbol_info: SymbolInfo,
+    pub(crate) symbol_info: SymbolInfo,
     output_path: PathBuf,
     frequency_recip: usize,
     reverse_graph: bool,
@@ -239,29 +239,30 @@ impl Profiler {
     //     self.stacktraces.absorb(stacktrace);
     // }
 
-    pub(crate) fn trace_frames(&mut self) {
+    pub(crate) fn trace_frames<'a>(
+        &'_ mut self,
+        binary: &'a [u8],
+    ) -> (
+        HashMap<Stacktrace, usize>,
+        HashMap<UnitSectionOffset, UnitInfo<'a>>,
+    ) {
         let raw_frames = core::mem::replace(&mut self.stacktraces.raw_frames, Default::default());
         if raw_frames.len() == 0 {
-            return;
+            return (HashMap::new(), HashMap::new());
         }
 
-        let threads = 8;
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(8)
-            .build()
-            .unwrap();
-        let chunk_size = raw_frames.len().div_ceil(threads);
-        let buffer = self.symbol_info.buffer.clone();
+        let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+        let chunk_size = raw_frames.len().div_ceil(pool.current_num_threads());
 
         let mut result = pool.scope(|_| {
-            let result: Vec<HashMap<Stacktrace, usize>> = raw_frames
+            let result: Vec<_> = raw_frames
                 .par_chunks(chunk_size)
                 .map(|frames| {
                     let mut unit_data = HashMap::new();
                     let mut traces = HashMap::<Stacktrace, usize>::new();
 
                     let ctx = {
-                        let object = object::File::parse(&buffer[..]).unwrap();
+                        let object = object::File::parse(binary).unwrap();
 
                         let endian = match object.is_little_endian() {
                             true => RunTimeEndian::Little,
@@ -335,21 +336,24 @@ impl Profiler {
                         }
                     }
 
-                    traces
+                    (traces, unit_data)
                 })
                 .collect();
 
             result
         });
 
-        let mut traces = result.pop().unwrap();
-        for extra in result.into_iter() {
-            for (k, v) in extra.into_iter() {
+        let (mut traces, mut cache) = result.pop().unwrap();
+        for (extra_traces, extra_cache) in result.into_iter() {
+            for (k, v) in extra_traces.into_iter() {
                 traces.entry(k).and_modify(|x| *x += v).or_insert(v);
+            }
+            for (k, v) in extra_cache.into_iter() {
+                cache.insert(k, v);
             }
         }
 
-        self.stacktraces.traces = traces;
+        (traces, cache)
     }
 
     pub(crate) fn write_stacktrace(&self) {
@@ -368,6 +372,47 @@ impl Profiler {
                 .map(|frame| {
                     self.dwarf_cache
                         .unit_data
+                        .get(&frame.section_offset)
+                        .unwrap()
+                        .frames
+                        .get(&frame.unit_offset)
+                        .unwrap()
+                        .name
+                        .as_str()
+                })
+                .collect::<Vec<_>>();
+            names
+                .join(";")
+                .op(|x| format!("{} {}", x, c).to_owned().to(|x| mapped.push(x)));
+        }
+
+        let mut opts = inferno::flamegraph::Options::default();
+
+        opts.reverse_stack_order = self.reverse_graph;
+
+        inferno::flamegraph::from_lines(&mut opts, mapped.iter().map(|x| x.as_str()), file)
+            .unwrap();
+    }
+
+    pub(crate) fn write_stacktrace_impl(
+        &self,
+        traces: &HashMap<Stacktrace, usize>,
+        cache: &HashMap<UnitSectionOffset, UnitInfo<'_>>,
+    ) {
+        let file = match std::fs::File::create(&self.output_path) {
+            Err(why) => panic!("couldn't create file {}", why),
+            Ok(file) => file,
+        };
+
+        let mut mapped = Vec::with_capacity(traces.len());
+
+        for (st, c) in traces {
+            let names = st
+                .frames
+                .iter()
+                .rev()
+                .map(|frame| {
+                    cache
                         .get(&frame.section_offset)
                         .unwrap()
                         .frames
@@ -415,7 +460,7 @@ struct FrameInfo {
     name: String,
 }
 
-struct UnitInfo<'a> {
+pub(crate) struct UnitInfo<'a> {
     line_program_complete: CompleteLineProgram<EndianSlice<'a, RunTimeEndian>, usize>,
     line_sequences: Vec<gimli::LineSequence<EndianSlice<'a, RunTimeEndian>>>,
     frames: HashMap<UnitOffset<usize>, FrameInfo>,
@@ -431,7 +476,7 @@ pub(crate) struct SymbolInfo {
     ctx: Context<EndianSlice<'static, RunTimeEndian>>,
     object: object::File<'static>,
     // Holds the slice that all above fields reference.
-    buffer: Vec<u8>,
+    pub(crate) buffer: Vec<u8>,
 }
 
 impl SymbolInfo {
@@ -793,7 +838,7 @@ impl SymbolInfo {
 }
 
 #[derive(Debug)]
-struct Stacktrace {
+pub(crate) struct Stacktrace {
     frames: Vec<FrameKey>,
 }
 

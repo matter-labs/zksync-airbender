@@ -108,10 +108,10 @@ where
 
         if let Some(profiler) = self.profiler.as_mut() {
             println!("Profiler begins execution");
-            profiler.trace_frames();
-            profiler.print_stats();
+            let binary = profiler.symbol_info.buffer.clone();
+            let (traces, cache) = profiler.trace_frames(&binary);
             println!("Writing stacktrace");
-            profiler.write_stacktrace();
+            profiler.write_stacktrace_impl(&traces, &cache);
         }
 
         RunResult {
