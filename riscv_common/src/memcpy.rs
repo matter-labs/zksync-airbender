@@ -158,7 +158,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
         let src = src.cast::<u8>();
         let dest = dest.cast::<u8>();
-        if n > 0 {
+        if n & 1 > 0 {
             dest.write(src.read());
         }
 
@@ -332,7 +332,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
         }
     }
     {
-        if n > 0 {
+        if n & 1 > 0 {
             dest.write(src.read());
         }
     }
