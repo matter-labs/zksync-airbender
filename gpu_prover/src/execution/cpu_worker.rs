@@ -2,65 +2,36 @@ use super::A;
 use crate::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::execution::messages::SimulationResult;
 use crate::execution::messages::{InitsAndTeardownsData, WorkerResult};
-use crate::execution::simulation_runner::{LockedBoxedMemoryHolder, SimulationRunner};
+use crate::execution::simulation_runner::{
+    LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner,
+};
 use crate::execution::snapshotter::{Snapshot, SplitDataTraceRanges, UnifiedDataTraceRanges};
-use crate::execution::tracer::SplitTracer;
+use crate::execution::tracer::{SplitTracer, UnifiedTracer};
 use crate::execution::tracing_data_producers::SplitTracingDataProducers;
 use crate::machine_type::MachineType;
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{Receiver, Sender};
 use cs::definitions::TimestampData;
-use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
 use log::{debug, trace};
 use prover::common_constants;
 use prover::definitions::LazyInitAndTeardown;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::common_constants::TimestampScalar;
-use riscv_transpiler::jit::{
-    CounterType, MachineState, MemoryHolder, ReplayerMemChunks, TraceChunk,
-};
+use riscv_transpiler::common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use riscv_transpiler::jit::{CounterType, MachineState, MemoryHolder, ReplayerMemChunks};
 use riscv_transpiler::replayer::ReplayerVM;
 use riscv_transpiler::vm::{
-    DelegationsAndFamiliesCounters, InstructionTape, NonDeterminismCSRSource, Register, State, VM,
+    DelegationsAndFamiliesCounters, DelegationsCounters, InstructionTape, NonDeterminismCSRSource,
+    Register, State,
 };
 use std::cmp::min;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use trace_and_split::FinalRegisterValue;
 use type_map::concurrent::TypeMap;
 use worker::Worker;
-
-pub(crate) struct LockedBoxedTraceChunk {
-    pub chunk: Box<TraceChunk, A>,
-}
-
-impl LockedBoxedTraceChunk {
-    pub fn new() -> Self {
-        const LOG_CHUNK_SIZE: u32 = 20;
-        let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
-        let allocation = HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).unwrap();
-        let allocator = A::new(vec![allocation], LOG_CHUNK_SIZE);
-        let chunk = unsafe { Box::<TraceChunk, _>::new_uninit_in(allocator).assume_init() };
-        Self { chunk }
-    }
-}
-
-impl Deref for LockedBoxedTraceChunk {
-    type Target = TraceChunk;
-
-    fn deref(&self) -> &Self::Target {
-        &self.chunk
-    }
-}
-
-impl DerefMut for LockedBoxedTraceChunk {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.chunk
-    }
-}
 
 pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     batch_id: u64,
@@ -83,25 +54,37 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
     let mut memory_holder = memory_holder.lock().unwrap();
     let mut non_determinism_guard = non_determinism.lock().unwrap();
     let non_determinism_source = non_determinism_guard.take().unwrap();
-    let (final_state, non_determinism_source) =
-        SimulationRunner::<_, SplitTracingDataProducers>::run(
-            batch_id,
-            machine_type,
-            binary_image,
-            text_section,
-            cycles_bound,
-            jit_cache,
-            &mut memory_holder,
-            non_determinism_source,
-            free_trace_chunks_sender,
-            free_trace_chunks_receiver,
-            snapshots,
-            results.clone(),
-            free_allocators.clone(),
-            abort.clone(),
-        );
+    let runner = SimulationRunner::<_, SplitTracingDataProducers>::new(
+        batch_id,
+        machine_type,
+        non_determinism_source,
+        free_trace_chunks_sender,
+        free_trace_chunks_receiver,
+        snapshots,
+        results,
+        free_allocators.clone(),
+        abort,
+    );
+    let runner = runner.run(
+        binary_image,
+        text_section,
+        cycles_bound,
+        jit_cache,
+        &mut memory_holder,
+    );
+    let SimulationRunner {
+        batch_id,
+        non_determinism_source,
+        results,
+        abort,
+        state,
+        is_aborted,
+        ..
+    } = runner;
     *non_determinism_guard = Some(non_determinism_source);
     if !abort.load(std::sync::atomic::Ordering::Relaxed) {
+        assert!(!is_aborted);
+        let results = results.unwrap();
         const PER_CIRCUIT_COUNT: usize = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
             * setups::inits_and_teardowns::NUM_CYCLES;
         let instant = Instant::now();
@@ -133,10 +116,10 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
             results.send(result).unwrap();
             instant = Instant::now();
         }
-        let final_register_values = final_state
+        let final_register_values = state
             .registers
             .into_iter()
-            .zip(final_state.register_timestamps.into_iter())
+            .zip(state.register_timestamps.into_iter())
             .map(|(value, last_access_timestamp)| FinalRegisterValue {
                 value,
                 last_access_timestamp,
@@ -145,8 +128,8 @@ pub(crate) fn run_split_simulator<ND: NonDeterminismCSRSource + Send + 'static>(
             .unwrap();
         let simulation_result = SimulationResult {
             final_register_values,
-            final_pc: final_state.pc,
-            final_timestamp: final_state.timestamp,
+            final_pc: state.pc,
+            final_timestamp: state.timestamp,
         };
         let result = WorkerResult::SimulationResult(simulation_result);
         results.send(result).unwrap();
@@ -319,18 +302,85 @@ fn machine_state_into_split_state(state: MachineState) -> State<DelegationsAndFa
         .map(|(value, timestamp)| Register { timestamp, value })
         .collect_array()
         .unwrap();
+    let add_sub_family = counters[CounterType::AddSubLui as usize] as usize;
+    let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as usize] as usize;
+    let slt_branch_family = counters[CounterType::BranchSlt as usize] as usize;
+    let mul_div_family = counters[CounterType::MulDiv as usize] as usize;
+    let word_size_mem_family = counters[CounterType::MemWord as usize] as usize;
+    let subword_size_mem_family = counters[CounterType::MemSubword as usize] as usize;
+    let blake_calls = counters[CounterType::BlakeDelegation as usize] as usize;
+    let bigint_calls = counters[CounterType::BigintDelegation as usize] as usize;
+    let keccak_calls = counters[CounterType::KeccakDelegation as usize] as usize;
+    let family_counters_sum = add_sub_family
+        + binary_shift_csr_family
+        + slt_branch_family
+        + mul_div_family
+        + word_size_mem_family
+        + subword_size_mem_family;
+    let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
+    assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+    let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
+    assert_eq!(family_counters_sum, total_cycles);
     let counters = DelegationsAndFamiliesCounters {
-        add_sub_family: counters[CounterType::AddSubLui as usize] as usize,
-        binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as usize] as usize,
-        slt_branch_family: counters[CounterType::BranchSlt as usize] as usize,
-        mul_div_family: counters[CounterType::MulDiv as usize] as usize,
-        word_size_mem_family: counters[CounterType::MemWord as usize] as usize,
-        subword_size_mem_family: counters[CounterType::MemSubword as usize] as usize,
-        blake_calls: counters[CounterType::BlakeDelegation as usize] as usize,
-        bigint_calls: counters[CounterType::BigintDelegation as usize] as usize,
-        keccak_calls: counters[CounterType::KeccakDelegation as usize] as usize,
+        add_sub_family,
+        binary_shift_csr_family,
+        slt_branch_family,
+        mul_div_family,
+        word_size_mem_family,
+        subword_size_mem_family,
+        blake_calls,
+        bigint_calls,
+        keccak_calls,
     };
     State::<DelegationsAndFamiliesCounters> {
+        registers,
+        timestamp,
+        pc,
+        counters,
+    }
+}
+
+fn machine_state_into_unified_state(state: MachineState) -> State<DelegationsCounters> {
+    let MachineState {
+        registers,
+        register_timestamps,
+        counters,
+        pc,
+        timestamp,
+        ..
+    } = state;
+    let registers = registers
+        .into_iter()
+        .zip(register_timestamps.into_iter())
+        .map(|(value, timestamp)| Register { timestamp, value })
+        .collect_array()
+        .unwrap();
+    let add_sub_family = counters[CounterType::AddSubLui as usize] as usize;
+    let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as usize] as usize;
+    let slt_branch_family = counters[CounterType::BranchSlt as usize] as usize;
+    let mul_div_family = counters[CounterType::MulDiv as usize] as usize;
+    let word_size_mem_family = counters[CounterType::MemWord as usize] as usize;
+    let subword_size_mem_family = counters[CounterType::MemSubword as usize] as usize;
+    let blake_calls = counters[CounterType::BlakeDelegation as usize] as usize;
+    let bigint_calls = counters[CounterType::BigintDelegation as usize] as usize;
+    let keccak_calls = counters[CounterType::KeccakDelegation as usize] as usize;
+    let family_counters_sum = add_sub_family
+        + binary_shift_csr_family
+        + slt_branch_family
+        + mul_div_family
+        + word_size_mem_family
+        + subword_size_mem_family;
+    let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
+    assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+    let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
+    assert_eq!(family_counters_sum, total_cycles);
+    let counters = DelegationsCounters {
+        non_determinism_reads: 0,
+        blake_calls,
+        bigint_calls,
+        keccak_calls,
+    };
+    State::<DelegationsCounters> {
         registers,
         timestamp,
         pc,
@@ -418,56 +468,66 @@ pub(crate) fn run_unified_replayer(
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
 ) {
-    todo!()
-    // trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
-    // let mut total_elapsed = Duration::default();
-    // let mut total_cycles = 0;
-    // for snapshot in snapshots {
-    //     if abort.load(std::sync::atomic::Ordering::Relaxed) {
-    //         let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    //         let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-    //         debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-    //         return;
-    //     }
-    //     let UnifiedSnapshot {
-    //         index,
-    //         cycles_count,
-    //         initial_state,
-    //         reads,
-    //         trace_ranges,
-    //     } = snapshot;
-    //     let mut state = initial_state;
-    //     let mut ram_log = vec![reads.as_slice()];
-    //     let mut ram = ReplayerRam::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS> {
-    //         ram_log: &mut ram_log,
-    //     };
-    //     let mut non_determinism_reads = vec![];
-    //     let mut nd = ReplayerNonDeterminism {
-    //         non_determinism_reads_log: &mut non_determinism_reads,
-    //     };
-    //     let mut tracer = UnifiedTracer::new(trace_ranges);
-    //     let instant = Instant::now();
-    //     ReplayerVM::replay_basic_unrolled(
-    //         &mut state,
-    //         &mut ram,
-    //         tape.deref(),
-    //         &mut nd,
-    //         cycles_count,
-    //         &mut tracer,
-    //     );
-    //     let elapsed = instant.elapsed();
-    //     total_elapsed += elapsed;
-    //     total_cycles += cycles_count;
-    //     let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-    //     let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-    //     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-    //     let result = WorkerResult::SnapshotReplayed(index);
-    //     results.send(result).unwrap()
-    // }
-    // let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-    // let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-    // debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-    // trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
+    let mut total_elapsed = Duration::default();
+    let mut total_cycles = 0;
+    let mut is_aborted = false;
+    for snapshot in snapshots {
+        if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
+            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
+            is_aborted = true;
+            let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+            let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        }
+        let Snapshot {
+            index,
+            cycles_count,
+            initial_state,
+            trace,
+            final_state,
+            trace_ranges,
+        } = snapshot;
+        if is_aborted {
+            free_trace_chunks.send(trace).unwrap();
+            continue;
+        }
+        let trace_len = trace.len as usize;
+        let mut state = machine_state_into_unified_state(initial_state);
+        let final_state = machine_state_into_unified_state(final_state);
+        let mut ram = ReplayerMemChunks {
+            chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
+        };
+        let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+        let mut tracer = UnifiedTracer::new(trace_ranges);
+        let instant = Instant::now();
+        ReplayerVM::replay_basic_unrolled(
+            &mut state,
+            &mut ram,
+            tape.deref(),
+            &mut nd,
+            cycles_count,
+            &mut tracer,
+        );
+        let elapsed = instant.elapsed();
+        free_trace_chunks.send(trace).unwrap();
+        assert_eq!(state.pc, final_state.pc);
+        assert_eq!(state.timestamp, final_state.timestamp);
+        assert_eq!(state.registers, final_state.registers);
+        total_elapsed += elapsed;
+        total_cycles += cycles_count;
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        let result = WorkerResult::SnapshotReplayed(index);
+        results.send(result).unwrap()
+    }
+    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+    if !is_aborted {
+        debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    }
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
 fn collect_inits_and_teardowns(

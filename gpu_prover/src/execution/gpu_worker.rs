@@ -1,8 +1,11 @@
-use super::precomputations::CircuitPrecomputations;
 use super::A;
-use crate::circuit_type::{CircuitType, UnrolledCircuitType};
+use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
+use crate::execution::messages::{
+    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
+    ProofResult,
+};
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
@@ -10,152 +13,17 @@ use crate::prover::precomputations::Precomputations;
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::trace_holder::TreesCacheMode;
-use crate::prover::tracing_data::{
-    InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer,
-};
-use crate::witness::trace_unrolled::{
-    get_aux_arguments_boundary_values, ShuffleRamInitsAndTeardownsHost,
-};
+use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use crate::witness::trace_unrolled::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::get_device_properties;
-use fft::GoodAllocator;
 use log::{debug, error, info, trace};
-use prover::definitions::{AuxArgumentsBoundaryValues, ExternalChallenges};
-use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::prover_stages::unrolled_prover::UnrolledModeProof;
+use prover::definitions::AuxArgumentsBoundaryValues;
 use std::ffi::CStr;
 use std::mem;
 use std::ops::Deref;
 use std::process::exit;
 use verifier_common::num_queries_for_security_params;
-
-pub struct MemoryCommitmentRequest<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub sequence_id: usize,
-    pub precomputations: CircuitPrecomputations,
-    pub inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
-    pub tracing_data: Option<TracingDataHost<A>>,
-}
-
-pub struct MemoryCommitmentResult<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub sequence_id: usize,
-    pub inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
-    pub tracing_data: Option<TracingDataHost<A>>,
-    pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
-}
-
-pub struct ProofRequest<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub sequence_id: usize,
-    pub precomputations: CircuitPrecomputations,
-    pub inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
-    pub tracing_data: Option<TracingDataHost<A>>,
-    pub external_challenges: ExternalChallenges,
-}
-
-pub struct ProofResult<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub sequence_id: usize,
-    pub inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
-    pub tracing_data: Option<TracingDataHost<A>>,
-    pub proof: UnrolledModeProof,
-}
-
-pub enum GpuWorkRequest<A: GoodAllocator> {
-    MemoryCommitment(MemoryCommitmentRequest<A>),
-    Proof(ProofRequest<A>),
-}
-
-impl<A: GoodAllocator> GpuWorkRequest<A> {
-    pub fn batch_id(&self) -> u64 {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.batch_id,
-            GpuWorkRequest::Proof(request) => request.batch_id,
-        }
-    }
-
-    pub fn circuit_type(&self) -> CircuitType {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.circuit_type,
-            GpuWorkRequest::Proof(request) => request.circuit_type,
-        }
-    }
-
-    pub fn sequence_id(&self) -> usize {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.sequence_id,
-            GpuWorkRequest::Proof(request) => request.sequence_id,
-        }
-    }
-
-    pub fn precomputations(&self) -> &CircuitPrecomputations {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.precomputations,
-            GpuWorkRequest::Proof(request) => &request.precomputations,
-        }
-    }
-
-    pub fn inits_and_teardowns(&self) -> &Option<ShuffleRamInitsAndTeardownsHost<A>> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.inits_and_teardowns,
-            GpuWorkRequest::Proof(request) => &request.inits_and_teardowns,
-        }
-    }
-
-    pub fn tracing_data(&self) -> &Option<TracingDataHost<A>> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.tracing_data,
-            GpuWorkRequest::Proof(request) => &request.tracing_data,
-        }
-    }
-}
-
-pub enum GpuWorkResult<A: GoodAllocator> {
-    MemoryCommitment(MemoryCommitmentResult<A>),
-    Proof(ProofResult<A>),
-}
-
-impl<A: GoodAllocator> GpuWorkResult<A> {
-    pub fn batch_id(&self) -> u64 {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => result.batch_id,
-            GpuWorkResult::Proof(result) => result.batch_id,
-        }
-    }
-
-    pub fn circuit_type(&self) -> CircuitType {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => result.circuit_type,
-            GpuWorkResult::Proof(result) => result.circuit_type,
-        }
-    }
-
-    pub fn sequence_id(&self) -> usize {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => result.sequence_id,
-            GpuWorkResult::Proof(result) => result.sequence_id,
-        }
-    }
-
-    pub fn inits_and_teardowns(&self) -> &Option<ShuffleRamInitsAndTeardownsHost<A>> {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => &result.inits_and_teardowns,
-            GpuWorkResult::Proof(result) => &result.inits_and_teardowns,
-        }
-    }
-
-    pub fn tracing_data(&self) -> &Option<TracingDataHost<A>> {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => &result.tracing_data,
-            GpuWorkResult::Proof(result) => &result.tracing_data,
-        }
-    }
-}
 
 pub fn get_gpu_worker_func(
     device_id: i32,

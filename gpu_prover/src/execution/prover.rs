@@ -1,4 +1,4 @@
-use super::gpu_manager::{GpuManager, GpuWorkBatch};
+use super::gpu_manager::GpuManager;
 use super::precomputations::{get_common_precomputations, CircuitPrecomputations};
 use super::A;
 use crate::circuit_type::{
@@ -8,24 +8,14 @@ use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use crate::execution::cpu_worker::{
     run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator,
-    LockedBoxedTraceChunk,
 };
-use crate::execution::gpu_worker::{
-    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult,
-};
-use crate::execution::messages::{
-    InitsAndTeardownsData, SimulationResult, TracingData, WorkerResult,
-};
-use crate::execution::simulation_runner::LockedBoxedMemoryHolder;
-use crate::execution::tracing_data_producers::{
-    SplitTracingDataProducers, UnifiedTracingDataProducers,
-};
+use crate::execution::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult, SimulationResult, TracingData, WorkerResult};
+use crate::execution::simulation_runner::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
 use crate::machine_type::MachineType;
 use crate::prover::context::ProverContextConfig;
 use crate::prover::tracing_data::TracingDataHost;
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::TimestampScalar;
 use itertools::Itertools;
@@ -45,7 +35,6 @@ use riscv_transpiler::vm::{NonDeterminismCSRSource, RamPeek, SimpleTape};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::DerefMut;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -154,21 +143,6 @@ impl ExecutionProverResult {
             _ => panic!("expected ProveResult"),
         }
     }
-}
-
-fn get_allocators_count(
-    inits_and_teardowns: &Option<ShuffleRamInitsAndTeardownsHost<A>>,
-    tracing_data: &Option<TracingDataHost<A>>,
-) -> usize {
-    let a = inits_and_teardowns
-        .as_ref()
-        .map(|v| v.get_allocators_count())
-        .unwrap_or_default();
-    let b = tracing_data
-        .as_ref()
-        .map(|v| v.get_allocators_count())
-        .unwrap_or_default();
-    a + b
 }
 
 struct TraceCacheEntry {
@@ -1109,7 +1083,6 @@ impl ExecutionProver {
         &self,
         batch_id: u64,
         binary_key: usize,
-        cycle_limit: usize,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));

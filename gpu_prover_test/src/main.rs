@@ -35,7 +35,7 @@ mod tests {
         init_logger();
 
         let block_number = 23620012;
-        //let block_number = 23873944;
+        // let block_number = 23873944;
 
         let mut file = File::open(&format!("{}_witness", block_number)).expect("should open file");
         let mut witness = vec![];
@@ -58,17 +58,17 @@ mod tests {
             read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
         let (padded_text, padded_text_u32) =
             read_and_pad_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
-        info!("Computing setup");
-        let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(&padded_binary, &padded_text);
-        serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
-        let compiled_layouts =
-            execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
-                IMStandardIsaConfigWithUnsignedMulDiv,
-            >(&padded_binary_u32);
-        serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
-            .unwrap();
+        // info!("Computing setup");
+        // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
+        //     IMStandardIsaConfigWithUnsignedMulDiv,
+        // >(&padded_binary, &padded_text);
+        // serde_json::to_writer_pretty(File::create("setup.json").unwrap(), &setup).unwrap();
+        // let compiled_layouts =
+        //     execution_utils::setups::get_unrolled_circuits_artifacts_for_machine_type::<
+        //         IMStandardIsaConfigWithUnsignedMulDiv,
+        //     >(&padded_binary_u32);
+        // serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
+        //     .unwrap();
         let mut prover = ExecutionProver::with_configuration(Default::default());
         prover.add_binary(
             0,
@@ -179,6 +179,9 @@ mod tests {
         //         .expect("is valid proof");
         // assert_eq!(result.iter().all(|el| *el == 0), false);
 
+        for (id, proofs) in gpu_proof.delegation_proofs.iter() {
+            println!("{} delegation proofs for delegation id {id}", proofs.len());
+        }
         println!("Verifying GPU proof...");
         let result = execution_utils::unrolled::verify_unrolled_layer_proof(
             &gpu_proof, &setup, &layouts, true,
@@ -207,7 +210,7 @@ mod tests {
         let base_layer_setup: UnrolledProgramSetup =
             serde_json::from_reader(&File::open("setup.json").unwrap()).unwrap();
         let base_layer_proof: UnrolledProgramProof =
-            serde_json::from_reader(&File::open("proof.json").unwrap()).unwrap();
+            serde_json::from_reader(&File::open("pru_proof.json").unwrap()).unwrap();
         let base_layer_layouts: CompiledCircuitsSet =
             serde_json::from_reader(&File::open("layouts.json").unwrap()).unwrap();
 

@@ -1,24 +1,16 @@
-use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest, GpuWorkResult};
-use super::messages::WorkerResult;
-use super::A;
+use super::gpu_worker::get_gpu_worker_func;
+use super::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, WorkerResult};
 use crate::cudart::device::get_device_count;
 use crate::cudart::result::CudaResult;
 use crate::prover::context::ProverContextConfig;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
-use fft::GoodAllocator;
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::exit;
 use std::thread;
-
-pub struct GpuWorkBatch {
-    pub batch_id: u64,
-    pub receiver: Receiver<GpuWorkRequest<A>>,
-    pub sender: Sender<WorkerResult<A>>,
-}
 
 pub struct GpuManager {
     wait_group: Option<WaitGroup>,

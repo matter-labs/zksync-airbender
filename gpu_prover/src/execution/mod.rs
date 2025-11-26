@@ -6,7 +6,6 @@ mod gpu_worker;
 mod messages;
 mod precomputations;
 pub mod prover;
-mod ram;
 mod simulation_runner;
 mod snapshotter;
 mod tracer;

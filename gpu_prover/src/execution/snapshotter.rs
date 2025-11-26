@@ -1,82 +1,15 @@
 use super::A;
+use crate::execution::simulation_runner::LockedBoxedTraceChunk;
 use prover::risc_v_simulator::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use riscv_transpiler::jit::{MachineState, TraceChunk};
-use riscv_transpiler::vm::{Counters, Snapshotter};
+use riscv_transpiler::jit::MachineState;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use crate::execution::cpu_worker::LockedBoxedTraceChunk;
-// pub(crate) struct OnceSnapshotter {
-//     pub period: usize,
-//     pub initial_timestamp: TimestampScalar,
-//     pub reads: Vec<(u32, (u32, u32))>,
-// }
-//
-// const MAX_MEMORY_READS_PER_CYCLE: usize = 8;
-//
-// impl OnceSnapshotter {
-//     pub fn new_for_period(period: usize, state: &State<impl Counters>) -> Self {
-//         Self {
-//             period,
-//             initial_timestamp: state.timestamp,
-//             reads: Vec::with_capacity(Self::get_max_reads_len(period)),
-//         }
-//     }
-//
-//     pub fn assert_no_overflow(&self) {
-//         let reads_len = self.reads.len();
-//         let max_reads_len = Self::get_max_reads_len(self.period);
-//         assert!(
-//             reads_len <= max_reads_len,
-//             "reads_len: {reads_len}, max_reads_len: {max_reads_len}"
-//         );
-//     }
-//
-//     fn get_max_reads_len(period: usize) -> usize {
-//         period + period * MAX_MEMORY_READS_PER_CYCLE
-//     }
-//
-//     #[inline(always)]
-//     fn append_read(&mut self, value: (u32, (u32, u32))) {
-//         debug_assert!(self.reads.len() < Self::get_max_reads_len(self.period));
-//         unsafe { self.reads.extend_one_unchecked(value) }
-//     }
-// }
-//
-// impl<C: Counters> riscv_transpiler::vm::Snapshotter<C> for OnceSnapshotter {
-//     #[inline(always)]
-//     fn take_snapshot_if_needed(&mut self, state: &State<C>) -> bool {
-//         let cycles_executed =
-//             ((state.timestamp - self.initial_timestamp) / TIMESTAMP_STEP) as usize;
-//         self.period <= cycles_executed
-//     }
-//
-//     #[inline(always)]
-//     fn take_final_snapshot(&mut self, _state: &State<C>) {}
-//
-//     #[inline(always)]
-//     fn append_arbitrary_value(&mut self, value: u32) {
-//         self.append_read((value, (0, 0)));
-//     }
-//
-//     #[inline(always)]
-//     fn append_memory_read(
-//         &mut self,
-//         _address: u32,
-//         read_value: u32,
-//         read_timestamp: TimestampScalar,
-//         _write_timestamp: TimestampScalar,
-//     ) {
-//         let read_timestamp = (read_timestamp as u32, (read_timestamp >> 32) as u32);
-//         let value = (read_value, read_timestamp);
-//         self.append_read(value);
-//     }
-// }
 
 pub(crate) trait DataTraceRanges {}
 
