@@ -1,6 +1,6 @@
 use std::alloc::Allocator;
 
-use crate::jit::MAX_TRACE_CHUNK_LEN;
+use crate::jit::{CounterType, MAX_NUM_COUNTERS, MAX_TRACE_CHUNK_LEN};
 
 use super::*;
 
@@ -119,6 +119,22 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
+impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
+    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+        Self {
+            add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
+            slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
+            binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
+            mul_div_family: counters[CounterType::MulDiv as u8 as usize] as usize,
+            word_size_mem_family: counters[CounterType::MemWord as u8 as usize] as usize,
+            subword_size_mem_family: counters[CounterType::MemSubword as u8 as usize] as usize,
+            blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
+            bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
+            keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndUnifiedCounters {
@@ -184,6 +200,30 @@ impl Counters for DelegationsAndUnifiedCounters {
             self.cycles
         } else {
             panic!("Must be called with reduced machine family only");
+        }
+    }
+}
+
+impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
+    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+        let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
+        let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
+        let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
+        let mul_div_family = counters[CounterType::MulDiv as u8 as usize] as usize;
+        let word_size_mem_family = counters[CounterType::MemWord as u8 as usize] as usize;
+        let subword_size_mem_family = counters[CounterType::MemSubword as u8 as usize] as usize;
+        let cycles = add_sub_family
+            + slt_branch_family
+            + binary_shift_csr_family
+            + mul_div_family
+            + word_size_mem_family
+            + subword_size_mem_family;
+        Self {
+            non_determinism_reads: 0,
+            blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
+            bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
+            keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            cycles,
         }
     }
 }

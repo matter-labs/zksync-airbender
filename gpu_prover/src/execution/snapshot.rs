@@ -1,17 +1,6 @@
-use super::A;
 use crate::execution::simulation_runner::LockedBoxedTraceChunk;
-use prover::risc_v_simulator::machine_mode_only_unrolled::{
-    MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
-    UnifiedOpcodeTracingDataWithTimestamp,
-};
+use crate::execution::tracing::DataTraceRanges;
 use riscv_transpiler::jit::MachineState;
-use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
-use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
-use std::collections::VecDeque;
-use std::sync::Arc;
-
-pub(crate) trait DataTraceRanges {}
 
 pub(crate) struct Snapshot<R: DataTraceRanges> {
     pub index: usize,
@@ -23,49 +12,6 @@ pub(crate) struct Snapshot<R: DataTraceRanges> {
 }
 
 unsafe impl<R: DataTraceRanges> Send for Snapshot<R> {}
-
-pub(crate) struct PtrRange<T> {
-    pub start: *mut T,
-    pub end: *mut T,
-    pub _chunk: Option<Arc<Vec<T, A>>>,
-}
-
-impl<T> Default for PtrRange<T> {
-    fn default() -> Self {
-        Self {
-            start: std::ptr::null_mut(),
-            end: std::ptr::null_mut(),
-            _chunk: None,
-        }
-    }
-}
-
-unsafe impl<T> Send for PtrRange<T> {}
-
-#[derive(Default)]
-pub(crate) struct SplitDataTraceRanges {
-    pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness>>,
-    pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness>>,
-    pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness>>,
-    pub add_sub_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
-    pub binary_shift_csr_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
-    pub slt_branch_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
-    pub mul_div_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
-    pub word_size_mem_family: VecDeque<PtrRange<MemoryOpcodeTracingDataWithTimestamp>>,
-    pub subword_size_mem_family: VecDeque<PtrRange<MemoryOpcodeTracingDataWithTimestamp>>,
-}
-
-impl DataTraceRanges for SplitDataTraceRanges {}
-
-#[derive(Default)]
-pub(crate) struct UnifiedDataTraceRanges {
-    pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness>>,
-    pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness>>,
-    pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness>>,
-    pub cycles: VecDeque<PtrRange<UnifiedOpcodeTracingDataWithTimestamp>>,
-}
-
-impl DataTraceRanges for UnifiedDataTraceRanges {}
 
 #[cfg(test)]
 mod tests {

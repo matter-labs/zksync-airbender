@@ -6,11 +6,13 @@ use crate::circuit_type::{
 };
 use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
-use crate::execution::cpu_worker::{
-    run_split_replayer, run_split_simulator, run_unified_replayer, run_unified_simulator,
+use crate::execution::cpu_worker::{run_replayer, run_simulator};
+use crate::execution::messages::{
+    GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest,
+    MemoryCommitmentResult, ProofRequest, ProofResult, SimulationResult, TracingData, WorkerResult,
 };
-use crate::execution::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult, SimulationResult, TracingData, WorkerResult};
 use crate::execution::simulation_runner::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
+use crate::execution::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::machine_type::MachineType;
 use crate::prover::context::ProverContextConfig;
 use crate::prover::tracing_data::TracingDataHost;
@@ -156,6 +158,7 @@ struct TraceCacheEntry {
 struct TraceCache {
     entries: VecDeque<TraceCacheEntry>,
     total_requests_count: usize,
+    trivial_unified_inits_and_teardowns_count: usize,
     simulation_result: Option<SimulationResult>,
 }
 
@@ -175,6 +178,7 @@ impl TraceCache {
     fn is_not_initialized(&self) -> bool {
         self.entries.is_empty()
             && self.total_requests_count == 0
+            && self.trivial_unified_inits_and_teardowns_count == 0
             && self.simulation_result.is_none()
     }
 }
@@ -410,7 +414,13 @@ impl ExecutionProver {
         let mut pending_requests_count = 0;
         let mut sent_requests_count = 0;
         let mut requests_served_from_cache = BTreeSet::new();
+        let mut trivial_unified_inits_and_teardowns_count = 0;
+        let mut trivial_unified_inits_and_teardowns = BTreeSet::new();
         if let Some(cache) = cache.as_mut() {
+            trivial_unified_inits_and_teardowns_count = cache.trivial_unified_inits_and_teardowns_count;
+            for i in 0..trivial_unified_inits_and_teardowns_count {
+                trivial_unified_inits_and_teardowns.insert(i);
+            }
             for entry in cache.entries.drain(..) {
                 let TraceCacheEntry {
                     circuit_type,
@@ -418,6 +428,13 @@ impl ExecutionProver {
                     inits_and_teardowns,
                     tracing_data,
                 } = entry;
+                if matches!(
+                    circuit_type,
+                    CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+                ) && sequence_id < trivial_unified_inits_and_teardowns_count
+                {
+                    assert!(trivial_unified_inits_and_teardowns.remove(&sequence_id));
+                }
                 let precomputations = match circuit_type {
                     CircuitType::Delegation(_)
                     | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -478,7 +495,7 @@ impl ExecutionProver {
                 let worker = self.worker.clone();
                 self.worker.pool.spawn(move || {
                     match execution_kind {
-                        ExecutionKind::Unrolled => run_split_simulator(
+                        ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType>(
                             batch_id,
                             machine_type,
                             binary_image,
@@ -495,7 +512,7 @@ impl ExecutionProver {
                             abort,
                             &worker,
                         ),
-                        ExecutionKind::Unified => run_unified_simulator(
+                        ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType>(
                             batch_id,
                             machine_type,
                             binary_image,
@@ -524,7 +541,7 @@ impl ExecutionProver {
                 let work_results_sender = work_results_sender.clone();
                 let abort = abort.clone();
                 self.worker.pool.spawn(move || match execution_kind {
-                    ExecutionKind::Unrolled => run_split_replayer(
+                    ExecutionKind::Unrolled => run_replayer::<SplitTracingType>(
                         batch_id,
                         worker_id,
                         instruction_tape,
@@ -533,7 +550,7 @@ impl ExecutionProver {
                         work_results_sender,
                         abort,
                     ),
-                    ExecutionKind::Unified => run_unified_replayer(
+                    ExecutionKind::Unified => run_replayer::<UnifiedTracingType>(
                         batch_id,
                         worker_id,
                         instruction_tape,
@@ -547,6 +564,7 @@ impl ExecutionProver {
         }
         drop(free_trace_chunks_sender);
         drop(split_snapshot_receiver);
+        drop(unified_snapshot_receiver);
         drop(work_results_sender);
         let mut uninitialized_tracing_data = BTreeMap::new();
         let mut uninitialized_tracing_data_key_by_snapshot_index = BTreeMap::new();
@@ -559,6 +577,14 @@ impl ExecutionProver {
         let mut circuit_families_proofs = BTreeMap::new();
         let mut inits_and_teardowns_proofs = BTreeMap::new();
         let mut delegation_circuits_proofs = BTreeMap::new();
+        for sequence_id in trivial_unified_inits_and_teardowns {
+            let data = InitsAndTeardownsData {
+                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                sequence_id,
+                inits_and_teardowns: None,
+            };
+            unpaired_unified_inits_and_teardowns.insert(sequence_id, data);
+        }
         match execution_kind {
             ExecutionKind::Unrolled => {
                 let non_memory =
@@ -664,16 +690,24 @@ impl ExecutionProver {
                     }
                     CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
                         let sequence_id = data.sequence_id;
-                        assert!(!unpaired_unified_inits_and_teardowns.contains_key(&sequence_id));
-                        if let Some(tracing_data) =
-                            unpaired_unified_tracing_data.remove(&sequence_id)
-                        {
-                            let request = get_gpu_work_request(Some(data), Some(tracing_data));
-                            gpu_work_requests.push_back(request);
-                        } else {
-                            assert!(unpaired_unified_inits_and_teardowns
-                                .insert(sequence_id, data)
-                                .is_none());
+                        if sequence_id < trivial_unified_inits_and_teardowns_count {
+                            assert!(data.inits_and_teardowns.is_none());
+                        }
+                        else {
+                            assert!(!unpaired_unified_inits_and_teardowns.contains_key(&sequence_id));
+                            if data.inits_and_teardowns.is_none() {
+                                trivial_unified_inits_and_teardowns_count = sequence_id + 1;
+                            }
+                            if let Some(tracing_data) =
+                                unpaired_unified_tracing_data.remove(&sequence_id)
+                            {
+                                let request = get_gpu_work_request(Some(data), Some(tracing_data));
+                                gpu_work_requests.push_back(request);
+                            } else {
+                                assert!(unpaired_unified_inits_and_teardowns
+                                    .insert(sequence_id, data)
+                                    .is_none());
+                            }
                         }
                     }
                     _ => panic!("unexpected circuit type for inits and teardowns data"),
@@ -933,6 +967,7 @@ impl ExecutionProver {
                 assert!(cache.is_empty())
             } else {
                 cache.total_requests_count = sent_requests_count;
+                cache.trivial_unified_inits_and_teardowns_count = trivial_unified_inits_and_teardowns_count;
                 cache.simulation_result = simulation_result.clone();
             }
         }

@@ -1,6 +1,6 @@
 use crate::execution::messages::WorkerResult;
-use crate::execution::snapshotter::Snapshot;
-use crate::execution::tracing_data_producers::TracingDataProducers;
+use crate::execution::snapshot::Snapshot;
+use crate::execution::tracing::{TracingDataProducers, TracingType};
 use crate::execution::A;
 use crate::machine_type::MachineType;
 use crossbeam_channel::{Receiver, Sender};
@@ -100,26 +100,26 @@ impl DerefMut for LockedBoxedTraceChunk {
 
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
-    P: TracingDataProducers + Send + 'static,
+    T: TracingType + 'static,
 > {
     pub batch_id: u64,
     pub non_determinism_source: ND,
     pub free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     pub free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
-    pub snapshots: Option<Sender<Snapshot<P::Ranges>>>,
+    pub snapshots: Option<Sender<Snapshot<T::Ranges>>>,
     pub results: Option<Sender<WorkerResult<A>>>,
     pub abort: Arc<AtomicBool>,
     pub state: MachineState,
     pub trace: Option<LockedBoxedTraceChunk>,
     pub snapshot_index: usize,
-    pub tracing_data_producers: Option<P>,
+    pub tracing_data_producers: Option<T::Producers>,
     pub instant: Option<Instant>,
     pub total_elapsed: Duration,
     pub is_aborted: bool,
 }
 
-impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Send + 'static>
-    SimulationRunner<ND, P>
+impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
+    SimulationRunner<ND, T>
 {
     pub fn new(
         batch_id: u64,
@@ -127,12 +127,14 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
         non_determinism_source: ND,
         free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
         free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
-        snapshots: Sender<Snapshot<P::Ranges>>,
+        snapshots: Sender<Snapshot<T::Ranges>>,
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
     ) -> Self {
-        let tracing_data_producers = Some(P::new(machine_type, free_allocators, results.clone()));
+        let tracing_data_producers =
+            T::Producers::new(machine_type, free_allocators, results.clone());
+        let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
             non_determinism_source,
@@ -249,7 +251,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
             .collect_array::<MAX_NUM_COUNTERS>()
             .unwrap();
         let expected_cycles = counters_diff.iter().take(6).sum::<u32>() as usize;
-        assert_eq!(expected_cycles, cycles_count,);
+        assert_eq!(expected_cycles, cycles_count);
         let trace_ranges = self
             .tracing_data_producers
             .as_mut()
@@ -271,8 +273,8 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Sen
     }
 }
 
-impl<ND: NonDeterminismCSRSource + Send + 'static, P: TracingDataProducers + Send + 'static>
-    ContextImpl for SimulationRunner<ND, P>
+impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
+    for SimulationRunner<ND, T>
 {
     #[inline(always)]
     fn read_nondeterminism(&mut self) -> u32 {

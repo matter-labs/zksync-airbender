@@ -7,8 +7,7 @@ mod messages;
 mod precomputations;
 pub mod prover;
 mod simulation_runner;
-mod snapshotter;
-mod tracer;
-mod tracing_data_producers;
+mod snapshot;
+mod tracing;
 
 type A = ConcurrentStaticHostAllocator;
