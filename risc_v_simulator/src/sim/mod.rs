@@ -132,7 +132,7 @@ where
                 "Writing stacktrace, in total {} frames collected",
                 raw_frames.len()
             );
-            profiler.write_stacktrace_impl_cached(&raw_frames, &cache, &aggregated_cache);
+            profiler.write_stacktrace_impl_cached(raw_frames, &cache, &aggregated_cache);
         }
 
         RunResult {
