@@ -476,16 +476,16 @@ impl Profiler {
             if let Some((next_back_pc, next_back_frames)) =
                 aggregated_cache.range(..=*pc).next_back()
             {
-                // canonicalize callsites same way
-                for callsite in callsites.iter_mut() {
-                    if let Some((next_back_pc, next_back_frames)) =
-                        aggregated_cache.range(..=*pc).next_back()
-                    {
-                        *callsite = *next_back_pc
-                    } else {
-                        continue 'outer;
-                    }
-                }
+                // // canonicalize callsites same way
+                // for callsite in callsites.iter_mut() {
+                //     if let Some((next_back_pc, next_back_frames)) =
+                //         aggregated_cache.range(..=*pc).next_back()
+                //     {
+                //         *callsite = *next_back_pc
+                //     } else {
+                //         continue 'outer;
+                //     }
+                // }
 
                 if next_back_frames.is_empty() == false {
                     let frame = Frame {
@@ -497,9 +497,13 @@ impl Profiler {
             }
         }
 
+        let mut buffer = vec![];
+
         // now go over counters
         println!("Formatting for flamegraph");
         for (i, (frame, count)) in counters.into_iter().enumerate() {
+            buffer.clear();
+
             if i > 0 && i % 10_000_000 == 0 {
                 println!("{} frames formatted", i);
             }
@@ -509,21 +513,51 @@ impl Profiler {
                 callsite,
             } = frame;
             // let source = Some(&equivalent_pc).into_iter().chain(callsite.iter());
-            let source = callsite
-                .iter()
-                .rev()
-                .chain(Some(&equivalent_pc).into_iter());
-            let mut names = source.flat_map(|pc| {
+            // let source = callsite
+            //     .iter()
+            //     .rev()
+            //     .chain(Some(&equivalent_pc).into_iter());
+
+            // here we will need to perform a little of deduplication - if we have a fully inlined path like
+            // a, b, c for the outermost function, and it's callsite is c, then we want to avoid duplicating c
+
+            // we start with inner-most
+            {
+                assert!(equivalent_pc % 4 == 0);
+                let idx = equivalent_pc / 4;
+                let (_, names) = &plain_cache[idx as usize];
+                buffer.extend_from_slice(&names[..]);
+            }
+            for pc in callsite.iter().rev() {
                 assert_eq!(*pc % 4, 0);
                 let idx = *pc / 4;
-                let (expected_pc, names) = &plain_cache[idx as usize];
-                assert_eq!(*expected_pc, *pc);
+                let (_, names) = &plain_cache[idx as usize];
+                // skip common part
+                if names.len() > 0 {
+                    if buffer.len() > 0 {
+                        let last = buffer.last().unwrap();
+                        if let Some(pos) = names.iter().rev().position(|el| el == last) {
+                            buffer.extend_from_slice(&names[(names.len() - 1 - pos)..]);
+                        } else {
+                            buffer.extend_from_slice(&names[..]);
+                        }
+                    } else {
+                        buffer.extend_from_slice(&names[..]);
+                    }
+                }
+            }
 
-                names.iter().rev()
-            });
+            // let mut names = source.flat_map(|pc| {
+            //     assert_eq!(*pc % 4, 0);
+            //     let idx = *pc / 4;
+            //     let (expected_pc, names) = &plain_cache[idx as usize];
+            //     assert_eq!(*expected_pc, *pc);
+
+            //     names.iter().rev()
+            // });
 
             use itertools::Itertools;
-            let concatenated = names.join(";");
+            let concatenated = buffer.iter().rev().join(";");
             let flamegraph_formatted = format!("{} {}", concatenated, count);
             mapped.push(flamegraph_formatted);
         }
