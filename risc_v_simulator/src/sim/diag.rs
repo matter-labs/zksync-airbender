@@ -445,7 +445,7 @@ impl Profiler {
 
     pub(crate) fn write_stacktrace_impl_cached(
         &self,
-        frames: &[(u32, Vec<u32>)],
+        mut frames: Vec<(u32, Vec<u32>)>,
         plain_cache: &[(u32, Vec<String>)],
         aggregated_cache: &BTreeMap<u32, Vec<String>>,
     ) {
@@ -469,13 +469,24 @@ impl Profiler {
 
         let mut mapped = Vec::with_capacity(frames.len());
         println!("Counting frame populaiton");
-        for (i, (pc, callsites)) in frames.iter().enumerate() {
+        'outer: for (i, (pc, callsites)) in frames.iter_mut().enumerate() {
             if i > 0 && i % 10_000_000 == 0 {
                 println!("{} frames counted", i);
             }
             if let Some((next_back_pc, next_back_frames)) =
                 aggregated_cache.range(..=*pc).next_back()
             {
+                // canonicalize callsites same way
+                for callsite in callsites.iter_mut() {
+                    if let Some((next_back_pc, next_back_frames)) =
+                        aggregated_cache.range(..=*pc).next_back()
+                    {
+                        *callsite = *next_back_pc
+                    } else {
+                        continue 'outer;
+                    }
+                }
+
                 if next_back_frames.is_empty() == false {
                     let frame = Frame {
                         equivalent_pc: *next_back_pc,
@@ -508,7 +519,7 @@ impl Profiler {
                 let (expected_pc, names) = &plain_cache[idx as usize];
                 assert_eq!(*expected_pc, *pc);
 
-                names.iter()
+                names.iter().rev()
             });
 
             use itertools::Itertools;
