@@ -19,6 +19,29 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
     // first happy case to align both source and dest to the word size
 
+    #[cfg(all(target_arch = "riscv32", feature = "memcpy_via_precompile"))]
+    {
+        if src.addr() % 32 == 0 && dest.addr() % 32 == 0 && n >= 32 {
+            let MEMCPY_CONTROL_VALUE: u32 =
+                const { 1 << common_constants::delegation_types::MEMCOPY_BIT_IDX };
+            while n >= 32 {
+                let _ = common_constants::delegation_types::bigint_csr_trigger_delegation(
+                    dest.cast::<u32>(),
+                    src.cast::<u32>(),
+                    MEMCPY_CONTROL_VALUE,
+                );
+
+                dest = dest.add(32);
+                src = src.add(32);
+                n -= 32;
+            }
+
+            if n == 0 {
+                return return_value;
+            }
+        }
+    }
+
     const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
 
     while n > 0 && src.addr() % WORD_SIZE != 0 {
