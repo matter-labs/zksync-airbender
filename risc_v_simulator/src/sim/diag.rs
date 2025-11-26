@@ -528,7 +528,7 @@ impl Profiler {
                 let (_, names) = &plain_cache[idx as usize];
                 buffer.extend_from_slice(&names[..]);
             }
-            for pc in callsite.iter().rev() {
+            for pc in callsite.iter() {
                 assert_eq!(*pc % 4, 0);
                 let idx = *pc / 4;
                 let (_, names) = &plain_cache[idx as usize];
