@@ -172,9 +172,12 @@ impl UnrolledProgramProof {
         for (family, proofs) in self.circuit_families_proofs.iter() {
             responses.push(proofs.len() as u32);
             for proof in proofs.iter() {
+                let Some(artifact) = &compiled_layouts.compiled_circuit_families.get(family) else {
+                    panic!("Proofs file has a proof for circuit type {}, but there is no matching compiled circuit in the set", family);
+                };
                 let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
                     proof,
-                    &compiled_layouts.compiled_circuit_families[family],
+                    artifact,
                 );
                 responses.extend(t);
             }

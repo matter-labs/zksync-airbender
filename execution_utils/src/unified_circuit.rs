@@ -70,6 +70,9 @@ pub fn flatten_proof_into_responses_for_unified_recursion(
 ) -> Vec<u32> {
     let mut responses = vec![];
     let op = if input_is_unrolled {
+        assert!(setup.circuit_families_setups.len() > 1);
+        assert!(proof.inits_and_teardowns_proofs.is_empty() == false);
+
         full_statement_verifier::definitions::OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
     } else {
         use crate::unified_circuit::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -244,16 +247,36 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 
 #[cfg(test)]
 mod test {
-
     #[test]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-    fn test_unified_verifier() {
+    fn test_unified_over_unrolled_verifier() {
         use crate::setups::read_and_pad_binary;
         use std::fs::File;
         use std::path::Path;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 
-        let (_, binary_u32) = read_and_pad_binary(Path::new("../../zksync-os/zksync_os/app.bin"));
+        let (_, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
+
+        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap()).unwrap();
+        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap()).unwrap();
+
+        println!("Verifying...");
+        let cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+        // let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+        let result = crate::unified_circuit::verify_proof_in_unified_layer(&proof, &setup, &cicuit_set, true).expect("is valid proof");
+        assert!(result.iter().all(|el| *el == 0) == false);
+        dbg!(result);
+    }
+
+    #[test]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
+    fn test_unified_over_unified_verifier() {
+        use crate::setups::read_and_pad_binary;
+        use std::fs::File;
+        use std::path::Path;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+
+        let (_, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap()).unwrap();
         let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap()).unwrap();
@@ -265,4 +288,80 @@ mod test {
         dbg!(result);
     }
 
+    #[test]
+    fn prove_unified_recursion() {
+        use crate::setups::read_and_pad_binary;
+        use crate::setups::CompiledCircuitsSet;
+        use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use std::fs::File;
+        use std::{io::Read, path::Path};
+        use crate::unrolled::*;
+        use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
+
+        let (binary, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
+        let (text, text_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.text"));
+
+        let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap()).unwrap();
+        let input_proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap()).unwrap();
+        let input_cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+
+        let responses = flatten_proof_into_responses_for_unified_recursion(
+            &input_proof,
+            &input_setup,
+            &input_cicuit_set,
+            true,
+        );
+
+        let source = QuasiUARTSource::new_with_reads(responses);
+
+        println!("Computing setup");
+        let output_setup =
+            crate::unified_circuit::compute_unified_setup_for_machine_configuration::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(&binary, &text);
+        serde_json::to_writer_pretty(
+            File::create("unified_setup_over_recursion.json").unwrap(),
+            &output_setup,
+        )
+        .unwrap();
+        let output_compiled_layouts =
+            crate::setups::get_unified_circuit_artifact_for_machine_type::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(&binary_u32);
+        serde_json::to_writer_pretty(
+            File::create("unified_layout_over_recursion.json").unwrap(),
+            &output_compiled_layouts,
+        )
+        .unwrap();
+        let worker = setups::prover::worker::Worker::new_with_num_threads(8);
+        println!("Computing proof");
+        let mut output_proof =
+            crate::unified_circuit::prove_unified_for_machine_configuration_into_program_proof::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(&binary_u32, &text_u32, 1 << 31, source, 1 << 30, &worker);
+
+        let existing_hash_chain = input_proof.recursion_chain_hash.unwrap();
+        let existing_preimage = input_proof
+            .recursion_chain_preimage
+            .unwrap();
+        // extend a hash chain
+        let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+            &input_setup.end_params,
+            &existing_hash_chain,
+            &existing_preimage,
+        );
+        output_proof.recursion_chain_hash = Some(hash_chain);
+        output_proof.recursion_chain_preimage = Some(preimage);
+
+        serde_json::to_writer_pretty(
+            File::create("unified_proof_over_recursion.json").unwrap(),
+            &output_proof,
+        )
+        .unwrap();
+
+        // let result = crate::unified_circuit::verify_proof_in_unified_layer(&output_proof, &output_setup, &output_compiled_layouts, false).expect("is valid proof");
+        // assert!(result.iter().all(|el| *el == 0) == false);
+        // dbg!(result);
+    }
 }

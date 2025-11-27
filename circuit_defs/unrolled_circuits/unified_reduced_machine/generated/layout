@@ -2188,6 +2188,15 @@
         [
           1,
           {
+            "WitnessSubtree": 11
+          },
+          {
+            "WitnessSubtree": 95
+          }
+        ],
+        [
+          2147483646,
+          {
             "WitnessSubtree": 95
           },
           {
@@ -2203,40 +2212,19 @@
         [
           1,
           {
+            "WitnessSubtree": 12
+          },
+          {
+            "WitnessSubtree": 95
+          }
+        ],
+        [
+          2147483646,
+          {
             "WitnessSubtree": 95
           },
           {
             "MemorySubtree": 17
-          }
-        ]
-      ],
-      "linear_terms": [],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1,
-          {
-            "WitnessSubtree": 95
-          },
-          {
-            "MemorySubtree": 13
-          }
-        ]
-      ],
-      "linear_terms": [],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1,
-          {
-            "WitnessSubtree": 95
-          },
-          {
-            "MemorySubtree": 14
           }
         ]
       ],

@@ -455,24 +455,43 @@ impl<
 
             {
                 // ROM
+                if AVOID_MASKING_ROM_ACCESS_ADDRESS == false {
+                    // constraint that we model it as read 0 from 0 address
+                    let ShuffleRamQueryType::RegisterOrRam {
+                        is_register: _,
+                        address,
+                    } = rs2_or_mem_load_query.query_type
+                    else {
+                        unreachable!()
+                    };
+                    cs.add_constraint(Term::from(address[0]) * Term::from(is_rom_read));
+                    cs.add_constraint(Term::from(address[1]) * Term::from(is_rom_read));
 
-                // constraint that we model it as read 0 from 0 address
-                let ShuffleRamQueryType::RegisterOrRam {
-                    is_register: _,
-                    address,
-                } = rs2_or_mem_load_query.query_type
-                else {
-                    unreachable!()
-                };
-                cs.add_constraint(Term::from(address[0]) * Term::from(is_rom_read));
-                cs.add_constraint(Term::from(address[1]) * Term::from(is_rom_read));
-
-                cs.add_constraint(
-                    Term::from(rs2_or_mem_load_query.read_value[0]) * Term::from(is_rom_read),
-                );
-                cs.add_constraint(
-                    Term::from(rs2_or_mem_load_query.read_value[1]) * Term::from(is_rom_read),
-                );
+                    cs.add_constraint(
+                        Term::from(rs2_or_mem_load_query.read_value[0]) * Term::from(is_rom_read),
+                    );
+                    cs.add_constraint(
+                        Term::from(rs2_or_mem_load_query.read_value[1]) * Term::from(is_rom_read),
+                    );
+                } else {
+                    // we ensure that it's indeed an address we computed. Note that we ignore the value,
+                    // but RAM argument itself ensures that it's some valid one (but we do not care which one)
+                    let ShuffleRamQueryType::RegisterOrRam {
+                        is_register: _,
+                        address,
+                    } = rs2_or_mem_load_query.query_type
+                    else {
+                        unreachable!()
+                    };
+                    cs.add_constraint(
+                        (Term::from(unaligned_address.0[0]) - Term::from(address[0]))
+                            * Term::from(is_rom_read),
+                    );
+                    cs.add_constraint(
+                        (Term::from(unaligned_address.0[1]) - Term::from(address[1]))
+                            * Term::from(is_rom_read),
+                    );
+                }
             };
 
             let [ram_value_low, ram_value_high] = rs2_or_mem_load_query.read_value;
@@ -503,7 +522,6 @@ impl<
             else {
                 unreachable!()
             };
-            // TODO: fix compiler to handle it
             // TODO: fix compiler to handle it
             let t = cs.add_variable_from_constraint_allow_explicit_linear(
                 Term::from(1u64) - Term::from(execute_family),
