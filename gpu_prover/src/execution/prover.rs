@@ -417,7 +417,8 @@ impl ExecutionProver {
         let mut trivial_unified_inits_and_teardowns_count = 0;
         let mut trivial_unified_inits_and_teardowns = BTreeSet::new();
         if let Some(cache) = cache.as_mut() {
-            trivial_unified_inits_and_teardowns_count = cache.trivial_unified_inits_and_teardowns_count;
+            trivial_unified_inits_and_teardowns_count =
+                cache.trivial_unified_inits_and_teardowns_count;
             for i in 0..trivial_unified_inits_and_teardowns_count {
                 trivial_unified_inits_and_teardowns.insert(i);
             }
@@ -693,10 +694,19 @@ impl ExecutionProver {
                         if sequence_id < trivial_unified_inits_and_teardowns_count {
                             assert!(data.inits_and_teardowns.is_none());
                         }
-                        else {
-                            assert!(!unpaired_unified_inits_and_teardowns.contains_key(&sequence_id));
-                            if data.inits_and_teardowns.is_none() {
-                                trivial_unified_inits_and_teardowns_count = sequence_id + 1;
+                        if !proving
+                            || cache.is_none()
+                            || sequence_id >= trivial_unified_inits_and_teardowns_count
+                        {
+                            assert!(
+                                !unpaired_unified_inits_and_teardowns.contains_key(&sequence_id)
+                            );
+                            if sequence_id >= trivial_unified_inits_and_teardowns_count {
+                                if proving && cache.is_some() {
+                                    assert!(data.inits_and_teardowns.is_some())
+                                } else if data.inits_and_teardowns.is_none() {
+                                    trivial_unified_inits_and_teardowns_count = sequence_id + 1;
+                                }
                             }
                             if let Some(tracing_data) =
                                 unpaired_unified_tracing_data.remove(&sequence_id)
@@ -967,7 +977,8 @@ impl ExecutionProver {
                 assert!(cache.is_empty())
             } else {
                 cache.total_requests_count = sent_requests_count;
-                cache.trivial_unified_inits_and_teardowns_count = trivial_unified_inits_and_teardowns_count;
+                cache.trivial_unified_inits_and_teardowns_count =
+                    trivial_unified_inits_and_teardowns_count;
                 cache.simulation_result = simulation_result.clone();
             }
         }
