@@ -251,19 +251,35 @@ mod test {
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     fn test_unified_over_unrolled_verifier() {
         use crate::setups::read_and_pad_binary;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 
-        let (_, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
+        let (_, binary_u32) = read_and_pad_binary(Path::new(
+            "../tools/verifier/recursion_in_unified_layer.bin",
+        ));
 
-        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap()).unwrap();
-        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap()).unwrap();
+        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
+            &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
+        )
+        .unwrap();
+        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
+            &File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap(),
+        )
+        .unwrap();
 
         println!("Verifying...");
-        let cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+        let cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary_u32);
         // let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
-        let result = crate::unified_circuit::verify_proof_in_unified_layer(&proof, &setup, &cicuit_set, true).expect("is valid proof");
+        let result = crate::unified_circuit::verify_proof_in_unified_layer(
+            &proof,
+            &setup,
+            &cicuit_set,
+            true,
+        )
+        .expect("is valid proof");
         assert!(result.iter().all(|el| *el == 0) == false);
         dbg!(result);
     }
@@ -272,18 +288,70 @@ mod test {
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     fn test_unified_over_unified_verifier() {
         use crate::setups::read_and_pad_binary;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 
-        let (_, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
+        let (_, binary_u32) = read_and_pad_binary(Path::new(
+            "../tools/verifier/recursion_in_unified_layer.bin",
+        ));
 
-        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap()).unwrap();
-        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap()).unwrap();
+        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
+            &File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap(),
+        )
+        .unwrap();
+        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
+            &File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap(),
+        )
+        .unwrap();
 
         println!("Verifying...");
-        let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
-        let result = crate::unified_circuit::verify_proof_in_unified_layer(&proof, &setup, &cicuit_set, false).expect("is valid proof");
+        let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary_u32);
+        let result = crate::unified_circuit::verify_proof_in_unified_layer(
+            &proof,
+            &setup,
+            &cicuit_set,
+            false,
+        )
+        .expect("is valid proof");
+        assert!(result.iter().all(|el| *el == 0) == false);
+        dbg!(result);
+    }
+
+    #[test]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
+    fn test_unified_x2_over_unified_verifier() {
+        use crate::setups::read_and_pad_binary;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use std::fs::File;
+        use std::path::Path;
+
+        let (_, binary_u32) = read_and_pad_binary(Path::new(
+            "../tools/verifier/recursion_in_unified_layer.bin",
+        ));
+
+        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
+            &File::open("../gpu_prover_test/setup_final_recursion.json").unwrap(),
+        )
+        .unwrap();
+        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
+            &File::open("../gpu_prover_test/gpu_proof_final_recursion.json").unwrap(),
+        )
+        .unwrap();
+
+        println!("Verifying...");
+        let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary_u32);
+        let result = crate::unified_circuit::verify_proof_in_unified_layer(
+            &proof,
+            &setup,
+            &cicuit_set,
+            false,
+        )
+        .expect("is valid proof");
         assert!(result.iter().all(|el| *el == 0) == false);
         dbg!(result);
     }
@@ -292,19 +360,31 @@ mod test {
     fn prove_unified_recursion() {
         use crate::setups::read_and_pad_binary;
         use crate::setups::CompiledCircuitsSet;
+        use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
+        use crate::unrolled::*;
         use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::{io::Read, path::Path};
-        use crate::unrolled::*;
-        use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
 
-        let (binary, binary_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.bin"));
-        let (text, text_u32) = read_and_pad_binary(Path::new("../tools/verifier/recursion_in_unified_layer.text"));
+        let (binary, binary_u32) = read_and_pad_binary(Path::new(
+            "../tools/verifier/recursion_in_unified_layer.bin",
+        ));
+        let (text, text_u32) = read_and_pad_binary(Path::new(
+            "../tools/verifier/recursion_in_unified_layer.text",
+        ));
 
-        let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap()).unwrap();
-        let input_proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap()).unwrap();
-        let input_cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+        let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
+            &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
+        )
+        .unwrap();
+        let input_proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
+            &File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap(),
+        )
+        .unwrap();
+        let input_cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary_u32);
 
         let responses = flatten_proof_into_responses_for_unified_recursion(
             &input_proof,
@@ -316,19 +396,17 @@ mod test {
         let source = QuasiUARTSource::new_with_reads(responses);
 
         println!("Computing setup");
-        let output_setup =
-            crate::unified_circuit::compute_unified_setup_for_machine_configuration::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&binary, &text);
+        let output_setup = crate::unified_circuit::compute_unified_setup_for_machine_configuration::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary, &text);
         serde_json::to_writer_pretty(
             File::create("unified_setup_over_recursion.json").unwrap(),
             &output_setup,
         )
         .unwrap();
-        let output_compiled_layouts =
-            crate::setups::get_unified_circuit_artifact_for_machine_type::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&binary_u32);
+        let output_compiled_layouts = crate::setups::get_unified_circuit_artifact_for_machine_type::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&binary_u32);
         serde_json::to_writer_pretty(
             File::create("unified_layout_over_recursion.json").unwrap(),
             &output_compiled_layouts,
@@ -342,9 +420,7 @@ mod test {
             >(&binary_u32, &text_u32, 1 << 31, source, 1 << 30, &worker);
 
         let existing_hash_chain = input_proof.recursion_chain_hash.unwrap();
-        let existing_preimage = input_proof
-            .recursion_chain_preimage
-            .unwrap();
+        let existing_preimage = input_proof.recursion_chain_preimage.unwrap();
         // extend a hash chain
         let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
             &input_setup.end_params,

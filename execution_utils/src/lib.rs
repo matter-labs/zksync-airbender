@@ -124,6 +124,21 @@ pub fn compute_end_parameters_for_unrolled_circuits(
     end_params_output.0
 }
 
+pub fn compute_end_parameters_for_unified_circuit(
+    expected_final_pc: u32,
+    unified_circuit_setup: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+) -> [u32; 8] {
+    let mut result_hasher = Blake2sBufferingTranscript::new();
+    let mut buffer = [0u32; 16];
+    buffer[0] = expected_final_pc;
+    result_hasher.absorb(&buffer);
+
+    result_hasher.absorb(MerkleTreeCap::flatten(unified_circuit_setup));
+    let end_params_output = result_hasher.finalize_reset();
+
+    end_params_output.0
+}
+
 pub fn create_initial_chain_encoding_encoding(
     base_layer_end_params: &[u32; 8],
 ) -> ([u32; 16], [u32; 8]) {

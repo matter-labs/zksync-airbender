@@ -543,9 +543,10 @@ mod tests {
         let previous_layer_setup: UnrolledProgramSetup =
             serde_json::from_reader(&File::open("setup_recursion_over_recursion.json").unwrap())
                 .unwrap();
-        let previous_layer_proof: UnrolledProgramProof =
-            serde_json::from_reader(&File::open("gpu_proof_recursion_over_recursion.json").unwrap())
-                .unwrap();
+        let previous_layer_proof: UnrolledProgramProof = serde_json::from_reader(
+            &File::open("gpu_proof_recursion_over_recursion.json").unwrap(),
+        )
+        .unwrap();
         let previous_layer_layouts: CompiledCircuitsSet =
             serde_json::from_reader(&File::open("layouts_recursion_over_recursion.json").unwrap())
                 .unwrap();
@@ -583,10 +584,7 @@ mod tests {
             execution_utils::unified_circuit::compute_unified_setup_for_machine_configuration::<
                 IWithoutByteAccessIsaConfigWithDelegation,
             >(&padded_binary, &padded_text);
-        serde_json::to_writer_pretty(
-            File::create("setup_final_recursion.json").unwrap(),
-            &setup,
-        )
+        serde_json::to_writer_pretty(File::create("setup_final_recursion.json").unwrap(), &setup)
             .unwrap();
         let layouts = execution_utils::setups::get_unified_circuit_artifact_for_machine_type::<
             IWithoutByteAccessIsaConfigWithDelegation,
@@ -595,7 +593,7 @@ mod tests {
             File::create("layouts_final_recursion.json").unwrap(),
             &layouts,
         )
-            .unwrap();
+        .unwrap();
 
         println!("Computing proof");
 
@@ -632,7 +630,7 @@ mod tests {
             File::create("gpu_proof_final_recursion.json").unwrap(),
             &gpu_proof,
         )
-            .unwrap();
+        .unwrap();
 
         let worker = Worker::new_with_num_threads(8);
         println!("Computing proof");
@@ -653,7 +651,7 @@ mod tests {
             File::create("cpu_proof_final_recursion.json").unwrap(),
             &cpu_proof,
         )
-            .unwrap();
+        .unwrap();
 
         compare_program_proofs(&cpu_proof, &gpu_proof);
     }
