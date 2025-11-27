@@ -85,7 +85,11 @@ pub fn flatten_proof_into_responses_for_unified_recursion(
         full_statement_verifier::definitions::OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
     };
     responses.push(op);
-    responses.extend(setup.flatten_for_recursion());
+    if input_is_unrolled {
+        responses.extend(setup.flatten_for_recursion());
+    } else {
+        responses.extend(setup.flatten_unified_for_recursion());
+    }
     responses.extend(proof.flatten_into_responses(&[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     ], compiled_layouts));
@@ -236,4 +240,29 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
         register_final_state,
         (final_pc, final_timestamp),
     )
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
+    fn test_unified_verifier() {
+        use crate::setups::read_and_pad_binary;
+        use std::fs::File;
+        use std::path::Path;
+        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+
+        let (_, binary_u32) = read_and_pad_binary(Path::new("../../zksync-os/zksync_os/app.bin"));
+
+        let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(&File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap()).unwrap();
+        let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(&File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap()).unwrap();
+
+        println!("Verifying...");
+        let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<IWithoutByteAccessIsaConfigWithDelegation>(&binary_u32);
+        let result = crate::unified_circuit::verify_proof_in_unified_layer(&proof, &setup, &cicuit_set, false).expect("is valid proof");
+        assert!(result.iter().all(|el| *el == 0) == false);
+        dbg!(result);
+    }
+
 }
