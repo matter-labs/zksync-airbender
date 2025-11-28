@@ -361,13 +361,13 @@ impl ExecutionProver {
     }
 
     /// Removes a binary from the `ExecutionProver`.
-    /// 
-    /// # Arguments 
-    /// 
+    ///
+    /// # Arguments
+    ///
     /// * `key`: A unique identifier for the binary to be removed.
-    /// 
-    /// returns: () 
-    /// 
+    ///
+    /// returns: ()
+    ///
     pub fn remove_binary(&mut self, key: usize) {
         info!("PROVER removing binary with key {key:?}");
         assert!(self.binary_holders.remove(&key).is_some());
@@ -1384,10 +1384,10 @@ impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapp
 mod tests {
     use crate::execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
     use crate::machine_type::MachineType;
-    use crate::tests::{init_logger};
+    use crate::tests::init_logger;
     use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use std::path::Path;
     use setups::read_binary;
+    use std::path::Path;
 
     #[test]
     fn test_execution_prover() {
@@ -1407,8 +1407,10 @@ mod tests {
         );
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![3 << 25, 0]);
         let base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
-        let (_, binary_image) = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
-        let (_, text_section) = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
+        let (_, binary_image) =
+            read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
+        let (_, text_section) =
+            read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
         prover.add_binary(
             1,
             ExecutionKind::Unrolled,

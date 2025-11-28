@@ -79,7 +79,9 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::{DelegationAbiDescription, UnifiedDestinationHolder};
-use setups::{read_binary, unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations};
+use setups::{
+    read_binary, unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations,
+};
 use setups::{UnrolledCircuitPrecomputations, UnrolledCircuitWitnessEvalFn};
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
