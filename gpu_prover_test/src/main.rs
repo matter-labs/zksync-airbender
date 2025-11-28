@@ -107,9 +107,9 @@ mod tests {
             read_and_pad_binary(Path::new("../examples/hashed_fibonacci/app.text"));
         // // read_and_pad_binary(Path::new("../riscv_transpiler/examples/keccak_f1600/app.text"));
         let (text, text_u32) = read_binary(Path::new("../examples/hashed_fibonacci/app.text"));
-        read_binary(Path::new(
-            "../riscv_transpiler/examples/keccak_f1600/app.text",
-        ));
+        // read_binary(Path::new(
+        //     "../riscv_transpiler/examples/keccak_f1600/app.text",
+        // ));
         // println!("Computing setup");
         // let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
         //     IMStandardIsaConfigWithUnsignedMulDiv,
@@ -186,20 +186,6 @@ mod tests {
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
-    }
-
-    pub(crate) fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-        use std::io::Read;
-        let mut file = std::fs::File::open(path).expect("must open provided file");
-        let mut buffer = vec![];
-        file.read_to_end(&mut buffer).expect("must read the file");
-        assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
-        let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
-        for el in buffer.as_chunks::<4>().0 {
-            binary.push(u32::from_le_bytes(*el));
-        }
-
-        (buffer, binary)
     }
 
     #[test]
@@ -472,69 +458,16 @@ mod tests {
         )
         .unwrap();
 
-        dbg!(setup.circuit_families_setups.keys());
-        dbg!(layouts.compiled_circuit_families.keys());
-        dbg!(layouts.compiled_inits_and_teardowns.is_some());
         // println!("Verifying CPU proof...");
         // let result = execution_utils::unrolled::verify_unrolled_layer_proof(&cpu_proof, &setup, &layouts, false).expect("is valid proof");
         // assert_eq!(result.iter().all(|el| *el == 0), false);
 
         println!("Verifying GPU proof...");
-        dbg!(&gpu_proof.register_final_values);
         let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
-            &gpu_proof, &setup, &layouts, true,
+            &gpu_proof, &setup, &layouts, false,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
-    }
-
-    fn init_logger() {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
-            .target(env_logger::Target::Stdout)
-            .format_timestamp_millis()
-            .format_module_path(false)
-            .format_target(false)
-            .init();
-    }
-
-    fn compare_program_proofs(a: &UnrolledProgramProof, b: &UnrolledProgramProof) {
-        assert_eq!(a.final_pc, b.final_pc);
-        assert_eq!(a.final_timestamp, b.final_timestamp);
-        assert_eq!(a.register_final_values, b.register_final_values);
-        assert_eq!(
-            a.circuit_families_proofs.len(),
-            b.circuit_families_proofs.len()
-        );
-        for (a, b) in a
-            .circuit_families_proofs
-            .iter()
-            .zip(b.circuit_families_proofs.iter())
-        {
-            assert_eq!(a.0, b.0);
-            assert_eq!(a.1.len(), b.1.len());
-            for (proof_a, proof_b) in a.1.iter().zip(b.1.iter()) {
-                compare_unrolled_proofs(proof_a, proof_b);
-            }
-        }
-        assert_eq!(
-            a.inits_and_teardowns_proofs.len(),
-            b.inits_and_teardowns_proofs.len()
-        );
-        for (proof_a, proof_b) in a
-            .inits_and_teardowns_proofs
-            .iter()
-            .zip(b.inits_and_teardowns_proofs.iter())
-        {
-            compare_unrolled_proofs(proof_a, proof_b);
-        }
-        assert_eq!(a.delegation_proofs.len(), b.delegation_proofs.len());
-        for (a, b) in a.delegation_proofs.iter().zip(b.delegation_proofs.iter()) {
-            assert_eq!(a.0, b.0);
-            assert_eq!(a.1.len(), b.1.len());
-            for (proof_a, proof_b) in a.1.iter().zip(b.1.iter()) {
-                compare_delegation_proofs(proof_a, proof_b);
-            }
-        }
     }
 
     #[test]
@@ -654,6 +587,93 @@ mod tests {
         .unwrap();
 
         compare_program_proofs(&cpu_proof, &gpu_proof);
+    }
+
+    #[cfg(feature = "verifier_80")]
+    #[test]
+    fn verify_final_recursion_proof() {
+        let setup: UnrolledProgramSetup =
+            serde_json::from_reader(&File::open("setup_final_recursion.json").unwrap()).unwrap();
+        let layouts: CompiledCircuitsSet =
+            serde_json::from_reader(&File::open("layouts_final_recursion.json").unwrap()).unwrap();
+        // let cpu_proof: UnrolledProgramProof = serde_json::from_reader(&File::open("cpu_proof_recursion_over_base.json").unwrap()).unwrap();
+        let gpu_proof: UnrolledProgramProof =
+            serde_json::from_reader(&File::open("gpu_proof_final_recursion.json").unwrap())
+                .unwrap();
+
+        // println!("Verifying CPU proof...");
+        // let result = execution_utils::unrolled::verify_unrolled_layer_proof(&cpu_proof, &setup, &layouts, false).expect("is valid proof");
+        // assert_eq!(result.iter().all(|el| *el == 0), false);
+
+        println!("Verifying GPU proof...");
+        let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
+            &gpu_proof, &setup, &layouts, false,
+        )
+        .expect("is valid proof");
+        assert_eq!(result.iter().all(|el| *el == 0), false);
+    }
+
+    fn init_logger() {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
+            .target(env_logger::Target::Stdout)
+            .format_timestamp_millis()
+            .format_module_path(false)
+            .format_target(false)
+            .init();
+    }
+
+    fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).expect("must open provided file");
+        let mut buffer = vec![];
+        file.read_to_end(&mut buffer).expect("must read the file");
+        assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
+        let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
+        for el in buffer.as_chunks::<4>().0 {
+            binary.push(u32::from_le_bytes(*el));
+        }
+
+        (buffer, binary)
+    }
+
+    fn compare_program_proofs(a: &UnrolledProgramProof, b: &UnrolledProgramProof) {
+        assert_eq!(a.final_pc, b.final_pc);
+        assert_eq!(a.final_timestamp, b.final_timestamp);
+        assert_eq!(a.register_final_values, b.register_final_values);
+        assert_eq!(
+            a.circuit_families_proofs.len(),
+            b.circuit_families_proofs.len()
+        );
+        for (a, b) in a
+            .circuit_families_proofs
+            .iter()
+            .zip(b.circuit_families_proofs.iter())
+        {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1.len(), b.1.len());
+            for (proof_a, proof_b) in a.1.iter().zip(b.1.iter()) {
+                compare_unrolled_proofs(proof_a, proof_b);
+            }
+        }
+        assert_eq!(
+            a.inits_and_teardowns_proofs.len(),
+            b.inits_and_teardowns_proofs.len()
+        );
+        for (proof_a, proof_b) in a
+            .inits_and_teardowns_proofs
+            .iter()
+            .zip(b.inits_and_teardowns_proofs.iter())
+        {
+            compare_unrolled_proofs(proof_a, proof_b);
+        }
+        assert_eq!(a.delegation_proofs.len(), b.delegation_proofs.len());
+        for (a, b) in a.delegation_proofs.iter().zip(b.delegation_proofs.iter()) {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1.len(), b.1.len());
+            for (proof_a, proof_b) in a.1.iter().zip(b.1.iter()) {
+                compare_delegation_proofs(proof_a, proof_b);
+            }
+        }
     }
 
     fn compare_unrolled_proofs(a: &UnrolledModeProof, b: &UnrolledModeProof) {

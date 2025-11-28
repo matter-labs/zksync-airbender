@@ -4,20 +4,15 @@ use crate::circuit_type::{
 };
 use crate::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::witness::trace_delegation::DelegationTraceRaw;
 use crate::witness::trace_unrolled::{
     UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryTraceDevice,
     UnrolledNonMemoryTraceRaw, UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
 };
-use crate::witness::witness_delegation::GenerateWitnessDelegation;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_get_info;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
-use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use std::ptr::{null, null_mut};
 
 cuda_kernel!(GenerateWitnessUnrolledMemoryKernel,

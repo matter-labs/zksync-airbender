@@ -11,7 +11,7 @@ use super::stage_5::StageFiveOutput;
 use super::trace_holder::{flatten_tree_caps, get_tree_caps, TreesCacheMode};
 use super::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use super::{device_tracing, BF};
-use crate::circuit_type::{CircuitType, UnrolledCircuitType};
+use crate::circuit_type::CircuitType;
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -22,8 +22,7 @@ use fft::{GoodAllocator, LdePrecomputations};
 use field::Mersenne31Field;
 use itertools::Itertools;
 use prover::definitions::{
-    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, Transcript,
-    OPTIMAL_FOLDING_PROPERTIES,
+    AuxArgumentsBoundaryValues, ExternalChallenges, Transcript, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;

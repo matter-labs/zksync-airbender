@@ -26,7 +26,6 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use field::{Field, PrimeField};
 use prover::definitions::ExternalDelegationArgumentChallenges;
 use std::cmp::max;
 

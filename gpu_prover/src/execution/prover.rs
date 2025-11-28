@@ -1416,7 +1416,6 @@ mod tests {
             text_section,
             None,
         );
-
         drop(prover);
     }
 }

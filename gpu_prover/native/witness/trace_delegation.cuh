@@ -28,9 +28,9 @@ struct RegisterOrIndirectVariableOffsetData {
 constexpr u16 NON_DETERMINISM_CSR = 0x7c0;
 
 struct BigintWithControlAbiDescription {
-  static constexpr unsigned REG_ACCESSES = 3; // 3 x 16B = 48B
-  static constexpr unsigned INDIRECT_READS = 8; // 8 x 12B = 96B
-  static constexpr unsigned INDIRECT_WRITES = 8; // 8 x 16B = 128B
+  static constexpr unsigned REG_ACCESSES = 3;     // 3 x 16B = 48B
+  static constexpr unsigned INDIRECT_READS = 8;   // 8 x 12B = 96B
+  static constexpr unsigned INDIRECT_WRITES = 8;  // 8 x 16B = 128B
   static constexpr unsigned VARIABLE_OFFSETS = 0; // 0 x 2B = 0B
   static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 10;
   static constexpr unsigned BASE_REGISTER = 10;
@@ -38,8 +38,8 @@ struct BigintWithControlAbiDescription {
 };
 
 struct Blake2sRoundFunctionAbiDescription {
-  static constexpr unsigned REG_ACCESSES = 3; // 3 x 16B = 48B
-  static constexpr unsigned INDIRECT_READS = 16; // 16 x 12B = 192B
+  static constexpr unsigned REG_ACCESSES = 3;     // 3 x 16B = 48B
+  static constexpr unsigned INDIRECT_READS = 16;  // 16 x 12B = 192B
   static constexpr unsigned INDIRECT_WRITES = 24; // 24 x 16B = 384B
   static constexpr unsigned VARIABLE_OFFSETS = 0; // 0 x 2B = 0B
   static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 7;
@@ -50,10 +50,10 @@ struct Blake2sRoundFunctionAbiDescription {
 #define KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS 6
 
 struct KeccakSpecial5AbiDescription {
-  static constexpr unsigned REG_ACCESSES = 2; // 2 x 16B = 32B
-  static constexpr unsigned INDIRECT_READS = 0; // 0 x 12B = 0B
+  static constexpr unsigned REG_ACCESSES = 2;                                           // 2 x 16B = 32B
+  static constexpr unsigned INDIRECT_READS = 0;                                         // 0 x 12B = 0B
   static constexpr unsigned INDIRECT_WRITES = KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS * 2; // 6 x 2 x 16B = 192B
-  static constexpr unsigned VARIABLE_OFFSETS = KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS; // 6 x 2B = 12B
+  static constexpr unsigned VARIABLE_OFFSETS = KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS;    // 6 x 2B = 12B
   static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 11;
   static constexpr unsigned BASE_REGISTER = 10;
   DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }

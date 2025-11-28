@@ -1,6 +1,5 @@
 use crate::execution::messages::WorkerResult;
-use crate::execution::snapshot::Snapshot;
-use crate::execution::tracing::{TracingDataProducers, TracingType};
+use crate::execution::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::execution::A;
 use crate::machine_type::MachineType;
 use crossbeam_channel::{Receiver, Sender};
@@ -97,6 +96,17 @@ impl DerefMut for LockedBoxedTraceChunk {
         &mut self.chunk
     }
 }
+
+pub(crate) struct Snapshot<R: DataTraceRanges> {
+    pub index: usize,
+    pub cycles_count: usize,
+    pub initial_state: MachineState,
+    pub trace: LockedBoxedTraceChunk,
+    pub final_state: MachineState,
+    pub trace_ranges: R,
+}
+
+unsafe impl<R: DataTraceRanges> Send for Snapshot<R> {}
 
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,

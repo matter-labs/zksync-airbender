@@ -41,8 +41,7 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const RegisterAndIndire
                                                          const RegisterAndIndirectAccessTimestampComparisonAuxVars &aux_vars,
                                                          const DelegationTrace<DESCRIPTION> &oracle, const matrix_setter<bf, st_modifier::cg> memory,
                                                          const matrix_setter<bf, st_modifier::cg> witness, const unsigned index) {
-  const TimestampData write_timestamp =
-      COMPUTE_WITNESS ? oracle.get_witness_from_placeholder_ts({DelegationWriteTimestamp}, index) : TimestampData{};
+  const TimestampData write_timestamp = COMPUTE_WITNESS ? oracle.get_witness_from_placeholder_ts({DelegationWriteTimestamp}, index) : TimestampData{};
 #pragma unroll
   for (u32 i = 0; i < MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT; ++i) {
     if (i == register_and_indirect_access_descriptions.count)
@@ -68,8 +67,7 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const RegisterAndIndire
       break;
     }
     }
-    const TimestampData register_read_timestamp_value =
-        oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
+    const TimestampData register_read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
     write_timestamp_value(register_read_timestamp_columns, register_read_timestamp_value, memory);
     PRINT_TS(M, register_read_timestamp_columns, register_read_timestamp_value);
     const u32 register_read_value = oracle.get_witness_from_placeholder_u32({DelegationRegisterReadValue, register_index}, index);
@@ -177,11 +175,10 @@ EXTERN __global__ void ab_generate_memory_values_bigint_with_control_kernel(cons
   generate<false>(subtree, {}, oracle, memory, memory, count);
 }
 
-EXTERN __global__ void
-ab_generate_memory_and_witness_values_bigint_with_control_kernel(const __grid_constant__ DelegationMemorySubtree subtree,
-                                                                 const __grid_constant__ RegisterAndIndirectAccessTimestampComparisonAuxVars aux_vars,
-                                                                 const __grid_constant__ BigintWithControlOracle oracle, const matrix_setter<bf, st_modifier::cg> memory,
-                                                                 const matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
+EXTERN __global__ void ab_generate_memory_and_witness_values_bigint_with_control_kernel(
+    const __grid_constant__ DelegationMemorySubtree subtree, const __grid_constant__ RegisterAndIndirectAccessTimestampComparisonAuxVars aux_vars,
+    const __grid_constant__ BigintWithControlOracle oracle, const matrix_setter<bf, st_modifier::cg> memory, const matrix_setter<bf, st_modifier::cg> witness,
+    const unsigned count) {
   generate<true>(subtree, aux_vars, oracle, memory, witness, count);
 }
 
