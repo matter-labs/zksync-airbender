@@ -334,7 +334,7 @@ pub fn get_delegation_compiled_circuits_for_machine_without_signed_mul_div_confi
 }
 
 pub mod all_parameters {
-    use verifier_common::prover::definitions::MerkleTreeCap;
+    use super::*;
     include!("../generated/all_delegation_circuits_params.rs");
 }
 
@@ -649,7 +649,7 @@ pub fn generate_delegation_circuits_artifacts() -> String {
     description
 }
 
-pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
     use std::io::Read;
     let mut file = std::fs::File::open(path).expect("must open provided file");
     let mut buffer = vec![];
@@ -660,9 +660,13 @@ pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
         binary.push(u32::from_le_bytes(*el));
     }
 
+    (buffer, binary)
+}
+
+pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+    let (mut buffer, mut binary) = read_binary(path);
     pad_bytecode_bytes_for_proving(&mut buffer);
     pad_bytecode_for_proving(&mut binary);
-
     (buffer, binary)
 }
 

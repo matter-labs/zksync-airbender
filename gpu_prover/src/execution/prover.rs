@@ -46,29 +46,16 @@ use trace_and_split::{
 use type_map::concurrent::TypeMap;
 use worker::Worker;
 
+/// Specifies the execution mode for the prover.
+///
+/// Variants:
+/// - `Unrolled`: Uses unrolled circuit types for proof and memory commitment generation.
+/// - `Unified`: Uses a unified circuit type, supported only for the `Reduced` machine type.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {
     Unrolled,
     Unified,
 }
-
-// const CPU_WORKERS_COUNT: usize = 6;
-// const CYCLES_TRACING_WORKERS_COUNT: usize = CPU_WORKERS_COUNT - 2;
-// const CACHE_DELEGATIONS: bool = false;
-
-/// Represents an executable binary that can be proven by the prover
-///
-///  # Fields
-/// * `key`: unique identifier for the binary, can be for example a &str or usize, anything that implements Clone, Debug, Eq, and Hash
-/// * `circuit_type`: the type of the circuit this binary is for, one of the values from the `MainCircuitType` enumeration
-/// * `bytecode`: the bytecode of the binary, can be a Vec<u32> or any other type that can be converted into Box<[u32]>
-///
-// #[derive(Clone)]
-// pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash, B: Into<Box<[u32]>>> {
-//     pub key: K,
-//     pub circuit_type: MainCircuitType,
-//     pub bytecode: B,
-// }
 
 struct BinaryHolder {
     execution_kind: ExecutionKind,
@@ -81,6 +68,17 @@ struct BinaryHolder {
     precomputations: HashMap<UnrolledCircuitType, CircuitPrecomputations>,
 }
 
+/// Configuration for the `ExecutionProver`.
+///
+/// Fields:
+/// - `prover_context_config`: Configuration for the prover context.
+/// - `max_thread_pool_threads`: Optional maximum number of threads for the prover's thread pool.
+/// - `expected_concurrent_jobs`: Expected number of concurrent jobs the prover will handle.
+/// - `replay_worker_threads_count`: Number of threads for replay workers.
+/// - `host_allocator_backing_allocation_size`: Size (in bytes) of each host buffer allocation.
+/// - `host_allocators_per_job_count`: Number of host allocators allocated per job.
+/// - `host_allocators_per_device_count`: Number of host allocators allocated per device.
+/// - `min_free_host_allocators_per_job`: Minimum number of free host allocators per job before cache trimming is triggered.
 #[derive(Clone, Copy, Debug)]
 pub struct ExecutionProverConfiguration {
     pub prover_context_config: ProverContextConfig,
@@ -196,15 +194,19 @@ pub struct ExecutionProver {
 }
 
 impl ExecutionProver {
+    ///  Creates a new instance of `ExecutionProver` with the default configuration.
+    ///
+    /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
+    ///
     pub fn new() -> Self {
         Self::with_configuration(ExecutionProverConfiguration::default())
     }
-    ///  Creates a new instance of `ExecutionProver`.
+
+    ///  Creates a new instance of `ExecutionProver` with the supplied configuration.
     ///
     /// # Arguments
     ///
-    /// * `max_concurrent_batches`: maximum number of concurrent batches that the prover allocates host buffers for, this is a soft limit, the prover will work with more batches if needed, but it can stall certain operations for some time
-    /// * `binaries`: a vector of executable binaries that the prover can work with, each binary must have a unique key
+    /// * `configuration`: the configuration for the execution prover
     ///
     /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
     ///
@@ -281,6 +283,16 @@ impl ExecutionProver {
         }
     }
 
+    /// Adds a binary to the `ExecutionProver` for proof or memory commitment generation.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A unique identifier for the binary.
+    /// * `execution_kind` - Specifies the execution mode (`Unrolled` or `Unified`).
+    /// * `machine_type` - The type of machine for which the binary is intended.
+    /// * `binary_image` - The unpadded binary image as a vector of `u32`.
+    /// * `text_section` - The unpadded text section as a vector of `u32`.
+    /// * `cycles_bound` - An optional upper bound on execution cycles.
     pub fn add_binary(
         &mut self,
         key: usize,
@@ -348,6 +360,14 @@ impl ExecutionProver {
         assert!(self.binary_holders.insert(key, holder).is_none());
     }
 
+    /// Removes a binary from the `ExecutionProver`.
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `key`: A unique identifier for the binary to be removed.
+    /// 
+    /// returns: () 
+    /// 
     pub fn remove_binary(&mut self, key: usize) {
         info!("PROVER removing binary with key {key:?}");
         assert!(self.binary_holders.remove(&key).is_some());
@@ -1116,14 +1136,10 @@ impl ExecutionProver {
     /// # Arguments
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
-    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
+    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys of the binaries that were previously added to the `ExecutionProver` using the `add_binary` method
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of memory commitments for the chunks of the main circuit,
-    ///     - a vector of memory commitments for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    /// returns: a CommitMemoryResult structure
     ///
     pub fn commit_memory(
         &self,
@@ -1166,14 +1182,10 @@ impl ExecutionProver {
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
     /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     /// * `external_challenges`: an instance of `ExternalChallenges` that contains the challenges to be used in the proof generation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of proofs for the chunks of the main circuit,
-    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    /// returns: a ProveResult structure
     ///
     pub fn prove(
         &self,
@@ -1198,13 +1210,9 @@ impl ExecutionProver {
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
     /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of proofs for the chunks of the main circuit,
-    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    /// returns: a ProveResult structure
     ///
     pub fn commit_memory_and_prove(
         &self,
@@ -1311,14 +1319,6 @@ impl ExecutionProver {
     }
 }
 
-// impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<K> {
-//     fn drop(&mut self) {
-//         trace!("PROVER waiting for all threads to finish");
-//         self.wait_group.take().unwrap().wait();
-//         trace!("PROVER all threads finished");
-//     }
-// }
-
 fn unrolled_proof_into_proof(proof: UnrolledModeProof) -> Proof {
     assert!(proof.aux_boundary_values.is_empty());
     Proof {
@@ -1384,9 +1384,10 @@ impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapp
 mod tests {
     use crate::execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
     use crate::machine_type::MachineType;
-    use crate::tests::{init_logger, read_binary};
+    use crate::tests::{init_logger};
     use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::path::Path;
+    use setups::read_binary;
 
     #[test]
     fn test_execution_prover() {
@@ -1394,8 +1395,8 @@ mod tests {
         let mut configuration = ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = 8;
         let mut prover = ExecutionProver::with_configuration(configuration);
-        let binary_image = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
-        let text_section = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+        let (_, binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
+        let (_, text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -1406,8 +1407,8 @@ mod tests {
         );
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![3 << 25, 0]);
         let base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
-        let binary_image = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
-        let text_section = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
+        let (_, binary_image) = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
+        let (_, text_section) = read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
         prover.add_binary(
             1,
             ExecutionKind::Unrolled,

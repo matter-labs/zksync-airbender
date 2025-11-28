@@ -79,7 +79,7 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::{DelegationAbiDescription, UnifiedDestinationHolder};
-use setups::{unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations};
+use setups::{read_binary, unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations};
 use setups::{UnrolledCircuitPrecomputations, UnrolledCircuitWitnessEvalFn};
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
@@ -108,19 +108,6 @@ pub fn init_logger() {
         .format_module_path(false)
         .format_target(false)
         .init();
-}
-
-pub fn read_binary(path: &std::path::Path) -> Vec<u32> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path).expect("must open provided file");
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).expect("must read the file");
-    assert_eq!(buffer.len() % size_of::<u32>(), 0);
-    let mut binary = Vec::with_capacity(buffer.len() / size_of::<u32>());
-    for el in buffer.as_chunks::<4>().0 {
-        binary.push(u32::from_le_bytes(*el));
-    }
-    binary
 }
 
 // #[test]
@@ -2691,9 +2678,9 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     let tree_cap_size = CIRCUIT_TYPE.get_tree_cap_size();
 
     let worker = Worker::new();
-    let mut binary_image = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
+    let (_, mut binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
     setups::pad_bytecode_for_proving(&mut binary_image);
-    let mut text_section = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+    let (_, mut text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
     setups::pad_bytecode_for_proving(&mut text_section);
 
     let precomputations = unified_reduced_machine_circuit_setup::<Global, Global>(
@@ -3200,9 +3187,9 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
 
 #[test]
 fn test_prove_unrolled_hashed_fibonacci() {
-    let mut binary_image = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
+    let (_, mut binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
     setups::pad_bytecode_for_proving(&mut binary_image);
-    let mut text_section = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+    let (_, mut text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
     setups::pad_bytecode_for_proving(&mut text_section);
 
     let worker = Worker::new();
