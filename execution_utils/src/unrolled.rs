@@ -132,21 +132,21 @@ pub struct UnrolledProgramProof {
 }
 
 impl UnrolledProgramProof {
-    pub fn get_proof_counts(&self) -> (usize, usize) {
-        let proofs: usize = self
+    pub fn get_proof_counts(&self) -> (usize, usize, usize) {
+        let family_proofs: usize = self
             .circuit_families_proofs
             .iter()
             .map(|(_, v)| v.len())
             .sum();
+        let inits_and_teardowns_proofs = self.inits_and_teardowns_proofs.len();
         let delegation_proofs: usize = self.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
-        (proofs, delegation_proofs)
+        (family_proofs, inits_and_teardowns_proofs, delegation_proofs)
     }
+
     pub fn debug_info(&self) -> String {
-        let (proofs, delegation_proofs) = self.get_proof_counts();
-        format!(
-            "Proofs: {} circuit family proofs, {} delegation proofs",
-            proofs, delegation_proofs
-        )
+        let (family_proofs, inits_and_teardowns_proofs, delegation_proofs) =
+            self.get_proof_counts();
+        format!("Proofs: {family_proofs} circuit family proof(s), {inits_and_teardowns_proofs} inits and teardowns proof(s), {delegation_proofs} delegation proof(s)")
     }
 
     pub fn flatten_into_responses(

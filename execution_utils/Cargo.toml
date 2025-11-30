@@ -17,6 +17,7 @@ riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true }
 clap = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 sha3 = { workspace = true }
 serde_json = "*"

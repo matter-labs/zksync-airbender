@@ -38,7 +38,7 @@ pub(crate) fn run_simulator<
     text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
-    memory_holder: Arc<Mutex<LockedBoxedMemoryHolder>>,
+    memory_holder: &mut LockedBoxedMemoryHolder,
     non_determinism: Arc<Mutex<Option<ND>>>,
     free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -49,7 +49,6 @@ pub(crate) fn run_simulator<
     worker: &Worker,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut memory_holder = memory_holder.lock().unwrap();
     let mut non_determinism_guard = non_determinism.lock().unwrap();
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let runner = SimulationRunner::<_, T>::new(
@@ -68,7 +67,7 @@ pub(crate) fn run_simulator<
         text_section,
         cycles_bound,
         jit_cache,
-        &mut memory_holder,
+        memory_holder,
     );
     let SimulationRunner {
         batch_id,
@@ -85,7 +84,7 @@ pub(crate) fn run_simulator<
         assert!(!is_aborted);
         let results = results.unwrap();
         let instant = Instant::now();
-        let inits_and_teardowns = collect_inits_and_teardowns(&mut memory_holder, worker);
+        let inits_and_teardowns = collect_inits_and_teardowns(memory_holder, worker);
         let elapsed = instant.elapsed();
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
@@ -181,9 +180,11 @@ pub(crate) fn run_replayer<T: TracingType>(
         if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
             debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
             is_aborted = true;
-            let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
-            let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+            if total_cycles != 0 {
+                let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+                let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+                debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+            }
         }
         let Snapshot {
             index,
@@ -229,7 +230,7 @@ pub(crate) fn run_replayer<T: TracingType>(
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
-    if !is_aborted {
+    if !is_aborted && total_cycles != 0 {
         debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
     }
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");

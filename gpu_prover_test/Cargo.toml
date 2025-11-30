@@ -10,15 +10,15 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-execution_utils = { workspace = true, default-features = false, features = ["prover"] }
+execution_utils = { workspace = true, default-features = false, features = ["prover", "gpu_prover"] }
 gpu_prover = { workspace = true }
 risc_v_simulator = { workspace = true }
 
 log = { workspace = true }
 
+bincode = { version =  "2", features = ["serde"] }
 env_logger = "0.11"
 hex = "0.4"
-rayon = "1"
 serde_json = "1.0"
 
 [features]

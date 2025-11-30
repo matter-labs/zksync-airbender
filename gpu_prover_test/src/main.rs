@@ -17,6 +17,7 @@ mod tests {
         flatten_proof_into_responses_for_unrolled_recursion, UnrolledProgramProof,
         UnrolledProgramSetup,
     };
+    use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
     use gpu_prover::execution::prover::{
         ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
     };
@@ -27,7 +28,7 @@ mod tests {
         IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
     };
     use std::fs::File;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::path::Path;
 
     #[test]
@@ -93,6 +94,41 @@ mod tests {
             recursion_chain_hash: None,
         };
         serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &proof).unwrap();
+    }
+
+    #[test]
+    fn prove_recursive_single_block_with_unrolled_prover() {
+        init_logger();
+
+        let block_number = 23620012;
+        // let block_number = 23873944;
+
+        let mut file = File::open(&format!("{}_witness", block_number)).expect("should open file");
+        let mut witness = vec![];
+        file.read_to_end(&mut witness)
+            .expect("must read witness from file");
+        let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+        assert_eq!(witness.len() % 4, 0);
+        let witness: Vec<_> = witness
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|el| u32::from_be_bytes(*el))
+            .collect();
+        let app_path = "../riscv_transpiler/examples/zksync_os/app";
+        let prover = UnrolledProver::new(
+            &app_path.to_string(),
+            8,
+            UnrolledProverLevel::RecursionUnified,
+        );
+        let source = QuasiUARTSource::new_with_reads(witness);
+        let (proof, _) = prover.prove(block_number, source);
+        let encoded = bincode::serde::encode_to_vec(&proof, bincode::config::standard()).unwrap();
+        File::create("gpu_proof_unrolled_prover.bin")
+            .unwrap()
+            .write_all(&encoded)
+            .unwrap();
+        // serde_json::to_writer_pretty(File::create("gpu_proof_unrolled_prover.json").unwrap(), &proof).unwrap();
     }
 
     #[test]
