@@ -363,9 +363,9 @@ impl<T> TraceHolder<T> {
             false => CosetsHolder::Full(vec![evaluations]),
         };
         let trees = match trees_cache_mode {
-            TreesCacheMode::CacheNone => TreesHolder::Full(vec![]),
+            TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePatrial => unimplemented!(),
-            TreesCacheMode::CacheFull => TreesHolder::None,
+            TreesCacheMode::CacheFull => TreesHolder::Full(vec![]),
         };
         Ok(Self {
             log_domain_size,

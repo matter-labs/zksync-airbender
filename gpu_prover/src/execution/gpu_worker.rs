@@ -128,7 +128,7 @@ fn gpu_worker(
                         circuit,
                         log_lde_factor,
                         log_tree_cap_size,
-                        true,
+                        false,
                         setup_trees_and_caps,
                         &context,
                     )?;

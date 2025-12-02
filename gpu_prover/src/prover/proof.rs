@@ -124,6 +124,8 @@ pub fn prove<'a, A: GoodAllocator>(
     setup_range.start(stream)?;
     setup.ensure_is_extended(context)?;
     setup_range.end(stream)?;
+    #[cfg(feature = "log_gpu_mem_usage")]
+    context.log_gpu_mem_usage("after setup.ensure_is_extended");
 
     let mut stage_1_output = StageOneOutput::allocate_trace_holders(
         &circuit,
