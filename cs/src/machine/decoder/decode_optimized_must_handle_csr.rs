@@ -241,7 +241,6 @@ impl OptimizedDecoder {
         //      j_insn * (sign_bit * 0xfff0 + rs1_high) + u_insn * insn_high +
         //      (1 - j_insn - u_insn) * sign_bit * 0xffff
         // }
-        
 
         // chunks 0..4 are used for linear constraint later on to form imm_low
         let chunks_defining_constraints: [Constraint<F>; 5] = [
