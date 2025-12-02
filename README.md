@@ -60,7 +60,7 @@ Details on third-party notices can be found in [NOTICE.md](./NOTICE.md), in `ACK
 - [Twitter for Developers](https://twitter.com/zkSyncDevs)
 - [Discord](https://join.zksync.dev/)
 - [Mirror](https://zksync.mirror.xyz/)
-- [YouTube](https://www.youtube.com/@zkSync-era)
+- [YouTube](https://www.youtube.com/@zksync-io)
 
 ## Contribution
 

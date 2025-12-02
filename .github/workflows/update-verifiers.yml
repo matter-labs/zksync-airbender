@@ -20,7 +20,8 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA} \
             | jq -r .commit.message)
-          echo message="${MESSAGE}" >> "${GITHUB_OUTPUT}"
+          # Save only the commit message header
+          echo message="$(echo ${MESSAGE} | head -n 1)" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout repo
         if: ${{ !contains(steps.commit.outputs.message, env.COMMIT_MESSAGE) }}

@@ -163,22 +163,9 @@ unsafe fn workload() -> ! {
             // First - verify both proofs (keep reading from the CSR).
             let output1 = full_statement_verifier::verify_recursion_layer();
             let output2 = full_statement_verifier::verify_recursion_layer();
-            // Proving chains must be equal.
-            for i in 8..16 {
-                assert_eq!(output1[i], output2[i], "Proving chains must be equal");
-            }
 
-            // The first 8 words of the result are the hash of the two outputs.
-            // This way, to verify the combined proof, we can check that it matches
-            // the rolling hash of the public inputs.
-            let mut hasher = Keccak32::new();
-
-            update_from_recursive_circuit_output(&mut hasher, &output1);
-            update_from_recursive_circuit_output(&mut hasher, &output2);
-            let mut result = [0u32; 16];
-            // TODO: in the future - set the result[7] to be equal to 0.
-            result[0..8].copy_from_slice(&hasher.finalize());
-            result[8..16].copy_from_slice(&output1[8..16]);
+            // merge the inputs together
+            let result = merge_recursive_circuit_output(output1, output2);
 
             riscv_common::zksync_os_finish_success_extended(&result);
         }
@@ -190,43 +177,31 @@ unsafe fn workload() -> ! {
         // This is similar to 4, combine 2 proofs into one, but now we combine N proofs into one.
         // The advantage is in the number of proving rounds you need to do.
         // Option 4 requires O(n) rounds of proving, whilst this requires a single round (time will be closer to O(logn), due to recursion).
+        //
+        // The right way to think about this method is a rolling hash over circuits:
+        // keccak(..., keccak(keccak(output1 || output2), output3), output4, ... outputN)
         6 => {
             let no_circuits = riscv_common::csr_read_word();
             assert!(no_circuits >= 2, "Requires at least two circuits to verify");
 
-            // The first 8 words of the result are the hash of the proof's outputs.
-            // This way, to verify multiple combined proof, we can check that it matches
-            // the rolling hash of the public inputs.
-            let mut hasher = Keccak32::new();
-
-            // verify first proof & keep it's output to ensure all proof come from the same chain
-            // NOTE: this could be any other proof, not necessarily the first one.
-            let first_output = full_statement_verifier::verify_recursion_layer();
-
-            update_from_recursive_circuit_output(&mut hasher, &first_output);
+            // verify first proof & use it as the seed for the rolling hash
+            //
+            // the proof's outputs are as follows:
+            // output[0..8] - the actual output of the circuit
+            // output[8..16] - the verification key (should be the same across all proofs, checked inside merge_recursive_circuit_output)
+            // merging is done over inputs [0..8], whilst key is not modified (being copied over and over)
+            let mut rolling_hash = full_statement_verifier::verify_recursion_layer();
 
             // iterate over remaining circuits
             for _ in 1..no_circuits {
                 // verify proof
                 let output = full_statement_verifier::verify_recursion_layer();
 
-                // Proving chains must be equal.
-                for i in 8..16 {
-                    assert_eq!(first_output[i], output[i], "Proving chains must be equal");
-                }
-
-                // build the rolling hash over proofs's outputs
-                update_from_recursive_circuit_output(&mut hasher, &output);
+                // build the rolling hash over the remaining proofs' outputs (ensuring they belong to same proving chain)
+                rolling_hash = merge_recursive_circuit_output(rolling_hash, output);
             }
 
-            let mut result = [0u32; 16];
-
-            // TODO: in the future - set the result[7] to be equal to 0.
-            result[0..8].copy_from_slice(&hasher.finalize());
-            // chain remains the same
-            result[8..16].copy_from_slice(&first_output[8..16]);
-
-            riscv_common::zksync_os_finish_success_extended(&result);
+            riscv_common::zksync_os_finish_success_extended(&rolling_hash);
         }
         // Unknown metadata.
         _ => {
@@ -239,21 +214,43 @@ unsafe fn workload() -> ! {
     feature = "universal_circuit",
     feature = "universal_circuit_no_delegation"
 ))]
-/// Used in hashing proofs for verification.
-/// Keccak-256 implementation, but hashes specifically to be compatible with our SNARK.
-/// First 8 [0 -> 8) words represent the actual output of the circuit, which is what we need to hash.
-/// Last 8 [8 -> 16) words represent the the verification key.
-/// Verification Key stays the same across all circuits (already checked above).
-fn update_from_recursive_circuit_output(hasher: &mut Keccak32, output: &[u32; 16]) {
+/// Merges proof outputs from two recursive circuits into one output.
+/// TL;DR; Keccaks the two outputs together.
+///
+/// Note, a proof is structured as follows:
+/// - first 8 u32s are the actual proof output
+/// - last 8 u32s are the verification key identifier (proving chain)
+fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 16] {
+    // Proving chain must be equal
+    for i in 8..16 {
+        assert_eq!(first[i], second[i], "Proving chains must be equal");
+    }
+
     // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
     // and we'll actually shift them all by 1.
-    // So our output is the keccak(input_1[0..8]>>32, input_2[0..8]>>32, ..., input_n[0..8]>>32)
+
+    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+    let mut hasher = Keccak32::new();
+    hasher.update(&[0u32]);
+
+    for val in &first[0..7] {
+        hasher.update(&[*val]);
+    }
+
     // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
     hasher.update(&[0u32]);
 
-    for val in &output[0..7] {
+    for val in &second[0..7] {
         hasher.update(&[*val]);
     }
+
+    let mut result = [0u32; 16];
+    // merged outputs
+    result[0..8].copy_from_slice(&hasher.finalize());
+    // same vk
+    result[8..16].copy_from_slice(&first[8..16]);
+
+    result
 }
 
 #[cfg(feature = "verifier_tests")]

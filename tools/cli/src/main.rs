@@ -672,14 +672,14 @@ fn run_binary(
         }
     }
 
-    let registers = match machine {
+    let (registers, reached_end) = match machine {
         Machine::Standard => {
             let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
                 _,
                 IMStandardIsaConfig,
             >(config, non_determinism_source);
 
-            result.state.registers
+            (result.state.registers, result.reached_end)
         }
         Machine::Reduced => {
             let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
@@ -687,7 +687,7 @@ fn run_binary(
                 IWithoutByteAccessIsaConfigWithDelegation,
             >(config, non_determinism_source);
 
-            result.state.registers
+            (result.state.registers, result.reached_end)
         }
         Machine::ReducedLog23 => {
             let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
@@ -695,7 +695,7 @@ fn run_binary(
                 IWithoutByteAccessIsaConfigWithDelegation,
             >(config, non_determinism_source);
 
-            result.state.registers
+            (result.state.registers, result.reached_end)
         }
         Machine::ReducedFinal => {
             let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
@@ -703,9 +703,13 @@ fn run_binary(
                 IWithoutByteAccessIsaConfig,
             >(config, non_determinism_source);
 
-            result.state.registers
+            (result.state.registers, result.reached_end)
         }
     };
+
+    if !reached_end {
+        println!("WARNING: execution did not finish; most likely ran out of cycles!");
+    }
 
     // our convention is to return 32 bytes placed into registers x10-x17
 
