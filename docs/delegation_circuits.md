@@ -20,6 +20,14 @@ Currently, in our system, we have three delegation circuits implemented:
 
 ---
 
+### Trusted-code guarantees
+
+All delegations rely on the same **trusted-code** assumption as the base machine: Airbender currently proves only M-mode firmware that has been audited and compiled specifically for the circuit. Because we know the bytecode never emits illegal combinations, the circuits stay permissive about edge selectors such as `control_mask = 0` or a zero `round_bitmask`. We still flag these during development—the simulator panics on zero masks so authors catch mistakes but the proving circuit accepts them, since the production binaries never hit those paths.
+
+This does not create an exploit. Forcing a zero mask merely yields a proof that nothing happened (all-zero accesses, all-zero outputs), comparable to calling an Ethereum precompile with empty calldata—valid, yet useless. Real faults such as divide-by-zero, overflow, or invalid opcodes already render the constraint system unsatisfiable, so a malicious witness can’t smuggle work past the verifier. When we expand to user-mode/untrusted programs, we will revisit these guards and add stricter checks in-circuit.
+
+---
+
 ### BLAKE2 single round
 A fast cryptographic hash function built from add/xor/rotate G rounds over 32-bit words, it achieves high performance on CPUs and GPUs, keeping Merkle commitments and recursion fast. The function is circuit-friendly, as its operations decompose into simple XOR/bitwise lookups and additions, making it efficient as a delegation circuit, and it produces compact 256-bit outputs suitable for commitments.
 
