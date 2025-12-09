@@ -29,7 +29,7 @@ default = ["blake2_with_compression"]
 
 [dev-dependencies]
 serde = "1"
-serde_json = "*"
+serde_json = "1.0"
 prover = {workspace = true, default-features = true}
 proc-macro2 = { version = "1" }
 syn = { version = "2" }

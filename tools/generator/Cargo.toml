@@ -13,7 +13,7 @@ categories.workspace = true
 clap = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 serde = { workspace = true }
-serde_json = { version = "*" }
+serde_json = { version = "1.0" }
 verifier_generator = { workspace = true }
 setups = { workspace = true }
 witness_eval_generator = { workspace = true }

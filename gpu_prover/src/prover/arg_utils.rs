@@ -21,7 +21,7 @@ use prover::prover_stages::cached_data::ProverCachedData;
 
 use super::{BF, E4};
 use std::mem::size_of;
-// TODO: Once we have an overall prove function, consider making a big standalon helper
+// TODO: Once we have an overall prove function, consider making a big standalone helper
 // that creates all args common to stages 2 and 3.
 
 #[derive(Clone, Default)]
