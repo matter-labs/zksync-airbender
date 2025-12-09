@@ -364,7 +364,10 @@ impl ProverCachedData {
                 let circuit_sequence_bits_shift = (trace_len.trailing_zeros()
                     + num_bits_in_timestamp_for_index_log_2)
                     - TIMESTAMP_COLUMNS_NUM_BITS;
-                assert!((circuit_sequence << circuit_sequence_bits_shift) <= u16::MAX as usize);
+                assert!(
+                    (circuit_sequence << circuit_sequence_bits_shift)
+                        < (1 << TIMESTAMP_COLUMNS_NUM_BITS)
+                );
 
                 let memory_timestamp_high_from_circuit_idx =
                     Mersenne31Field::from_u64_with_reduction(
