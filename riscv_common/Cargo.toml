@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-heapless = { version = "*", default-features = false, optional = true }
+heapless = { version = "0.9", default-features = false, optional = true }
 
 [features]
 uart = ["heapless"]

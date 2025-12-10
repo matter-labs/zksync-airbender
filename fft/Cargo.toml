@@ -16,7 +16,7 @@ worker.workspace = true
 unroll.workspace = true
 seq-macro.workspace = true
 itertools.workspace = true
-rayon = "*"
+rayon = "1.11"
 
 [dev-dependencies]
 criterion = "0.5"

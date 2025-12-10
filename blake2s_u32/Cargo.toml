@@ -13,7 +13,7 @@ categories.workspace = true
 unroll.workspace = true
 
 [dev-dependencies]
-blake2 = "*"
+blake2 = "0.10"
 criterion = "0.5"
 
 [[bench]]

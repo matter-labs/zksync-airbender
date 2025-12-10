@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-serde_json = "*"
+serde_json = "1.0"
 clap = { workspace = true }
 execution_utils = { path = "../../execution_utils"}
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }

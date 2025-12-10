@@ -31,7 +31,7 @@ syn = { version = "2", optional = true }
 quote = { version = "1", optional = true }
 bit-set = { version = "0.8", optional = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git", optional = true }
-serde_json = { version = "*", optional = true }
+serde_json = { version = "1.0", optional = true }
 bincode = { version = "1.3", optional = true }
 
 [dev-dependencies]

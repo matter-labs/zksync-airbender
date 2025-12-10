@@ -17,8 +17,8 @@ serde = { workspace = true }
 syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
 proc-macro2 = "1"
-proc-macro-error2 = "*"
-serde_json = { version = "*"  }
+proc-macro-error2 = "2.0"
+serde_json = { version = "1.0"  }
 bincode = { version = "1.3" }
 
 [features]
