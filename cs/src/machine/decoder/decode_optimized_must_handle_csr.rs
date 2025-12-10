@@ -239,7 +239,7 @@ impl OptimizedDecoder {
         // chunk4 = (i_insn + s_insn + b_insn) * sign_bit * 0b1111 + (u_insn + j_insn) * (rs1_low << 3 + funct3)
         // chunk5 = {
         //      j_insn * (sign_bit * 0xfff0 + rs1_high) + u_insn * insn_high +
-        //      (1 - j_insn - b_insn) * sign_bit * 0xffff
+        //      (1 - j_insn - u_insn) * sign_bit * 0xffff
         // }
 
         // chunks 0..4 are used for linear constraint later on to form imm_low

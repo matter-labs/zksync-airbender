@@ -306,7 +306,7 @@ impl<
                 // default value is as-is it was divisor == 0
 
                 let quotient = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(u32::MAX);
-                let remainder = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let remainder = divident_unsigned.clone();
 
                 let masked_divisor = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &divisor_is_non_zero,
