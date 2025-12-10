@@ -50,6 +50,7 @@ enum TableType : u16 {
   StoreByteSourceContribution,
   StoreByteExistingContribution,
   TruncateShift,
+  ExtractLower5Bits,
   DynamicPlaceholder,
 };
 
@@ -461,6 +462,14 @@ template <unsigned K, unsigned V> struct TableDriver {
     return get_absolute_index<TruncateShift>(index);
   }
 
+  DEVICE_FORCEINLINE u32 extract_lower_5_bits(const bf keys[K], bf *values) const {
+    auto setter = [](const u32 index, u32 *result) {
+      result[0] = index & 0b11111;
+      result[1] = 0;
+    };
+    return set_values_from_single_key<ExtractLower5Bits>(keys, values, setter);
+  }
+
   DEVICE_FORCEINLINE u32 get_index_and_set_values(const TableType table_type, const bf keys[K], bf *values) const {
     switch (table_type) {
     case ZeroEntry:
@@ -538,6 +547,8 @@ template <unsigned K, unsigned V> struct TableDriver {
       return store_byte_existing_contribution(keys, values);
     case TruncateShift:
       return truncate_shift(keys, values);
+    case ExtractLower5Bits:
+      return extract_lower_5_bits(keys, values);
     default:
       __trap();
     }

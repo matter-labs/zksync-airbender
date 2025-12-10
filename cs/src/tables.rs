@@ -702,6 +702,7 @@ impl quote::ToTokens for TableType {
             }
             TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
             TableType::TruncateShift => quote! { TableType::TruncateShift },
+            TableType::ExtractLower5Bits => quote! { TableType::ExtractLower5Bits },
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")
             }
@@ -829,6 +830,9 @@ impl TableType {
             }
             TableType::TruncateShift => {
                 LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
+            }
+            TableType::ExtractLower5Bits => {
+                LookupWrapper::Dimensional3(create_extract_lower_5_bits_table::<F>(id))
             }
             a @ _ => {
                 todo!("Support {:?}", a);
@@ -1683,7 +1687,6 @@ pub fn create_select_byte_and_get_sign_table<F: PrimeField>(id: u32) -> LookupTa
         id,
     )
 }
-
 pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
     let mut keys = Vec::with_capacity(1 << (8 + 1));
     for first in 0..(1 << 8) {
@@ -1728,6 +1731,28 @@ pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable
 
             ((a << 1) | b) as usize
         }),
+        id,
+    )
+}
+
+pub fn create_extract_lower_5_bits_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+    const TABLE_WIDTH: usize = 16;
+
+    let keys = key_for_continuous_log2_range(TABLE_WIDTH);
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        format!("Shift amount truncation table"),
+        1,
+        |keys| {
+            let a = keys[0].as_u64_reduced();
+            assert!(a < (1 << TABLE_WIDTH));
+
+            let shift_amount = a & 0b11111;
+
+            let result = [F::from_u64_unchecked(shift_amount as u64), F::ZERO, F::ZERO];
+            (a as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F, 3>),
         id,
     )
 }

@@ -54,6 +54,7 @@ pub enum TableType {
     StoreByteSourceContribution,
     StoreByteExistingContribution,
     TruncateShift,
+    ExtractLower5Bits,
     DynamicPlaceholder,
 }
 
