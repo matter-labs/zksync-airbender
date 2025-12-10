@@ -1106,7 +1106,7 @@ fn eval_fn_31<
         W::U16::select(&v_0, &v_23, &witness_proxy.get_witness_place_u16(19usize)),
     );
     let v_25 = W::U32::div_rem_assume_nonzero_divisor(&v_15, &v_17).1;
-    let v_26 = WitnessComputationCore::select(&v_11, &v_25, &v_9);
+    let v_26 = WitnessComputationCore::select(&v_11, &v_25, &v_15);
     let v_27 = v_26.truncate();
     witness_proxy.set_witness_place_u16(
         20usize,

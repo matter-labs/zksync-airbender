@@ -44,7 +44,7 @@ cargo run --release prove  --bin ../../examples/basic_fibonacci/app.bin --output
 
 where the .bin file is the RISC-V compiled file. You can see more instructions on how to create such file in the basic_fibonacci dir.
 
-**Compilation times** - you might want to use `--profile cli` to minimise the compilation time, as --release might take a long time to compile the veirfication code, and --dev might be generating a proof for a really long time.
+**Compilation times** - you might want to use `--profile cli` to minimise the compilation time, as --release might take a long time to compile the verification code, and --dev might be generating a proof for a really long time.
 
 ### Proofs
 You will get one or more proofs as the result - depending on the length of your program (proofs in format `proof_XX.json`) and the amount of delegations (precompiles) that you used (proofs in format `delegation_PRECOMPILE-ID_XX.json`)
