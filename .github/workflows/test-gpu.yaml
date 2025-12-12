@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=80;89;90 CARGO_TARGET_DIR=./build \
+          CUDAARCHS="80;89;90" CARGO_TARGET_DIR=./build \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
