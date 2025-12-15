@@ -1,12 +1,12 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
-use crate::circuit_type::CircuitType;
 use crate::circuit_type::MainCircuitType;
+use crate::circuit_type::{CircuitType, DelegationCircuitType};
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::memory::commit_memory;
 use crate::prover::setup::SetupPrecomputations;
 use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::get_aux_arguments_boundary_values;
+use crate::witness::trace_main::{get_aux_arguments_boundary_values, MainTraceHost};
 use cs::definitions::split_timestamp;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::device::{get_device_count, get_device_properties, set_device};
@@ -65,6 +65,8 @@ const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = true;
 const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CacheNone;
 const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
 const TREES_CACHE_MODE_FOR_BENCHMARKS: TreesCacheMode = TreesCacheMode::CacheFull;
+
+type A = ConcurrentStaticHostAllocator;
 
 fn init_logger() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -195,15 +197,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     num_instances_upper_bound: usize,
     bytecode: &[u32],
     non_determinism: ND,
-    risc_v_circuit_precomputations: &MainCircuitPrecomputations<
-        IMStandardIsaConfig,
-        Global,
-        ConcurrentStaticHostAllocator,
-    >,
-    delegation_circuits_precomputations: &[(
-        u32,
-        DelegationCircuitPrecomputations<Global, ConcurrentStaticHostAllocator>,
-    )],
+    risc_v_circuit_precomputations: &MainCircuitPrecomputations<IMStandardIsaConfig, Global, A>,
+    delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<Global, A>)],
     prover_context: &ProverContext,
     worker: &Worker,
 ) -> CudaResult<(Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>)> {
@@ -217,12 +212,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
         inits_and_teardowns,
         delegation_circuits_witness,
         final_register_values,
-    ) = trace_execution_for_gpu::<ND, ConcurrentStaticHostAllocator>(
-        max_cycles_to_run,
-        bytecode,
-        non_determinism,
-        worker,
-    );
+    ) = trace_execution_for_gpu::<ND, A>(max_cycles_to_run, bytecode, non_determinism, worker);
 
     let (num_paddings, inits_and_teardowns) = inits_and_teardowns;
 
@@ -230,7 +220,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
     let padding_shuffle_ram_inits_and_teardowns = ShuffleRamSetupAndTeardown {
         lazy_init_data: {
             let len = risc_v_circuit_precomputations.compiled_circuit.trace_len - 1;
-            let mut data = Vec::with_capacity_in(len, ConcurrentStaticHostAllocator::default());
+            let mut data = Vec::with_capacity_in(len, A::default());
             data.spare_capacity_mut()
                 .fill(MaybeUninit::new(Default::default()));
             unsafe { data.set_len(len) };
@@ -464,10 +454,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
             let log_tree_cap_size =
                 OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
             let setup_row_major = &risc_v_circuit_precomputations.setup.ldes[0].trace;
-            let mut setup_evaluations = Vec::with_capacity_in(
-                setup_row_major.as_slice().len(),
-                ConcurrentStaticHostAllocator::default(),
-            );
+            let mut setup_evaluations =
+                Vec::with_capacity_in(setup_row_major.as_slice().len(), A::default());
             unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
             transpose::transpose(
                 setup_row_major.as_slice(),
@@ -628,10 +616,8 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
                 let log_tree_cap_size = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize]
                     .total_caps_size_log2 as u32;
                 let setup_row_major = &prec.setup.ldes[0].trace;
-                let mut setup_evaluations = Vec::with_capacity_in(
-                    setup_row_major.as_slice().len(),
-                    ConcurrentStaticHostAllocator::default(),
-                );
+                let mut setup_evaluations =
+                    Vec::with_capacity_in(setup_row_major.as_slice().len(), A::default());
                 unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
                 transpose::transpose(
                     setup_row_major.as_slice(),
@@ -728,11 +714,7 @@ fn prove_image_execution_for_machine_with_gpu_tracers<
 fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     bytecode: &[u32],
     non_determinism: ND,
-    precomputations: &MainCircuitPrecomputations<
-        IMStandardIsaConfig,
-        Global,
-        ConcurrentStaticHostAllocator,
-    >,
+    precomputations: &MainCircuitPrecomputations<IMStandardIsaConfig, Global, A>,
     contexts: &[ProverContext],
     worker: &Worker,
 ) -> CudaResult<()> {
@@ -746,12 +728,7 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
         _inits_and_teardowns,
         _delegation_circuits_witness,
         _final_register_values,
-    ) = trace_execution_for_gpu::<ND, ConcurrentStaticHostAllocator>(
-        max_cycles_to_run,
-        bytecode,
-        non_determinism,
-        worker,
-    );
+    ) = trace_execution_for_gpu::<ND, A>(max_cycles_to_run, bytecode, non_determinism, worker);
 
     let trace = main_circuits_witness.into_iter().nth(0).unwrap().into();
     let data = TracingDataHost::Main {
@@ -766,10 +743,8 @@ fn bench_proof_main<ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>>(
     let log_tree_cap_size =
         OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
     let setup_row_major = &precomputations.setup.ldes[0].trace;
-    let mut setup_evaluations = Vec::with_capacity_in(
-        setup_row_major.as_slice().len(),
-        ConcurrentStaticHostAllocator::default(),
-    );
+    let mut setup_evaluations =
+        Vec::with_capacity_in(setup_row_major.as_slice().len(), A::default());
     unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
     transpose::transpose(
         setup_row_major.as_slice(),
@@ -1320,4 +1295,242 @@ fn compare_proofs(left: &Proof, right: &Proof) {
         }
     }
     assert_eq!(left.pow_nonce, right.pow_nonce);
+}
+
+#[test]
+fn test_dummy_circuit() -> CudaResult<()> {
+    init_logger();
+    let instant = std::time::Instant::now();
+    ProverContext::initialize_global_host_allocator(8, 1 << 8, 22)?;
+    let mut prover_context_config = ProverContextConfig::default();
+    prover_context_config.allocation_block_log_size = 22;
+    let context = ProverContext::new(&prover_context_config)?;
+    println!("prover_context created in {:?}", instant.elapsed());
+    let worker = Worker::new();
+    let mut binary = vec![];
+    std::fs::File::open("../examples/hashed_fibonacci/app.bin")
+        .unwrap()
+        .read_to_end(&mut binary)
+        .unwrap();
+    let expected_final_pc = find_binary_exit_point(&binary);
+    println!(
+        "Expected final PC for base program is 0x{:08x}",
+        expected_final_pc
+    );
+    let binary = get_padded_binary(&binary);
+
+    test_dummy_main_circuit(
+        &context,
+        MainCircuitType::RiscVCycles,
+        &setups::get_main_riscv_circuit_setup::<A, Global>(&binary, &worker),
+    )?;
+
+    test_dummy_main_circuit(
+        &context,
+        MainCircuitType::MachineWithoutSignedMulDiv,
+        &setups::get_riscv_without_signed_mul_div_circuit_setup::<A, Global>(&binary, &worker),
+    )?;
+
+    test_dummy_main_circuit(
+        &context,
+        MainCircuitType::ReducedRiscVMachine,
+        &setups::get_reduced_riscv_circuit_setup::<A, Global>(&binary, &worker),
+    )?;
+
+    test_dummy_main_circuit(
+        &context,
+        MainCircuitType::ReducedRiscVLog23Machine,
+        &setups::get_reduced_riscv_log_23_circuit_setup::<A, Global>(&binary, &worker),
+    )?;
+
+    let delegation_factories = setups::delegation_factories_for_machine::<IMStandardIsaConfig, A>();
+
+    test_dummy_delegation_circuit(
+        &context,
+        DelegationCircuitType::BigIntWithControl,
+        &setups::get_bigint_with_control_circuit_setup(&worker),
+        &delegation_factories[&DelegationCircuitType::BigIntWithControl.get_delegation_type_id()],
+    )?;
+
+    test_dummy_delegation_circuit(
+        &context,
+        DelegationCircuitType::Blake2WithCompression,
+        &setups::get_blake2_with_compression_circuit_setup(&worker),
+        &delegation_factories
+            [&DelegationCircuitType::Blake2WithCompression.get_delegation_type_id()],
+    )?;
+
+    Ok(())
+}
+
+fn test_dummy_main_circuit(
+    context: &ProverContext,
+    circuit_type: MainCircuitType,
+    precomputations: &MainCircuitPrecomputations<impl MachineConfig, A, Global>,
+) -> CudaResult<()> {
+    println!("testing {circuit_type:?} circuit");
+    let cycles_per_circuit = circuit_type.get_num_cycles();
+    let trace_len = circuit_type.get_domain_size();
+    assert_eq!(cycles_per_circuit + 1, trace_len);
+    let mut cycle_data = Vec::with_capacity_in(cycles_per_circuit, A::default());
+    unsafe {
+        cycle_data.set_len(cycles_per_circuit);
+    }
+    let trace = MainTraceHost {
+        cycles_traced: cycles_per_circuit,
+        cycle_data: Arc::new(cycle_data),
+        num_cycles_chunk_size: cycles_per_circuit,
+    };
+    let data = TracingDataHost::Main {
+        setup_and_teardown: None,
+        trace,
+    };
+    let lde_factor = circuit_type.get_lde_factor();
+    let circuit = &precomputations.compiled_circuit;
+    let gpu_circuit = Arc::new(circuit.clone());
+    let log_lde_factor = lde_factor.trailing_zeros();
+    let log_domain_size = trace_len.trailing_zeros();
+    let log_tree_cap_size =
+        OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+    let setup_row_major = &precomputations.setup.ldes[0].trace;
+    let mut setup_evaluations =
+        Vec::with_capacity_in(setup_row_major.as_slice().len(), A::default());
+    unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+    transpose::transpose(
+        setup_row_major.as_slice(),
+        &mut setup_evaluations,
+        setup_row_major.padded_width,
+        setup_row_major.len(),
+    );
+    setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+    let setup_evaluations = Arc::new(setup_evaluations);
+    let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        setup_evaluations.clone(),
+        &context,
+    )?;
+    let mut setup = SetupPrecomputations::new(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        RECOMPUTE_COSETS_FOR_CORRECTNESS,
+        setup_trees_and_caps,
+        &context,
+    )?;
+    setup.schedule_transfer(setup_evaluations.clone(), &context)?;
+    let circuit_type = CircuitType::Main(circuit_type);
+    let external_values = ExternalValues {
+        challenges: ExternalChallenges::draw_from_transcript_seed(Seed([0; 8]), true),
+        aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+    };
+    let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), &context)?;
+    transfer.schedule_transfer(&context)?;
+    let job = crate::prover::proof::prove(
+        gpu_circuit.clone(),
+        external_values,
+        &mut setup,
+        transfer,
+        &precomputations.lde_precomputations,
+        0,
+        None,
+        lde_factor,
+        NUM_QUERIES,
+        POW_BITS,
+        None,
+        RECOMPUTE_COSETS_FOR_CORRECTNESS,
+        TREES_CACHE_MODE_FOR_CORRECTNESS,
+        &context,
+    )?;
+    job.finish()?;
+    Ok(())
+}
+
+fn test_dummy_delegation_circuit(
+    context: &ProverContext,
+    circuit_type: DelegationCircuitType,
+    precomputations: &DelegationCircuitPrecomputations<A, Global>,
+    delegation_factory: &Box<dyn Fn() -> DelegationWitness<A>>,
+) -> CudaResult<()> {
+    println!("testing {circuit_type:?} circuit");
+    let cycles_per_circuit = circuit_type.get_num_delegation_cycles();
+    let trace_len = circuit_type.get_domain_size();
+    assert_eq!(cycles_per_circuit + 1, trace_len);
+    let mut trace = delegation_factory();
+    trace.write_timestamp.push(Default::default());
+    trace.register_accesses.extend_from_slice(&vec![
+        Default::default();
+        trace.num_register_accesses_per_delegation
+    ]);
+    trace.indirect_reads.extend_from_slice(&vec![
+        Default::default();
+        trace.num_indirect_reads_per_delegation
+    ]);
+    trace.indirect_writes.extend_from_slice(&vec![
+        Default::default();
+        trace.num_indirect_writes_per_delegation
+    ]);
+    let data = TracingDataHost::Delegation(trace.into());
+    let lde_factor = circuit_type.get_lde_factor();
+    let circuit = &precomputations.compiled_circuit.compiled_circuit;
+    let gpu_circuit = Arc::new(circuit.clone());
+    let log_lde_factor = lde_factor.trailing_zeros();
+    let log_domain_size = trace_len.trailing_zeros();
+    let log_tree_cap_size =
+        OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32;
+    let setup_row_major = &precomputations.setup.ldes[0].trace;
+    let mut setup_evaluations =
+        Vec::with_capacity_in(setup_row_major.as_slice().len(), A::default());
+    unsafe { setup_evaluations.set_len(setup_row_major.as_slice().len()) };
+    transpose::transpose(
+        setup_row_major.as_slice(),
+        &mut setup_evaluations,
+        setup_row_major.padded_width,
+        setup_row_major.len(),
+    );
+    setup_evaluations.truncate(setup_row_major.len() * setup_row_major.width());
+    let setup_evaluations = Arc::new(setup_evaluations);
+    let setup_trees_and_caps = SetupPrecomputations::get_trees_and_caps(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        setup_evaluations.clone(),
+        &context,
+    )?;
+    let mut setup = SetupPrecomputations::new(
+        circuit,
+        log_lde_factor,
+        log_tree_cap_size,
+        RECOMPUTE_COSETS_FOR_CORRECTNESS,
+        setup_trees_and_caps,
+        &context,
+    )?;
+    setup.schedule_transfer(setup_evaluations.clone(), &context)?;
+    let delegation_type = circuit_type.get_delegation_type_id();
+    let circuit_type = CircuitType::Delegation(circuit_type);
+    let external_values = ExternalValues {
+        challenges: ExternalChallenges::draw_from_transcript_seed(Seed([0; 8]), true),
+        aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+    };
+    let mut transfer = TracingDataTransfer::new(circuit_type, data.clone(), &context)?;
+    transfer.schedule_transfer(&context)?;
+    let job = crate::prover::proof::prove(
+        gpu_circuit.clone(),
+        external_values,
+        &mut setup,
+        transfer,
+        &precomputations.lde_precomputations,
+        0,
+        Some(delegation_type),
+        lde_factor,
+        NUM_QUERIES,
+        POW_BITS,
+        None,
+        RECOMPUTE_COSETS_FOR_CORRECTNESS,
+        TREES_CACHE_MODE_FOR_CORRECTNESS,
+        &context,
+    )?;
+    job.finish()?;
+    Ok(())
 }

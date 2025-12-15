@@ -53,7 +53,7 @@ fn stash_coeff(
 const MAX_NON_BOOLEAN_CONSTRAINTS: usize = 192;
 const MAX_TERMS: usize = 1824;
 const MAX_EXPLICIT_COEFFS: usize = 632;
-const MAX_FLAT_COL_IDXS: usize = 3488;
+const MAX_FLAT_COL_IDXS: usize = 3520;
 const MAX_QUADRATIC_TERMS_PER_CONSTRAINT: usize = 256;
 const MAX_LINEAR_TERMS_PER_CONSTRAINT: usize = 256;
 const COEFF_IS_ONE: u8 = 0x00;
