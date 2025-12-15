@@ -28,7 +28,7 @@ pub const SECURITY_BITS: usize = verifier_common::SECURITY_BITS;
 pub const POW_BITS: usize = verifier_common::POW_BITS;
 pub const CHALLENGE_FIELD_SIZE_LOG2: usize = verifier_common::MERSENNE31QUARTIC_SIZE_LOG2;
 pub const POW_CONFIG: verifier_common::SizedProofPowConfig<NUM_FRI_STEPS> =
-    verifier_common::worst_sized_pow_config::<NUM_FRI_STEPS>(SECURITY_BITS);
+    verifier_common::SizedProofPowConfig::<NUM_FRI_STEPS>::worst_case_config();
 pub const TOTAL_TREE_CAP_SIZE: usize = 1 << FOLDING_PROPERTIES.total_caps_size_log2;
 pub const TREE_CAP_SIZE: usize = TOTAL_TREE_CAP_SIZE / NUM_COSETS;
 pub const TREE_CAP_SIZE_LOG2: usize = TREE_CAP_SIZE.trailing_zeros() as usize;

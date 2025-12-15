@@ -262,7 +262,9 @@ unsafe fn count_special_range_check_multiplicities(
                     );
                     dbg!(value,);
                 }
+                dbg!(constraint_low.constant_term);
             }
+            dbg!(&setup_trace_view_row);
             assert!(
                 low_value.to_reduced_u32() < (1 << TIMESTAMP_COLUMNS_NUM_BITS),
                 "invalid value {:?} in timestamp range check expression for shuffle RAM low timestamp {:?} at row {}",

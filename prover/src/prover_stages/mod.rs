@@ -612,9 +612,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = pow_bits_calculator::worst_pow_config(security_bits, num_queries);
-
-    dbg!(&pow_bits);
+    let pow_bits = ProofPowConfig::worst_case_config(security_bits, num_queries);
 
     let stage_2_output = stage2::prover_stage_2(
         &mut seed,

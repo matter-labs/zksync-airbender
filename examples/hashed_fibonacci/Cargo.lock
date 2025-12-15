@@ -3,8 +3,15 @@
 version = 4
 
 [[package]]
+name = "common_constants"
+version = "0.1.0"
+
+[[package]]
 name = "riscv_common"
 version = "0.1.0"
+dependencies = [
+ "common_constants",
+]
 
 [[package]]
 name = "zksync_os_hashed_fibonacci"

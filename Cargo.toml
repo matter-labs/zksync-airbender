@@ -43,6 +43,7 @@ members = [
     "tools/cli",
     "tools/generator",
     "tools/zksmith",
+    "tools/pow_config_generator",
 
 
     "circuit_defs/blake2_with_compression",

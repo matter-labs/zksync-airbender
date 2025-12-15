@@ -47,6 +47,7 @@ name = "pow_bench"
 harness = false
 
 [features]
+worst_case_config_generation = [] # only used in tools/pow_config_generator
 prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "riscv_transpiler", "proc-macro2", "syn", "quote", "bit-set", "lib-rv32-asm", "serde_json", "itertools"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.

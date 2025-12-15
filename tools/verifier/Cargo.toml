@@ -1,3 +1,5 @@
+cargo-features = ["panic-immediate-abort"]
+
 [package]
 name = "zksync_os_verifier"
 version = "0.1.0"
@@ -21,7 +23,8 @@ reduced_keccak = { path = "../../reduced_keccak", optional = true }
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
+# panic = "abort"
+panic = "immediate-abort"
 debug = false
 strip = true
 

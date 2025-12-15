@@ -22,6 +22,16 @@ pub type AlignedArray64<T, const N: usize> = AlignedArray<T, A64, N>;
 pub type AlignedSlice64<T> = AlignedSlice<T, A64>;
 
 impl<T, A, const N: usize> AlignedArray<T, A, N> {
+    pub fn from_value(value: T) -> Self
+    where
+        T: Copy,
+    {
+        Self {
+            _aligner: [],
+            data: [value; N],
+        }
+    }
+
     #[inline(always)]
     pub const fn deref_mut_impl(&mut self) -> &mut [T; N] {
         &mut self.data

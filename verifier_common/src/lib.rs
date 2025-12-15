@@ -8,29 +8,116 @@
 #[cfg(any(all(feature = "security_80", feature = "security_100"),))]
 compile_error!("multiple security levels selected same time");
 
+pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
+pub const POW_BITS_FOR_80_SECURITY_BITS: usize = 28;
+pub const POW_BITS_FOR_100_SECURITY_BITS: usize = 28;
+
 #[cfg(feature = "security_80")]
 pub const SECURITY_BITS: usize = 80;
 #[cfg(feature = "security_80")]
-pub const POW_BITS: usize = 28;
-#[cfg(feature = "security_80")]
-pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
-    SECURITY_BITS,
-    cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
-    MERSENNE31QUARTIC_SIZE_LOG2,
-);
+pub const POW_BITS: usize = POW_BITS_FOR_80_SECURITY_BITS;
+#[cfg(all(feature = "security_80", feature = "worst_case_config_generation"))]
+pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
+#[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
+pub const MEMORY_DELEGATION_POW_BITS: usize = POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
 
 #[cfg(feature = "security_100")]
 pub const SECURITY_BITS: usize = 100;
 #[cfg(feature = "security_100")]
-pub const POW_BITS: usize = 28;
-#[cfg(feature = "security_100")]
-pub const MEMORY_DELEGATION_POW_BITS: usize = pow_bits_for_memory_and_delegation(
-    SECURITY_BITS,
-    cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize,
-    MERSENNE31QUARTIC_SIZE_LOG2,
-);
+pub const POW_BITS: usize = POW_BITS_FOR_100_SECURITY_BITS;
+#[cfg(all(feature = "security_100", feature = "worst_case_config_generation"))]
+pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
+#[cfg(all(feature = "security_100", not(feature = "worst_case_config_generation")))]
+pub const MEMORY_DELEGATION_POW_BITS: usize = POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
 
-pub use prover::prover_stages::pow_bits_calculator::*;
+#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SizedProofPowConfig<const NUM_FOLDINGS: usize> {
+    pub lookup_pow_bits: u32,
+    pub quotient_alpha_pow_bits: u32,
+    pub quotient_z_pow_bits: u32,
+    pub deep_poly_alpha_pow_bits: u32,
+    #[serde(bound(deserialize = "[u32; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
+    #[serde(bound(serialize = "[u32; NUM_FOLDINGS]: serde::Serialize"))]
+    pub foldings_pow_bits: [u32; NUM_FOLDINGS],
+    pub fri_queries_pow_bits: u32,
+}
+
+// The file should be generated with tools/pow_config_generator
+#[cfg(not(feature = "worst_case_config_generation"))]
+include!("pow_config_worst_constants.rs");
+
+#[cfg(not(feature = "worst_case_config_generation"))]
+impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
+    pub const fn worst_case_config() -> Self {
+        if cfg!(feature = "security_80") {
+            SizedProofPowConfig {
+                lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32; NUM_FOLDINGS],
+                fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            }
+        } else if cfg!(feature = "security_100") {
+            SizedProofPowConfig {
+                lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32; NUM_FOLDINGS],
+                fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            }
+        } else {
+            panic!("No security level selected");
+        }
+    }
+}
+
+#[cfg(feature = "worst_case_config_generation")]
+impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
+    pub const fn worst_case_config() -> Self {
+        SizedProofPowConfig {
+            lookup_pow_bits: 0,
+            quotient_alpha_pow_bits: 0,
+            quotient_z_pow_bits: 0,
+            deep_poly_alpha_pow_bits: 0,
+            foldings_pow_bits: [0; NUM_FOLDINGS],
+            fri_queries_pow_bits: 0,
+        }
+    }
+}
+
+pub const fn num_queries_for_security_params(
+    security_bits: usize,
+    pow_bits: usize,
+    lde_factor_log2: usize,
+) -> usize {
+    let bits = security_bits - pow_bits;
+    let init_res = bits.div_ceil(lde_factor_log2);
+
+    // We should add extra 20% of queries
+    init_res + init_res.div_ceil(5)
+}
+
+pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usize) -> usize {
+    if pow_bits > 0 {
+        (num_elements + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
+    } else {
+        num_elements.next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
+    pub lookup_pow_challenge: u64,
+    pub quotient_alpha_pow_challenge: u64,
+    pub quotient_z_pow_challenge: u64,
+    pub deep_poly_alpha_pow_challenge: u64,
+    #[serde(bound(deserialize = "[u64; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
+    #[serde(bound(serialize = "[u64; NUM_FOLDINGS]: serde::Serialize"))]
+    pub foldings_pow_challenges: [u64; NUM_FOLDINGS],
+    pub fri_queries_pow_challenge: u64,
+}
 
 use core::mem::MaybeUninit;
 
