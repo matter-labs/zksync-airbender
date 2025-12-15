@@ -19,7 +19,8 @@ pub const POW_BITS: usize = POW_BITS_FOR_80_SECURITY_BITS;
 #[cfg(all(feature = "security_80", feature = "worst_case_config_generation"))]
 pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
 #[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
-pub const MEMORY_DELEGATION_POW_BITS: usize = POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
 
 #[cfg(feature = "security_100")]
 pub const SECURITY_BITS: usize = 100;
@@ -27,8 +28,12 @@ pub const SECURITY_BITS: usize = 100;
 pub const POW_BITS: usize = POW_BITS_FOR_100_SECURITY_BITS;
 #[cfg(all(feature = "security_100", feature = "worst_case_config_generation"))]
 pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
-#[cfg(all(feature = "security_100", not(feature = "worst_case_config_generation")))]
-pub const MEMORY_DELEGATION_POW_BITS: usize = POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
+#[cfg(all(
+    feature = "security_100",
+    not(feature = "worst_case_config_generation")
+))]
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
 
 #[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SizedProofPowConfig<const NUM_FOLDINGS: usize> {
@@ -55,7 +60,8 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
-                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32; NUM_FOLDINGS],
+                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32;
+                    NUM_FOLDINGS],
                 fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
             }
         } else if cfg!(feature = "security_100") {
@@ -64,7 +70,8 @@ impl<const NUM_FOLDINGS: usize> SizedProofPowConfig<NUM_FOLDINGS> {
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
-                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32; NUM_FOLDINGS],
+                foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32;
+                    NUM_FOLDINGS],
                 fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
             }
         } else {

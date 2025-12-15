@@ -162,7 +162,8 @@ pub fn prove_configured_for_unrolled_circuits<
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
+    let pow_bits =
+        ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
 
     let stage_2_output = stage2::prover_stage_2_for_unrolled_circuit(
         &mut seed,

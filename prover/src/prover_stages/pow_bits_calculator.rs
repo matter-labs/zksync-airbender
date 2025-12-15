@@ -16,17 +16,17 @@ include!("pow_config_worst_constants.rs");
 
 #[cfg(not(feature = "worst_case_config_generation"))]
 impl ProofPowConfig {
-    pub fn worst_case_config(
-        security_bits: usize,
-        num_foldings: usize,
-    ) -> Self {
+    pub fn worst_case_config(security_bits: usize, num_foldings: usize) -> Self {
         match security_bits {
             80 => ProofPowConfig {
                 lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
-                foldings_pow_bits: vec![MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32; num_foldings],
+                foldings_pow_bits: vec![
+                    MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32;
+                    num_foldings
+                ],
                 fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
             },
             100 => ProofPowConfig {
@@ -34,7 +34,10 @@ impl ProofPowConfig {
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
-                foldings_pow_bits: vec![MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32; num_foldings],
+                foldings_pow_bits: vec![
+                    MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32;
+                    num_foldings
+                ],
                 fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
             },
             _ => panic!("Unsupported security bits"),
@@ -44,10 +47,7 @@ impl ProofPowConfig {
 
 #[cfg(feature = "worst_case_config_generation")]
 impl ProofPowConfig {
-    pub fn worst_case_config(
-        _security_bits: usize,
-        _num_queries: usize,
-    ) -> Self {
+    pub fn worst_case_config(_security_bits: usize, _num_queries: usize) -> Self {
         ProofPowConfig {
             lookup_pow_bits: 0,
             quotient_alpha_pow_bits: 0,

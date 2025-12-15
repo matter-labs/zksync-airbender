@@ -47,36 +47,38 @@ pub struct ProofSkeleton<
 }
 
 impl<
-    const SKELETON_PADDING: usize,
-    const CAP_SIZE: usize,
-    const NUM_COSETS: usize,
-    const NUM_PUBLIC_INPUTS: usize,
-    const NUM_DELEGATION_CHALLENGES: usize,
-    const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize,
-    const NUM_AUX_BOUNDARY_VALUES: usize,
-    const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
-    const NUM_OPENINGS_AT_Z: usize,
-    const NUM_OPENINGS_AT_Z_OMEGA: usize,
-    const NUM_FRI_STEPS: usize,
-    const NUM_FRI_STEPS_WITH_ORACLES: usize,
-    const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
-    const FRI_FINAL_DEGREE: usize,
-> core::hash::Hash for ProofSkeleton<
-    SKELETON_PADDING,
-    CAP_SIZE,
-    NUM_COSETS,
-    NUM_PUBLIC_INPUTS,
-    NUM_DELEGATION_CHALLENGES,
-    NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
-    NUM_AUX_BOUNDARY_VALUES,
-    NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
-    NUM_OPENINGS_AT_Z,
-    NUM_OPENINGS_AT_Z_OMEGA,
-    NUM_FRI_STEPS,
-    NUM_FRI_STEPS_WITH_ORACLES,
-    FINAL_FRI_STEP_LEAF_SIZE_PER_COSET,
-    FRI_FINAL_DEGREE,
->{
+        const SKELETON_PADDING: usize,
+        const CAP_SIZE: usize,
+        const NUM_COSETS: usize,
+        const NUM_PUBLIC_INPUTS: usize,
+        const NUM_DELEGATION_CHALLENGES: usize,
+        const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize,
+        const NUM_AUX_BOUNDARY_VALUES: usize,
+        const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
+        const NUM_OPENINGS_AT_Z: usize,
+        const NUM_OPENINGS_AT_Z_OMEGA: usize,
+        const NUM_FRI_STEPS: usize,
+        const NUM_FRI_STEPS_WITH_ORACLES: usize,
+        const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
+        const FRI_FINAL_DEGREE: usize,
+    > core::hash::Hash
+    for ProofSkeleton<
+        SKELETON_PADDING,
+        CAP_SIZE,
+        NUM_COSETS,
+        NUM_PUBLIC_INPUTS,
+        NUM_DELEGATION_CHALLENGES,
+        NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
+        NUM_AUX_BOUNDARY_VALUES,
+        NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
+        NUM_OPENINGS_AT_Z,
+        NUM_OPENINGS_AT_Z_OMEGA,
+        NUM_FRI_STEPS,
+        NUM_FRI_STEPS_WITH_ORACLES,
+        FINAL_FRI_STEP_LEAF_SIZE_PER_COSET,
+        FRI_FINAL_DEGREE,
+    >
+{
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         // ignore padding
         self.circuit_sequence_idx.hash(state);

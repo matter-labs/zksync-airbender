@@ -62,7 +62,10 @@ pub(crate) mod reduced_machine {
     include!("../../minimal_machine_with_delegation_generated.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, MainRiscVOracle<'b, IWithoutByteAccessIsaConfigWithDelegation>>,
+        proxy: &'_ mut SimpleWitnessProxy<
+            'a,
+            MainRiscVOracle<'b, IWithoutByteAccessIsaConfigWithDelegation>,
+        >,
     ) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
