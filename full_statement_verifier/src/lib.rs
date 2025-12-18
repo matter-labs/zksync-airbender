@@ -45,14 +45,6 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
-pub const MAX_BASE_LAYER_CIRCUITS: usize = const {
-    let max_circuits =
-        MAX_CYCLES / ((risc_v_cycles_verifier::concrete::size_constants::TRACE_LEN as u64) - 1);
-
-    max_circuits as usize
-};
-
-pub const MAX_RECURSION_LAYER_CIRCUITS: usize = MAX_BASE_LAYER_CIRCUITS;
 pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

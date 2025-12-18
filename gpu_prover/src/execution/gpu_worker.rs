@@ -250,7 +250,6 @@ fn gpu_worker(
                         verifier_common::POW_BITS,
                         log_lde_factor as usize,
                     );
-                    let pow_bits = verifier_common::POW_BITS as u32;
                     let trees_cache_mode = get_trees_cache_mode(circuit_type, &context);
                     trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]");
                     let job = prove(
@@ -266,7 +265,7 @@ fn gpu_worker(
                         delegation_processing_type,
                         precomputations.lde_precomputations.lde_factor,
                         num_queries,
-                        pow_bits,
+                        verifier_common::SECURITY_BITS,
                         None,
                         false,
                         trees_cache_mode,

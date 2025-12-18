@@ -48,11 +48,11 @@ impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 12,
-            allocator_block_log_size: 24,           // 16 MB blocks
-            device_slack_static_bytes: 1 << 27,     // 128 MB static slack
-            device_slack_per_thread_bytes: 1 << 11, // 2 KB per thread slack
-            max_device_allocation_blocks_count: None,
-            host_allocator_blocks_count: 64, // 1 GB host allocator pool
+            allocator_block_log_size: 20,             // 1 MB blocks
+            device_slack_static_bytes: 1 << 27,       // 128 MB static slack
+            device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
+            max_device_allocation_blocks_count: None, // use all available memory
+            host_allocator_blocks_count: 1024,        // 1 GB host allocator pool
         }
     }
 }
