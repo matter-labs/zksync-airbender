@@ -387,7 +387,7 @@ impl StageOneOutput {
         {
             generate_range_check_multiplicities(
                 circuit,
-                &DeviceMatrix::new(setup_evaluations, trace_len),
+                &DeviceMatrix::new(&setup_evaluations, trace_len),
                 &mut witness,
                 &memory,
                 0,
@@ -460,9 +460,9 @@ impl StageOneOutput {
         let h_witness_one_before_last_row_accessor =
             h_witness_one_before_last_row.get_mut_accessor();
         let evaluations = holder.get_evaluations(context)?;
-        let first_row_src = DeviceMatrixChunk::new(evaluations, trace_len, 0, 1);
+        let first_row_src = DeviceMatrixChunk::new(&evaluations, trace_len, 0, 1);
         let one_before_last_row_src =
-            DeviceMatrixChunk::new(evaluations, trace_len, trace_len - 2, 1);
+            DeviceMatrixChunk::new(&evaluations, trace_len, trace_len - 2, 1);
         let mut first_row_dst = DeviceMatrixMut::new(&mut d_witness_first_row, 1);
         let mut one_before_last_row_dst =
             DeviceMatrixMut::new(&mut d_witness_one_before_last_row, 1);

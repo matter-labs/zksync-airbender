@@ -1,8 +1,13 @@
 use super::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::blake2s::{build_merkle_tree, merkle_tree_cap, Digest};
-use crate::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
+use crate::blake2s::{
+    build_merkle_tree, build_merkle_tree_nodes, gather_merkle_paths, gather_rows,
+    gather_rows_and_merkle_paths, merkle_tree_cap, Digest,
+};
+use crate::device_structures::{
+    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut,
+};
 use crate::ntt::{
     bitrev_Z_to_natural_composition_main_evals, natural_composition_coset_evals_to_bitrev_Z,
     natural_compressed_coset_evals_to_bitrev_Z, natural_main_evals_to_natural_coset_evals,
@@ -21,8 +26,11 @@ use itertools::Itertools;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::Transcript;
 use prover::transcript::Seed;
+use std::cell::{Ref, RefCell, RefMut};
 use std::mem::size_of;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
+
+pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = crate::utils::LOG_WARP_SIZE;
 
 #[derive(Copy, Clone)]
 pub enum TreesCacheMode {
@@ -31,12 +39,14 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
+pub(crate) struct SingleCosetHolder<T> {
+    pub current_coset_index: usize,
+    pub evaluations: DeviceAllocation<T>,
+}
+
 pub(crate) enum CosetsHolder<T> {
     Full(Vec<DeviceAllocation<T>>),
-    Single {
-        current_coset_index: usize,
-        evaluations: DeviceAllocation<T>,
-    },
+    Single(RefCell<SingleCosetHolder<T>>),
 }
 
 #[allow(unused)]
@@ -46,28 +56,29 @@ pub(crate) enum TreesHolder {
     None,
 }
 
-pub(crate) enum TreeReference<'a> {
-    Borrowed(&'a DeviceAllocation<Digest>),
-    Owned(DeviceAllocation<Digest>),
+pub(crate) struct LeafsAndMerklePaths {
+    pub leafs: HostAllocation<[BF]>,
+    pub merkle_paths: HostAllocation<[Digest]>,
 }
 
-impl Deref for TreeReference<'_> {
-    type Target = DeviceAllocation<Digest>;
+pub(crate) struct LeafsAndMerklePathsAccessors {
+    pub leafs: UnsafeAccessor<[BF]>,
+    pub merkle_paths: UnsafeAccessor<[Digest]>,
+}
 
-    fn deref(&self) -> &Self::Target {
-        match self {
-            TreeReference::Borrowed(b) => *b,
-            TreeReference::Owned(o) => o,
+impl LeafsAndMerklePaths {
+    pub(crate) fn get_accessor(&self) -> LeafsAndMerklePathsAccessors {
+        let leafs_accessor = self.leafs.get_accessor();
+        let merkle_paths_accessor = self.merkle_paths.get_accessor();
+        LeafsAndMerklePathsAccessors {
+            leafs: leafs_accessor,
+            merkle_paths: merkle_paths_accessor,
         }
     }
 }
 
 pub(crate) trait TraceHolderImpl {
-    fn ensure_coset_computed(
-        &mut self,
-        coset_index: usize,
-        context: &ProverContext,
-    ) -> CudaResult<()>;
+    fn ensure_coset_computed(&self, coset_index: usize, context: &ProverContext) -> CudaResult<()>;
 }
 
 pub(crate) struct TraceHolder<T> {
@@ -90,12 +101,10 @@ impl TraceHolder<BF> {
     ) -> CudaResult<()> {
         let evaluations = match &mut self.cosets {
             CosetsHolder::Full(evaluations) => &mut evaluations[0],
-            CosetsHolder::Single {
-                current_coset_index,
-                evaluations,
-            } => {
-                assert_eq!(*current_coset_index, 0);
-                evaluations
+            CosetsHolder::Single(holder) => {
+                let holder = holder.get_mut();
+                assert_eq!(holder.current_coset_index, 0);
+                &mut holder.evaluations
             }
         };
         make_evaluations_sum_to_zero(
@@ -129,14 +138,12 @@ impl TraceHolder<BF> {
                     context,
                 )?;
             }
-            CosetsHolder::Single {
-                current_coset_index,
-                evaluations,
-            } => {
-                assert_eq!(source_coset_index, *current_coset_index);
-                *current_coset_index = 1 - source_coset_index;
+            CosetsHolder::Single(holder) => {
+                let holder = holder.get_mut();
+                assert_eq!(source_coset_index, holder.current_coset_index);
+                holder.current_coset_index = 1 - source_coset_index;
                 switch_coset_evaluations_in_place(
-                    evaluations,
+                    &mut holder.evaluations,
                     source_coset_index,
                     log_domain_size,
                     log_lde_factor,
@@ -167,28 +174,54 @@ impl TraceHolder<BF> {
         let log_tree_cap_size = self.log_tree_cap_size;
         let columns_count = self.columns_count;
         let stream = context.get_exec_stream();
-        let mut tree = match &mut self.trees {
-            TreesHolder::Full(trees) => trees.remove(coset_index),
-            TreesHolder::Partial(_) => unimplemented!(),
-            TreesHolder::None => allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
+        let (mut tree_top, mut tree_bottom) = match &mut self.trees {
+            TreesHolder::Full(trees) => (trees.remove(coset_index), None),
+            TreesHolder::Partial(trees) => (
+                allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
+                Some(trees.remove(coset_index)),
+            ),
+            TreesHolder::None => (
+                allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
+                None,
+            ),
         };
         let evaluations = self.get_coset_evaluations(coset_index, context)?;
-        commit_trace(
-            evaluations,
-            &mut tree,
-            log_domain_size,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            columns_count,
-            stream,
-        )?;
+        let tree = if let Some(tree_bottom) = &mut tree_bottom {
+            commit_trace_with_partial_tree(
+                &evaluations,
+                &mut tree_top,
+                tree_bottom,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                columns_count,
+                stream,
+            )?;
+            tree_bottom
+        } else {
+            commit_trace(
+                &evaluations,
+                &mut tree_top,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                columns_count,
+                stream,
+            )?;
+            &mut tree_top
+        };
+        drop(evaluations);
         let caps = &mut self.tree_caps.as_mut().unwrap()[coset_index];
-        transfer_tree_cap(&mut tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
+        transfer_tree_cap(tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
         match &mut self.trees {
-            TreesHolder::Full(trees) => trees.insert(coset_index, tree),
-            TreesHolder::Partial(_) => unimplemented!(),
-            TreesHolder::None => drop(tree),
+            TreesHolder::Full(trees) => trees.insert(coset_index, tree_top),
+            TreesHolder::Partial(trees) => {
+                drop(tree_top);
+                trees.insert(coset_index, tree_bottom.unwrap());
+            }
+            TreesHolder::None => drop(tree_top),
         };
         Ok(())
     }
@@ -214,74 +247,121 @@ impl TraceHolder<BF> {
         self.extend_and_commit(0, context)
     }
 
-    pub(crate) fn get_coset_evaluations_and_tree(
-        &mut self,
+    pub fn get_leafs_and_merkle_paths(
+        &self,
         coset_index: usize,
+        indexes: &DeviceSlice<u32>,
         context: &ProverContext,
-    ) -> CudaResult<(&DeviceSlice<BF>, TreeReference<'_>)> {
-        self.ensure_coset_computed(coset_index, context)?;
-        let evaluations = match &self.cosets {
-            CosetsHolder::Full(evaluations) => &evaluations[coset_index],
-            CosetsHolder::Single {
-                evaluations,
-                current_coset_index,
-            } => {
-                assert_eq!(*current_coset_index, coset_index);
-                evaluations
+    ) -> CudaResult<LeafsAndMerklePaths> {
+        let queries_count = indexes.len();
+        let log_domain_size = self.log_domain_size;
+        let log_rows_per_index = self.log_rows_per_leaf;
+        let domain_size = 1 << log_domain_size;
+        let values = self.get_coset_evaluations(coset_index, context)?;
+        let values_matrix = DeviceMatrix::new(&values, domain_size);
+        let columns_count = values_matrix.cols();
+        let values_per_column_count = queries_count << log_rows_per_index;
+        let leafs_len = values_per_column_count * columns_count;
+        let layers_count = log_domain_size
+            - self.log_rows_per_leaf
+            - (self.log_tree_cap_size - self.log_lde_factor);
+        let digests_len = queries_count * layers_count as usize;
+        let stream = context.get_exec_stream();
+        let mut d_leafs = context.alloc(leafs_len, AllocationPlacement::BestFit)?;
+        let mut leafs_matrix = DeviceMatrixMut::new(&mut d_leafs, values_per_column_count);
+        let mut d_merkle_paths = context.alloc(digests_len, AllocationPlacement::BestFit)?;
+        match &self.trees {
+            TreesHolder::Full(trees) => {
+                gather_rows(
+                    indexes,
+                    true,
+                    log_rows_per_index,
+                    &values_matrix,
+                    &mut leafs_matrix,
+                    stream,
+                )?;
+                let tree = &trees[coset_index];
+                gather_merkle_paths(indexes, tree, &mut d_merkle_paths, layers_count, stream)?;
             }
-        };
-        let evaluations = &evaluations[..self.columns_count << self.log_domain_size];
-        let tree = match &self.trees {
-            TreesHolder::Full(trees) => TreeReference::Borrowed(&trees[coset_index]),
-            TreesHolder::Partial(_) => unimplemented!(),
+            TreesHolder::Partial(trees) => {
+                let tree_bottom = &trees[coset_index];
+                gather_rows_and_merkle_paths(
+                    indexes,
+                    true,
+                    &values,
+                    log_rows_per_index,
+                    &mut leafs_matrix,
+                    tree_bottom,
+                    &mut d_merkle_paths,
+                    layers_count,
+                    stream,
+                )?;
+            }
             TreesHolder::None => {
+                gather_rows(
+                    indexes,
+                    true,
+                    log_rows_per_index,
+                    &values_matrix,
+                    &mut leafs_matrix,
+                    stream,
+                )?;
                 let mut tree =
                     allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
-                commit_trace(
-                    evaluations,
+                build_merkle_tree(
+                    &values,
                     &mut tree,
-                    self.log_domain_size,
-                    self.log_lde_factor,
-                    self.log_rows_per_leaf,
-                    self.log_tree_cap_size,
-                    self.columns_count,
-                    context.get_exec_stream(),
+                    log_rows_per_index,
+                    stream,
+                    layers_count,
+                    true,
                 )?;
-                TreeReference::Owned(tree)
+                gather_merkle_paths(indexes, &tree, &mut d_merkle_paths, layers_count, stream)?;
             }
         };
-        Ok((evaluations, tree))
+        let mut leafs = unsafe { context.alloc_host_uninit_slice(leafs_len) };
+        memory_copy_async(
+            unsafe { leafs.get_mut_accessor().get_mut() },
+            &d_leafs,
+            stream,
+        )?;
+        let mut merkle_paths = unsafe { context.alloc_host_uninit_slice(digests_len) };
+        memory_copy_async(
+            unsafe { merkle_paths.get_mut_accessor().get_mut() },
+            &d_merkle_paths,
+            stream,
+        )?;
+        let result = LeafsAndMerklePaths {
+            leafs,
+            merkle_paths,
+        };
+        Ok(result)
     }
 }
 
 impl TraceHolderImpl for TraceHolder<BF> {
-    fn ensure_coset_computed(
-        &mut self,
-        coset_index: usize,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
+    fn ensure_coset_computed(&self, coset_index: usize, context: &ProverContext) -> CudaResult<()> {
         assert!(coset_index < (1 << self.log_lde_factor));
-        match &mut self.cosets {
+        match &self.cosets {
             CosetsHolder::Full(evaluations) => {
                 assert!(evaluations.len() > coset_index);
                 Ok(())
             }
-            CosetsHolder::Single {
-                current_coset_index,
-                evaluations,
-            } => {
-                if *current_coset_index == coset_index {
+            CosetsHolder::Single(holder) => {
+                let mut holder = holder.borrow_mut();
+                let current_coset_index = holder.current_coset_index;
+                if current_coset_index == coset_index {
                     return Ok(());
                 }
                 switch_coset_evaluations_in_place(
-                    evaluations,
-                    *current_coset_index,
+                    &mut holder.evaluations,
+                    current_coset_index,
                     self.log_domain_size,
                     self.log_lde_factor,
                     self.compressed_coset,
                     context,
                 )?;
-                *current_coset_index = coset_index;
+                holder.current_coset_index = coset_index;
                 Ok(())
             }
         }
@@ -305,10 +385,15 @@ impl<T> TraceHolder<T> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
         let instances_count = 1 << log_lde_factor;
         let cosets = match recompute_cosets {
-            true => CosetsHolder::Single {
-                current_coset_index: 0,
-                evaluations: allocate_coset(log_domain_size, columns_count, pad_to_even, context)?,
-            },
+            true => {
+                let evaluations =
+                    allocate_coset(log_domain_size, columns_count, pad_to_even, context)?;
+                let holder = SingleCosetHolder {
+                    current_coset_index: 0,
+                    evaluations,
+                };
+                CosetsHolder::Single(RefCell::new(holder))
+            }
             false => CosetsHolder::Full(allocate_cosets(
                 instances_count,
                 log_domain_size,
@@ -319,7 +404,15 @@ impl<T> TraceHolder<T> {
         };
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
-            TreesCacheMode::CachePatrial => unimplemented!(),
+            TreesCacheMode::CachePatrial => {
+                let trees = allocate_trees(
+                    instances_count,
+                    log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                    log_rows_per_leaf,
+                    context,
+                )?;
+                TreesHolder::Partial(trees)
+            }
             TreesCacheMode::CacheFull => TreesHolder::Full(allocate_trees(
                 instances_count,
                 log_domain_size,
@@ -356,15 +449,18 @@ impl<T> TraceHolder<T> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
         let evaluations = allocate_coset(log_domain_size, columns_count, pad_to_even, context)?;
         let cosets = match recompute_cosets {
-            true => CosetsHolder::Single {
-                current_coset_index: 0,
-                evaluations,
-            },
+            true => {
+                let holder = SingleCosetHolder {
+                    current_coset_index: 0,
+                    evaluations,
+                };
+                CosetsHolder::Single(RefCell::new(holder))
+            }
             false => CosetsHolder::Full(vec![evaluations]),
         };
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
-            TreesCacheMode::CachePatrial => unimplemented!(),
+            TreesCacheMode::CachePatrial => TreesHolder::Partial(vec![]),
             TreesCacheMode::CacheFull => TreesHolder::Full(vec![]),
         };
         Ok(Self {
@@ -408,7 +504,16 @@ impl<T> TraceHolder<T> {
                 )?;
                 trees.extend(new_trees);
             }
-            TreesHolder::Partial(_) => unimplemented!(),
+            TreesHolder::Partial(trees) => {
+                assert!(trees.is_empty());
+                let new_trees = allocate_trees(
+                    instances_count,
+                    self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                    self.log_rows_per_leaf,
+                    context,
+                )?;
+                trees.extend(new_trees);
+            }
             TreesHolder::None => {}
         }
         Ok(())
@@ -435,12 +540,12 @@ impl<T> TraceHolder<T> {
 
 impl TraceHolderImpl for TraceHolder<E4> {
     fn ensure_coset_computed(
-        &mut self,
+        &self,
         coset_index: usize,
         _context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(coset_index < (1 << self.log_lde_factor));
-        match &mut self.cosets {
+        match &self.cosets {
             CosetsHolder::Full(evaluations) => {
                 assert!(evaluations.len() > coset_index);
                 Ok(())
@@ -452,54 +557,110 @@ impl TraceHolderImpl for TraceHolder<E4> {
     }
 }
 
+pub(crate) enum CosetEvaluations<'a, T> {
+    FromFull {
+        len: usize,
+        allocation: &'a DeviceAllocation<T>,
+    },
+    FromSingle {
+        len: usize,
+        holder: Ref<'a, SingleCosetHolder<T>>,
+    },
+}
+
+impl<T> Deref for CosetEvaluations<'_, T> {
+    type Target = DeviceSlice<T>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            CosetEvaluations::FromFull { len, allocation } => &allocation[..*len],
+            CosetEvaluations::FromSingle { len, holder } => &holder.evaluations[..*len],
+        }
+    }
+}
+
+pub(crate) enum CosetEvaluationsMut<'a, T> {
+    FromFull {
+        len: usize,
+        allocation: &'a mut DeviceAllocation<T>,
+    },
+    FromSingle {
+        len: usize,
+        holder: RefMut<'a, SingleCosetHolder<T>>,
+    },
+}
+
+impl<T> Deref for CosetEvaluationsMut<'_, T> {
+    type Target = DeviceSlice<T>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            CosetEvaluationsMut::FromFull { len, allocation } => &allocation[..*len],
+            CosetEvaluationsMut::FromSingle { len, holder } => &holder.evaluations[..*len],
+        }
+    }
+}
+
+impl<T> DerefMut for CosetEvaluationsMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            CosetEvaluationsMut::FromFull { len, allocation } => &mut allocation[..*len],
+            CosetEvaluationsMut::FromSingle { len, holder } => &mut holder.evaluations[..*len],
+        }
+    }
+}
+
 impl<T> TraceHolder<T>
 where
     TraceHolder<T>: TraceHolderImpl,
 {
     pub(crate) fn get_coset_evaluations(
-        &mut self,
+        &self,
         coset_index: usize,
         context: &ProverContext,
-    ) -> CudaResult<&DeviceSlice<T>> {
+    ) -> CudaResult<CosetEvaluations<'_, T>> {
         self.ensure_coset_computed(coset_index, context)?;
+        let len = self.columns_count << self.log_domain_size;
         let evaluations = match &self.cosets {
-            CosetsHolder::Full(evaluations) => &evaluations[coset_index],
-            CosetsHolder::Single {
-                evaluations,
-                current_coset_index,
-            } => {
-                assert_eq!(*current_coset_index, coset_index);
-                evaluations
+            CosetsHolder::Full(evaluations) => CosetEvaluations::FromFull {
+                len,
+                allocation: &evaluations[coset_index],
+            },
+            CosetsHolder::Single(holder) => {
+                let holder = holder.borrow();
+                assert_eq!(holder.current_coset_index, coset_index);
+                CosetEvaluations::FromSingle { len, holder }
             }
         };
-        Ok(&evaluations[..self.columns_count << self.log_domain_size])
+        Ok(evaluations)
     }
 
     pub(crate) fn get_uninit_coset_evaluations_mut(
         &mut self,
         coset_index: usize,
-    ) -> &mut DeviceSlice<T> {
-        let evaluations = match &mut self.cosets {
-            CosetsHolder::Full(evaluations) => &mut evaluations[coset_index],
-            CosetsHolder::Single {
-                evaluations,
-                current_coset_index,
-            } => {
-                *current_coset_index = coset_index;
-                evaluations
+    ) -> CosetEvaluationsMut<'_, T> {
+        let len = self.columns_count << self.log_domain_size;
+        match &mut self.cosets {
+            CosetsHolder::Full(evaluations) => CosetEvaluationsMut::FromFull {
+                len,
+                allocation: &mut evaluations[coset_index],
+            },
+            CosetsHolder::Single(holder) => {
+                let mut holder = holder.borrow_mut();
+                holder.current_coset_index = coset_index;
+                CosetEvaluationsMut::FromSingle { len, holder }
             }
-        };
-        &mut evaluations[..self.columns_count << self.log_domain_size]
+        }
     }
 
     pub(crate) fn get_evaluations(
-        &mut self,
+        &self,
         context: &ProverContext,
-    ) -> CudaResult<&DeviceSlice<T>> {
+    ) -> CudaResult<CosetEvaluations<'_, T>> {
         self.get_coset_evaluations(0, context)
     }
 
-    pub(crate) fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
+    pub(crate) fn get_uninit_evaluations_mut(&mut self) -> CosetEvaluationsMut<'_, T> {
         self.get_uninit_coset_evaluations_mut(0)
     }
 }
@@ -745,9 +906,10 @@ pub(crate) fn commit_trace(
 ) -> CudaResult<()> {
     assert_eq!(lde.len() & ((1 << log_domain_size) - 1), 0);
     assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(log_domain_size >= (log_rows_per_leaf + log_coset_tree_cap_size));
     let tree_len = 1 << log_domain_size + 1 - log_rows_per_leaf;
     assert_eq!(tree.len(), tree_len);
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
     let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
     build_merkle_tree(
         &lde[..columns_count << log_domain_size],
@@ -757,6 +919,44 @@ pub(crate) fn commit_trace(
         layers_count,
         true,
     )
+}
+
+pub(crate) fn commit_trace_with_partial_tree(
+    lde: &DeviceSlice<BF>,
+    tree_top: &mut DeviceSlice<Digest>,
+    tree_bottom: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(lde.len() & ((1 << log_domain_size) - 1), 0);
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(
+        log_domain_size
+            > (log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size)
+    );
+    let tree_top_len = 1 << log_domain_size + 1 - log_rows_per_leaf;
+    assert_eq!(tree_top.len(), tree_top_len);
+    let tree_bottom_len = tree_top_len >> PARTIAL_TREE_REDUCTION_LAYERS;
+    assert_eq!(tree_bottom.len(), tree_bottom_len);
+    build_merkle_tree(
+        &lde[..columns_count << log_domain_size],
+        tree_top,
+        log_rows_per_leaf,
+        stream,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        true,
+    )?;
+    let bottom_layers_count = log_domain_size + 1
+        - log_rows_per_leaf
+        - PARTIAL_TREE_REDUCTION_LAYERS
+        - log_coset_tree_cap_size;
+    let values = &tree_top[tree_top_len - 2 * tree_bottom_len..][..tree_bottom_len];
+    build_merkle_tree_nodes(values, tree_bottom, bottom_layers_count, stream)
 }
 
 pub(crate) fn transfer_tree_cap(

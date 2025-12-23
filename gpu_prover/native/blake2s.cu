@@ -9,6 +9,12 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef base_field bf;
 
+#define LOG_WARP_SIZE 5
+constexpr unsigned WARP_SIZE = 1 << LOG_WARP_SIZE;
+constexpr unsigned WARP_MASK = WARP_SIZE - 1;
+
+#define FULL_MASK 0xffffffff
+
 #define ROTR32(x, y) (((x) >> (y)) ^ ((x) << (32 - (y))))
 
 #define G(a, b, c, d, x, y)                                                                                                                                    \
@@ -157,6 +163,88 @@ EXTERN __global__ void ab_gather_merkle_paths_kernel(const unsigned *indexes, co
   const unsigned src_index = layer_offset + hash_offset + element_offset;
   const unsigned dst_index = layer_index * indexes_count * STATE_SIZE + idx * STATE_SIZE + element_offset;
   results[dst_index] = values[src_index];
+}
+
+EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
+                                                              const bf *values, const unsigned log_rows_per_leaf, const unsigned cols_count,
+                                                              const unsigned log_total_leaves_count, matrix_setter<bf, st_modifier::cs> leaf_values,
+                                                              const u32 *tree_bottom, const unsigned layers_count, u32 *merkle_paths) {
+  const unsigned lane_idx = threadIdx.x;
+  const unsigned idx = blockIdx.x;
+  const unsigned index_warp = indexes[idx];
+  const unsigned index_lane = index_warp & ~WARP_MASK | lane_idx;
+  const bool is_output_lane = index_warp == index_lane;
+  const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
+  values += leaf_index << log_rows_per_leaf;
+  leaf_values.add_row(idx);
+  merkle_paths += idx * STATE_SIZE;
+  const unsigned row_mask = (1u << log_rows_per_leaf) - 1;
+  auto read = [=](const unsigned offset) {
+    const unsigned row = offset & row_mask;
+    const unsigned col = offset >> log_rows_per_leaf;
+    const auto address = values + row + (col << (log_rows_per_leaf + log_total_leaves_count));
+    return col < cols_count ? bf::into_canonical_u32(load_cs(address)) : 0;
+  };
+  u32 state[STATE_SIZE];
+  u32 block[BLOCK_SIZE];
+  initialize(state);
+  u32 t = 0;
+  const unsigned values_count = cols_count << log_rows_per_leaf;
+  unsigned offset = 0;
+  while (offset < values_count) {
+    const unsigned remaining = values_count - offset;
+    const bool is_final_block = remaining <= BLOCK_SIZE;
+#pragma unroll
+    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++) {
+      const u32 value = read(offset);
+      block[i] = value;
+      if (offset >= values_count)
+        continue;
+      if (is_output_lane)
+        leaf_values.set(bf(value));
+      leaf_values.inc_col();
+    }
+    if (is_final_block)
+      compress<true>(state, t, block, remaining);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    u32 other_state[STATE_SIZE];
+    const bool take_other_first = lane_idx >> layer & 1;
+#pragma unroll
+    for (unsigned i = 0; i < STATE_SIZE; i++) {
+      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
+      if (is_output_lane)
+        merkle_paths[i] = other_state[i];
+      if (take_other_first) {
+        block[i] = other_state[i];
+        block[i + STATE_SIZE] = state[i];
+      } else {
+        block[i] = state[i];
+        block[i + STATE_SIZE] = other_state[i];
+      }
+    }
+    initialize(state);
+    t = 0;
+    compress<true>(state, t, block, BLOCK_SIZE);
+    merkle_paths += indexes_count * STATE_SIZE;
+  }
+  if (lane_idx >= STATE_SIZE)
+    return;
+  unsigned digest_index = index_warp >> LOG_WARP_SIZE;
+  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
+  tree_bottom += lane_idx;
+  merkle_paths += lane_idx;
+  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
+    const unsigned other_index = digest_index ^ 1;
+    *merkle_paths = *(tree_bottom + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_bottom += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths += indexes_count * STATE_SIZE;
+  }
 }
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {

@@ -6,6 +6,7 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -61,8 +62,8 @@ impl<'a> SetupPrecomputations<'a> {
         trace: Arc<Vec<BF, impl GoodAllocator + 'a>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let dst = self.trace_holder.get_uninit_evaluations_mut();
-        self.transfer.schedule(trace, dst, context)?;
+        let mut dst = self.trace_holder.get_uninit_evaluations_mut();
+        self.transfer.schedule(trace, dst.deref_mut(), context)?;
         self.transfer.record_transferred(context)
     }
 
@@ -106,8 +107,9 @@ impl<'a> SetupPrecomputations<'a> {
         )?;
         let mut transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
-        let dst = trace_holder.get_uninit_evaluations_mut();
-        transfer.schedule(trace, dst, context)?;
+        let mut dst = trace_holder.get_uninit_evaluations_mut();
+        transfer.schedule(trace, dst.deref_mut(), context)?;
+        drop(dst);
         transfer.record_transferred(context)?;
         transfer.ensure_transferred(context)?;
         trace_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;

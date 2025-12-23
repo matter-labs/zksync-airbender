@@ -122,36 +122,27 @@ impl StageFourOutput {
             context.alloc(final_cub_reduce_temp_bytes, AllocationPlacement::BestFit)?;
         let mut d_common_factor_storage = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut d_lagrange_coeffs = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-        let d_setup_cols = DeviceMatrix::new(
-            setup
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_witness_cols = DeviceMatrix::new(
-            stage_1_output
-                .witness_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_memory_cols = DeviceMatrix::new(
-            stage_1_output
-                .memory_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_stage_2_cols = DeviceMatrix::new(
-            stage_2_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_composition_col = DeviceMatrix::new(
-            stage_3_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
+        let setup_evaluations = setup
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
+        let witness_evaluations = stage_1_output
+            .witness_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
+        let memory_evaluations = stage_1_output
+            .memory_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
+        let stage_2_evaluations = stage_2_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_stage_2_cols = DeviceMatrix::new(&stage_2_evaluations, trace_len);
+
+        let composition_evaluations = stage_3_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_composition_col = DeviceMatrix::new(&composition_evaluations, trace_len);
         let stream = context.get_exec_stream();
         precompute_lagrange_coeffs(
             &d_alloc_z[0],

@@ -8,9 +8,11 @@ use super::stage_4::StageFourOutput;
 use super::stage_5::StageFiveOutput;
 use super::BF;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::blake2s::{gather_merkle_paths_device, gather_merkle_paths_host, gather_rows, Digest};
+use crate::blake2s::{gather_merkle_paths, gather_rows, Digest};
 use crate::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
-use crate::prover::trace_holder::{CosetsHolder, TreesHolder};
+use crate::prover::trace_holder::{
+    CosetsHolder, LeafsAndMerklePaths, LeafsAndMerklePathsAccessors, TreesHolder,
+};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -21,47 +23,25 @@ use prover::prover_stages::query_producer::{assemble_query_index, BitSource};
 use prover::prover_stages::stage5::Query;
 use prover::prover_stages::QuerySet;
 use prover::transcript::Seed;
-use std::sync::Arc;
-
-struct LeafsAndDigests {
-    leafs: HostAllocation<[BF]>,
-    digests: HostAllocation<[Digest]>,
-}
-
-struct LeafsAndDigestsAccessors {
-    leafs: UnsafeAccessor<[BF]>,
-    digests: UnsafeAccessor<[Digest]>,
-}
-
-impl LeafsAndDigests {
-    fn get_accessor(&self) -> LeafsAndDigestsAccessors {
-        let leafs_accessor = self.leafs.get_accessor();
-        let digests_accessor = self.digests.get_accessor();
-        LeafsAndDigestsAccessors {
-            leafs: leafs_accessor,
-            digests: digests_accessor,
-        }
-    }
-}
 
 struct LeafsAndDigestsSet {
-    witness: LeafsAndDigests,
-    memory: LeafsAndDigests,
-    setup: LeafsAndDigests,
-    stage_2: LeafsAndDigests,
-    quotient: LeafsAndDigests,
-    initial_fri: LeafsAndDigests,
-    intermediate_fri: Vec<LeafsAndDigests>,
+    witness: LeafsAndMerklePaths,
+    memory: LeafsAndMerklePaths,
+    setup: LeafsAndMerklePaths,
+    stage_2: LeafsAndMerklePaths,
+    quotient: LeafsAndMerklePaths,
+    initial_fri: LeafsAndMerklePaths,
+    intermediate_fri: Vec<LeafsAndMerklePaths>,
 }
 
 struct LeafsAndDigestsSetAccessors {
-    witness: LeafsAndDigestsAccessors,
-    memory: LeafsAndDigestsAccessors,
-    setup: LeafsAndDigestsAccessors,
-    stage_2: LeafsAndDigestsAccessors,
-    quotient: LeafsAndDigestsAccessors,
-    initial_fri: LeafsAndDigestsAccessors,
-    intermediate_fri: Vec<LeafsAndDigestsAccessors>,
+    witness: LeafsAndMerklePathsAccessors,
+    memory: LeafsAndMerklePathsAccessors,
+    setup: LeafsAndMerklePathsAccessors,
+    stage_2: LeafsAndMerklePathsAccessors,
+    quotient: LeafsAndMerklePathsAccessors,
+    initial_fri: LeafsAndMerklePathsAccessors,
+    intermediate_fri: Vec<LeafsAndMerklePathsAccessors>,
 }
 
 impl LeafsAndDigestsSet {
@@ -75,7 +55,7 @@ impl LeafsAndDigestsSet {
         let intermediate_fri = self
             .intermediate_fri
             .iter()
-            .map(LeafsAndDigests::get_accessor)
+            .map(LeafsAndMerklePaths::get_accessor)
             .collect_vec();
         LeafsAndDigestsSetAccessors {
             witness,
@@ -169,92 +149,31 @@ impl QueriesOutput {
             )?;
             let mut log_domain_size = log_domain_size;
             let mut layers_count = log_domain_size - log_coset_tree_cap_size;
-            let (witness_evaluations, witness_tree) = stage_1_output
-                .witness_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let witness = Self::get_leafs_and_digests_device(
+            let witness = stage_1_output.witness_holder.get_leafs_and_merkle_paths(
+                coset_idx,
                 &d_tree_indexes,
-                true,
-                witness_evaluations,
-                &witness_tree,
-                log_domain_size,
-                0,
-                layers_count,
                 context,
             )?;
-            drop(witness_tree);
-            let (memory_evaluations, memory_tree) = stage_1_output
-                .memory_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let memory = Self::get_leafs_and_digests_device(
+            let memory = stage_1_output.memory_holder.get_leafs_and_merkle_paths(
+                coset_idx,
                 &d_tree_indexes,
-                true,
-                memory_evaluations,
-                &memory_tree,
-                log_domain_size,
-                0,
-                layers_count,
                 context,
             )?;
-            drop(memory_tree);
-            // let setup_evaluations = setup
-            //     .trace_holder
-            //     .get_coset_evaluations(coset_idx, context)?;
-            // let setup_tree = setup.trees_and_caps.trees[coset_idx].clone();
-            // let setup = Self::get_leafs_and_digests_host(
-            //     &d_tree_indexes,
-            //     &h_tree_indexes,
-            //     true,
-            //     setup_evaluations,
-            //     setup_tree,
-            //     log_domain_size,
-            //     0,
-            //     layers_count,
-            //     callbacks,
-            //     context,
-            // )?;
-            let (setup_evaluations, setup_tree) = setup
-                .trace_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let setup = Self::get_leafs_and_digests_device(
+            let setup = setup.trace_holder.get_leafs_and_merkle_paths(
+                coset_idx,
                 &d_tree_indexes,
-                true,
-                setup_evaluations,
-                &setup_tree,
-                log_domain_size,
-                0,
-                layers_count,
                 context,
             )?;
-            drop(setup_tree);
-            let (stage_2_evaluations, stage_2_tree) = stage_2_output
-                .trace_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let stage_2 = Self::get_leafs_and_digests_device(
+            let stage_2 = stage_2_output.trace_holder.get_leafs_and_merkle_paths(
+                coset_idx,
                 &d_tree_indexes,
-                true,
-                stage_2_evaluations,
-                &stage_2_tree,
-                log_domain_size,
-                0,
-                layers_count,
                 context,
             )?;
-            drop(stage_2_tree);
-            let (stage_3_evaluations, stage_3_tree) = stage_3_output
-                .trace_holder
-                .get_coset_evaluations_and_tree(coset_idx, context)?;
-            let quotient = Self::get_leafs_and_digests_device(
+            let quotient = stage_3_output.trace_holder.get_leafs_and_merkle_paths(
+                coset_idx,
                 &d_tree_indexes,
-                true,
-                stage_3_evaluations,
-                &stage_3_tree,
-                log_domain_size,
-                0,
-                layers_count,
                 context,
             )?;
-            drop(stage_3_tree);
             let folding_sequence = folding_description.folding_sequence;
             let initial_log_fold = folding_sequence[0] as u32;
             let initial_indexes_fold_fn = move || unsafe {
@@ -392,34 +311,13 @@ impl QueriesOutput {
         let stream = context.get_exec_stream();
         let digests_len = queries_count * layers_count as usize;
         let mut d_digests = context.alloc(digests_len, AllocationPlacement::BestFit)?;
-        gather_merkle_paths_device(indexes, tree, &mut d_digests, layers_count, stream)?;
+        gather_merkle_paths(indexes, tree, &mut d_digests, layers_count, stream)?;
         let mut digests = unsafe { context.alloc_host_uninit_slice(digests_len) };
         memory_copy_async(
             unsafe { digests.get_mut_accessor().get_mut() },
             &d_digests,
             stream,
         )?;
-        Ok(digests)
-    }
-
-    #[allow(dead_code)]
-    fn get_digests_host(
-        indexes: &HostAllocation<[u32]>,
-        tree: Arc<Box<[Digest]>>,
-        layers_count: u32,
-        callbacks: &mut Callbacks,
-        context: &ProverContext,
-    ) -> CudaResult<HostAllocation<[Digest]>> {
-        let queries_accessor = indexes.get_accessor();
-        let queries_count = unsafe { queries_accessor.get().len() };
-        let digests_len = queries_count * layers_count as usize;
-        let mut digests = unsafe { context.alloc_host_uninit_slice(digests_len) };
-        let digests_accessor = digests.get_mut_accessor();
-        let gather_fn = move || unsafe {
-            let indexes = queries_accessor.get();
-            gather_merkle_paths_host(indexes, &tree, digests_accessor.get_mut(), layers_count);
-        };
-        callbacks.schedule(gather_fn, context.get_exec_stream())?;
         Ok(digests)
     }
 
@@ -432,7 +330,7 @@ impl QueriesOutput {
         log_rows_per_index: u32,
         layers_count: u32,
         context: &ProverContext,
-    ) -> CudaResult<LeafsAndDigests> {
+    ) -> CudaResult<LeafsAndMerklePaths> {
         let leafs = Self::get_leafs(
             indexes,
             bit_reverse_leaf_indexing,
@@ -442,33 +340,10 @@ impl QueriesOutput {
             context,
         )?;
         let digests = Self::get_digests_device(indexes, tree, layers_count, context)?;
-        let result = LeafsAndDigests { leafs, digests };
-        Ok(result)
-    }
-
-    #[allow(dead_code)]
-    fn get_leafs_and_digests_host(
-        indexes_device: &DeviceSlice<u32>,
-        indexes_host: &HostAllocation<[u32]>,
-        bit_reverse_leaf_indexing: bool,
-        values: &DeviceSlice<BF>,
-        tree: Arc<Box<[Digest]>>,
-        log_domain_size: u32,
-        log_rows_per_index: u32,
-        layers_count: u32,
-        callbacks: &mut Callbacks,
-        context: &ProverContext,
-    ) -> CudaResult<LeafsAndDigests> {
-        let leafs = Self::get_leafs(
-            indexes_device,
-            bit_reverse_leaf_indexing,
-            values,
-            log_domain_size,
-            log_rows_per_index,
-            context,
-        )?;
-        let digests = Self::get_digests_host(indexes_host, tree, layers_count, callbacks, context)?;
-        let result = LeafsAndDigests { leafs, digests };
+        let result = LeafsAndMerklePaths {
+            leafs,
+            merkle_paths: digests,
+        };
         Ok(result)
     }
 
@@ -492,12 +367,12 @@ impl QueriesOutputAccessors {
     unsafe fn produce_queries(
         query_indexes: &[u32],
         tree_indexes: &[u32],
-        leafs_and_digests: &LeafsAndDigestsAccessors,
+        leafs_and_digests: &LeafsAndMerklePathsAccessors,
         log_rows_per_index: u32,
     ) -> Vec<Query> {
         let queries_count = query_indexes.len();
         let leafs = leafs_and_digests.leafs.get();
-        let digests = leafs_and_digests.digests.get();
+        let digests = leafs_and_digests.merkle_paths.get();
         let values_per_column_count = queries_count << log_rows_per_index;
         assert_eq!(leafs.len() % values_per_column_count, 0);
         let columns_count = leafs.len() / values_per_column_count;

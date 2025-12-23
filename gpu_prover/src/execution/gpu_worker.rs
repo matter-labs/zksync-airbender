@@ -62,7 +62,7 @@ fn get_trees_cache_mode(_circuit_type: CircuitType, _context: &ProverContext) ->
     //     },
     //     _ => TreesCacheMode::CacheFull,
     // }
-    TreesCacheMode::CacheNone
+    TreesCacheMode::CachePatrial
 }
 
 fn gpu_worker(
