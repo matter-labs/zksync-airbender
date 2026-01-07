@@ -68,23 +68,24 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
         common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX
     }
 
+    // const IS_DIVISION_BIT: usize = 0;
+    // const MUL_MULH_MULHSU_DIV_REM: usize = 1;
+    // const MUL_MULH_DIV_REM: usize = 2;
+    // const MUL_DIV_DIVU: usize = 3;
+
     fn define_decoder_subspace(
         &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    ) {
+        opcode: u32,
+    ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
         let mut repr = 0u32;
+        let op = get_opcode_bits(opcode);
+        let func3 = funct3_bits(opcode);
+        let func7 = funct7_bits(opcode);
+        let imm = 0;
+        let (rs1_index, rs2_index, rd_index) = formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
         let instruction_type;
-        // const IS_DIVISION_BIT: usize = 0;
-        // const MUL_MULH_MULHSU_DIV_REM: usize = 1;
-        // const MUL_MULH_DIV_REM: usize = 2;
-        // const MUL_DIV_DIVU: usize = 3;
-        match (opcode, func3, func7) {
+
+        match (op, func3, func7) {
             (OPERATION_OP, 0b000, M_EXT_FUNCT7) => {
                 // MUL
                 instruction_type = InstructionType::RType;
@@ -145,9 +146,28 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
                 instruction_type = InstructionType::RType;
                 repr |= 1 << IS_DIVISION_BIT;
             }
-            _ => return INVALID_OPCODE_DEFAULTS,
+            _ => {
+                return Err(());
+            }
         };
 
-        return (true, instruction_type, repr);
+        let rd_is_zero = rd_index == 0;
+
+        let decoded = ExecutorFamilyDecoderData {
+            imm,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            rd_is_zero,
+            funct3: func3,
+            funct7: Some(func7),
+            opcode_family_bits: repr,
+        };
+        let extended = ExecutorFamilyDecoderExtendedData {
+            data: decoded,
+            instruction_format: instruction_type,
+            validate_csr_index_in_immediate: false,
+        };
+        Ok(extended)
     }
 }

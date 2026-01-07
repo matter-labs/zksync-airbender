@@ -24,11 +24,12 @@ trace_and_split = { workspace = true }
 setups = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-prover_examples = {path = "../../circuit_defs/prover_examples"}
+prover_examples = { path = "../../circuit_defs/prover_examples" }
 worker = {path = "../../worker"}
 clap = { workspace = true }
 blake2s_u32 = { workspace = true }
-execution_utils = { path = "../../execution_utils", features = ["verifier_binaries"]}
+execution_utils = { path = "../../execution_utils", default-features = false, features = ["prover", "verifier_binaries"] }
+riscv_transpiler = { path = "../../riscv_transpiler" }
 field = { workspace = true }
 
 risc_v_cycles_verifier = { path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}
@@ -38,7 +39,7 @@ blake2_with_compression_verifier = { path = "../../circuit_defs/blake2_with_comp
 
 verifier_common = { workspace = true }
 
-full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr"], optional = true }
+full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, optional = true }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3", version = "*" }
 
@@ -51,11 +52,11 @@ base64 = "0.21.7"
 [features]
 
 # If include verifiers is disabled, the compilation is a lot faster, but some commands (verify, verify-all) are not available.
-include_verifiers = ["full_statement_verifier", "risc_v_cycles_verifier", "blake2_with_compression_verifier", "reduced_risc_v_machine_verifier", 
+include_verifiers = ["full_statement_verifier", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr", "risc_v_cycles_verifier", "blake2_with_compression_verifier", "reduced_risc_v_machine_verifier", 
     "risc_v_cycles_verifier/replace_csr", "risc_v_cycles_verifier/proof_utils", 
     "verifier_common/replace_csr", "verifier_common/proof_utils",
     "reduced_risc_v_machine_verifier/replace_csr", "reduced_risc_v_machine_verifier/proof_utils",
-    "field/no_inline"]
+    "field/no_inline", "execution_utils/verifier_80"]
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.

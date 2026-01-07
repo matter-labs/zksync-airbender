@@ -8,9 +8,12 @@ pub(crate) fn sll<C: Counters, S: Snapshotter<C>, R: RAM, const USE_IMM: bool>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let mut rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value;
     if USE_IMM {
+        touch_x0::<C, 1>(state);
         rs2_value = instr.imm;
+    } else {
+        rs2_value = read_register::<C, 1>(state, instr.rs2);
     }
     let mut rd = rs1_value.wrapping_shl(rs2_value);
     write_register::<C, 2>(state, instr.rd, &mut rd);
@@ -26,9 +29,12 @@ pub(crate) fn srl<C: Counters, S: Snapshotter<C>, R: RAM, const USE_IMM: bool>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let mut rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value;
     if USE_IMM {
+        touch_x0::<C, 1>(state);
         rs2_value = instr.imm;
+    } else {
+        rs2_value = read_register::<C, 1>(state, instr.rs2);
     }
     let mut rd = rs1_value.wrapping_shr(rs2_value);
     write_register::<C, 2>(state, instr.rd, &mut rd);
@@ -44,9 +50,12 @@ pub(crate) fn sra<C: Counters, S: Snapshotter<C>, R: RAM, const USE_IMM: bool>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let mut rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value;
     if USE_IMM {
+        touch_x0::<C, 1>(state);
         rs2_value = instr.imm;
+    } else {
+        rs2_value = read_register::<C, 1>(state, instr.rs2);
     }
     let mut rd = (rs1_value as i32).wrapping_shr(rs2_value) as u32;
     write_register::<C, 2>(state, instr.rd, &mut rd);

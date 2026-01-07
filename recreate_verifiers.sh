@@ -27,7 +27,7 @@ unrolled_circuit_names=(
 )
 
 # update the generated files
-(cd tools/generator && cargo run )
+(cd tools/generator && RUST_MIN_STACK=100000000 cargo run)
 
 # copy delegation circuit params
 cp tools/generator/output/all_delegation_circuits_params.rs circuit_defs/setups/generated/all_delegation_circuits_params.rs

@@ -439,6 +439,12 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
                                 let range =
                                     setup_layout.preprocessed_decoder_setup_columns.get_range(0);
                                 trace_view_row[range].copy_from_slice(flattened);
+                            } else {
+                                // pad it with something that is unreachable due to range checks on PC pieces
+                                let range =
+                                    setup_layout.preprocessed_decoder_setup_columns.get_range(0);
+                                use cs::machine::ops::unrolled::decoder_table_padding;
+                                trace_view_row[range].copy_from_slice(&decoder_table_padding());
                             }
                         }
 
@@ -612,7 +618,8 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits = ProofPowConfig::worst_case_config(security_bits, num_queries);
+    let pow_bits =
+        ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
 
     let stage_2_output = stage2::prover_stage_2(
         &mut seed,

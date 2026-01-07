@@ -7,7 +7,6 @@ use crate::definitions::{
     formally_parse_rs1_rs2_rd_props_for_tracer, funct3_bits, funct7_bits, get_opcode_bits,
 };
 use crate::machine::machine_configurations::create_table_for_rom_image;
-use crate::tables::LookupTable;
 use crate::types::Num;
 use crate::{
     cs::circuit::Circuit,
@@ -52,6 +51,13 @@ pub trait InstructionFamilyBitmaskCircuitParser: 'static + std::fmt::Debug {
 pub const INVALID_OPCODE_DEFAULTS: (bool, InstructionType, InstructionFamilyBitmaskRepr) =
     (false, InstructionType::RType, 0); // We do not need info about instruciton being R-type for decoder
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ExecutorFamilyDecoderExtendedData {
+    pub data: ExecutorFamilyDecoderData,
+    pub instruction_format: InstructionType,
+    pub validate_csr_index_in_immediate: bool,
+}
+
 pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
     type BitmaskCircuitParser: InstructionFamilyBitmaskCircuitParser
     where
@@ -59,59 +65,14 @@ pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
 
     fn instruction_family_index(&self) -> u8;
 
-    fn define_decoder_subspace(
-        &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    );
+    fn define_decoder_subspace(&self, opcode: u32)
+        -> Result<ExecutorFamilyDecoderExtendedData, ()>; // either full decoder data, or "unsupported by this circuit"
 
-    fn define_decoder_subspace_ext(
-        &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-        (bool, bool), // (avoid sign extending for CSRRW (I-type formally), validate CSR)
-    ) {
-        let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
-        (a, b, c, (false, false))
-    }
-
+    #[inline(always)]
     fn parse_for_oracle(&self, opcode: u32) -> ExecutorFamilyDecoderData {
-        let op = get_opcode_bits(opcode);
-        let funct3 = funct3_bits(opcode);
-        let funct7 = funct7_bits(opcode);
-        let (is_valid, instr_type, opcode_family_bits, (avoid_i_type_sign_extend, _)) =
-            self.define_decoder_subspace_ext(op, funct3, funct7);
-
-        if is_valid == false {
-            return Default::default();
-        }
-
-        let (rs1_index, rs2_index, rd_index) = formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
-        let funct3 = funct3_bits(opcode);
-        let funct7 = funct7_bits(opcode);
-        let rd_is_zero = rd_index == 0;
-        let imm = instr_type.parse_imm(opcode, avoid_i_type_sign_extend);
-
-        ExecutorFamilyDecoderData {
-            imm,
-            rs1_index,
-            rs2_index,
-            rd_index,
-            rd_is_zero,
-            funct3,
-            funct7: Some(funct7),
-            opcode_family_bits,
-        }
+        self.define_decoder_subspace(opcode)
+            .map(|el| el.data)
+            .unwrap_or(Default::default())
     }
 }
 
@@ -198,95 +159,6 @@ pub fn opcodes_for_reduced_machine() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
     ]
 }
 
-pub fn decoder_data_for_opcodes(
-    all_opcodes: &Vec<Box<dyn OpcodeFamilyDecoder>>,
-) -> Vec<(bool, InstructionType, u8, InstructionFamilyBitmaskRepr)> {
-    let mut result = vec![
-        (
-            true, // invalid
-            InstructionType::RType,
-            0,
-            0,
-        );
-        1 << (7 + 3 + 7)
-    ];
-
-    for opcode in 0..(1u8 << 7) {
-        for funct3 in 0..(1u8 << 3) {
-            for funct7 in 0..(1u8 << 7) {
-                let concatenated_key =
-                    opcode as u32 + ((funct3 as u32) << 7) + ((funct7 as u32) << 10);
-
-                let mut found = None;
-
-                for supported_opcode in all_opcodes.iter() {
-                    let (is_valid, instr_type, family_bitmask) =
-                        supported_opcode.define_decoder_subspace(opcode, funct3, funct7);
-                    if is_valid == false {
-                        continue;
-                    } else {
-                        assert!(found.is_none());
-                        let family = supported_opcode.instruction_family_index();
-                        found = Some((false, instr_type, family, family_bitmask));
-                    }
-                }
-
-                if let Some(data) = found {
-                    result[concatenated_key as usize] = data;
-                }
-                // none of the opcodes could process such combination,
-                // so we degrade to default one
-            }
-        }
-    }
-
-    result
-}
-
-pub fn produce_decoder_table_from_data<F: PrimeField>(
-    data: Vec<(bool, InstructionType, u8, InstructionFamilyBitmaskRepr)>,
-    id: u32,
-) -> LookupTable<F, 3> {
-    use crate::tables::*;
-
-    let keys = key_for_continuous_log2_range(7 + 3 + 7);
-    const TABLE_NAME: &'static str = "Decoder table";
-    LookupTable::<F, 3>::create_table_from_key_and_key_generation_closure(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        move |key| {
-            let input = key[0].as_u64_reduced();
-            assert!(input < (1u64 << 17));
-
-            let mut result = [F::ZERO; 3];
-            // first result is just a family
-            let (is_invalid, instr_type, opcode_family, family_bitmask) = data[input as usize];
-            result[0] = F::from_u64_unchecked(opcode_family as u64);
-            // next we form a bitmask - that is simply
-            let mut bitmask = is_invalid as u64;
-            if instr_type != InstructionType::RType {
-                bitmask |= 1 << (instr_type as u64);
-            }
-            // and then family-specific part
-            bitmask |= (family_bitmask as u64) << NUM_DEFAULT_DECODER_BITS;
-
-            result[1] = F::from_u64_unchecked(bitmask);
-
-            (input as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn full_machine_decoder_table<F: PrimeField>(table_id: u32) -> LookupTable<F, 3> {
-    let all_opcodes = opcodes_for_full_machine();
-    let data = decoder_data_for_opcodes(&all_opcodes);
-
-    produce_decoder_table_from_data::<F>(data, table_id)
-}
-
 pub fn process_binary_into_separate_tables<F: PrimeField, A: GoodAllocator>(
     binary: &[u32],
     families: &[Box<dyn OpcodeFamilyDecoder>],
@@ -361,6 +233,10 @@ pub fn process_binary_into_separate_tables_ext<
     result
 }
 
+pub fn decoder_table_padding<F: PrimeField>() -> [F; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH] {
+    [F::MINUS_ONE; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH]
+}
+
 pub fn materialize_flattened_decoder_table<F: PrimeField>(
     supported_entries_for_family: &[Option<DecoderTableEntry<F>>],
 ) -> Vec<[F; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH]> {
@@ -392,38 +268,6 @@ mod test {
     use field::Mersenne31Field;
 
     use super::*;
-    use crate::utils::serialize_to_file;
-
-    const SECOND_WORD_BITS: usize = 4;
-
-    #[test]
-    fn compile_decoder_circuit() {
-        use crate::tables::*;
-        use ::field::Mersenne31Field;
-        // now test compilation into AIR
-        use crate::cs::cs_reference::BasicAssembly;
-        use crate::one_row_compiler::OneRowCompiler;
-
-        let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        cs.add_table_with_content(
-            TableType::OpTypeBitmask,
-            LookupWrapper::Dimensional3(full_machine_decoder_table(
-                TableType::OpTypeBitmask.to_table_id(),
-            )),
-        );
-        create_decoder_circuit_table_driver_into_cs::<_, _, SECOND_WORD_BITS>(&mut cs, &[]); // particular image is not important here
-
-        decoder_circuit::describe_decoder_cycle::<_, _, SECOND_WORD_BITS>(&mut cs);
-
-        let (cs_output, _) = cs.finalize();
-
-        dbg!(cs_output.num_of_variables);
-
-        let compiler = OneRowCompiler::default();
-        let compiled = compiler.compile_decoder_circuit(cs_output, 24);
-
-        serialize_to_file(&compiled, "decoder_circuit_layout.json");
-    }
 
     #[test]
     fn test_binary_preprocessing() {

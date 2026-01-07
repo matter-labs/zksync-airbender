@@ -17,5 +17,6 @@ dependencies = [
 name = "zksync_os_hashed_fibonacci"
 version = "0.1.0"
 dependencies = [
+ "common_constants",
  "riscv_common",
 ]

@@ -768,11 +768,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         // variables for decoder are not checked at all, and circuit will be responsible to properly constraint
         // them
 
-        let execute = self.add_variable(); // compiler will make sure that it's boolean
+        // NOTE: Ideally compiler should take care of this boolean check, but there is no nice place in quotient to put it,
+        // so we will add constraints
+        let execute = self.add_variable();
         self.require_invariant(
             execute,
             Invariant::Substituted((Placeholder::ExecuteOpcodeFamilyCycle, 0)),
         );
+        use crate::constraint::Term;
+        self.add_constraint((Term::from(execute) - Term::from(1u64)) * Term::from(execute));
+
         let decoder_data: DecoderData<F> = DecoderData {
             rs1_index: self.add_variable(),
             rs2_index: self.add_variable(),

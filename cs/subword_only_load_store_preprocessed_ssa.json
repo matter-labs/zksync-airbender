@@ -755,11 +755,6 @@
     },
     {
       "Field": {
-        "Place": 29
-      }
-    },
-    {
-      "Field": {
         "Constant": 0
       }
     },
@@ -767,7 +762,7 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 5
+            "SubExpression": 4
           },
           "mul_0": {
             "SubExpression": 0
@@ -782,13 +777,13 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 6
+            "SubExpression": 5
           },
           "mul_0": {
-            "SubExpression": 2
+            "SubExpression": 1
           },
           "mul_1": {
-            "SubExpression": 4
+            "SubExpression": 3
           }
         }
       }
@@ -797,10 +792,10 @@
       "Field": {
         "Mul": {
           "lhs": {
-            "SubExpression": 3
+            "SubExpression": 1
           },
           "rhs": {
-            "SubExpression": 4
+            "SubExpression": 2
           }
         }
       }
@@ -809,10 +804,34 @@
       "Field": {
         "Sub": {
           "lhs": {
-            "SubExpression": 7
+            "SubExpression": 6
           },
           "rhs": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Add": {
+          "lhs": {
             "SubExpression": 8
+          },
+          "rhs": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 9
+          },
+          "rhs": {
+            "SubExpression": 3
           }
         }
       }
@@ -822,7 +841,7 @@
         "into_variable": 30,
         "source_subexpr": {
           "Field": {
-            "SubExpression": 9
+            "SubExpression": 10
           }
         },
         "condition_subexpr_idx": null
@@ -832,12 +851,12 @@
   [
     {
       "Field": {
-        "Place": 20
+        "Place": 12
       }
     },
     {
       "Field": {
-        "Place": 29
+        "Place": 20
       }
     },
     {
@@ -847,14 +866,35 @@
     },
     {
       "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 2
-          },
-          "mul_0": {
+        "Mul": {
+          "lhs": {
             "SubExpression": 0
           },
-          "mul_1": {
+          "rhs": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 2
+          },
+          "rhs": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Add": {
+          "lhs": {
+            "SubExpression": 4
+          },
+          "rhs": {
             "SubExpression": 1
           }
         }
@@ -865,7 +905,7 @@
         "into_variable": 31,
         "source_subexpr": {
           "Field": {
-            "SubExpression": 3
+            "SubExpression": 5
           }
         },
         "condition_subexpr_idx": null

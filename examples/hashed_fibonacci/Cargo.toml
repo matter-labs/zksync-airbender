@@ -11,6 +11,7 @@ categories = ["cryptography"]
 
 [dependencies]
 riscv_common = { path = "../../riscv_common"}
+common_constants = { path = "../../common_constants"}
 
 [profile.release]
 lto = true

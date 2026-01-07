@@ -126,13 +126,14 @@ fn apply_word_only_load_store<
 
     let rs2_or_load_ram_access_query = {
         let rs2_or_load_ram_access_query_is_register = is_store;
-        // we model ROM loads as loads from 0
+        // NOTE: we just read from RAM when we read from ROM, but discard a value,
+        // but we can never write there anyway
         let rs2_or_load_ram_access_query_address_low = cs.add_variable_from_constraint(
-            Term::from(unclean_addr.0[0]) * Term::from(load_from_ram) + // load from RAM
+            Term::from(unclean_addr.0[0]) * (Term::from(1u64) - Term::from(is_store)) + // load from RAM or ROM, address is the same
             Term::from(inputs.decoder_data.rs2_index) * Term::from(is_store), // RS2 index in case of STORE
         );
         let rs2_or_load_ram_access_query_address_high = cs.add_variable_from_constraint(
-            Term::from(unclean_addr.0[1]) * Term::from(load_from_ram), // load from RAM, and 0 in case of STORE
+            Term::from(unclean_addr.0[1]) * (Term::from(1u64) - Term::from(is_store)), // load from RAM or ROM, and 0 in case of STORE
         );
 
         // We will make read/write values and for purposes of witness evaluation just mark them as "known".
@@ -290,7 +291,6 @@ mod test {
     use super::*;
     use crate::utils::serialize_to_file;
 
-    const SECOND_WORD_BITS: usize = 4;
     const DUMMY_BYTECODE: &[u32] = &[UNIMP_OPCODE];
 
     #[test]
@@ -301,19 +301,22 @@ mod test {
             &|cs| {
                 word_only_load_store_table_addition_fn(cs);
 
-                let extra_tables = create_word_only_load_store_special_tables::<_, SECOND_WORD_BITS>(
-                    DUMMY_BYTECODE,
-                );
+                let extra_tables = create_word_only_load_store_special_tables::<
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(DUMMY_BYTECODE);
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);
                 }
             },
             &|cs| {
-                word_only_load_store_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(
-                    cs,
-                )
+                word_only_load_store_circuit_with_preprocessed_bytecode::<
+                    _,
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(cs)
             },
-            1 << (16 + SECOND_WORD_BITS),
+            1 << 20,
             24,
         );
 
@@ -328,17 +331,20 @@ mod test {
             &|cs| {
                 word_only_load_store_table_addition_fn(cs);
 
-                let extra_tables = create_word_only_load_store_special_tables::<_, SECOND_WORD_BITS>(
-                    DUMMY_BYTECODE,
-                );
+                let extra_tables = create_word_only_load_store_special_tables::<
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(DUMMY_BYTECODE);
                 for (table_type, table) in extra_tables {
                     cs.add_table_with_content(table_type, table);
                 }
             },
             &|cs| {
-                word_only_load_store_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(
-                    cs,
-                )
+                word_only_load_store_circuit_with_preprocessed_bytecode::<
+                    _,
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(cs)
             },
         );
         serialize_to_file(&ssa_forms, "word_only_load_store_preprocessed_ssa.json");

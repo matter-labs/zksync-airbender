@@ -1,5 +1,6 @@
 use super::*;
 use common_constants::*;
+use std::mem::MaybeUninit;
 
 const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
 const PRECOMPILE_COLUMNMIX1: u32 = 1;
@@ -9,90 +10,97 @@ const PRECOMPILE_RHO: u32 = 4;
 const PRECOMPILE_CHI1: u32 = 5;
 const PRECOMPILE_CHI2: u32 = 6;
 
-#[inline(always)]
-fn peek_u64_words<R: RAM, const N: usize>(
-    addr_base: usize,
-    offsets: [usize; N],
-    ram: &R,
-) -> [u64; N] {
-    core::array::from_fn(|i| {
-        let offset = offsets[i];
-        let addr_low = (addr_base + offset * core::mem::size_of::<u64>()) as u32;
-        let addr_high =
-            (addr_base + offset * core::mem::size_of::<u64>() + core::mem::size_of::<u32>()) as u32;
-        let low = ram.peek_word(addr_low);
-        let high = ram.peek_word(addr_high);
-        low as u64 | (high as u64) << 32
-    })
-}
-
-#[inline(always)]
-fn write_u64_words<C: Counters, S: Snapshotter<C>, R: RAM, const N: usize>(
-    addr_base: usize,
-    offsets: [usize; N],
-    values: [u64; N],
-    ram: &mut R,
-    snapshotter: &mut S,
-    write_timestamp: TimestampScalar,
-) {
-    for i in 0..N {
-        let offset = offsets[i];
-        let value = values[i];
-        let low = value as u32;
-        let high = (value >> 32) as u32;
-        let addr_low = (addr_base + offset * core::mem::size_of::<u64>()) as u32;
-        let addr_high =
-            (addr_base + offset * core::mem::size_of::<u64>() + core::mem::size_of::<u32>()) as u32;
-        let (read_timestamp, old_value) = ram.write_word(addr_low, low, write_timestamp);
-        snapshotter.append_memory_read(addr_low, old_value, read_timestamp, write_timestamp);
-        let (read_timestamp, old_value) = ram.write_word(addr_high, high, write_timestamp);
-        snapshotter.append_memory_read(addr_low, old_value, read_timestamp, write_timestamp);
-    }
-}
-
 #[inline(never)]
 pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
     ram: &mut R,
     snapshotter: &mut S,
 ) {
-    let x10 = state.registers[10].value; // don't process it just yet, wait for write!
-    let x11 = read_register::<C, 3>(state, 11);
-    assert!(x11 >= 1 << 21, "state ptr is not in RAM");
-    assert!(x10 < 1 << 11, "control info is too big");
-    assert!(x11 % 256 == 0, "state ptr is not aligned");
-
-    // get control
-    let control = x10;
-    let (precompile, iteration, round) = keccak_special5_impl_decode_control(control);
-
-    // update control
-    let control_next = keccak_special5_impl_bump_control(precompile, iteration, round);
-    let mut x10_next = control_next;
-    write_register::<C, 3>(state, 10, &mut x10_next); // extremely strange &mut
-
-    // get indexes
-    let state_indexes = keccak_special5_impl_extract_indices(precompile, iteration, round);
-
-    // get inputs
-    let state_inputs = peek_u64_words(x11 as usize, state_indexes, ram);
-
-    // get outputs
-    let state_outputs =
-        keccak_special5_impl_compute_outputs(precompile, iteration, round, state_inputs);
-
-    // write RAM
-    let write_timestamp = state.timestamp | 3;
-    write_u64_words(
-        x11 as usize,
-        state_indexes,
-        state_outputs,
-        ram,
-        snapshotter,
-        write_timestamp,
+    let x10 = state.registers[10].value;
+    let x11 = state.registers[11].value;
+    debug_assert_eq!(state.timestamp % 4, 0);
+    assert!(
+        x11 as usize >= common_constants::rom::ROM_BYTE_SIZE,
+        "state ptr is not in RAM"
     );
+    assert!(x10 < 1 << 11, "control info is too big");
+    assert_eq!(x11 % 256, 0, "state ptr is not aligned");
 
-    state.counters.bump_keccak_special5();
+    assert_eq!(x10, common_constants::INITIAL_KECCAK_F1600_CONTROL_VALUE);
+
+    // compute the output
+
+    state.registers[10].value = FINAL_KECCAK_F1600_CONTROL_VALUE;
+    state.registers[10].timestamp = state.timestamp
+        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP
+        + 3;
+    state.registers[11].timestamp = state.timestamp
+        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP
+        + 3;
+
+    // NOTE: we should touch x0 and give it a timestamp that would be at the very end of execution
+    state.registers[0].timestamp = (state.timestamp
+        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP)
+        | 2;
+
+    // now we need to be careful with accessed state elements. We always access u64s only, and for replaying purposes we will need
+    // to read 31 state elements (for snapshot), and then we will work over the
+    unsafe {
+        let write_ts_base = state.timestamp | 3;
+
+        // we are fine to NOT keep track on the initial timestamps, as we only need final write ones
+        let mut local_state: [MaybeUninit<u64>; 31] = [const { MaybeUninit::uninit() }; 31];
+
+        let mut addr = x11;
+        for i in 0..31 {
+            // low and high
+            let low_value = ram.peek_word(addr);
+            addr += 4;
+            let high_value = ram.peek_word(addr);
+            addr += 4;
+
+            local_state[i].write((low_value as u64) | ((high_value as u64) << 32));
+        }
+        let mut local_state = local_state.map(|el| el.assume_init());
+
+        keccak_f1600_impl_ext(&mut local_state);
+
+        // and write everything back, and we know our discrete timestamp offsets
+        let mut addr = x11;
+        for i in 0..31 {
+            let value = local_state[i];
+            let ts_offset = KECCAK_FINAL_TIMESTAMP_OFFSETS[i];
+            let low = value as u32;
+            let high = (value >> 32) as u32;
+
+            debug_assert_eq!((write_ts_base + ts_offset) % TIMESTAMP_STEP, 3);
+
+            let write_ts = write_ts_base + ts_offset;
+            let (ts, old_value) = ram.write_word(addr, low, write_ts);
+            snapshotter.append_memory_read(addr, old_value, ts, write_ts);
+            addr += 4;
+            let (ts, old_value) = ram.write_word(addr, high, write_ts);
+            snapshotter.append_memory_read(addr, old_value, ts, write_ts);
+            addr += 4;
+        }
+    }
+    // and full machine state also moves!
+
+    // But timestamp needs 1 less bump as there is a default increase post-cycle
+    state.timestamp +=
+        ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+    state
+        .counters
+        .bump_keccak_special5(common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+    state.pc = state.pc.wrapping_add(
+        (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
+            as u32,
+    );
+    state
+        .counters
+        .log_multiple_circuit_family_calls::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>(
+            common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600,
+        );
 }
 
 #[inline(always)]
@@ -147,7 +155,7 @@ pub(crate) const fn keccak_special5_impl_bump_control(
 }
 
 #[inline(always)]
-pub(crate) fn keccak_special5_impl_extract_indices(
+pub(crate) const fn keccak_special5_impl_extract_indices(
     precompile: u32,
     iteration: usize,
     round: usize,
@@ -188,9 +196,13 @@ pub(crate) fn keccak_special5_impl_extract_indices(
         }
         perms
     };
+
+    const PERMUTATIONS_ADJUSTED_AS_ARRAYS: [[usize; 25]; 25] =
+        { unsafe { core::mem::transmute(PERMUTATIONS_ADJUSTED) } };
+
     match precompile {
         PRECOMPILE_IOTA_COLUMNXOR => {
-            let pi = &PERMUTATIONS_ADJUSTED[round * 25..]; // indices before applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round]; // indices before applying round permutation
             let idcol = 25 + iteration;
             let idx0 = pi[iteration];
             let idx5 = pi[iteration + 5];
@@ -203,7 +215,7 @@ pub(crate) fn keccak_special5_impl_extract_indices(
         PRECOMPILE_COLUMNMIX2 => [25, 26, 27, 28, 29, 30],
         PRECOMPILE_THETA => {
             const IDCOLS: [usize; 5] = [29, 25, 26, 27, 28];
-            let pi = &PERMUTATIONS_ADJUSTED[round * 25..]; // indices before applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round]; // indices before applying round permutation
             let idcol = IDCOLS[iteration];
             let idx0 = pi[iteration];
             let idx5 = pi[iteration + 5];
@@ -213,7 +225,7 @@ pub(crate) fn keccak_special5_impl_extract_indices(
             [idx0, idx5, idx10, idx15, idx20, idcol]
         }
         PRECOMPILE_RHO => {
-            let pi = &PERMUTATIONS_ADJUSTED[round * 25..]; // indices before applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round]; // indices before applying round permutation
             let idx0 = pi[iteration];
             let idx5 = pi[iteration + 5];
             let idx10 = pi[iteration + 10];
@@ -222,7 +234,7 @@ pub(crate) fn keccak_special5_impl_extract_indices(
             [idx0, idx5, idx10, idx15, idx20, 25]
         }
         PRECOMPILE_CHI1 => {
-            let pi = &PERMUTATIONS_ADJUSTED[(round + 1) * 25..]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
             let idx = iteration * 5;
             let _idx0 = pi[idx];
             let idx1 = pi[idx + 1];
@@ -232,7 +244,7 @@ pub(crate) fn keccak_special5_impl_extract_indices(
             [idx1, idx2, idx3, idx4, 25, 26]
         }
         PRECOMPILE_CHI2 => {
-            let pi = &PERMUTATIONS_ADJUSTED[(round + 1) * 25..]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
             let idx = iteration * 5;
             let idx0 = pi[idx];
             let _idx1 = pi[idx + 1];
@@ -241,7 +253,9 @@ pub(crate) fn keccak_special5_impl_extract_indices(
             let idx4 = pi[idx + 4];
             [idx0, idx3, idx4, 25, 26, 27]
         }
-        _ => unreachable!("this is a junk scenario"),
+        _ => {
+            panic!("this is a junk scenario")
+        }
     }
 }
 
@@ -369,5 +383,195 @@ pub(crate) fn keccak_special5_impl_compute_outputs(
             [idx0_new, idx3_new, idx4_new, i25_new, i26_new, i27_new]
         }
         _ => unreachable!(),
+    }
+}
+
+pub(crate) const KECCAK_FINAL_TIMESTAMP_OFFSETS: [u64; 31] = const {
+    let mut result = [0u64; 31];
+
+    let mut control = common_constants::INITIAL_KECCAK_F1600_CONTROL_VALUE;
+
+    let mut call_round = 0;
+    while call_round < NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+        let ts_offset = (call_round as u64) * TIMESTAMP_STEP;
+        let (precompile, iteration, round) = keccak_special5_impl_decode_control(control);
+        // update control
+        let control_next = keccak_special5_impl_bump_control(precompile, iteration, round);
+        control = control_next;
+        // get indexes
+        let state_indexes = keccak_special5_impl_extract_indices(precompile, iteration, round);
+
+        let mut j = 0;
+        while j < 6 {
+            result[state_indexes[j]] = ts_offset;
+            j += 1;
+        }
+
+        call_round += 1;
+    }
+
+    assert!(control == common_constants::FINAL_KECCAK_F1600_CONTROL_VALUE);
+
+    let mut i = 0;
+    while i < 31 {
+        assert!(result[i] % TIMESTAMP_STEP == 0);
+        i += 1;
+    }
+
+    result
+};
+
+const RHO: [u32; 24] = [
+    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
+];
+
+const PI: [usize; 24] = [
+    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
+];
+
+const RC: [u64; 24] = [
+    0x0000000000000001,
+    0x0000000000008082,
+    0x800000000000808a,
+    0x8000000080008000,
+    0x000000000000808b,
+    0x0000000080000001,
+    0x8000000080008081,
+    0x8000000000008009,
+    0x000000000000008a,
+    0x0000000000000088,
+    0x0000000080008009,
+    0x000000008000000a,
+    0x000000008000808b,
+    0x800000000000008b,
+    0x8000000000008089,
+    0x8000000000008003,
+    0x8000000000008002,
+    0x8000000000000080,
+    0x000000000000800a,
+    0x800000008000000a,
+    0x8000000080008081,
+    0x8000000000008080,
+    0x0000000080000001,
+    0x8000000080008008,
+];
+
+pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
+    // Even using small precompile we have regular structure like
+    // seq!(round in 0..24 {
+    //     iota_theta_rho_nopi(&mut state.0, round);
+    //     chi_nopi(&mut state.0, round);
+    // });
+    // and then XOR of the final constant, and we want to project it towards
+    // our extended state and get 6 extended elements in the meantime
+
+    use seq_macro::seq;
+    // 23 first rounds are just normal - we do not care about anything
+    for round in 0..23 {
+        let rc = RC[round];
+        let mut array = [0u64; 5];
+
+        seq!(x in 0..5 {
+            seq!(y in 0..5 {
+                array[x] ^= state[5 * y + x];
+            });
+        });
+
+        seq!(x in 0..5 {
+            let t1 = array[(x + 4) % 5];
+            let t2 = array[(x + 1) % 5].rotate_left(1);
+            seq!(y in 0..5 {
+                state[5 * y + x] ^= t1 ^ t2;
+            });
+        });
+
+        let mut last = state[1];
+        seq!(x in 0..24 {
+            array[0] = state[PI[x]];
+            state[PI[x]] = last.rotate_left(RHO[x]);
+            last = array[0];
+        });
+
+        seq!(y_step in 0..5 {
+            let y = 5 * y_step;
+
+            seq!(x in 0..5 {
+                array[x] = state[y + x];
+            });
+
+            seq!(x in 0..5 {
+                let t1 = !array[(x + 1) % 5];
+                let t2 = array[(x + 2) % 5];
+                state[y + x] = array[x] ^ (t1 & t2);
+            });
+        });
+
+        state[0] ^= rc;
+    }
+
+    // and only in the final round we will do a little bit of bookkeeping
+    {
+        let round = 23;
+        let rc = RC[round];
+        let mut array = [0u64; 5];
+
+        // Here we use `PRECOMPILE_IOTA_COLUMNXOR`
+        seq!(x in 0..5 {
+            seq!(y in 0..5 {
+                array[x] ^= state[5 * y + x];
+            });
+        });
+
+        // Here happen `PRECOMPILE_COLUMNMIX1` and `PRECOMPILE_COLUMNMIX2`, and we
+        // need to save some values
+        seq!(x in 0..5 {
+            let t1 = array[(x + 4) % 5];
+            let t2 = array[(x + 1) % 5].rotate_left(1);
+            let t = t1 ^ t2;
+            if x == 0 {
+                state[29] = t;
+            }
+            if x == 3 {
+                state[27] = t;
+            }
+            if x == 4 {
+                state[28] = t;
+                state[30] = t2;
+            }
+            seq!(y in 0..5 {
+                state[5 * y + x] ^= t;
+            });
+        });
+
+        // Rho and pi
+        let mut last = state[1];
+        seq!(x in 0..24 {
+            array[0] = state[PI[x]];
+            state[PI[x]] = last.rotate_left(RHO[x]);
+            last = array[0];
+        });
+
+        state[26] = state[21];
+
+        // Chi
+        seq!(y_step in 0..5 {
+            let y = 5 * y_step;
+
+            seq!(x in 0..5 {
+                array[x] = state[y + x];
+            });
+
+            seq!(x in 0..5 {
+                let t1 = !array[(x + 1) % 5];
+                let t2 = array[(x + 2) % 5];
+                state[y + x] = array[x] ^ (t1 & t2);
+            });
+        });
+
+        // Iota
+        state[0] ^= rc;
+
+        // final bookkeeping
+        state[25] = state[0] ^ state[5] ^ state[10] ^ state[15] ^ state[20];
     }
 }

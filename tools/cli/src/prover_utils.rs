@@ -1,5 +1,4 @@
 use clap::ValueEnum;
-use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
 pub use execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
     get_padded_binary, Machine, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
@@ -12,9 +11,6 @@ use prover::{
     transcript::{Blake2sBufferingTranscript, Seed},
 };
 use std::{alloc::Global, fs, io::Read, path::Path};
-
-#[cfg(feature = "gpu")]
-pub use gpu_prover::circuit_type::MainCircuitType;
 
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).expect(&format!("{filename}"));
@@ -59,6 +55,8 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
 
 #[cfg(feature = "gpu")]
 pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
+    todo!();
+    /*
     let binary = load_binary_from_path(bin_path);
 
     // TODO: hardcoded for now.
@@ -107,6 +105,7 @@ pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
     for (i, time) in final_results.iter().enumerate() {
         println!("Input {}: total proof time {:.3}s", i, time);
     }
+    */
 }
 
 pub fn create_proofs(
@@ -147,11 +146,7 @@ pub fn create_proofs(
         // In order to use it for the 2nd recursion layer, you should call `create_final_proofs_from_program_proof`
         #[cfg(feature = "gpu")]
         {
-            let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
-            (
-                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-                Some(0f64),
-            )
+            (Some(GpuSharedState::new(&binary)), Some(0f64))
         }
         #[cfg(not(feature = "gpu"))]
         {
@@ -259,8 +254,7 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
 // For now, we share the setup cache, only for GPU (as we really care for performance there).
 #[cfg(feature = "gpu")]
 pub struct GpuSharedState {
-    pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
-    pub recursion_circuit_type: MainCircuitType,
+    pub prover: gpu_prover::execution::prover::ExecutionProver,
 }
 
 #[cfg(feature = "gpu")]
@@ -269,47 +263,37 @@ impl GpuSharedState {
     const RECURSION_BINARY_KEY: usize = 1;
 
     #[cfg(feature = "gpu")]
-    pub fn new(binary: &Vec<u32>, recursion_circuit_type: MainCircuitType) -> Self {
-        use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
-        use gpu_prover::execution::prover::ExecutableBinary;
-        use gpu_prover::execution::prover::ExecutionProver;
-
-        // We don't support MainCircuitType::FinalReducedRiscVMachine on GPU for now
-        // it's too big (2^25 rows).
-        assert!(
-            recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
-                || recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine
-        );
-
-        let main_binary = ExecutableBinary {
-            key: Self::MAIN_BINARY_KEY,
-            circuit_type: MainCircuitType::RiscVCycles,
-            bytecode: binary.clone(),
-        };
-        let recursion_binary = ExecutableBinary {
-            key: Self::RECURSION_BINARY_KEY,
-            circuit_type: recursion_circuit_type,
-            bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
-        };
-        let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
-        Self {
-            prover,
-            recursion_circuit_type,
-        }
+    pub fn new(binary: &Vec<u32>) -> Self {
+        todo!()
+        // use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
+        // use gpu_prover::execution::prover::ExecutionProver;
+        // use gpu_prover::execution::prover::ExecutionProverConfiguration;
+        //
+        // /*let main_binary = ExecutableBinary {
+        //     key: Self::MAIN_BINARY_KEY,
+        //     circuit_type: MainCircuitType::RiscVCycles,
+        //     bytecode: binary.clone(),
+        // };
+        // let recursion_binary = ExecutableBinary {
+        //     key: Self::RECURSION_BINARY_KEY,
+        //     circuit_type: recursion_circuit_type,
+        //     bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
+        // };*/
+        // let mut configuration = ExecutionProverConfiguration::default();
+        // configuration.replay_worker_threads_count = 8;
+        // let prover = ExecutionProver::with_configuration(configuration);
+        //
+        // Self { prover }
     }
 }
 
 #[cfg(not(feature = "gpu"))]
-pub struct GpuSharedState<'a> {
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
+pub struct GpuSharedState {}
 
 #[cfg(not(feature = "gpu"))]
-impl<'a> GpuSharedState<'a> {
+impl GpuSharedState {
     pub fn new(_binary: &Vec<u32>) -> Self {
-        Self {
-            _phantom: std::marker::PhantomData,
-        }
+        Self {}
     }
 }
 
@@ -341,7 +325,7 @@ pub fn create_proofs_internal(
                     {
                         println!("**** proving using GPU ****");
                         let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
+                        /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
                                 &GpuSharedState::MAIN_BINARY_KEY,
@@ -355,7 +339,8 @@ pub fn create_proofs_internal(
                             basic_proofs,
                             delegation_proofs,
                             final_register_values.into(),
-                        )
+                        )*/
+                        todo!()
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
@@ -396,7 +381,7 @@ pub fn create_proofs_internal(
                     {
                         println!("**** proving using GPU ****");
                         let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
+                        /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
                                 &GpuSharedState::RECURSION_BINARY_KEY,
@@ -410,7 +395,8 @@ pub fn create_proofs_internal(
                             basic_proofs,
                             delegation_proofs,
                             final_register_values.into(),
-                        )
+                        )*/
+                        todo!()
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
@@ -451,7 +437,7 @@ pub fn create_proofs_internal(
                     {
                         println!("**** proving using GPU ****");
                         let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
+                        /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
                                 &GpuSharedState::RECURSION_BINARY_KEY,
@@ -465,7 +451,8 @@ pub fn create_proofs_internal(
                             basic_proofs,
                             delegation_proofs,
                             final_register_values.into(),
-                        )
+                        )*/
+                        todo!()
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
@@ -555,76 +542,66 @@ pub fn create_recursion_proofs(
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
-    assert!(
-        proof_metadata.basic_proof_count > 0,
-        "Recursion proofs can be created only for basic proofs.",
-    );
-    let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-
-    let mut recursion_level = 0;
-    let mut current_proof_list = proof_list;
-    let mut current_proof_metadata = proof_metadata.clone();
-
-    let machine = if recursion_mode == RecursionStrategy::UseReducedLog23MachineInBothLayers {
-        &Machine::ReducedLog23
-    } else {
-        &Machine::Reduced
-    };
-
-    // Small sanity check, to make sure that GPU state matches the chosen machine.
-    #[cfg(feature = "gpu")]
-    if let Some(gpu_shared_state) = gpu_shared_state {
-        if machine == &Machine::ReducedLog23 {
-            assert!(
-                gpu_shared_state.recursion_circuit_type
-                    == MainCircuitType::ReducedRiscVLog23Machine
-            );
-        } else {
-            assert!(
-                gpu_shared_state.recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
-            );
-        }
-    }
-
-    loop {
-        if recursion_mode.skip_first_layer() {
-            println!("Skipping recursion.");
-            break;
-        }
-
-        println!("*** Starting recursion level {} ***", recursion_level);
-        let non_determinism_data = generate_oracle_data_for_universal_verifier(
-            &current_proof_metadata,
-            &current_proof_list,
-        );
-
-        (current_proof_list, current_proof_metadata) = create_proofs_internal(
-            &binary,
-            non_determinism_data,
-            machine,
-            current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
-            gpu_shared_state,
-            total_proof_time,
-        );
-
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join(format!("recursion_{}", recursion_level));
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-            }
-            current_proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-        }
-
-        recursion_level += 1;
-
-        if recursion_mode.switch_to_second_recursion_layer(&current_proof_metadata) {
-            println!("Stopping 1st recursion layer.");
-            break;
-        }
-    }
-    (current_proof_list, current_proof_metadata)
+    todo!()
+    // assert!(
+    //     proof_metadata.basic_proof_count > 0,
+    //     "Recursion proofs can be created only for basic proofs.",
+    // );
+    // let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+    //
+    // let mut recursion_level = 0;
+    // let mut current_proof_list = proof_list;
+    // let mut current_proof_metadata = proof_metadata.clone();
+    //
+    // let machine = if recursion_mode == RecursionStrategy::UseReducedLog23MachineInBothLayers {
+    //     &Machine::ReducedLog23
+    // } else {
+    //     &Machine::Reduced
+    // };
+    //
+    // // Small sanity check, to make sure that GPU state matches the chosen machine.
+    // #[cfg(feature = "gpu")]
+    // if let Some(gpu_shared_state) = gpu_shared_state {}
+    //
+    // loop {
+    //     if recursion_mode.skip_first_layer() {
+    //         println!("Skipping recursion.");
+    //         break;
+    //     }
+    //
+    //     println!("*** Starting recursion level {} ***", recursion_level);
+    //     let non_determinism_data = generate_oracle_data_for_universal_verifier(
+    //         &current_proof_metadata,
+    //         &current_proof_list,
+    //     );
+    //
+    //     (current_proof_list, current_proof_metadata) = create_proofs_internal(
+    //         &binary,
+    //         non_determinism_data,
+    //         machine,
+    //         current_proof_metadata.total_proofs(),
+    //         Some(current_proof_metadata.create_prev_metadata()),
+    //         gpu_shared_state,
+    //         total_proof_time,
+    //     );
+    //
+    //     if let Some(tmp_dir) = tmp_dir {
+    //         let base_tmp_dir = Path::new(tmp_dir).join(format!("recursion_{}", recursion_level));
+    //         if !base_tmp_dir.exists() {
+    //             fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
+    //         }
+    //         current_proof_list.write_to_directory(&base_tmp_dir);
+    //         serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
+    //     }
+    //
+    //     recursion_level += 1;
+    //
+    //     if recursion_mode.switch_to_second_recursion_layer(&current_proof_metadata) {
+    //         println!("Stopping 1st recursion layer.");
+    //         break;
+    //     }
+    // }
+    // (current_proof_list, current_proof_metadata)
 }
 
 pub fn create_final_proofs_from_program_proof(
@@ -637,14 +614,10 @@ pub fn create_final_proofs_from_program_proof(
     let (mut gpu_state, mut total_proof_time) = if use_gpu {
         #[cfg(feature = "gpu")]
         {
-            // Here we use GPU for final recursion layer only.
-            use gpu_prover::circuit_type::MainCircuitType;
-            let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-            let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-            (
-                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-                Some(0f64),
-            )
+            todo!()
+            // // Here we use GPU for final recursion layer only.
+            // let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+            // (Some(GpuSharedState::new(&binary)), Some(0f64))
         }
 
         #[cfg(not(feature = "gpu"))]
@@ -674,47 +647,48 @@ pub fn create_final_proofs(
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
     total_proof_time: &mut Option<f64>,
 ) -> ProgramProof {
-    let binary = recursion_mode.get_second_layer_binary();
-    let machine = recursion_mode.get_second_layer_machine();
-
-    let mut final_proof_level = 0;
-    let mut current_proof_list = proof_list;
-    let mut current_proof_metadata = proof_metadata.clone();
-
-    loop {
-        println!("*** Starting final_proofs level {} ***", final_proof_level);
-        let non_determinism_data = generate_oracle_data_for_universal_verifier(
-            &current_proof_metadata,
-            &current_proof_list,
-        );
-        (current_proof_list, current_proof_metadata) = create_proofs_internal(
-            &binary,
-            non_determinism_data,
-            &machine,
-            current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
-            gpu_shared_state,
-            total_proof_time,
-        );
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join(format!("final_{}", final_proof_level));
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-            }
-            current_proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-        }
-
-        if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level)
-        {
-            println!("Stopping 2nd recursion layer.");
-            break;
-        }
-
-        final_proof_level += 1;
-    }
-
-    ProgramProof::from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
+    todo!()
+    // let binary = recursion_mode.get_second_layer_binary();
+    // let machine = recursion_mode.get_second_layer_machine();
+    //
+    // let mut final_proof_level = 0;
+    // let mut current_proof_list = proof_list;
+    // let mut current_proof_metadata = proof_metadata.clone();
+    //
+    // loop {
+    //     println!("*** Starting final_proofs level {} ***", final_proof_level);
+    //     let non_determinism_data = generate_oracle_data_for_universal_verifier(
+    //         &current_proof_metadata,
+    //         &current_proof_list,
+    //     );
+    //     (current_proof_list, current_proof_metadata) = create_proofs_internal(
+    //         &binary,
+    //         non_determinism_data,
+    //         &machine,
+    //         current_proof_metadata.total_proofs(),
+    //         Some(current_proof_metadata.create_prev_metadata()),
+    //         gpu_shared_state,
+    //         total_proof_time,
+    //     );
+    //     if let Some(tmp_dir) = tmp_dir {
+    //         let base_tmp_dir = Path::new(tmp_dir).join(format!("final_{}", final_proof_level));
+    //         if !base_tmp_dir.exists() {
+    //             fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
+    //         }
+    //         current_proof_list.write_to_directory(&base_tmp_dir);
+    //         serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
+    //     }
+    //
+    //     if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level)
+    //     {
+    //         println!("Stopping 2nd recursion layer.");
+    //         break;
+    //     }
+    //
+    //     final_proof_level += 1;
+    // }
+    //
+    // ProgramProof::from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
 }
 
 pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<Seed> {

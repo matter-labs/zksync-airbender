@@ -16,8 +16,8 @@ struct TimestampData {
   static constexpr unsigned TIMESTAMP_COLUMNS_NUM_BITS_MASK = (1u << TIMESTAMP_COLUMNS_NUM_BITS) - 1;
   static constexpr unsigned NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP = 2;
   static constexpr u32 TOTAL_TIMESTAMP_BITS = TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM;
-  static constexpr TimestampScalar TIMESTAMP_STEP = 1ul << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
-  static constexpr TimestampScalar MAX_INITIAL_TIMESTAMP = (1ul << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
+  static constexpr TimestampScalar TIMESTAMP_STEP = 1ull << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+  static constexpr TimestampScalar MAX_INITIAL_TIMESTAMP = (1ull << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
 
   u16 limbs[NUM_TIMESTAMP_DATA_LIMBS];
 
@@ -56,26 +56,6 @@ struct TimestampData {
     *this = from_scalar(final_ts);
     return intermediate_carry;
   }
-};
-
-struct RegIndexOrMemWordIndex {
-  static constexpr u32 IS_RAM_MASK = 0x80000000;
-  u32 value;
-
-  DEVICE_FORCEINLINE u32 as_u32_formal_address() const { return is_register() ? value : value << 2; }
-
-  DEVICE_FORCEINLINE bool is_register() const { return !(value & IS_RAM_MASK); }
-};
-
-struct __align__(16) InitAndTeardown {
-  u32 address;
-  u32 teardown_value;
-  TimestampData teardown_timestamp;
-};
-
-struct ShuffleRamInitsAndTeardowns {
-  // const u32 count;
-  const InitAndTeardown *const __restrict__ inits_and_teardowns;
 };
 
 } // namespace airbender::witness::trace

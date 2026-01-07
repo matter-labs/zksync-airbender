@@ -40,104 +40,113 @@ impl OpcodeFamilyDecoder for MemoryFamilyDecoder {
 
     fn define_decoder_subspace(
         &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    ) {
-        let mut repr = 0u32;
-        let instruction_type;
-        match (opcode, func3, func7) {
-            (OPERATION_LOAD, 0b000, _) => {
-                // LB
-                instruction_type = InstructionType::IType;
-            }
-            (OPERATION_LOAD, 0b001, _) => {
-                // LH
-                instruction_type = InstructionType::IType;
-            }
-            (OPERATION_LOAD, 0b010, _) => {
-                // LW
-                instruction_type = InstructionType::IType;
-            }
-            (OPERATION_LOAD, 0b100, _) => {
-                // LBU
-                instruction_type = InstructionType::IType;
-            }
-            (OPERATION_LOAD, 0b101, _) => {
-                // LHU
-                instruction_type = InstructionType::IType;
-            }
-            (OPERATION_STORE, 0b000, _) => {
-                // SB
-                instruction_type = InstructionType::SType;
-                repr |= 1 << WRITE_BIT;
-            }
-            (OPERATION_STORE, 0b001, _) => {
-                // SH
-                instruction_type = InstructionType::SType;
-                repr |= 1 << WRITE_BIT;
-            }
-            (OPERATION_STORE, 0b010, _) => {
-                // SW
-                instruction_type = InstructionType::SType;
-                repr |= 1 << WRITE_BIT;
-            }
-            // (OPERATION_LOAD, 0b000, _) if SUPPORT_SIGNED & SUPPORT_LESS_THAN_WORD => {
-            //     // LB
-            //     instruction_type = InstructionType::IType;
-            //     repr |= 1 << SIGN_EXTEND_BIT;
-            //     repr |= 1 << BYTE_ACCESS_BIT;
-            // }
-            // (OPERATION_LOAD, 0b001, _) if SUPPORT_SIGNED & SUPPORT_LESS_THAN_WORD => {
-            //     // LH
-            //     instruction_type = InstructionType::IType;
-            //     repr |= 1 << SIGN_EXTEND_BIT;
-            //     repr |= 1 << HALF_WORD_ACCESS_BIT;
-            // }
-            // (OPERATION_LOAD, 0b010, _) => {
-            //     // LW
-            //     instruction_type = InstructionType::IType;
-            //     if SUPPORT_LESS_THAN_WORD {
-            //         repr |= 1 << WORD_ACCESS_BIT;
-            //     }
-            // }
-            // (OPERATION_LOAD, 0b100, _) if SUPPORT_LESS_THAN_WORD => {
-            //     // LBU
-            //     instruction_type = InstructionType::IType;
-            //     repr |= 1 << BYTE_ACCESS_BIT;
-            // }
-            // (OPERATION_LOAD, 0b101, _) if SUPPORT_LESS_THAN_WORD => {
-            //     // LHU
-            //     instruction_type = InstructionType::IType;
-            //     repr |= 1 << HALF_WORD_ACCESS_BIT;
-            // }
-            // (OPERATION_STORE, 0b000, _) if SUPPORT_LESS_THAN_WORD => {
-            //     // SB
-            //     instruction_type = InstructionType::SType;
-            //     repr |= 1 << WRITE_BIT;
-            //     repr |= 1 << BYTE_ACCESS_BIT;
-            // }
-            // (OPERATION_STORE, 0b001, _) if SUPPORT_LESS_THAN_WORD => {
-            //     // SH
-            //     instruction_type = InstructionType::SType;
-            //     repr |= 1 << WRITE_BIT;
-            //     repr |= 1 << HALF_WORD_ACCESS_BIT;
-            // }
-            // (OPERATION_STORE, 0b010, _) => {
-            //     // SW
-            //     instruction_type = InstructionType::SType;
-            //     repr |= 1 << WRITE_BIT;
-            //     if SUPPORT_LESS_THAN_WORD {
-            //         repr |= 1 << WORD_ACCESS_BIT;
-            //     }
-            // }
-            _ => return INVALID_OPCODE_DEFAULTS,
-        };
+        opcode: u32,
+    ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
+        todo!();
 
-        return (true, instruction_type, repr);
+        // let mut repr = 0u32;
+        // let instruction_type;
+        // match (opcode, func3, func7) {
+        //     (OPERATION_LOAD, 0b000, _) => {
+        //         // LB
+        //         instruction_type = InstructionType::IType;
+        //     }
+        //     (OPERATION_LOAD, 0b001, _) => {
+        //         // LH
+        //         instruction_type = InstructionType::IType;
+        //     }
+        //     (OPERATION_LOAD, 0b010, _) => {
+        //         // LW
+        //         instruction_type = InstructionType::IType;
+        //     }
+        //     (OPERATION_LOAD, 0b100, _) => {
+        //         // LBU
+        //         instruction_type = InstructionType::IType;
+        //     }
+        //     (OPERATION_LOAD, 0b101, _) => {
+        //         // LHU
+        //         instruction_type = InstructionType::IType;
+        //     }
+        //     (OPERATION_STORE, 0b000, _) => {
+        //         // SB
+        //         instruction_type = InstructionType::SType;
+        //         repr |= 1 << WRITE_BIT;
+        //     }
+        //     (OPERATION_STORE, 0b001, _) => {
+        //         // SH
+        //         instruction_type = InstructionType::SType;
+        //         repr |= 1 << WRITE_BIT;
+        //     }
+        //     (OPERATION_STORE, 0b010, _) => {
+        //         // SW
+        //         instruction_type = InstructionType::SType;
+        //         repr |= 1 << WRITE_BIT;
+        //     }
+        //     // (OPERATION_LOAD, 0b000, _) if SUPPORT_SIGNED & SUPPORT_LESS_THAN_WORD => {
+        //     //     // LB
+        //     //     instruction_type = InstructionType::IType;
+        //     //     repr |= 1 << SIGN_EXTEND_BIT;
+        //     //     repr |= 1 << BYTE_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_LOAD, 0b001, _) if SUPPORT_SIGNED & SUPPORT_LESS_THAN_WORD => {
+        //     //     // LH
+        //     //     instruction_type = InstructionType::IType;
+        //     //     repr |= 1 << SIGN_EXTEND_BIT;
+        //     //     repr |= 1 << HALF_WORD_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_LOAD, 0b010, _) => {
+        //     //     // LW
+        //     //     instruction_type = InstructionType::IType;
+        //     //     if SUPPORT_LESS_THAN_WORD {
+        //     //         repr |= 1 << WORD_ACCESS_BIT;
+        //     //     }
+        //     // }
+        //     // (OPERATION_LOAD, 0b100, _) if SUPPORT_LESS_THAN_WORD => {
+        //     //     // LBU
+        //     //     instruction_type = InstructionType::IType;
+        //     //     repr |= 1 << BYTE_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_LOAD, 0b101, _) if SUPPORT_LESS_THAN_WORD => {
+        //     //     // LHU
+        //     //     instruction_type = InstructionType::IType;
+        //     //     repr |= 1 << HALF_WORD_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_STORE, 0b000, _) if SUPPORT_LESS_THAN_WORD => {
+        //     //     // SB
+        //     //     instruction_type = InstructionType::SType;
+        //     //     repr |= 1 << WRITE_BIT;
+        //     //     repr |= 1 << BYTE_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_STORE, 0b001, _) if SUPPORT_LESS_THAN_WORD => {
+        //     //     // SH
+        //     //     instruction_type = InstructionType::SType;
+        //     //     repr |= 1 << WRITE_BIT;
+        //     //     repr |= 1 << HALF_WORD_ACCESS_BIT;
+        //     // }
+        //     // (OPERATION_STORE, 0b010, _) => {
+        //     //     // SW
+        //     //     instruction_type = InstructionType::SType;
+        //     //     repr |= 1 << WRITE_BIT;
+        //     //     if SUPPORT_LESS_THAN_WORD {
+        //     //         repr |= 1 << WORD_ACCESS_BIT;
+        //     //     }
+        //     // }
+        //     _ => return INVALID_OPCODE_DEFAULTS,
+        // };
+
+        // let rd_is_zero = rd_index == 0;
+
+        // Ok(
+        //     ExecutorFamilyDecoderData {
+        //         imm,
+        //         rs1_index,
+        //         rs2_index,
+        //         rd_index,
+        //         rd_is_zero,
+        //         funct3: func3,
+        //         funct7: Some(func7),
+        //         opcode_family_bits: repr
+        //     }
+        // )
     }
 }

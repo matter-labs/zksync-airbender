@@ -11,10 +11,7 @@ use cli_lib::prover_utils::{
 };
 
 use cli_lib::vk::generate_vk;
-use execution_utils::{
-    generate_constants_for_binary, Machine, ProgramProof, RecursionStrategy,
-    VerifierCircuitsIdentifiers,
-};
+use execution_utils::{Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers};
 use reqwest::blocking::Client;
 use serde_json::Value;
 use std::path::Path;
@@ -415,16 +412,16 @@ fn main() {
             mode,
         } => {
             let base_layer_bin = std::fs::read(bin).expect("Failed to read base layer binary file");
-
-            let (end_params, aux_values) = generate_constants_for_binary(
-                &base_layer_bin,
-                *mode,
-                *universal_verifier,
-                *recompute,
-            );
-
-            println!("End params: {:?}", end_params);
-            println!("Aux values: {:?}", aux_values);
+            todo!()
+            // let (end_params, aux_values) = generate_constants_for_binary(
+            //     &base_layer_bin,
+            //     *mode,
+            //     *universal_verifier,
+            //     *recompute,
+            // );
+            //
+            // println!("End params: {:?}", end_params);
+            // println!("Aux values: {:?}", aux_values);
         }
     }
 }

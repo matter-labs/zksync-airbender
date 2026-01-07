@@ -69,9 +69,7 @@ pub fn prove_unified_execution_with_replayer<
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
-    mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource<
-        riscv_transpiler::vm::RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS>,
-    >,
+    mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     unified_circuit_precomputation: &UnrolledCircuitPrecomputations<A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     ram_bound: usize,
@@ -84,9 +82,6 @@ pub fn prove_unified_execution_with_replayer<
     u64,
 ) {
     use prover::unrolled::run_unified_machine;
-
-    const DEFAULT_SNAPSHOT_PERIOD: usize = 1 << 20;
-    let max_snapshots = cycles_bound.div_ceil(DEFAULT_SNAPSHOT_PERIOD);
 
     let delegation_chunk_sizes = HashMap::from_iter(
         [
@@ -118,8 +113,7 @@ pub fn prove_unified_execution_with_replayer<
         common_constants::INITIAL_PC,
         text_section,
         binary_image,
-        max_snapshots,
-        DEFAULT_SNAPSHOT_PERIOD,
+        cycles_bound,
         ram_bound,
         &mut non_determinism,
         unified_circuit_precomputation.trace_len - 1,

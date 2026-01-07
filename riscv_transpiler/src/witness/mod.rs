@@ -10,6 +10,9 @@ use risc_v_simulator::machine_mode_only_unrolled::{
 };
 
 pub trait WitnessTracer {
+    fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool;
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE: u16>(&self) -> bool;
+
     fn write_non_memory_family_data<const FAMILY: u8>(
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -28,6 +31,39 @@ pub trait WitnessTracer {
         &mut self,
         data: DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>,
     );
+}
+
+impl WitnessTracer for () {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool {
+        true
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE: u16>(&self) -> bool {
+        true
+    }
+
+    fn write_non_memory_family_data<const FAMILY: u8>(
+        &mut self,
+        _data: NonMemoryOpcodeTracingDataWithTimestamp,
+    ) {
+    }
+    fn write_memory_family_data<const FAMILY: u8>(
+        &mut self,
+        _data: MemoryOpcodeTracingDataWithTimestamp,
+    ) {
+    }
+    fn write_delegation<
+        const DELEGATION_TYPE: u16,
+        const REG_ACCESSES: usize,
+        const INDIRECT_READS: usize,
+        const INDIRECT_WRITES: usize,
+        const VARIABLE_OFFSETS: usize,
+    >(
+        &mut self,
+        _data: DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>,
+    ) {
+    }
 }
 
 // this is largely an example, but is fine for all CPU purposes
@@ -67,6 +103,14 @@ impl<
         VARIABLE_OFFSETS,
     >
 {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool {
+        false
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        DELEGATION_TYPE_T == DELEGATION_TYPE
+    }
     fn write_non_memory_family_data<const FAMILY: u8>(
         &mut self,
         _data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -94,11 +138,12 @@ impl<
             VARIABLE_OFFSETS_T,
         >,
     ) {
-        debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
-        debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-        debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
-        debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
+            debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
+            debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
+
             unsafe {
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
@@ -180,6 +225,14 @@ impl<
         VARIABLE_OFFSETS,
     >
 {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool {
+        false
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        DELEGATION_TYPE_T == DELEGATION_TYPE
+    }
     fn write_non_memory_family_data<const FAMILY: u8>(
         &mut self,
         _data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -207,11 +260,12 @@ impl<
             VARIABLE_OFFSETS_T,
         >,
     ) {
-        debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
-        debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-        debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
-        debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
+            debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
+            debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
+
             unsafe {
                 if self.buffers.len() > 0 {
                     let first = self.buffers.get_unchecked_mut(0);
@@ -274,6 +328,14 @@ pub struct NonMemDestinationHolder<'a, const FAMILY: u8> {
 
 impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY> {
     #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        FAMILY_T == FAMILY
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
+    #[inline(always)]
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -327,6 +389,14 @@ pub struct UninitNonMemDestinationHolder<'a, const FAMILY: u8> {
 
 impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, FAMILY> {
     #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        FAMILY_T == FAMILY
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
+    #[inline(always)]
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -379,6 +449,14 @@ pub struct MemDestinationHolder<'a, const FAMILY: u8> {
 }
 
 impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        FAMILY_T == FAMILY
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         _data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -431,6 +509,14 @@ pub struct UninitMemDestinationHolder<'a, const FAMILY: u8> {
 }
 
 impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMILY> {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        FAMILY_T == FAMILY
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         _data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -483,6 +569,14 @@ pub struct UnifiedDestinationHolder<'a> {
 }
 
 impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        true
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
@@ -549,6 +643,14 @@ pub struct UninitUnifiedDestinationHolder<'a> {
 }
 
 impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
+    #[inline(always)]
+    fn needs_tracing_data_for_circuit_family<const FAMILY_T: u8>(&self) -> bool {
+        true
+    }
+    #[inline(always)]
+    fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE_T: u16>(&self) -> bool {
+        false
+    }
     fn write_non_memory_family_data<const FAMILY_T: u8>(
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,

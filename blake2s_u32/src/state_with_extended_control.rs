@@ -129,27 +129,22 @@ impl Blake2RoundFunctionEvaluator {
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
 
             if REDUCED_ROUNDS {
-                let mut control_register =
-                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
-                for round_idx in 0..7 {
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
+                let control_register = BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
+                unsafe {
+                    blake_csr_trigger_delegation_reduced_rounds(
+                        self.state.as_mut_ptr(),
+                        input_buffer.as_ptr(),
+                        control_register,
+                    );
                 }
             } else {
-                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
-                for round_idx in 0..10 {
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
+                let control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
+                unsafe {
+                    blake_csr_trigger_delegation_full_rounds(
+                        self.state.as_mut_ptr(),
+                        input_buffer.as_ptr(),
+                        control_register,
+                    );
                 }
             }
         }
@@ -218,27 +213,22 @@ impl Blake2RoundFunctionEvaluator {
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
 
             if REDUCED_ROUNDS {
-                let mut control_register =
-                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
-                for round_idx in 0..7 {
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            self.input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
+                let control_register = BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER;
+                unsafe {
+                    blake_csr_trigger_delegation_reduced_rounds(
+                        self.state.as_mut_ptr(),
+                        self.input_buffer.as_ptr(),
+                        control_register,
+                    );
                 }
             } else {
-                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
-                for round_idx in 0..10 {
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            self.input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
+                let control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER;
+                unsafe {
+                    blake_csr_trigger_delegation_full_rounds(
+                        self.state.as_mut_ptr(),
+                        self.input_buffer.as_ptr(),
+                        control_register,
+                    );
                 }
             }
         }
@@ -290,36 +280,31 @@ impl Blake2RoundFunctionEvaluator {
 
     /// This function will use witness scratch of self as path witness input,
     /// and self-state as the hash input and destination
+    #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
             if REDUCED_ROUNDS {
-                let mut control_register =
-                    BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER
-                        | BLAKE2S_COMPRESSION_MODE_EXTRA_BITS
-                        | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
-                for round_idx in 0..7 {
-                    let round_bitmask = 1 << round_idx;
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            self.input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
-                }
-            } else {
-                let mut control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER
+                let control_register = BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER
                     | BLAKE2S_COMPRESSION_MODE_EXTRA_BITS
                     | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
-                for round_idx in 0..10 {
-                    control_register = unsafe {
-                        blake2s_csr_trigger_delegation(
-                            self.state.as_mut_ptr(),
-                            self.input_buffer.as_ptr(),
-                            control_register,
-                        )
-                    };
+                unsafe {
+                    blake_csr_trigger_delegation_reduced_rounds(
+                        self.state.as_mut_ptr(),
+                        self.input_buffer.as_ptr(),
+                        control_register,
+                    );
+                }
+            } else {
+                let control_register = BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER
+                    | BLAKE2S_COMPRESSION_MODE_EXTRA_BITS
+                    | (BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS * (is_right as u32));
+                unsafe {
+                    blake_csr_trigger_delegation_full_rounds(
+                        self.state.as_mut_ptr(),
+                        self.input_buffer.as_ptr(),
+                        control_register,
+                    );
                 }
             }
         }

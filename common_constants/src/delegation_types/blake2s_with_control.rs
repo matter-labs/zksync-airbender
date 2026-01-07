@@ -6,23 +6,78 @@ pub const BLAKE2S_DELEGATION_CSR_REGISTER: u32 = super::NON_DETERMINISM_CSR + 7;
 // pub const BLAKE2S_DELEGATION_CSR_INVOCATION_STR: &str =
 //     const_format::concatcp!("csrrw x0, ", BLAKE2S_DELEGATION_CSR_REGISTER, ", x0");
 
+// #[cfg(target_arch = "riscv32")]
+// #[inline(always)]
+// pub unsafe fn blake2s_csr_trigger_delegation(
+//     states_ptr: *mut u32,
+//     input_ptr: *const u32,
+//     mut control_mask: u32,
+// ) -> u32 {
+//     unsafe {
+//         core::arch::asm!(
+//             "csrrw x0, 0x7C7, x0",
+//             in("x10") states_ptr.addr(),
+//             in("x11") input_ptr.addr(),
+//             inout("x12") control_mask,
+//             options(nostack, preserves_flags)
+//         );
+//     }
+//     control_mask
+// }
+
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
-pub unsafe fn blake2s_csr_trigger_delegation(
+pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
     states_ptr: *mut u32,
     input_ptr: *const u32,
-    mut control_mask: u32,
-) -> u32 {
+    mut mask: u32,
+) {
     unsafe {
         core::arch::asm!(
             "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
-            inout("x12") control_mask,
+            inlateout("x12") mask,
             options(nostack, preserves_flags)
         );
     }
-    control_mask
+
+    let _ = mask;
+}
+
+#[cfg(target_arch = "riscv32")]
+#[inline(always)]
+pub unsafe fn blake_csr_trigger_delegation_full_rounds(
+    states_ptr: *mut u32,
+    input_ptr: *const u32,
+    mut mask: u32,
+) {
+    unsafe {
+        core::arch::asm!(
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, 0x7C7, x0",
+            in("x10") states_ptr.addr(),
+            in("x11") input_ptr.addr(),
+            inlateout("x12") mask,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    let _ = mask;
 }
 
 pub const NUM_BLAKE2S_REGISTER_ACCESSES: usize = 3;

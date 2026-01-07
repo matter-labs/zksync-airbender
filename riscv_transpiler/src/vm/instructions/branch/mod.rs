@@ -8,7 +8,7 @@ pub(crate) fn branch<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let jump_address = state.pc.wrapping_add(instr.imm);
     let funct3 = instr.rd;
     let negate = funct3 & 0b001 > 0; // lowest bit indicates eq <=> ne, lt <=> gte and so on

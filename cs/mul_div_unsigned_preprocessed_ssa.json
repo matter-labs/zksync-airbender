@@ -278,23 +278,6 @@
       }
     },
     {
-      "Bool": {
-        "Constant": false
-      }
-    },
-    {
-      "Bool": {
-        "And": {
-          "lhs": {
-            "SubExpression": 6
-          },
-          "rhs": {
-            "SubExpression": 6
-          }
-        }
-      }
-    },
-    {
       "Integer": {
         "WidenFromU16": {
           "U16SubExpression": 2
@@ -305,7 +288,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 8
+            "U32SubExpression": 6
           },
           "magnitude": 16
         }
@@ -322,18 +305,11 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 9
+            "U32SubExpression": 7
           },
           "rhs": {
-            "U32SubExpression": 10
+            "U32SubExpression": 8
           }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "I32FromU32": {
-          "U32SubExpression": 11
         }
       }
     },
@@ -348,7 +324,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 13
+            "U32SubExpression": 10
           },
           "magnitude": 16
         }
@@ -365,53 +341,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 14
+            "U32SubExpression": 11
           },
           "rhs": {
-            "U32SubExpression": 15
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "I32FromU32": {
-          "U32SubExpression": 16
-        }
-      }
-    },
-    {
-      "Integer": {
-        "SignedMulLowBits": {
-          "lhs": {
             "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 17
-          }
-        }
-      }
-    },
-    {
-      "Bool": {
-        "Or": {
-          "lhs": {
-            "SubExpression": 6
-          },
-          "rhs": {
-            "SubExpression": 6
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "SignedByUnsignedMulLowBits": {
-          "lhs": {
-            "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 16
           }
         }
       }
@@ -420,40 +353,10 @@
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 9
           },
           "rhs": {
-            "U32SubExpression": 16
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 19
-          },
-          "if_true": {
-            "U32SubExpression": 20
-          },
-          "if_false": {
-            "U32SubExpression": 21
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 7
-          },
-          "if_true": {
-            "U32SubExpression": 18
-          },
-          "if_false": {
-            "U32SubExpression": 22
+            "U32SubExpression": 13
           }
         }
       }
@@ -467,10 +370,10 @@
       "Bool": {
         "FromGenericIntegerEquality": {
           "lhs": {
-            "U32SubExpression": 16
+            "U32SubExpression": 13
           },
           "rhs": {
-            "U32SubExpression": 24
+            "U32SubExpression": 15
           }
         }
       }
@@ -489,40 +392,14 @@
       "Integer": {
         "Select": {
           "selector": {
-            "SubExpression": 25
+            "SubExpression": 16
           },
           "if_true": {
-            "U32SubExpression": 27
+            "U32SubExpression": 18
           },
           "if_false": {
-            "U32SubExpression": 16
+            "U32SubExpression": 13
           }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "I32FromU32": {
-          "U32SubExpression": 28
-        }
-      }
-    },
-    {
-      "Integer": {
-        "SignedDivAssumeNonzeroNoOverflowBits": {
-          "lhs": {
-            "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 29
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "U32FromI32": {
-          "U32SubExpression": 30
         }
       }
     },
@@ -530,10 +407,10 @@
       "Integer": {
         "DivAssumeNonzero": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 9
           },
           "rhs": {
-            "U32SubExpression": 28
+            "U32SubExpression": 19
           }
         }
       }
@@ -542,28 +419,13 @@
       "Integer": {
         "Select": {
           "selector": {
-            "SubExpression": 7
+            "SubExpression": 16
           },
           "if_true": {
-            "U32SubExpression": 31
+            "U32SubExpression": 17
           },
           "if_false": {
-            "U32SubExpression": 32
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 25
-          },
-          "if_true": {
-            "U32SubExpression": 26
-          },
-          "if_false": {
-            "U32SubExpression": 33
+            "U32SubExpression": 20
           }
         }
       }
@@ -575,10 +437,10 @@
             "SubExpression": 5
           },
           "if_true": {
-            "U32SubExpression": 23
+            "U32SubExpression": 14
           },
           "if_false": {
-            "U32SubExpression": 34
+            "U32SubExpression": 21
           }
         }
       }
@@ -586,7 +448,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 35
+          "U32SubExpression": 22
         }
       }
     },
@@ -595,7 +457,7 @@
         "into_variable": 23,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 36
+            "U16SubExpression": 23
           }
         },
         "condition_subexpr_idx": null
@@ -605,7 +467,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 35
+            "U32SubExpression": 22
           },
           "magnitude": 16
         }
@@ -614,7 +476,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 38
+          "U32SubExpression": 25
         }
       }
     },
@@ -623,7 +485,7 @@
         "into_variable": 24,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 39
+            "U16SubExpression": 26
           }
         },
         "condition_subexpr_idx": null
@@ -631,86 +493,13 @@
     },
     {
       "Integer": {
-        "SignedMulHighBits": {
-          "lhs": {
-            "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 17
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "SignedByUnsignedMulHighBits": {
-          "lhs": {
-            "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 16
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
         "MulHigh": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 9
           },
           "rhs": {
-            "U32SubExpression": 16
+            "U32SubExpression": 13
           }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 19
-          },
-          "if_true": {
-            "U32SubExpression": 42
-          },
-          "if_false": {
-            "U32SubExpression": 43
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 7
-          },
-          "if_true": {
-            "U32SubExpression": 41
-          },
-          "if_false": {
-            "U32SubExpression": 44
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "SignedRemAssumeNonzeroNoOverflowBits": {
-          "lhs": {
-            "U32SubExpression": 12
-          },
-          "rhs": {
-            "U32SubExpression": 29
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "U32FromI32": {
-          "U32SubExpression": 46
         }
       }
     },
@@ -718,10 +507,10 @@
       "Integer": {
         "RemAssumeNonzero": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 9
           },
           "rhs": {
-            "U32SubExpression": 28
+            "U32SubExpression": 19
           }
         }
       }
@@ -730,28 +519,13 @@
       "Integer": {
         "Select": {
           "selector": {
-            "SubExpression": 7
+            "SubExpression": 16
           },
           "if_true": {
-            "U32SubExpression": 47
+            "U32SubExpression": 9
           },
           "if_false": {
-            "U32SubExpression": 48
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "Select": {
-          "selector": {
-            "SubExpression": 25
-          },
-          "if_true": {
-            "U32SubExpression": 11
-          },
-          "if_false": {
-            "U32SubExpression": 49
+            "U32SubExpression": 29
           }
         }
       }
@@ -763,10 +537,10 @@
             "SubExpression": 5
           },
           "if_true": {
-            "U32SubExpression": 45
+            "U32SubExpression": 28
           },
           "if_false": {
-            "U32SubExpression": 50
+            "U32SubExpression": 30
           }
         }
       }
@@ -774,7 +548,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 51
+          "U32SubExpression": 31
         }
       }
     },
@@ -783,7 +557,7 @@
         "into_variable": 25,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 52
+            "U16SubExpression": 32
           }
         },
         "condition_subexpr_idx": null
@@ -793,7 +567,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 51
+            "U32SubExpression": 31
           },
           "magnitude": 16
         }
@@ -802,7 +576,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 54
+          "U32SubExpression": 34
         }
       }
     },
@@ -811,7 +585,7 @@
         "into_variable": 26,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 55
+            "U16SubExpression": 35
           }
         },
         "condition_subexpr_idx": null

@@ -33,6 +33,19 @@ pub(crate) fn read_register_with_ts<C: Counters, const TIMESTAMP_OFFSET: Timesta
 }
 
 #[inline(always)]
+pub(crate) fn touch_x0_with_ts<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(
+    state: &mut State<C>,
+) -> TimestampScalar {
+    unsafe {
+        let reg = state.registers.get_unchecked_mut(0 as usize);
+        let ts = reg.timestamp;
+        debug_assert!(ts < (state.timestamp | TIMESTAMP_OFFSET));
+        reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
+        ts
+    }
+}
+
+#[inline(always)]
 pub(crate) fn write_register_with_ts<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(
     state: &mut State<C>,
     reg_idx: u8,

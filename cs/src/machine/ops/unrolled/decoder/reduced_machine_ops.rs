@@ -94,14 +94,15 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
 
     fn define_decoder_subspace(
         &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    ) {
+        opcode: u32,
+    ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
+        // let mut repr = 0u32;
+        let op = get_opcode_bits(opcode);
+        let func3 = funct3_bits(opcode);
+        let func7 = funct7_bits(opcode);
+        let (mut rs1_index, mut rs2_index, mut rd_index) =
+            formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
+
         let major_key_offset = FLAGS_SOURCE_OFFSET;
         let minor_key_offset = major_key_offset + self.major_keys.len();
         assert_eq!(
@@ -109,16 +110,50 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
             minor_key_offset + self.max_minor_keys
         );
 
-        let mut result = INVALID_OPCODE_DEFAULTS;
+        let mut result = ExecutorFamilyDecoderExtendedData {
+            data: ExecutorFamilyDecoderData::default(),
+            instruction_format: InstructionType::RType,
+            validate_csr_index_in_immediate: false,
+        };
+
+        let mut validate_csr = false;
+        let mut avoid_sign_ext_immedaite = false;
 
         for supported_opcode in self.cached_all_opcodes.iter() {
             if let Ok((instr_format, major_key, minor_keys)) =
-                supported_opcode.define_decoder_subspace(opcode, func3, func7)
+                supported_opcode.define_decoder_subspace(op, func3, func7)
             {
-                result.0 = true; // valid instruction
-                result.1 = instr_format;
+                if op == OPERATION_SYSTEM && func3 == 0b001 {
+                    // CSRRW only in system space, not MOP one
+                    // only if opcode is supported
+                    avoid_sign_ext_immedaite = true;
+                    validate_csr = true;
+                }
+
+                let imm = instr_format.parse_imm(opcode, avoid_sign_ext_immedaite);
 
                 let mut mask = 0u32;
+
+                match instr_format {
+                    InstructionType::IType => {
+                        rs2_index = 0;
+                    }
+                    InstructionType::BType => {
+                        rd_index = 0;
+                    }
+                    InstructionType::JType => {
+                        rs1_index = 0;
+                        rs2_index = 0;
+                    }
+                    InstructionType::UType => {
+                        rs1_index = 0;
+                        rs2_index = 0;
+                    }
+                    InstructionType::SType => {
+                        rd_index = 0;
+                    }
+                    _ => {}
+                }
 
                 // extra flags
                 if instr_format == InstructionType::RType
@@ -159,35 +194,26 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
                     mask |= (1 << minor_index as u64) << minor_key_offset;
                 }
 
-                result.2 = mask;
-                break;
+                result.data = ExecutorFamilyDecoderData {
+                    imm,
+                    rs1_index,
+                    rs2_index,
+                    rd_index,
+                    rd_is_zero: rd_index == 0,
+                    funct3: func3,
+                    funct7: None,
+                    opcode_family_bits: mask,
+                };
+                result.instruction_format = instr_format;
+                result.validate_csr_index_in_immediate = validate_csr;
+
+                return Ok(result);
             } else {
                 // continue to next supported opcode
             }
         }
 
-        result
-    }
-
-    fn define_decoder_subspace_ext(
-        &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-        (bool, bool), // (void sign extending for CSRRW (I-type formally), validate CSR)
-    ) {
-        let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
-        if opcode == OPERATION_SYSTEM && a == true && func3 == 0b001 {
-            // CSRRW only in system space, not MOP one
-            // only if opcode is supported
-            (a, b, c, (true, true))
-        } else {
-            (a, b, c, (false, false))
-        }
+        Err(())
     }
 }
 

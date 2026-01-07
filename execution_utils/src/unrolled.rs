@@ -6,7 +6,6 @@ use trace_and_split::setups;
 
 use super::*;
 use prover::common_constants::TimestampScalar;
-use prover::cs::one_row_compiler::CompiledCircuitArtifact;
 use prover::cs::utils::split_timestamp;
 use prover::field::*;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
@@ -14,6 +13,8 @@ use prover::prover_stages::Proof;
 use prover::risc_v_simulator;
 use setups::CompiledCircuitsSet;
 use trace_and_split::FinalRegisterValue;
+
+pub use setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type;
 
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct UnrolledProgramSetup {
@@ -35,11 +36,16 @@ impl UnrolledProgramSetup {
 
         let setups: Vec<_> = circuit_families_setups.iter().map(|el| &el.1).collect();
 
-        let end_params = compute_end_parameters_for_unrolled_circuits(
-            final_pc,
-            &setups,
-            inits_and_teardowns_setup,
-        );
+        let end_params = if setups.len() > 1 {
+            compute_end_parameters_for_unrolled_circuits(
+                final_pc,
+                &setups,
+                inits_and_teardowns_setup,
+            )
+        } else {
+            assert!(inits_and_teardowns_setup.iter().all(|el| el.cap.iter().all(|el| *el == [0u32; 8])), "single setup is for unified circuits, where inits and teardowns setup is conventional all zeroes here");
+            compute_end_parameters_for_unified_circuit(final_pc, &setups[0])
+        };
 
         // binary hash can be anything - it's just for bookkeeping
         let binary_hash = sha3::Keccak256::digest(binary).into();
@@ -127,6 +133,23 @@ pub struct UnrolledProgramProof {
 }
 
 impl UnrolledProgramProof {
+    pub fn get_proof_counts(&self) -> (usize, usize, usize) {
+        let family_proofs: usize = self
+            .circuit_families_proofs
+            .iter()
+            .map(|(_, v)| v.len())
+            .sum();
+        let inits_and_teardowns_proofs = self.inits_and_teardowns_proofs.len();
+        let delegation_proofs: usize = self.delegation_proofs.iter().map(|(_, v)| v.len()).sum();
+        (family_proofs, inits_and_teardowns_proofs, delegation_proofs)
+    }
+
+    pub fn debug_info(&self) -> String {
+        let (family_proofs, inits_and_teardowns_proofs, delegation_proofs) =
+            self.get_proof_counts();
+        format!("Proofs: {family_proofs} circuit family proof(s), {inits_and_teardowns_proofs} inits and teardowns proof(s), {delegation_proofs} delegation proof(s)")
+    }
+
     pub fn flatten_into_responses(
         &self,
         allowed_delegation_circuits: &[u32],
@@ -155,10 +178,11 @@ impl UnrolledProgramProof {
         for (family, proofs) in self.circuit_families_proofs.iter() {
             responses.push(proofs.len() as u32);
             for proof in proofs.iter() {
-                let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
-                    proof,
-                    &compiled_layouts.compiled_circuit_families[family],
-                );
+                let Some(artifact) = &compiled_layouts.compiled_circuit_families.get(family) else {
+                    panic!("Proofs file has a proof for circuit type {}, but there is no matching compiled circuit in the set", family);
+                };
+                let t =
+                    verifier_common::proof_flattener::flatten_full_unrolled_proof(proof, artifact);
                 responses.extend(t);
             }
         }
@@ -346,9 +370,7 @@ pub fn prove_unrolled_for_machine_configuration_into_program_proof<C: MachineCon
     binary_image: &[u32],
     text_section: &[u32],
     cycles_bound: usize,
-    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource<
-        riscv_transpiler::vm::RamWithRomRegion<ROM_SECOND_WORD_BITS>,
-    >,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
 ) -> UnrolledProgramProof {
@@ -395,9 +417,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     binary_image: &[u32],
     text_section: &[u32],
     cycles_bound: usize,
-    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource<
-        riscv_transpiler::vm::RamWithRomRegion<ROM_SECOND_WORD_BITS>,
-    >,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
 ) -> (

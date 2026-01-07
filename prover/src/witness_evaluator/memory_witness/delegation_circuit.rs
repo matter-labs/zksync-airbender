@@ -330,7 +330,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                         );
                     assert_eq!(
                         predicate, final_borrow,
-                        "failed to compare indirect memory access timestamps at row {} for access {}: read is {}, writes {}",
+                        "failed to compare indirect memory access timestamps at row {} for access {}: read is {}, write is {}",
                         absolute_row_idx,
                         indirect_access_idx,
                         ((read_timestamp_high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (read_timestamp_low as TimestampScalar),

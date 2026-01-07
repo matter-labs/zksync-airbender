@@ -36,7 +36,8 @@ members = [
     "execution_utils",
 
     "gpu_prover",
-
+    "gpu_prover_test",
+    
     "poseidon2",
     "reduced_keccak",
 
@@ -187,15 +188,13 @@ sha3 = { version = "*", default-features = false }
 [profile.dev]
 debug-assertions = true
 opt-level = 0
-codegen-units = 16
-debug = false
+debug = true
 
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 debug = false
-
 
 # Special profile for compiling the cli tool.
 # that is doing some optimizations (otherwise proving is too slow)

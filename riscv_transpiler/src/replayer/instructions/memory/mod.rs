@@ -15,29 +15,28 @@ pub(crate) fn sw<C: Counters, R: RAM>(
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
     debug_assert!(address % 4 == 0);
-    // if address == 0x041eff8c {
-    //     panic!("{:?}", state);
-    // }
     let (ram_timestamp, ram_old_value) = ram.write_word(address, rs2_value, state.timestamp | 2);
 
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: unsafe {
-            core::mem::transmute(StoreOpcodeTracingData {
-                initial_pc: state.pc,
-                rs1_value,
-                aligned_ram_address: address,
-                aligned_ram_old_value: ram_old_value,
-                rs2_value,
-                aligned_ram_write_value: rs2_value,
-            })
-        },
-        discr: MEM_STORE_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>() {
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: unsafe {
+                core::mem::transmute(StoreOpcodeTracingData {
+                    initial_pc: state.pc,
+                    rs1_value,
+                    aligned_ram_address: address,
+                    aligned_ram_old_value: ram_old_value,
+                    rs2_value,
+                    aligned_ram_write_value: rs2_value,
+                })
+            },
+            discr: MEM_STORE_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }
 
@@ -57,27 +56,29 @@ pub(crate) fn lw<C: Counters, R: RAM>(
     let mut rd = ram_old_value;
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
 
-    // NOTE: we may access ROM, that is modeled as accessing address 0,
-    // that is never written, so we ask for masking into some default value
-    let mut ram_value_after_masking = ram_old_value;
-    let mut address_for_witness = address;
-    ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: LoadOpcodeTracingData {
-            initial_pc: state.pc,
-            rs1_value,
-            aligned_ram_address: address_for_witness,
-            aligned_ram_read_value: ram_value_after_masking,
-            rd_old_value,
-            rd_value: rd,
-        },
-        discr: MEM_LOAD_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>() {
+        // NOTE: we may access ROM, that is modeled as accessing address 0,
+        // that is never written, so we ask for masking into some default value
+        let mut ram_value_after_masking = ram_old_value;
+        let mut address_for_witness = address;
+        ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: LoadOpcodeTracingData {
+                initial_pc: state.pc,
+                rs1_value,
+                aligned_ram_address: address_for_witness,
+                aligned_ram_read_value: ram_value_after_masking,
+                rd_old_value,
+                rd_value: rd,
+            },
+            discr: MEM_LOAD_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }
 
@@ -104,24 +105,27 @@ pub(crate) fn sh<C: Counters, R: RAM>(
     let (ram_timestamp, ram_old_value) =
         ram.write_word(aligned_address, new_value, state.timestamp | 2);
 
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: unsafe {
-            core::mem::transmute(StoreOpcodeTracingData {
-                initial_pc: state.pc,
-                rs1_value,
-                aligned_ram_address: aligned_address,
-                aligned_ram_old_value: ram_old_value,
-                rs2_value,
-                aligned_ram_write_value: new_value,
-            })
-        },
-        discr: MEM_STORE_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
+    {
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: unsafe {
+                core::mem::transmute(StoreOpcodeTracingData {
+                    initial_pc: state.pc,
+                    rs1_value,
+                    aligned_ram_address: aligned_address,
+                    aligned_ram_old_value: ram_old_value,
+                    rs2_value,
+                    aligned_ram_write_value: new_value,
+                })
+            },
+            discr: MEM_STORE_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }
 
@@ -149,24 +153,27 @@ pub(crate) fn sb<C: Counters, R: RAM>(
     let (ram_timestamp, ram_old_value) =
         ram.write_word(aligned_address, new_value, state.timestamp | 2);
 
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: unsafe {
-            core::mem::transmute(StoreOpcodeTracingData {
-                initial_pc: state.pc,
-                rs1_value,
-                aligned_ram_address: aligned_address,
-                aligned_ram_old_value: ram_old_value,
-                rs2_value,
-                aligned_ram_write_value: new_value,
-            })
-        },
-        discr: MEM_STORE_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
+    {
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: unsafe {
+                core::mem::transmute(StoreOpcodeTracingData {
+                    initial_pc: state.pc,
+                    rs1_value,
+                    aligned_ram_address: aligned_address,
+                    aligned_ram_old_value: ram_old_value,
+                    rs2_value,
+                    aligned_ram_write_value: new_value,
+                })
+            },
+            discr: MEM_STORE_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(rs2_ts),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }
 
@@ -192,27 +199,30 @@ pub(crate) fn lh<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     let mut rd = value;
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
 
-    // NOTE: we may access ROM, that is modeled as accessing address 0,
-    // that is never written, so we ask for masking into some default value
-    let mut ram_value_after_masking = ram_old_value;
-    let mut address_for_witness = aligned_address;
-    ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: LoadOpcodeTracingData {
-            initial_pc: state.pc,
-            rs1_value,
-            aligned_ram_address: address_for_witness,
-            aligned_ram_read_value: ram_value_after_masking,
-            rd_old_value,
-            rd_value: rd,
-        },
-        discr: MEM_LOAD_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
+    {
+        // NOTE: we may access ROM, that is modeled as accessing address 0,
+        // that is never written, so we ask for masking into some default value
+        let mut ram_value_after_masking = ram_old_value;
+        let mut address_for_witness = aligned_address;
+        ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: LoadOpcodeTracingData {
+                initial_pc: state.pc,
+                rs1_value,
+                aligned_ram_address: address_for_witness,
+                aligned_ram_read_value: ram_value_after_masking,
+                rd_old_value,
+                rd_value: rd,
+            },
+            discr: MEM_LOAD_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }
 
@@ -237,26 +247,29 @@ pub(crate) fn lb<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     let mut rd = value;
     let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
 
-    // NOTE: we may access ROM, that is modeled as accessing address 0,
-    // that is never written, so we ask for masking into some default value
-    let mut ram_value_after_masking = ram_old_value;
-    let mut address_for_witness = aligned_address;
-    ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
-    let traced_data = MemoryOpcodeTracingDataWithTimestamp {
-        opcode_data: LoadOpcodeTracingData {
-            initial_pc: state.pc,
-            rs1_value,
-            aligned_ram_address: address_for_witness,
-            aligned_ram_read_value: ram_value_after_masking,
-            rd_old_value,
-            rd_value: rd,
-        },
-        discr: MEM_LOAD_TRACE_DATA_MARKER,
-        rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
-        rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
-        rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
-        cycle_timestamp: TimestampData::from_scalar(state.timestamp),
-    };
-    tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
+    {
+        // NOTE: we may access ROM, that is modeled as accessing address 0,
+        // that is never written, so we ask for masking into some default value
+        let mut ram_value_after_masking = ram_old_value;
+        let mut address_for_witness = aligned_address;
+        ram.mask_read_for_witness(&mut address_for_witness, &mut ram_value_after_masking);
+        let traced_data = MemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: LoadOpcodeTracingData {
+                initial_pc: state.pc,
+                rs1_value,
+                aligned_ram_address: address_for_witness,
+                aligned_ram_read_value: ram_value_after_masking,
+                rd_old_value,
+                rd_value: rd,
+            },
+            discr: MEM_LOAD_TRACE_DATA_MARKER,
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_or_ram_read_timestamp: TimestampData::from_scalar(ram_timestamp),
+            rd_or_ram_read_timestamp: TimestampData::from_scalar(rd_ts),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_memory_family_data::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
     default_increase_pc::<C>(state);
 }

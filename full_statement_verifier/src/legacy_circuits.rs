@@ -1,6 +1,14 @@
 use super::*;
 use crate::imports::*;
 
+pub const MAX_BASE_LAYER_CIRCUITS: usize = const {
+    let max_circuits = MAX_CYCLES / ((1 << 22) - 1);
+
+    max_circuits as usize
+};
+
+pub const MAX_RECURSION_LAYER_CIRCUITS: usize = MAX_BASE_LAYER_CIRCUITS;
+
 pub const RISC_V_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,

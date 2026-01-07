@@ -62,32 +62,40 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
 
     fn define_decoder_subspace(
         &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    ) {
+        opcode: u32,
+    ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
         let mut repr = 0u32;
+        let op = get_opcode_bits(opcode);
+        let func3 = funct3_bits(opcode);
+        let func7 = funct7_bits(opcode);
+        let mut imm = 0;
+        let (rs1_index, mut rs2_index, rd_index) =
+            formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
         let instruction_type;
-        match (opcode, func3, func7) {
+        let mut validate_csr = false;
+
+        match (op, func3, func7) {
             (OPERATION_OP_IMM, 0b001, 0) => {
                 // SLLI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << SLL_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
             (OPERATION_OP_IMM, 0b101, 0) => {
                 // SRLI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << SRL_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
             (OPERATION_OP_IMM, 0b101, 0b010_0000) => {
                 // SRAI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << SRA_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
@@ -122,7 +130,9 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
             }
             (OPERATION_OP_IMM, 0b111, _) => {
                 // ANDI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << BINARY_OP_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
@@ -133,7 +143,9 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
             }
             (OPERATION_OP_IMM, 0b110, _) => {
                 // ORI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << BINARY_OP_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
@@ -143,8 +155,10 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
                 repr |= 1 << BINARY_OP_BIT;
             }
             (OPERATION_OP_IMM, 0b100, _) => {
-                // ANDI
+                // XORI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << BINARY_OP_BIT;
                 repr |= 1 << USE_IMM_BIT;
             }
@@ -153,8 +167,20 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
                 // everything from funct7 from decoder
 
                 // CSRRW
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, true);
                 repr |= 1 << CSRRW_BIT;
+
+                validate_csr = true;
+                // also check that we only have rs1 == 0 or rd == 0, or both
+                if imm == NON_DETERMINISM_CSR {
+                    assert!(rs1_index == 0 || rs2_index == 0);
+                } else {
+                    // works for all our precompiles, and UNIMP opcode
+                    assert!(rs1_index == 0);
+                    assert!(rs2_index == 0);
+                }
             }
             // (OPERATION_SYSTEM, 0b001, func7) if func7 & 0x40 == 0 => {
             //     // NOTE: we could avoid support CSR indexes that have top bit == 1 (and would be sign-extended by decoder)
@@ -165,29 +191,29 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
             //     instruction_type = InstructionType::IType;
             //     repr |= 1 << CSRRW_BIT;
             // }
-            _ => return INVALID_OPCODE_DEFAULTS,
+            _ => {
+                return Err(());
+            }
         };
 
-        return (true, instruction_type, repr);
-    }
+        let rd_is_zero = rd_index == 0;
 
-    fn define_decoder_subspace_ext(
-        &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-        (bool, bool), // (void sign extending for CSRRW (I-type formally), validate CSR)
-    ) {
-        let (a, b, c) = self.define_decoder_subspace(opcode, func3, func7);
-        if opcode == OPERATION_SYSTEM && a == true {
-            // only if opcode is supported
-            (a, b, c, (true, true))
-        } else {
-            (a, b, c, (false, false))
-        }
+        let decoded = ExecutorFamilyDecoderData {
+            imm,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            rd_is_zero,
+            funct3: func3,
+            funct7: Some(func7),
+            opcode_family_bits: repr,
+        };
+
+        let extended = ExecutorFamilyDecoderExtendedData {
+            data: decoded,
+            instruction_format: instruction_type,
+            validate_csr_index_in_immediate: validate_csr,
+        };
+        Ok(extended)
     }
 }

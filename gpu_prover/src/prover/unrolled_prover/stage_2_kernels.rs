@@ -296,7 +296,7 @@ pub fn compute_stage_2_args_on_main_domain(
     let (aggregated_entry_invs_for_timestamp_range_checks, aggregated_entry_invs) =
         aggregated_entry_invs.split_at_mut(1 << TIMESTAMP_COLUMNS_NUM_BITS);
     let (aggregated_entry_invs_for_decoder_lookups, aggregated_entry_invs) =
-        aggregated_entry_invs.split_at_mut(1 << TIMESTAMP_COLUMNS_NUM_BITS);
+        aggregated_entry_invs.split_at_mut(circuit.executor_family_decoder_table_size);
     let (aggregated_entry_invs_for_generic_lookups, _) =
         aggregated_entry_invs.split_at_mut(circuit.total_tables_size);
     let aggregated_entry_invs_for_range_check_16 =

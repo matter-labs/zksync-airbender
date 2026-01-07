@@ -14,7 +14,6 @@ macro_rules! field_size {
 use super::size_constants::*;
 use crate::skeleton::*;
 use core::mem::offset_of;
-use core::mem::MaybeUninit;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;
 use field::PrimeField;

@@ -8,9 +8,12 @@ pub(crate) fn slt<C: Counters, S: Snapshotter<C>, R: RAM, const USE_IMM: bool>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let mut rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value;
     if USE_IMM {
+        touch_x0::<C, 1>(state);
         rs2_value = instr.imm;
+    } else {
+        rs2_value = read_register::<C, 1>(state, instr.rs2);
     }
     let mut rd = ((rs1_value as i32) < (rs2_value as i32)) as u32;
     write_register::<C, 2>(state, instr.rd, &mut rd);
@@ -26,9 +29,12 @@ pub(crate) fn sltu<C: Counters, S: Snapshotter<C>, R: RAM, const USE_IMM: bool>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let mut rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value;
     if USE_IMM {
+        touch_x0::<C, 1>(state);
         rs2_value = instr.imm;
+    } else {
+        rs2_value = read_register::<C, 1>(state, instr.rs2);
     }
     let mut rd = (rs1_value < rs2_value) as u32;
     write_register::<C, 2>(state, instr.rd, &mut rd);

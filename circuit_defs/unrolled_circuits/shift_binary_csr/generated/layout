@@ -830,6 +830,28 @@
         [
           1,
           {
+            "MemorySubtree": 19
+          },
+          {
+            "MemorySubtree": 19
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "MemorySubtree": 19
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
             "WitnessSubtree": 1
           },
           {
@@ -2364,6 +2386,52 @@
           32,
           {
             "WitnessSubtree": 14
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          524288,
+          {
+            "WitnessSubtree": 20
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 22
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 26
+          }
+        ]
+      ],
+      "constant_term": 2147483643
+    },
+    {
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 20
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 23
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 27
           }
         ]
       ],

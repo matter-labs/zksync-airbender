@@ -8,7 +8,7 @@ pub(crate) fn sw<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
     if address % 4 != 0 {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
@@ -48,7 +48,7 @@ pub(crate) fn sh<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
     if address % 2 != 0 {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
@@ -83,7 +83,7 @@ pub(crate) fn sb<C: Counters, S: Snapshotter<C>, R: RAM>(
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
     let aligned_address = address & !3;
     let value = rs2_value & 0x0000_00ff;

@@ -71,12 +71,21 @@ pub(crate) fn bigint_call<C: Counters, S: Snapshotter<C>, R: RAM>(
     ram: &mut R,
     snapshotter: &mut S,
 ) {
+    // touch x0
+    state.registers[0].timestamp = state.timestamp | 2;
+
     let x10 = read_register::<C, 3>(state, 10);
     let x11 = read_register::<C, 3>(state, 11);
     let x12 = state.registers[12].value;
 
-    assert!(x10 >= 1 << 21);
-    assert!(x11 >= 1 << 21);
+    assert!(
+        x10 >= common_constants::rom::ROM_BYTE_SIZE as u32,
+        "input pointer is in ROM"
+    );
+    assert!(
+        x11 >= common_constants::rom::ROM_BYTE_SIZE as u32,
+        "input pointer is in ROM"
+    );
 
     assert!(x10 != x11);
 
@@ -89,12 +98,16 @@ pub(crate) fn bigint_call<C: Counters, S: Snapshotter<C>, R: RAM>(
     let b = read_u256(x11, ram, snapshotter, write_ts);
 
     let (result, of) = bigint_impl(a, b, x12);
+    let of_for_bookkepping = of as u32;
 
     // write back
     write_register::<C, 3>(state, 12, &mut (of as u32));
     write_back_u256::<C, S, R>(x10, ram, snapshotter, write_ts, &result);
+    snapshotter.append_arbitrary_value(of_for_bookkepping);
 
-    state.counters.bump_bigint();
+    state.counters.bump_bigint(1);
+    default_increase_pc::<C>(state);
+    increment_family_counter::<C, SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>(state);
 }
 
 #[inline(always)]
@@ -132,10 +145,10 @@ pub(crate) fn bigint_impl(a: U256, b: U256, x12: u32) -> (U256, bool) {
 
             of
         } else if control_mask & (1 << MUL_LOW_OP_BIT_IDX) != 0 {
-            let t: U512 = a.widening_mul(b);
-            result = U256::from_limbs(t.as_limbs()[..4].try_into().unwrap_unchecked());
+            let (t, of) = a.overflowing_mul(b);
+            result = t;
 
-            t.as_limbs()[4..].iter().any(|el| *el != 0)
+            of
         } else if control_mask & (1 << MUL_HIGH_OP_BIT_IDX) != 0 {
             let t: U512 = a.widening_mul(b);
             result = U256::from_limbs(t.as_limbs()[4..8].try_into().unwrap_unchecked());

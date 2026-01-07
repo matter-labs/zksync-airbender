@@ -134,139 +134,6 @@ pub fn run_and_split_unrolled<
     Vec<ShuffleRamSetupAndTeardown<A>>,
 ) {
     panic!("deprecated");
-    // let rom_address_space_bound: usize = 1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS);
-    // assert!(ram_bound > rom_address_space_bound);
-    // let mut memory = VectorMemoryImplWithRom::new_for_byte_size(ram_bound, rom_address_space_bound);
-    // for (idx, insn) in binary_image.iter().enumerate() {
-    //     memory.populate(ENTRY_POINT + idx as u32 * 4, *insn);
-    // }
-
-    // let csr_processor = DelegationsCSRProcessor;
-
-    // let (
-    //     final_pc,
-    //     final_timestamp,
-    //     cycles_used,
-    //     family_circuits,
-    //     (word_mem_circuits, subword_mem_circuits),
-    //     delegation_circuits,
-    //     register_final_state,
-    //     shuffle_ram_touched_addresses,
-    // ) = if setups::is_default_machine_configuration::<C>() {
-    //     let word_mem_factory = mem_factories
-    //         .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
-    //         .expect("must exist");
-    //     let subword_mem_factory = mem_factories
-    //         .remove(&common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX)
-    //         .expect("must exist");
-    //     run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
-    //         _,
-    //         IMStandardIsaConfigWithUnsignedMulDiv,
-    //         A,
-    //     >(
-    //         cycles_bound,
-    //         ENTRY_POINT,
-    //         csr_processor,
-    //         &mut memory,
-    //         rom_address_space_bound,
-    //         non_determinism,
-    //         non_mem_factories,
-    //         word_mem_factory,
-    //         subword_mem_factory,
-    //         delegation_factories,
-    //         ram_bound,
-    //         &worker,
-    //     )
-    // } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
-    //     let word_mem_factory = mem_factories
-    //         .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
-    //         .expect("must exist");
-    //     let subword_mem_factory = mem_factories
-    //         .remove(&common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX)
-    //         .expect("must exist");
-    //     run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
-    //         _,
-    //         IMStandardIsaConfigWithUnsignedMulDiv,
-    //         A,
-    //     >(
-    //         cycles_bound,
-    //         ENTRY_POINT,
-    //         csr_processor,
-    //         &mut memory,
-    //         rom_address_space_bound,
-    //         non_determinism,
-    //         non_mem_factories,
-    //         word_mem_factory,
-    //         subword_mem_factory,
-    //         delegation_factories,
-    //         ram_bound,
-    //         &worker,
-    //     )
-    // } else if setups::is_reduced_machine_configuration::<C>() {
-    //     let word_mem_factory = mem_factories
-    //         .remove(&common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX)
-    //         .expect("must exist");
-    //     let (_, subword_mem_factory) = setups::load_store_subword_only::get_tracer_factory(); // NOT used internally
-    //     run_unrolled_machine_for_num_cycles_with_word_memory_ops_specialization::<
-    //         _,
-    //         IWithoutByteAccessIsaConfigWithDelegation,
-    //         A,
-    //     >(
-    //         cycles_bound,
-    //         ENTRY_POINT,
-    //         csr_processor,
-    //         &mut memory,
-    //         rom_address_space_bound,
-    //         non_determinism,
-    //         non_mem_factories,
-    //         word_mem_factory,
-    //         subword_mem_factory,
-    //         delegation_factories,
-    //         ram_bound,
-    //         &worker,
-    //     )
-    // } else {
-    //     panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-    // };
-
-    // assert_eq!(
-    //     (cycles_used as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP,
-    //     final_timestamp
-    // );
-
-    // let num_inits_per_circuit = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
-    //     * (setups::inits_and_teardowns::DOMAIN_SIZE - 1);
-
-    // let total_input_len: usize = shuffle_ram_touched_addresses
-    //     .iter()
-    //     .map(|el| el.len())
-    //     .sum();
-    // let num_needed_chunks =
-    //     total_input_len.next_multiple_of(num_inits_per_circuit) / num_inits_per_circuit;
-
-    // use crate::tracers::oracles::chunk_lazy_init_and_teardown;
-
-    // let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<A, _>(
-    //     num_needed_chunks,
-    //     num_inits_per_circuit,
-    //     &shuffle_ram_touched_addresses,
-    //     &worker,
-    // );
-    // assert_eq!(num_trivial, 0);
-
-    // (
-    //     final_pc,
-    //     final_timestamp,
-    //     cycles_used,
-    //     BTreeMap::from_iter(family_circuits.into_iter()),
-    //     (word_mem_circuits, subword_mem_circuits),
-    //     BTreeMap::from_iter(delegation_circuits.into_iter()),
-    //     register_final_state.map(|el| FinalRegisterValue {
-    //         value: el.current_value,
-    //         last_access_timestamp: el.last_access_timestamp,
-    //     }),
-    //     inits_and_teardowns,
-    // )
 }
 
 pub fn trace_unrolled_execution<
@@ -1121,9 +988,7 @@ pub fn prove_unrolled_execution_with_replayer<
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
-    mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource<
-        riscv_transpiler::vm::RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS>,
-    >,
+    mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     unrolled_circuits_precomputations: &BTreeMap<u8, UnrolledCircuitPrecomputations<A, A>>,
     inits_and_teardowns_precomputation: &UnrolledCircuitPrecomputations<A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
@@ -1138,9 +1003,6 @@ pub fn prove_unrolled_execution_with_replayer<
     u64,
 ) {
     use prover::unrolled::run_unrolled_machine;
-
-    const DEFAULT_SNAPSHOT_PERIOD: usize = 1 << 20;
-    let max_snapshots = cycles_bound.div_ceil(DEFAULT_SNAPSHOT_PERIOD);
 
     let family_chunk_sizes = HashMap::from_iter(
         [
@@ -1203,8 +1065,7 @@ pub fn prove_unrolled_execution_with_replayer<
         common_constants::INITIAL_PC,
         text_section,
         binary_image,
-        max_snapshots,
-        DEFAULT_SNAPSHOT_PERIOD,
+        cycles_bound,
         ram_bound,
         &mut non_determinism,
         family_chunk_sizes,

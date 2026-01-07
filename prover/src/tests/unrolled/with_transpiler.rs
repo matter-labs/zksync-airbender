@@ -1,10 +1,8 @@
 use super::*;
-use crate::prover_stages::ProofPowConfig;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
 use risc_v_simulator::machine_mode_only_unrolled::*;
-use riscv_transpiler::replayer::*;
 use riscv_transpiler::witness::*;
 
 use cs::definitions::INITIAL_TIMESTAMP;
@@ -51,8 +49,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     // invalid locations
     const TRACE_LEN_LOG2: usize = 24;
     const NUM_CYCLES_PER_CHUNK: usize = (1 << TRACE_LEN_LOG2) - 1;
-
-    const SECOND_WORD_BITS: usize = 4;
+    const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
@@ -72,8 +69,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -83,8 +80,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         .collect();
 
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -94,38 +91,33 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         .collect();
 
     // first run to capture minimal information
-    let instructions: Vec<Instruction> = text_section
-        .iter()
-        .copied()
-        .map(|el| decode::<FullUnsignedMachineDecoderConfig>(el))
-        .collect();
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+
     let tape = SimpleTape::new(&instructions);
-    let mut ram = RamWithRomRegion::<SECOND_WORD_BITS>::from_rom_content(&binary, 1 << 30);
-    let period = 1 << 20;
-    let num_snapshots = 1;
-    let cycles_bound = period * num_snapshots;
+    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
+        &binary,
+        1 << 30,
+    );
+    let cycles_bound = 1 << 20;
 
     let mut state = State::initial_with_counters(CountersT::default());
-    let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, period, state);
+    let mut snapshotter = SimpleSnapshotter::<CountersT, {common_constants::ROM_SECOND_WORD_BITS}>::new_with_cycle_limit(cycles_bound, state);
     let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<
-        SimpleSnapshotter<CountersT, SECOND_WORD_BITS>,
-        RamWithRomRegion<SECOND_WORD_BITS>,
-        _,
-    >(
+    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _>(
         &mut state,
-        num_snapshots,
         &mut ram,
         &mut snapshotter,
         &tape,
-        period,
+        cycles_bound,
         &mut non_determinism,
     );
     assert!(is_program_finished); // check that we reached looping state (ie. end state for our vm)
 
+    dbg!(state.counters);
+
     let total_snapshots = snapshotter.snapshots.len();
-    let cycles_upper_bound = total_snapshots * period;
 
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 
@@ -151,10 +143,18 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     );
     assert_eq!(num_trivial, 0, "trivial padding is not expected in tests");
 
+    let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
+        .into_iter()
+        .flatten()
+        .collect();
+
     println!("Finished at PC = 0x{:08x}", state.pc);
     for (reg_idx, reg) in state.registers.iter().enumerate() {
         println!("x{} = {}", reg_idx, reg.value);
     }
+
+    let mut expected_final_state = state;
+    expected_final_state.counters = Default::default();
 
     let final_pc = state.pc;
     let final_timestamp = state.timestamp;
@@ -163,32 +163,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         last_access_timestamp: el.timestamp,
         current_value: el.value,
     });
-
-    // for (k, v) in family_circuits.iter() {
-    //     println!(
-    //         "Traced {} circuits of type {}, total len: {}",
-    //         v.len(),
-    //         k,
-    //         v.iter().map(|el| el.data.len()).sum::<usize>()
-    //     );
-    // }
-
-    // println!(
-    //     "Traced {} word-sized memory circuits, total len {}",
-    //     word_mem_circuits.len(),
-    //     word_mem_circuits
-    //         .iter()
-    //         .map(|el| el.data.len())
-    //         .sum::<usize>()
-    // );
-    // println!(
-    //     "Traced {} subword-sized memory circuits, total len {}",
-    //     subword_mem_circuits.len(),
-    //     subword_mem_circuits
-    //         .iter()
-    //         .map(|el| el.data.len())
-    //         .sum::<usize>()
-    // );
 
     let memory_argument_alpha = Mersenne31Quartic::from_array_of_base([
         Mersenne31Field(2),
@@ -392,16 +366,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
@@ -410,16 +379,17 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX];
+
         let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
 
         let oracle = NonMemoryCircuitOracle {
@@ -429,12 +399,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[9].opcode_data.opcode
-        // );
-        // dbg!(family_data[0].data[9]);
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &add_sub_circuit,
@@ -454,13 +418,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
-        // let mut trace = full_trace.exec_trace.row_view(0..family_data[0].data.len());
-        // for _ in 0..family_data[0].data.len() {
-        //     unsafe {
-        //         let (_, memory) = trace.current_row_split(full_trace.num_witness_columns);
-        //         dbg!(&*memory);
-        //     }
-        // }
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
         parse_state_permutation_elements_from_full_trace(
             &add_sub_circuit,
@@ -475,96 +433,100 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &add_sub_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &TableDriver::new(),
-            &decoder_table_data,
-            trace_len,
-            &add_sub_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &add_sub_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &add_sub_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-        }
-        assert!(proof.delegation_argument_accumulator.is_none());
+            assert!(is_satisfied);
 
-        serialize_to_file_if_not_gpu_comparison(
-            &proof,
-            "add_sub_lui_auipc_mop_unrolled_proof.json",
-        );
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &TableDriver::new(),
+                &decoder_table_data,
+                trace_len,
+                &add_sub_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        serialize_to_file_if_not_gpu_comparison(
-            &proof,
-            "add_sub_lui_auipc_mop_unrolled_proof.json",
-        );
-
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &add_sub_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
-        }
 
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &add_sub_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+            }
+            assert!(proof.delegation_argument_accumulator.is_none());
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "add_sub_lui_auipc_mop_unrolled_proof.json",
+            );
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "add_sub_lui_auipc_mop_unrolled_proof.json",
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &add_sub_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
+        }
     }
 
     if true {
@@ -592,16 +554,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = NonMemDestinationHolder::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX> {
@@ -610,13 +567,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX];
@@ -629,11 +586,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[4].opcode_data.opcode
-        // );
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &jump_branch_circuit,
@@ -653,6 +605,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
         parse_state_permutation_elements_from_full_trace(
             &jump_branch_circuit,
             &full_trace,
@@ -666,88 +620,92 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &jump_branch_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &decoder_table_data,
-            trace_len,
-            &jump_branch_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &jump_branch_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &jump_branch_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-        }
-        assert!(proof.delegation_argument_accumulator.is_none());
+            assert!(is_satisfied);
 
-        serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &decoder_table_data,
+                trace_len,
+                &jump_branch_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &jump_branch_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
-        }
 
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &jump_branch_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+            }
+            assert!(proof.delegation_argument_accumulator.is_none());
+
+            serialize_to_file_if_not_gpu_comparison(&proof, "jump_branch_slt_unrolled_proof.json");
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &jump_branch_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
+        }
     }
 
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
@@ -794,15 +752,9 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
-        };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
         };
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
@@ -812,13 +764,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX];
@@ -831,11 +783,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[2].opcode_data.opcode
-        // );
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &shift_binop_csrrw_circuit,
@@ -855,6 +802,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
         parse_state_permutation_elements_from_full_trace(
             &shift_binop_csrrw_circuit,
             &full_trace,
@@ -868,94 +817,102 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &shift_binop_csrrw_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &decoder_table_data,
-            trace_len,
-            &shift_binop_csrrw_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &shift_binop_csrrw_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &shift_binop_csrrw_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-            assert_eq!(
-                proof.delegation_argument_accumulator.unwrap(),
-                Mersenne31Quartic::ZERO
+            assert!(is_satisfied);
+
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &decoder_table_data,
+                trace_len,
+                &shift_binop_csrrw_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
             );
-        }
 
-        serialize_to_file_if_not_gpu_comparison(&proof, "shift_binop_csrrw_unrolled_proof.json");
-
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &shift_binop_csrrw_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
+
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &shift_binop_csrrw_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+                assert_eq!(
+                    proof.delegation_argument_accumulator.unwrap(),
+                    Mersenne31Quartic::ZERO
+                );
+            }
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "shift_binop_csrrw_unrolled_proof.json",
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &shift_binop_csrrw_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            dbg!(proof.delegation_argument_accumulator.unwrap());
+
+            delegation_argument_accumulator
+                .add_assign(&proof.delegation_argument_accumulator.unwrap());
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
         }
-
-        dbg!(proof.delegation_argument_accumulator.unwrap());
-
-        delegation_argument_accumulator.add_assign(&proof.delegation_argument_accumulator.unwrap());
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     if true {
@@ -990,16 +947,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = NonMemDestinationHolder::<MUL_DIV_CIRCUIT_FAMILY_IDX> {
@@ -1008,13 +960,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&MUL_DIV_CIRCUIT_FAMILY_IDX];
@@ -1027,11 +979,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[26].opcode_data.opcode
-        // );
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &mul_div_circuit,
@@ -1051,6 +998,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
         parse_state_permutation_elements_from_full_trace(
             &mul_div_circuit,
             &full_trace,
@@ -1064,99 +1013,108 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &mul_div_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &decoder_table_data,
-            trace_len,
-            &mul_div_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &mul_div_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &mul_div_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-        }
-        assert!(proof.delegation_argument_accumulator.is_none());
+            assert!(is_satisfied);
 
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &mul_div_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &decoder_table_data,
+                trace_len,
+                &mul_div_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
+
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
+
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &mul_div_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+            }
+            assert!(proof.delegation_argument_accumulator.is_none());
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &mul_div_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            if SUPPORT_SIGNED {
+                serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unrolled_proof.json");
+            } else {
+                serialize_to_file_if_not_gpu_comparison(
+                    &proof,
+                    "mul_div_unsigned_unrolled_proof.json",
+                );
+            };
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
         }
-
-        if SUPPORT_SIGNED {
-            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unrolled_proof.json");
-        } else {
-            serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unsigned_unrolled_proof.json");
-        };
-
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     if true {
         println!("Will try to prove word LOAD/STORE circuit");
 
-        let extra_tables =
-            create_word_only_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
+        let extra_tables = create_word_only_load_store_special_tables::<
+            _,
+            { common_constants::ROM_SECOND_WORD_BITS },
+        >(&binary);
         let word_load_store_circuit = {
             compile_unrolled_circuit_state_transition::<Mersenne31Field>(
                 &|cs| {
@@ -1166,9 +1124,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                     }
                 },
                 &|cs| {
-                    word_only_load_store_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(
-                        cs,
-                    )
+                    word_only_load_store_circuit_with_preprocessed_bytecode::<
+                        _,
+                        _,
+                        { common_constants::ROM_SECOND_WORD_BITS },
+                    >(cs)
                 },
                 1 << 20,
                 TRACE_LEN_LOG2,
@@ -1189,16 +1149,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = MemDestinationHolder::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX> {
@@ -1207,13 +1162,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX];
@@ -1225,12 +1180,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[203].opcode_data.opcode
-        // );
-        // dbg!(family_data[0].data[203].as_load_data());
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &word_load_store_circuit,
@@ -1250,6 +1199,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
         parse_state_permutation_elements_from_full_trace(
             &word_load_store_circuit,
             &full_trace,
@@ -1263,97 +1214,106 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &word_load_store_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &decoder_table_data,
-            trace_len,
-            &word_load_store_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &word_load_store_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &word_load_store_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-        }
-        assert!(proof.delegation_argument_accumulator.is_none());
+            assert!(is_satisfied);
 
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &word_load_store_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &decoder_table_data,
+                trace_len,
+                &word_load_store_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
+
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
+
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &word_load_store_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+            }
+            assert!(proof.delegation_argument_accumulator.is_none());
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &word_load_store_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "word_only_load_store_unrolled_proof.json",
+            );
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
         }
-
-        serialize_to_file_if_not_gpu_comparison(&proof, "word_only_load_store_unrolled_proof.json");
-
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
     }
 
     if true {
         println!("Will try to prove subword LOAD/STORE circuit");
 
         use cs::machine::ops::unrolled::load_store::*;
-        const SECOND_WORD_BITS: usize = 4;
 
-        let extra_tables = create_load_store_special_tables::<_, SECOND_WORD_BITS>(&binary);
+        let extra_tables = create_load_store_special_tables::<
+            _,
+            { common_constants::ROM_SECOND_WORD_BITS },
+        >(&binary);
         let subword_load_store_circuit = {
             compile_unrolled_circuit_state_transition::<Mersenne31Field>(
                 &|cs| {
@@ -1366,7 +1326,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                     subword_only_load_store_circuit_with_preprocessed_bytecode::<
                         _,
                         _,
-                        SECOND_WORD_BITS,
+                        { common_constants::ROM_SECOND_WORD_BITS },
                     >(cs)
                 },
                 1 << 20,
@@ -1388,16 +1348,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = MemDestinationHolder::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX> {
@@ -1406,13 +1361,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         let (decoder_table_data, witness_gen_data) =
             &preprocessing_data[&LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX];
@@ -1428,11 +1383,6 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         };
 
         let is_empty = oracle.inner.is_empty();
-
-        // println!(
-        //     "Opcode = 0x{:08x}",
-        //     family_data[0].data[29].opcode_data.opcode
-        // );
 
         let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &subword_load_store_circuit,
@@ -1452,6 +1402,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Global,
         );
 
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
         parse_state_permutation_elements_from_full_trace(
             &subword_load_store_circuit,
             &full_trace,
@@ -1465,91 +1417,95 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &subword_load_store_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
-
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &decoder_table_data,
-            trace_len,
-            &subword_load_store_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
-
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &subword_load_store_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &[],
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        if is_empty {
-            assert_eq!(
-                proof.permutation_grand_product_accumulator,
-                Mersenne31Quartic::ONE
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &subword_load_store_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
             );
-        }
-        assert!(proof.delegation_argument_accumulator.is_none());
+            assert!(is_satisfied);
 
-        serialize_to_file_if_not_gpu_comparison(
-            &proof,
-            "subword_only_load_store_unrolled_proof.json",
-        );
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &decoder_table_data,
+                trace_len,
+                &subword_load_store_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &subword_load_store_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &[],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
-        }
 
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &subword_load_store_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &[],
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            if is_empty {
+                assert_eq!(
+                    proof.permutation_grand_product_accumulator,
+                    Mersenne31Quartic::ONE
+                );
+            }
+            assert!(proof.delegation_argument_accumulator.is_none());
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "subword_only_load_store_unrolled_proof.json",
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &subword_load_store_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &[],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
+        }
     }
 
     // Machine state permutation ended
@@ -1607,80 +1563,87 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             lookup_mapping,
         };
 
-        let is_satisfied = check_satisfied(
-            &inits_and_teardowns_circuit,
-            &full_trace.exec_trace,
-            full_trace.num_witness_columns,
-        );
-        assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &inits_and_teardowns_circuit,
+                &full_trace.exec_trace,
+                full_trace.num_witness_columns,
+            );
+            assert!(is_satisfied);
 
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-        let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            &table_driver,
-            &[],
-            trace_len,
-            &inits_and_teardowns_circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
+                &table_driver,
+                &[],
+                trace_len,
+                &inits_and_teardowns_circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-            Some(full_trace.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        println!("Trying to prove");
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-            DEFAULT_TRACE_PADDING_MULTIPLE,
-            _,
-            DefaultTreeConstructor,
-        >(
-            &inits_and_teardowns_circuit,
-            &vec![],
-            &external_challenges,
-            full_trace,
-            &aux_data.aux_boundary_data,
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            None,
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!("Proving time is {:?}", now.elapsed());
-
-        serialize_to_file_if_not_gpu_comparison(&proof, "inits_and_teardowns_unrolled_proof.json");
-
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &inits_and_teardowns_circuit,
-                setup: &setup,
-                external_challenges: &external_challenges,
-                aux_boundary_values: &aux_data.aux_boundary_data,
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: TRACE_LEN_LOG2,
-                circuit_sequence: None,
-                delegation_processing_type: None,
-                is_unrolled: true,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+                Some(full_trace.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
-        }
 
-        permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+                DEFAULT_TRACE_PADDING_MULTIPLE,
+                _,
+                DefaultTreeConstructor,
+            >(
+                &inits_and_teardowns_circuit,
+                &vec![],
+                &external_challenges,
+                full_trace,
+                &aux_data.aux_boundary_data,
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                None,
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!("Proving time is {:?}", now.elapsed());
+
+            serialize_to_file_if_not_gpu_comparison(
+                &proof,
+                "inits_and_teardowns_unrolled_proof.json",
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &inits_and_teardowns_circuit,
+                    setup: &setup,
+                    external_challenges: &external_challenges,
+                    aux_boundary_values: &aux_data.aux_boundary_data,
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: TRACE_LEN_LOG2,
+                    circuit_sequence: None,
+                    delegation_processing_type: None,
+                    is_unrolled: true,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            permutation_argument_accumulator
+                .mul_assign(&proof.permutation_grand_product_accumulator);
+        }
     }
 
     // now prove delegation circuits
@@ -1716,16 +1679,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
         };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
-        };
+
         let mut buffer = vec![DelegationWitness::empty(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
         let mut tracer = BlakeDelegationDestinationHolder {
@@ -1734,13 +1692,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         // evaluate a witness and memory-only witness for each
 
@@ -1788,83 +1746,87 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &circuit,
-            &full_witness.exec_trace,
-            full_witness.num_witness_columns,
-        );
-        assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &circuit,
+                &full_witness.exec_trace,
+                full_witness.num_witness_columns,
+            );
+            assert!(is_satisfied);
 
-        let trace_len = NUM_DELEGATION_CYCLES + 1;
+            let trace_len = NUM_DELEGATION_CYCLES + 1;
 
-        // create setup
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            // create setup
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
 
-        let setup = SetupPrecomputations::from_tables_and_trace_len(
-            &table_driver,
-            NUM_DELEGATION_CYCLES + 1,
-            &circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
+            let setup = SetupPrecomputations::from_tables_and_trace_len(
+                &table_driver,
+                NUM_DELEGATION_CYCLES + 1,
+                &circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        let lookup_mapping_for_gpu = if maybe_gpu_delegation_comparison_hook.is_some() {
-            Some(full_witness.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
-            &circuit,
-            &[],
-            &external_values,
-            full_witness,
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            0,
-            Some(delegation_type),
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!(
-            "Delegation circuit type {} proving time is {:?}",
-            delegation_type,
-            now.elapsed()
-        );
-
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_delegation_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &circuit,
-                setup: &setup,
-                external_challenges: &external_values.challenges,
-                aux_boundary_values: &[external_values.aux_boundary_values],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: trace_len.trailing_zeros() as usize,
-                circuit_sequence: None,
-                delegation_processing_type: Some(delegation_type),
-                is_unrolled: false,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_delegation_comparison_hook.is_some() {
+                Some(full_witness.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
+                &circuit,
+                &[],
+                &external_values,
+                full_witness,
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                0,
+                Some(delegation_type),
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!(
+                "Delegation circuit type {} proving time is {:?}",
+                delegation_type,
+                now.elapsed()
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_delegation_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &circuit,
+                    setup: &setup,
+                    external_challenges: &external_values.challenges,
+                    aux_boundary_values: &[external_values.aux_boundary_values],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: trace_len.trailing_zeros() as usize,
+                    circuit_sequence: None,
+                    delegation_processing_type: Some(delegation_type),
+                    is_unrolled: false,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            dbg!(prover_data.stage_2_result.grand_product_accumulator);
+            dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+
+            permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
+            delegation_argument_accumulator
+                .sub_assign(&proof.delegation_argument_accumulator.unwrap());
         }
-
-        dbg!(prover_data.stage_2_result.grand_product_accumulator);
-        dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
-
-        permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
-        delegation_argument_accumulator.sub_assign(&proof.delegation_argument_accumulator.unwrap());
     }
 
     if true {
@@ -1899,15 +1861,9 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let mut ram_log_buffers = snapshotter
             .reads_buffer
             .make_range(0..snapshotter.reads_buffer.len());
-        let mut nd_log_buffers = snapshotter
-            .non_determinism_reads_buffer
-            .make_range(0..snapshotter.non_determinism_reads_buffer.len());
 
-        let mut ram = ReplayerRam::<SECOND_WORD_BITS> {
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
             ram_log: &mut ram_log_buffers,
-        };
-        let mut nd = ReplayerNonDeterminism {
-            non_determinism_reads_log: &mut nd_log_buffers,
         };
         let mut buffer = vec![DelegationWitness::empty(); num_calls];
         let mut buffers = vec![&mut buffer[..]];
@@ -1917,13 +1873,13 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
             &tape,
-            period,
-            &mut nd,
+            &mut (),
+            cycles_bound,
             &mut tracer,
         );
+        assert_eq!(expected_final_state, state);
 
         // evaluate a witness and memory-only witness for each
 
@@ -1971,83 +1927,87 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &mut memory_read_set,
         );
 
-        let is_satisfied = check_satisfied(
-            &circuit,
-            &full_witness.exec_trace,
-            full_witness.num_witness_columns,
-        );
-        assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            let is_satisfied = check_satisfied(
+                &circuit,
+                &full_witness.exec_trace,
+                full_witness.num_witness_columns,
+            );
+            assert!(is_satisfied);
 
-        let trace_len = NUM_DELEGATION_CYCLES + 1;
+            let trace_len = NUM_DELEGATION_CYCLES + 1;
 
-        // create setup
-        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let lde_precomputations = LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
+            // create setup
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            let lde_precomputations =
+                LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
 
-        let setup = SetupPrecomputations::from_tables_and_trace_len(
-            &table_driver,
-            NUM_DELEGATION_CYCLES + 1,
-            &circuit.setup_layout,
-            &twiddles,
-            &lde_precomputations,
-            lde_factor,
-            tree_cap_size,
-            &worker,
-        );
+            let setup = SetupPrecomputations::from_tables_and_trace_len(
+                &table_driver,
+                NUM_DELEGATION_CYCLES + 1,
+                &circuit.setup_layout,
+                &twiddles,
+                &lde_precomputations,
+                lde_factor,
+                tree_cap_size,
+                &worker,
+            );
 
-        let lookup_mapping_for_gpu = if maybe_gpu_delegation_comparison_hook.is_some() {
-            Some(full_witness.lookup_mapping.clone())
-        } else {
-            None
-        };
-
-        let now = std::time::Instant::now();
-        let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
-            &circuit,
-            &[],
-            &external_values,
-            full_witness,
-            &setup,
-            &twiddles,
-            &lde_precomputations,
-            0,
-            Some(delegation_type),
-            lde_factor,
-            tree_cap_size,
-            53,
-            80,
-            &worker,
-        );
-        println!(
-            "Delegation circuit type {} proving time is {:?}",
-            delegation_type,
-            now.elapsed()
-        );
-
-        if let Some(ref gpu_comparison_hook) = maybe_gpu_delegation_comparison_hook {
-            let gpu_comparison_args = GpuComparisonArgs {
-                circuit: &circuit,
-                setup: &setup,
-                external_challenges: &external_values.challenges,
-                aux_boundary_values: &[external_values.aux_boundary_values],
-                public_inputs: &vec![],
-                twiddles: &twiddles,
-                lde_precomputations: &lde_precomputations,
-                lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-                log_n: trace_len.trailing_zeros() as usize,
-                circuit_sequence: None,
-                delegation_processing_type: Some(delegation_type),
-                is_unrolled: false,
-                prover_data: &prover_data,
+            let lookup_mapping_for_gpu = if maybe_gpu_delegation_comparison_hook.is_some() {
+                Some(full_witness.lookup_mapping.clone())
+            } else {
+                None
             };
-            gpu_comparison_hook(&gpu_comparison_args);
+
+            let now = std::time::Instant::now();
+            let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
+                &circuit,
+                &[],
+                &external_values,
+                full_witness,
+                &setup,
+                &twiddles,
+                &lde_precomputations,
+                0,
+                Some(delegation_type),
+                lde_factor,
+                tree_cap_size,
+                63,
+                80,
+                &worker,
+            );
+            println!(
+                "Delegation circuit type {} proving time is {:?}",
+                delegation_type,
+                now.elapsed()
+            );
+
+            if let Some(ref gpu_comparison_hook) = maybe_gpu_delegation_comparison_hook {
+                let gpu_comparison_args = GpuComparisonArgs {
+                    circuit: &circuit,
+                    setup: &setup,
+                    external_challenges: &external_values.challenges,
+                    aux_boundary_values: &[external_values.aux_boundary_values],
+                    public_inputs: &vec![],
+                    twiddles: &twiddles,
+                    lde_precomputations: &lde_precomputations,
+                    lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+                    log_n: trace_len.trailing_zeros() as usize,
+                    circuit_sequence: None,
+                    delegation_processing_type: Some(delegation_type),
+                    is_unrolled: false,
+                    prover_data: &prover_data,
+                };
+                gpu_comparison_hook(&gpu_comparison_args);
+            }
+
+            dbg!(prover_data.stage_2_result.grand_product_accumulator);
+            dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
+
+            permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
+            delegation_argument_accumulator
+                .sub_assign(&proof.delegation_argument_accumulator.unwrap());
         }
-
-        dbg!(prover_data.stage_2_result.grand_product_accumulator);
-        dbg!(prover_data.stage_2_result.sum_over_delegation_poly);
-
-        permutation_argument_accumulator.mul_assign(&proof.memory_grand_product_accumulator);
-        delegation_argument_accumulator.sub_assign(&proof.delegation_argument_accumulator.unwrap());
     }
 
     dbg!(permutation_argument_accumulator);
@@ -2058,9 +2018,55 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
         let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
         assert_eq!(expected_init_set.len(), expected_teardown_set.len());
+        // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
-        for (is_register, addr, ts, init_value) in expected_init_set.iter() {
-            assert!(*is_register == false);
+        if flattened_inits_and_teardowns.len() != expected_init_set.len() {
+            for (idx, (address, (teardown_ts, teardown_value))) in
+                flattened_inits_and_teardowns.iter().enumerate()
+            {
+                let mut init_set_el = None;
+                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                    if *addr == *address {
+                        init_set_el = Some((*is_reg, *addr, *ts, *init_value));
+                    }
+                }
+                let Some(init_set_el) = init_set_el else {
+                    panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
+                };
+
+                let mut teardown_set_el = None;
+                for (i, (is_reg, addr, ts, teardown_value)) in
+                    expected_teardown_set.iter().enumerate()
+                {
+                    if *addr == *address {
+                        teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
+                    }
+                }
+                let Some(teardown_set_el) = teardown_set_el else {
+                    panic!("No expected teardown set element for address {} of flattened inits or teardowns", *address);
+                };
+                let (_, _, expected_teardown_ts, expected_teardown_value) = teardown_set_el;
+                assert_eq!(
+                    *teardown_ts, expected_teardown_ts,
+                    "failed for address {}",
+                    address
+                );
+                assert_eq!(
+                    *teardown_value, expected_teardown_value,
+                    "failed for address {}",
+                    address
+                );
+            }
+        }
+
+        for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected init for register {} with value {} at timestamp {}",
+                *addr,
+                *init_value,
+                *ts
+            );
             assert_eq!(
                 *ts, 0,
                 "init timestamp is invalid for memory address {}",
@@ -2071,13 +2077,34 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 "init value is invalid for memory address {}",
                 addr
             );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].0, *addr,
+                "diverged at expected lazy init {}",
+                idx
+            );
         }
-        for (is_register, addr, ts, _) in expected_teardown_set.iter() {
-            assert!(*is_register == false);
+        for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected teardown for register {} with value {} at timestamp {}",
+                *addr,
+                *value,
+                *ts
+            );
             assert!(
                 *ts > INITIAL_TIMESTAMP,
                 "teardown timestamp is invalid for memory address {}",
                 addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .0, *ts,
+                "diverged at expected lazy init {}",
+                idx
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .1, *value,
+                "diverged at expected lazy init {}",
+                idx
             );
         }
 

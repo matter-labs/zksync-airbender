@@ -1,7 +1,10 @@
 use std::alloc::Allocator;
 
+use crate::jit::{CounterType, MAX_NUM_COUNTERS, MAX_TRACE_CHUNK_LEN};
+
 use super::*;
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsCounters {
     pub non_determinism_reads: usize,
@@ -12,59 +15,53 @@ pub struct DelegationsCounters {
 
 impl Counters for DelegationsCounters {
     #[inline(always)]
-    fn bump_bigint(&mut self) {
-        self.bigint_calls += 1;
+    fn bump_bigint(&mut self, by: usize) {
+        self.bigint_calls += by;
     }
     #[inline(always)]
-    fn bump_blake2_round_function(&mut self) {
-        self.blake_calls += 1;
+    fn bump_blake2_round_function(&mut self, by: usize) {
+        self.blake_calls += by;
     }
     #[inline(always)]
-    fn bump_keccak_special5(&mut self) {
-        self.keccak_calls += 1;
-    }
-    #[inline(always)]
-    fn bump_non_determinism(&mut self) {
-        self.non_determinism_reads += 1;
+    fn bump_keccak_special5(&mut self, by: usize) {
+        self.keccak_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {}
+    #[inline(always)]
+    fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, _num_calls: usize) {}
     #[inline(always)]
     fn get_calls_to_circuit_family<const FAMILY: u8>(&self) -> usize {
         0
     }
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndFamiliesCounters {
-    pub non_determinism_reads: usize,
-    pub blake_calls: usize,
-    pub bigint_calls: usize,
-    pub keccak_calls: usize,
     pub add_sub_family: usize,
     pub binary_shift_csr_family: usize,
     pub slt_branch_family: usize,
     pub mul_div_family: usize,
     pub word_size_mem_family: usize,
     pub subword_size_mem_family: usize,
+    pub blake_calls: usize,
+    pub bigint_calls: usize,
+    pub keccak_calls: usize,
 }
 
 impl Counters for DelegationsAndFamiliesCounters {
     #[inline(always)]
-    fn bump_bigint(&mut self) {
-        self.bigint_calls += 1;
+    fn bump_bigint(&mut self, by: usize) {
+        self.bigint_calls += by;
     }
     #[inline(always)]
-    fn bump_blake2_round_function(&mut self) {
-        self.blake_calls += 1;
+    fn bump_blake2_round_function(&mut self, by: usize) {
+        self.blake_calls += by;
     }
     #[inline(always)]
-    fn bump_keccak_special5(&mut self) {
-        self.keccak_calls += 1;
-    }
-    #[inline(always)]
-    fn bump_non_determinism(&mut self) {
-        self.non_determinism_reads += 1;
+    fn bump_keccak_special5(&mut self, by: usize) {
+        self.keccak_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
@@ -80,6 +77,24 @@ impl Counters for DelegationsAndFamiliesCounters {
             self.word_size_mem_family += 1;
         } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
             self.subword_size_mem_family += 1;
+        } else {
+            unsafe { core::hint::unreachable_unchecked() }
+        }
+    }
+    #[inline(always)]
+    fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, num_calls: usize) {
+        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
+            self.add_sub_family += num_calls;
+        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
+            self.slt_branch_family += num_calls;
+        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
+            self.binary_shift_csr_family += num_calls;
+        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
+            self.mul_div_family += num_calls;
+        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
+            self.word_size_mem_family += num_calls;
+        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+            self.subword_size_mem_family += num_calls;
         } else {
             unsafe { core::hint::unreachable_unchecked() }
         }
@@ -104,6 +119,23 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
+impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
+    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+        Self {
+            add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
+            slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
+            binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
+            mul_div_family: counters[CounterType::MulDiv as u8 as usize] as usize,
+            word_size_mem_family: counters[CounterType::MemWord as u8 as usize] as usize,
+            subword_size_mem_family: counters[CounterType::MemSubword as u8 as usize] as usize,
+            blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
+            bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
+            keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndUnifiedCounters {
     pub non_determinism_reads: usize,
@@ -115,20 +147,16 @@ pub struct DelegationsAndUnifiedCounters {
 
 impl Counters for DelegationsAndUnifiedCounters {
     #[inline(always)]
-    fn bump_bigint(&mut self) {
-        self.bigint_calls += 1;
+    fn bump_bigint(&mut self, by: usize) {
+        self.bigint_calls += by;
     }
     #[inline(always)]
-    fn bump_blake2_round_function(&mut self) {
-        self.blake_calls += 1;
+    fn bump_blake2_round_function(&mut self, by: usize) {
+        self.blake_calls += by;
     }
     #[inline(always)]
-    fn bump_keccak_special5(&mut self) {
-        self.keccak_calls += 1;
-    }
-    #[inline(always)]
-    fn bump_non_determinism(&mut self) {
-        self.non_determinism_reads += 1;
+    fn bump_keccak_special5(&mut self, by: usize) {
+        self.keccak_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
@@ -149,6 +177,24 @@ impl Counters for DelegationsAndUnifiedCounters {
         }
     }
     #[inline(always)]
+    fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, num_calls: usize) {
+        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+            self.cycles += num_calls;
+        } else {
+            unsafe { core::hint::unreachable_unchecked() }
+        }
+    }
+    #[inline(always)]
     fn get_calls_to_circuit_family<const FAMILY: u8>(&self) -> usize {
         if const { FAMILY == REDUCED_MACHINE_CIRCUIT_FAMILY_IDX } {
             self.cycles
@@ -158,25 +204,44 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
 }
 
+impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
+    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+        let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
+        let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
+        let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
+        let mul_div_family = counters[CounterType::MulDiv as u8 as usize] as usize;
+        let word_size_mem_family = counters[CounterType::MemWord as u8 as usize] as usize;
+        let subword_size_mem_family = counters[CounterType::MemSubword as u8 as usize] as usize;
+        let cycles = add_sub_family
+            + slt_branch_family
+            + binary_shift_csr_family
+            + mul_div_family
+            + word_size_mem_family
+            + subword_size_mem_family;
+        Self {
+            non_determinism_reads: 0,
+            blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
+            bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
+            keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            cycles,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SimpleSnapshot<C: Counters> {
     pub state: State<C>,
-    pub last_zero_address_read_timestamp: TimestampScalar,
-    pub non_determinism_reads_start: usize,
-    pub non_determinism_reads_end: usize,
-    pub memory_reads_start: usize,
-    pub memory_reads_end: usize,
+    pub reads_start: usize,
+    pub reads_end: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PartialSnapshot {
-    pub last_zero_address_read_timestamp: TimestampScalar,
-    pub non_determinism_reads_offset: usize,
-    pub memory_reads_offset: usize,
+    pub reads_offset: usize,
 }
 
 pub trait ReplayBuffer<T: Sized> {
-    fn new_with_cycle_bound(bound: usize) -> Self;
+    fn new_with_snapshots_bound(bound: usize) -> Self;
     unsafe fn push_within_capacity_unchecked(&mut self, value: T);
     fn make_range<'a>(&'a self, range: core::ops::Range<usize>) -> Vec<&'a [T]>
     where
@@ -185,7 +250,7 @@ pub trait ReplayBuffer<T: Sized> {
 }
 
 impl<T: Sized, A: Allocator + Default> ReplayBuffer<T> for Vec<T, A> {
-    fn new_with_cycle_bound(bound: usize) -> Self {
+    fn new_with_snapshots_bound(bound: usize) -> Self {
         Vec::<T, A>::with_capacity_in(bound, A::default())
     }
     #[inline(always)]
@@ -268,7 +333,7 @@ impl<T: Sized, const I: usize, const O: usize> SpecBiVec<T, I, O> {
 }
 
 impl<T: Sized, const I: usize, const O: usize> ReplayBuffer<T> for SpecBiVec<T, I, O> {
-    fn new_with_cycle_bound(bound: usize) -> Self {
+    fn new_with_snapshots_bound(bound: usize) -> Self {
         assert!(bound <= I * O);
         Self::new()
     }
@@ -292,80 +357,71 @@ pub struct SimpleSnapshotter<
     C: Counters,
     const ROM_BOUND_SECOND_WORD_BITS: usize,
     MB: ReplayBuffer<(u32, (u32, u32))> = Vec<(u32, (u32, u32))>,
-    NDB: ReplayBuffer<u32> = Vec<u32>,
 > {
     pub current_partial_snapshot: PartialSnapshot,
     pub snapshots: Vec<SimpleSnapshot<C>>,
-    pub last_zero_address_read_timestamp: TimestampScalar,
     pub reads_buffer: MB,
-    pub non_determinism_reads_buffer: NDB,
     pub initial_snapshot: SimpleSnapshot<C>,
 }
 
-impl<
-        C: Counters,
-        const ROM_BOUND_SECOND_WORD_BITS: usize,
-        MB: ReplayBuffer<(u32, (u32, u32))>,
-        NDB: ReplayBuffer<u32>,
-    > SimpleSnapshotter<C, ROM_BOUND_SECOND_WORD_BITS, MB, NDB>
+impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32, (u32, u32))>>
+    SimpleSnapshotter<C, ROM_BOUND_SECOND_WORD_BITS, MB>
 {
-    pub fn new_with_cycle_limit(limit: usize, period: usize, initial_state: State<C>) -> Self {
+    pub fn new_with_cycle_limit(limit: usize, initial_state: State<C>) -> Self {
         let initial_snapshot = SimpleSnapshot {
             state: initial_state,
-            last_zero_address_read_timestamp: 0,
-            non_determinism_reads_start: 0,
-            non_determinism_reads_end: 0,
-            memory_reads_start: 0,
-            memory_reads_end: 0,
+            reads_start: 0,
+            reads_end: 0,
         };
 
+        let worst_period = MAX_TRACE_CHUNK_LEN;
+        let worst_case_num_snapshots = limit.div_ceil(worst_period);
+
         Self {
-            current_partial_snapshot: PartialSnapshot {
-                last_zero_address_read_timestamp: 0,
-                non_determinism_reads_offset: 0,
-                memory_reads_offset: 0,
-            },
-            snapshots: Vec::with_capacity(limit.div_ceil(period)),
-            last_zero_address_read_timestamp: 0,
-            reads_buffer: MB::new_with_cycle_bound(limit),
-            non_determinism_reads_buffer: NDB::new_with_cycle_bound(limit),
+            current_partial_snapshot: PartialSnapshot { reads_offset: 0 },
+            snapshots: Vec::with_capacity(worst_case_num_snapshots),
+            reads_buffer: MB::new_with_snapshots_bound(limit),
             initial_snapshot,
         }
     }
-}
 
-impl<
-        C: Counters,
-        const ROM_BOUND_SECOND_WORD_BITS: usize,
-        MB: ReplayBuffer<(u32, (u32, u32))>,
-        NDB: ReplayBuffer<u32>,
-    > Snapshotter<C> for SimpleSnapshotter<C, ROM_BOUND_SECOND_WORD_BITS, MB, NDB>
-{
-    #[inline(always)]
-    fn take_snapshot(&mut self, state: &State<C>) {
+    fn snapshot_impl(&mut self, state: &State<C>) {
         let new_snapshot = SimpleSnapshot {
             state: *state,
-            non_determinism_reads_start: self.current_partial_snapshot.non_determinism_reads_offset,
-            non_determinism_reads_end: self.non_determinism_reads_buffer.len(),
-            last_zero_address_read_timestamp: self
-                .current_partial_snapshot
-                .last_zero_address_read_timestamp,
-            memory_reads_start: self.current_partial_snapshot.memory_reads_offset,
-            memory_reads_end: self.reads_buffer.len(),
+            reads_start: self.current_partial_snapshot.reads_offset,
+            reads_end: self.reads_buffer.len(),
         };
-        self.current_partial_snapshot
-            .last_zero_address_read_timestamp = self.last_zero_address_read_timestamp;
-        self.current_partial_snapshot.non_determinism_reads_offset =
-            self.non_determinism_reads_buffer.len();
-        self.current_partial_snapshot.memory_reads_offset = self.reads_buffer.len();
+        self.current_partial_snapshot.reads_offset = self.reads_buffer.len();
         self.snapshots.push(new_snapshot);
+    }
+}
+
+impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32, (u32, u32))>>
+    Snapshotter<C> for SimpleSnapshotter<C, ROM_BOUND_SECOND_WORD_BITS, MB>
+{
+    #[inline(always)]
+    fn take_snapshot_if_needed(&mut self, state: &State<C>) -> bool {
+        use crate::jit::{MAX_TRACE_CHUNK_LEN, TRACE_CHUNK_LEN};
+        if self.reads_buffer.len() - self.current_partial_snapshot.reads_offset >= TRACE_CHUNK_LEN {
+            debug_assert!(
+                self.reads_buffer.len() - self.current_partial_snapshot.reads_offset
+                    <= MAX_TRACE_CHUNK_LEN
+            );
+            self.snapshot_impl(state);
+        }
+        false
     }
 
     #[inline(always)]
-    fn append_non_determinism_read(&mut self, value: u32) {
+    fn take_final_snapshot(&mut self, state: &State<C>) {
+        self.snapshot_impl(state);
+    }
+
+    #[inline(always)]
+    fn append_arbitrary_value(&mut self, value: u32) {
         unsafe {
-            self.non_determinism_reads_buffer
-                .push_within_capacity_unchecked(value);
+            self.reads_buffer
+                .push_within_capacity_unchecked((value, (0u32, 0u32)));
         }
     }
 
@@ -375,11 +431,8 @@ impl<
         address: u32,
         read_value: u32,
         read_timestamp: TimestampScalar,
-        write_timestamp: TimestampScalar,
+        _write_timestamp: TimestampScalar,
     ) {
-        if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
-            self.last_zero_address_read_timestamp = write_timestamp;
-        }
         unsafe {
             self.reads_buffer.push_within_capacity_unchecked((
                 read_value,

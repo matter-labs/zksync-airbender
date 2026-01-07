@@ -13,6 +13,15 @@ pub mod slt;
 pub mod zicsr;
 
 #[inline(always)]
+pub(crate) fn touch_x0<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(state: &mut State<C>) {
+    unsafe {
+        let reg = state.registers.get_unchecked_mut(0 as usize);
+        debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
+        reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
+    }
+}
+
+#[inline(always)]
 pub(crate) fn read_register<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(
     state: &mut State<C>,
     reg_idx: u8,
@@ -50,6 +59,16 @@ pub(crate) fn default_increase_pc<C: Counters>(state: &mut State<C>) {
 #[inline(always)]
 pub(crate) fn increment_family_counter<C: Counters, const FAMILY: u8>(state: &mut State<C>) {
     state.counters.log_circuit_family::<FAMILY>();
+}
+
+#[inline(always)]
+pub(crate) fn increment_family_counter_by<C: Counters, const FAMILY: u8>(
+    state: &mut State<C>,
+    by: usize,
+) {
+    state
+        .counters
+        .log_multiple_circuit_family_calls::<FAMILY>(by);
 }
 
 #[inline(always)]

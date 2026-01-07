@@ -41,7 +41,6 @@ pub fn preprocess_bytecode<F: PrimeField, A: GoodAllocator>(
     Vec<Option<DecoderTableEntry<F>>, A>,
     Vec<ExecutorFamilyDecoderData, A>,
 ) {
-    use crate::definitions::*;
     let mut table = Vec::with_capacity_in(bytecode_size_words, A::default());
     table.resize(bytecode_size_words, None);
     let mut witness_eval_decoder_data = Vec::with_capacity_in(bytecode_size_words, A::default());
@@ -51,65 +50,37 @@ pub fn preprocess_bytecode<F: PrimeField, A: GoodAllocator>(
 
     for (i, opcode) in binary.iter().copied().enumerate() {
         let pc = i * 4;
-        let op = get_opcode_bits(opcode);
-        let funct3 = funct3_bits(opcode);
-        let funct7 = funct7_bits(opcode);
-        let (is_valid, instr_type, mask, (avoid_i_type_sign_extend, validate_csr)) =
-            family.define_decoder_subspace_ext(op, funct3, funct7);
-        if avoid_i_type_sign_extend {
-            assert_eq!(
-                instr_type,
-                InstructionType::IType,
-                "avoiding I-type sign extend flag is set for opcode 0x{:08x} by family {:?}",
-                opcode,
-                &*family
-            );
-        }
-        if is_valid == false {
-            // not supported
+        let Ok(data) = family.define_decoder_subspace(opcode) else {
             continue;
-        }
+        };
 
-        // now we need to get formal rs1/rs2/rd, check that rd is 0, parse formal immediate
-        let (rs1, rs2, rd) = formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
-        let imm = instr_type.parse_imm(opcode, avoid_i_type_sign_extend);
-
-        if validate_csr {
-            let csr = imm as u16;
+        if data.validate_csr_index_in_immediate {
+            let csr = data.data.imm as u16;
             if supported_csrs.contains(&csr) == false {
                 // not supported
                 continue;
             }
         }
 
-        let decoder_entry = ExecutorFamilyDecoderData {
-            imm,
-            rs1_index: rs1,
-            rs2_index: rs2,
-            rd_index: rd,
-            rd_is_zero: rd == 0,
-            funct3,
-            funct7: None,
-            opcode_family_bits: mask,
-        };
-        witness_eval_decoder_data[i] = decoder_entry;
+        witness_eval_decoder_data[i] = data.data;
+        let decoded = data.data;
 
         let entry = DecoderTableEntry {
             pc: [
                 F::from_u64_unchecked((pc as u64) & 0xffff),
                 F::from_u64_unchecked(((pc >> 16) as u64) & 0xffff),
             ],
-            rs1_index: F::from_u64_unchecked(rs1 as u64),
-            rs2_index: F::from_u64_unchecked(rs2 as u64),
-            rd_index: F::from_u64_unchecked(rd as u64),
-            rd_is_zero: F::from_boolean(rd == 0),
+            rs1_index: F::from_u64_unchecked(decoded.rs1_index as u64),
+            rs2_index: F::from_u64_unchecked(decoded.rs2_index as u64),
+            rd_index: F::from_u64_unchecked(decoded.rd_index as u64),
+            rd_is_zero: F::from_boolean(decoded.rd_is_zero),
             imm: [
-                F::from_u64_unchecked((imm as u64) & 0xffff),
-                F::from_u64_unchecked(((imm >> 16) as u64) & 0xffff),
+                F::from_u64_unchecked((decoded.imm as u64) & 0xffff),
+                F::from_u64_unchecked(((decoded.imm >> 16) as u64) & 0xffff),
             ],
-            funct3: F::from_u64_unchecked(funct3 as u64),
+            funct3: F::from_u64_unchecked(decoded.funct3 as u64),
             // funct7: F::from_u64_unchecked(funct7 as u64),
-            circuit_family_extra_mask: F::from_u64_unchecked(mask as u64),
+            circuit_family_extra_mask: F::from_u64_unchecked(decoded.opcode_family_bits as u64),
         };
 
         table[i] = Some(entry);

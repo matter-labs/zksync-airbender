@@ -8,6 +8,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
         circuit_output: CircuitOutput<F>,
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
+        unreachable!("do not use yet, as there is no proper decoder/executor circuit separation");
+
         // our main purposes are:
         // - place variables in particular grid places
         // - select whether they go into witness subtree or memory subtree
@@ -50,6 +52,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
         if total_tables_size % lookup_table_encoding_capacity != 0 {
             num_required_tuples_for_generic_lookup_setup += 1;
         }
+
+        let mut constraints = constraints;
 
         drop(linked_variables);
 
@@ -239,6 +243,28 @@ impl<F: PrimeField> OneRowCompiler<F> {
             borrow_var
         };
 
+        // And we add a constraint (normal one), to perform timestamp += 4 constraint, without
+        // carry over top limb, as we want to have upper bound anyway
+
+        // low
+        constraints.push((
+            Constraint::from(executor_machine_state.cycle_end_state.timestamp[0])
+                + Term::from((
+                    F::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS),
+                    next_timestamp_intermediate_carry,
+                ))
+                - Term::from(executor_machine_state.cycle_start_state.timestamp[0])
+                - Term::from(TIMESTAMP_STEP),
+            true,
+        ));
+        // high - carryless
+        constraints.push((
+            Constraint::from(executor_machine_state.cycle_end_state.timestamp[1])
+                - Term::from(executor_machine_state.cycle_start_state.timestamp[1])
+                - Term::from(next_timestamp_intermediate_carry),
+            true,
+        ));
+
         let read_timestamps: Vec<_> = shuffle_ram_queries
             .iter()
             .filter_map(|el| {
@@ -357,7 +383,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // Now we will pause and place boolean variables, as those can have their contraints special-handled in quotient
 
-        let mut constraints = constraints;
         // normalize again just in case
         for (el, _) in constraints.iter_mut() {
             el.normalize();

@@ -198,7 +198,7 @@ fn apply_reduced_machine_circuit<
 
     let [rs1_query, mut rs2_or_mem_load_query, mut rd_or_mem_store_query] = memory_queries;
 
-    let application_result = LoadOp::<false, false>::spec_apply::<
+    let application_result = LoadOp::<false, false, true>::spec_apply::<
         _,
         _,
         _,
@@ -568,7 +568,6 @@ mod test {
     use super::*;
     use crate::utils::serialize_to_file;
 
-    const SECOND_WORD_BITS: usize = 4;
     const DUMMY_BYTECODE: &[u32] = &[UNIMP_OPCODE];
 
     #[test]
@@ -579,7 +578,10 @@ mod test {
             &|cs| {
                 reduced_machine_table_addition_fn(cs);
 
-                let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
+                let extra_tables = create_reduced_machine_special_tables::<
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(
                     DUMMY_BYTECODE,
                     &[
                         common_constants::NON_DETERMINISM_CSR,
@@ -590,8 +592,14 @@ mod test {
                     cs.add_table_with_content(table_type, table);
                 }
             },
-            &|cs| reduced_machine_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(cs),
-            1 << (16 + SECOND_WORD_BITS),
+            &|cs| {
+                reduced_machine_circuit_with_preprocessed_bytecode::<
+                    _,
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(cs)
+            },
+            1 << 20,
             23,
         );
 
@@ -606,7 +614,10 @@ mod test {
             &|cs| {
                 reduced_machine_table_addition_fn(cs);
 
-                let extra_tables = create_reduced_machine_special_tables::<_, SECOND_WORD_BITS>(
+                let extra_tables = create_reduced_machine_special_tables::<
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(
                     DUMMY_BYTECODE,
                     &[
                         common_constants::NON_DETERMINISM_CSR,
@@ -617,7 +628,13 @@ mod test {
                     cs.add_table_with_content(table_type, table);
                 }
             },
-            &|cs| reduced_machine_circuit_with_preprocessed_bytecode::<_, _, SECOND_WORD_BITS>(cs),
+            &|cs| {
+                reduced_machine_circuit_with_preprocessed_bytecode::<
+                    _,
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(cs)
+            },
         );
         serialize_to_file(&ssa_forms, "reduced_machine_preprocessed_ssa.json");
     }

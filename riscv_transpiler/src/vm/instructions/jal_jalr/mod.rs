@@ -7,8 +7,10 @@ pub(crate) fn jal<C: Counters, S: Snapshotter<C>, R: RAM>(
     snapshotter: &mut S,
     instr: Instruction,
 ) {
-    let _rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let _rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    debug_assert_eq!(instr.rs1, 0);
+    debug_assert_eq!(instr.rs2, 0);
+
+    touch_x0::<C, 1>(state);
     let mut rd = state.pc.wrapping_add(core::mem::size_of::<u32>() as u32); // address of next opcode
     let jump_address = state.pc.wrapping_add(instr.imm);
     if core::hint::unlikely(jump_address & 0x3 != 0) {
@@ -28,8 +30,10 @@ pub(crate) fn jalr<C: Counters, S: Snapshotter<C>, R: RAM>(
     snapshotter: &mut S,
     instr: Instruction,
 ) {
+    debug_assert_eq!(instr.rs2, 0);
+
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let _rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    touch_x0::<C, 1>(state);
     let mut rd = state.pc.wrapping_add(core::mem::size_of::<u32>() as u32); // address of next opcode
     let jump_address = rs1_value.wrapping_add(instr.imm) & !0x1;
     if core::hint::unlikely(jump_address & 0x3 != 0) {

@@ -11,7 +11,11 @@ use verifier_common::prover::fft::GoodAllocator;
 use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
+pub use prover_examples;
 pub use setups;
+
+#[cfg(feature = "gpu_prover")]
+pub use gpu_prover;
 
 mod constants;
 mod proofs;
@@ -22,6 +26,9 @@ mod verifiers;
 
 pub mod unified_circuit;
 pub mod unrolled;
+
+#[cfg(feature = "gpu_prover")]
+pub mod unrolled_gpu;
 
 #[derive(Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Machine {
@@ -40,7 +47,7 @@ pub use self::verifiers::{
 };
 
 #[cfg(feature = "verifier_binaries")]
-pub use self::recursion::{generate_constants_for_binary, generate_params_for_binary};
+// pub use self::recursion::{generate_constants_for_binary, generate_params_for_binary};
 pub use self::recursion_strategy::RecursionStrategy;
 
 // pub const RUN_VERIFIERS_WITH_OUTPUT: bool = false;
@@ -120,6 +127,21 @@ pub fn compute_end_parameters_for_unrolled_circuits(
     end_params_output.0
 }
 
+pub fn compute_end_parameters_for_unified_circuit(
+    expected_final_pc: u32,
+    unified_circuit_setup: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+) -> [u32; 8] {
+    let mut result_hasher = Blake2sBufferingTranscript::new();
+    let mut buffer = [0u32; 16];
+    buffer[0] = expected_final_pc;
+    result_hasher.absorb(&buffer);
+
+    result_hasher.absorb(MerkleTreeCap::flatten(unified_circuit_setup));
+    let end_params_output = result_hasher.finalize_reset();
+
+    end_params_output.0
+}
+
 pub fn create_initial_chain_encoding_encoding(
     base_layer_end_params: &[u32; 8],
 ) -> ([u32; 16], [u32; 8]) {
@@ -171,940 +193,946 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
 
 #[cfg(feature = "verifier_binaries")]
 pub mod verifier_binaries {
-    use super::*;
-
-    pub const BASE_LAYER_VERIFIER: &[u8] = include_bytes!("../../tools/verifier/base_layer.bin");
-    pub const RECURSION_LAYER_VERIFIER: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_layer.bin");
-    pub const RECURSION_LOG_23_LAYER_VERIFIER: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_log_23_layer.bin");
-    pub const RECURSION_LAYER_NO_DELEGATION_VERIFIER: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_layer_no_delegation.bin");
-    pub const FINAL_RECURSION_LAYER_VERIFIER: &[u8] =
-        include_bytes!("../../tools/verifier/final_recursion_layer.bin");
-
-    pub const BASE_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
-        include_bytes!("../../tools/verifier/base_layer_with_output.bin");
-    pub const RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_layer_with_output.bin");
-    pub const RECURSION_LOG_23_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_log_23_layer_with_output.bin");
-    pub const RECURSION_LAYER_NO_DELEGATION_VERIFIER_WITH_OUTPUT: &[u8] =
-        include_bytes!("../../tools/verifier/recursion_layer_no_delegation_with_output.bin");
-    pub const FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
-        include_bytes!("../../tools/verifier/final_recursion_layer_with_output.bin");
-
-    pub const UNIVERSAL_CIRCUIT_VERIFIER: &[u8] =
-        include_bytes!("../../tools/verifier/universal.bin");
-
-    // Methods to fetch the verification keys for the binaries above.
-    // They are usually refreshed with build_vk.sh
-    pub fn base_layer_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/base_layer.reduced.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn recursion_layer_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/recursion_layer.reduced.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn recursion_log_23_layer_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/recursion_log_23_layer.reduced.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn recursion_layer_no_delegation_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/recursion_layer_no_delegation.final.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn final_recursion_layer_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/final_recursion_layer.final.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn universal_circuit_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/universal.reduced.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub fn universal_circuit_log_23_verifier_vk() -> VerificationKey {
-        serde_json::from_slice::<VerificationKey>(include_bytes!(
-            "../../tools/verifier/universal.reduced_log23.vk.json"
-        ))
-        .unwrap()
-    }
-
-    pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-        u32,
-        &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    )] = &[
-        (
-            ALL_DELEGATION_CIRCUITS_PARAMS[0].0,
-            &ALL_DELEGATION_CIRCUITS_PARAMS[0].2,
-        ),
-        (
-            ALL_DELEGATION_CIRCUITS_PARAMS[1].0,
-            &ALL_DELEGATION_CIRCUITS_PARAMS[1].2,
-        ),
-        (
-            ALL_DELEGATION_CIRCUITS_PARAMS[2].0,
-            &ALL_DELEGATION_CIRCUITS_PARAMS[2].2,
-        ),
-    ];
-
-    pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-        u32,
-        &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    )] = &[(
-        ALL_DELEGATION_CIRCUITS_PARAMS[0].0,
-        &ALL_DELEGATION_CIRCUITS_PARAMS[0].2,
-    )];
-
-    pub const FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-        u32,
-        &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    )] = &[];
-
-    /// VerificationKey represents the verification key for a specific machine type and bytecode hash.
-    #[derive(Serialize, Deserialize, Debug)]
-    pub struct VerificationKey {
-        /// Type of the machine (standard, reduced, final)
-        pub machine_type: Machine,
-        /// Keccak of the bytecode
-        pub bytecode_hash_hex: String,
-        /// Verification key (a.k.a params that are used in the verifier)
-        pub params: [u32; 8],
-        /// Same as above, but in a single hex format (for easier debugging)
-        pub params_hex: String,
-    }
-
-    #[allow(deprecated)]
-    pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> {
-        use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
-
-        let final_pc = find_binary_exit_point(binary);
-        println!("Expected final PC = 0x{:08x}", final_pc);
-
-        let source = QuasiUARTSource::new_with_reads(reads);
-
-        let final_state = risc_v_simulator::runner::run_simple_for_num_cycles::<
-            _,
-            IMIsaConfigWithAllDelegations,
-        >(binary, 0, 1 << 30, source);
-
-        if final_state.state.pc != final_pc {
-            println!(
-                "Execution ended on the unexpected PC: was expecting 0x{:08x}, but ended at {:08x}",
-                final_pc, final_state.state.pc
-            );
-            return None;
-        }
-
-        // our convention is to return 32 bytes placed into registers x10-x26
-
-        let regs = final_state.state.registers[10..26].try_into().unwrap();
-
-        Some(regs)
-    }
-
-    #[cfg(feature = "verifier_binaries")]
-    pub fn verify_base_layer(full_proof: &ProgramProof) -> bool {
-        println!("Verifying base layer proof using RISC-V simulator and the verifier program");
-        let allowed_delegation_types: Vec<_> =
-            BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-        let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
-        let binary = if RUN_VERIFIERS_WITH_OUTPUT {
-            crate::verifier_binaries::BASE_LAYER_VERIFIER_WITH_OUTPUT
-        } else {
-            crate::verifier_binaries::BASE_LAYER_VERIFIER
-        };
-
-        run_verifier_binary(binary, responses).is_some()
-    }
-
-    #[cfg(feature = "verifier_binaries")]
-    pub fn verify_recursion_layer(full_proof: &ProgramProof) -> bool {
-        println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
-        let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-            .iter()
-            .map(|el| el.0)
-            .collect();
-        let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
-        let binary = if RUN_VERIFIERS_WITH_OUTPUT {
-            crate::verifier_binaries::RECURSION_LAYER_VERIFIER_WITH_OUTPUT
-        } else {
-            crate::verifier_binaries::RECURSION_LAYER_VERIFIER
-        };
-
-        run_verifier_binary(binary, responses).is_some()
-    }
-
-    #[cfg(feature = "verifier_binaries")]
-    pub fn verify_recursion_log_23_layer(full_proof: &ProgramProof) -> bool {
-        println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
-        let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-            .iter()
-            .map(|el| el.0)
-            .collect();
-        let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
-        let binary = if RUN_VERIFIERS_WITH_OUTPUT {
-            crate::verifier_binaries::RECURSION_LOG_23_LAYER_VERIFIER_WITH_OUTPUT
-        } else {
-            crate::verifier_binaries::RECURSION_LOG_23_LAYER_VERIFIER
-        };
-
-        run_verifier_binary(binary, responses).is_some()
-    }
-
-    #[cfg(feature = "verifier_binaries")]
-    pub fn verify_final_recursion_layer(full_proof: &ProgramProof) -> bool {
-        println!(
-            "Verifying final recursion layer proof using RISC-V simulator and the verifier program"
-        );
-        let allowed_delegation_types: Vec<_> =
-            FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-        let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
-        let binary = if RUN_VERIFIERS_WITH_OUTPUT {
-            crate::verifier_binaries::FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT
-        } else {
-            crate::verifier_binaries::FINAL_RECURSION_LAYER_VERIFIER
-        };
-
-        run_verifier_binary(binary, responses).is_some()
-    }
-
-    #[cfg(all(feature = "verifier_binaries", test))]
-    mod test {
-        use std::alloc::Global;
-        use std::collections::BTreeMap;
-        use std::io::Read;
-        use verifier_common::cs::machine::Machine;
-        use verifier_common::field::Mersenne31Field;
-        use verifier_common::prover;
-
-        use super::*;
-
-        fn run_on_binary(path: &str) -> u32 {
-            let mut data = vec![];
-            let mut file = std::fs::File::open(path).unwrap();
-            file.read_to_end(&mut data).unwrap();
-
-            find_binary_exit_point(&data)
-        }
-
-        #[test]
-        fn test_binaries() {
-            run_on_binary("../tools/verifier/base_layer.bin");
-            run_on_binary("../tools/verifier/recursion_layer.bin");
-            run_on_binary("../tools/verifier/base_layer_with_output.bin");
-            run_on_binary("../tools/verifier/recursion_layer_with_output.bin");
-            run_on_binary("../tools/verifier/individual.bin");
-        }
-
-        #[test]
-        fn test_prove_fib() {
-            let binary = BASE_PROGRAM;
-            let text_section = BASE_PROGRAM_TEXT_SECTION;
-            assert!(text_section.len() % 4 == 0);
-            let text_section: Vec<u32> = text_section
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|el| u32::from_le_bytes(*el))
-                .collect();
-
-            // let unsupported_opcodes = <prover::cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
-            let unsupported_opcodes = <prover::cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions_no_signed_mul_div::FullIsaMachineWithDelegationNoExceptionHandlingNoSignedMulDiv as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
-            // let unsupported_opcodes = <prover::cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
-            for (pc, opcode) in unsupported_opcodes {
-                println!(
-                    "Potentially unsupported opcode 0x{:08x} at PC = 0x{:08x}",
-                    opcode, pc
-                );
-            }
-
-            let worker = prover::worker::Worker::new();
-
-            let delegation_precomputations =
-                trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                    &worker,
-                );
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for base program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_main_riscv_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-
-            let non_determinism_source = QuasiUARTSource::new_with_reads(vec![123, 10]);
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            // base layer proofs know nothing about further recursion
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params,
-                recursion_chain_preimage: None,
-                recursion_chain_hash: None,
-            };
-
-            let is_valid = verify_base_layer(&program_proof);
-
-            assert!(is_valid);
-
-            let mut dst = std::fs::File::create("base_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-        }
-
-        #[test]
-        fn test_prove_recursion_over_base() {
-            let worker = prover::worker::Worker::new();
-
-            let delegation_precomputations =
-                trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                    &worker,
-                );
-
-            let binary = BASE_LAYER_VERIFIER;
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for recursion program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let mut src = std::fs::File::open("base_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            dbg!(proofs.end_params);
-            dbg!(proofs.recursion_chain_hash);
-            dbg!(proofs.recursion_chain_preimage);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_reduced_riscv_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let base_layer_verifier_end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-            let (preimage, chain_hash) = create_initial_chain_encoding_encoding(&proofs.end_params);
-
-            dbg!(base_layer_verifier_end_params);
-            dbg!(preimage);
-            dbg!(chain_hash);
-
-            let allowed_delegations: Vec<_> =
-                BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS
-                    .iter()
-                    .map(|el| el.0)
-                    .collect();
-            let non_determinism_source = QuasiUARTSource::new_with_reads(
-                proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
-            );
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_reduced_machine(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params: base_layer_verifier_end_params,
-                recursion_chain_preimage: Some(preimage),
-                recursion_chain_hash: Some(chain_hash),
-            };
-
-            let mut dst = std::fs::File::create("recursion_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-
-            let is_valid = verify_recursion_layer(&program_proof);
-            assert!(is_valid);
-        }
-
-        #[test]
-        fn test_prove_recursion_over_recursion() {
-            let worker = prover::worker::Worker::new();
-
-            let delegation_precomputations =
-                trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                    &worker,
-                );
-
-            let binary = RECURSION_LAYER_VERIFIER;
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for recursion program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let mut src = std::fs::File::open("recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            dbg!(proofs.end_params);
-            dbg!(proofs.recursion_chain_hash);
-            dbg!(proofs.recursion_chain_preimage);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_reduced_riscv_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let new_end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-            let (preimage, chain_hash) = continue_chain_encoding(
-                &proofs.recursion_chain_hash.unwrap(),
-                &proofs.recursion_chain_preimage.unwrap(),
-                &proofs.end_params,
-            );
-
-            dbg!(new_end_params);
-            dbg!(preimage);
-            dbg!(chain_hash);
-
-            let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-            let non_determinism_source = QuasiUARTSource::new_with_reads(
-                proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
-            );
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_reduced_machine(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params: new_end_params,
-                recursion_chain_preimage: Some(preimage),
-                recursion_chain_hash: Some(chain_hash),
-            };
-
-            let is_valid = verify_recursion_layer(&program_proof);
-            assert!(is_valid);
-
-            let mut dst = std::fs::File::create("recursion_over_recursion_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-        }
-
-        #[test]
-        fn test_prove_log_23_recursion_over_recursion() {
-            let worker = prover::worker::Worker::new();
-
-            let delegation_precomputations =
-                trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
-                    &worker,
-                );
-
-            let binary = RECURSION_LAYER_VERIFIER;
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for recursion program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let mut src = std::fs::File::open("recursion_over_recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            dbg!(proofs.end_params);
-            dbg!(proofs.recursion_chain_hash);
-            dbg!(proofs.recursion_chain_preimage);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_reduced_riscv_log_23_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let new_end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-            let (preimage, chain_hash) = continue_chain_encoding(
-                &proofs.recursion_chain_hash.unwrap(),
-                &proofs.recursion_chain_preimage.unwrap(),
-                &proofs.end_params,
-            );
-
-            dbg!(new_end_params);
-            dbg!(preimage);
-            dbg!(chain_hash);
-
-            let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-            let non_determinism_source = QuasiUARTSource::new_with_reads(
-                proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
-            );
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_reduced_machine(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &delegation_precomputations,
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params: new_end_params,
-                recursion_chain_preimage: Some(preimage),
-                recursion_chain_hash: Some(chain_hash),
-            };
-
-            let is_valid = verify_recursion_log_23_layer(&program_proof);
-            assert!(is_valid);
-
-            let mut dst =
-                std::fs::File::create("log_23_recursion_over_recursion_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-        }
-
-        #[test]
-        fn test_prove_final_recursion_over_recursion() {
-            let worker = prover::worker::Worker::new_with_num_threads(8);
-
-            let binary = RECURSION_LAYER_NO_DELEGATION_VERIFIER;
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for recursion program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let mut src = std::fs::File::open("recursion_over_recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            dbg!(proofs.end_params);
-            dbg!(proofs.recursion_chain_hash);
-            dbg!(proofs.recursion_chain_preimage);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_final_reduced_riscv_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let new_end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-            let (preimage, chain_hash) = continue_chain_encoding(
-                &proofs.recursion_chain_hash.unwrap(),
-                &proofs.recursion_chain_preimage.unwrap(),
-                &proofs.end_params,
-            );
-
-            dbg!(new_end_params);
-            dbg!(preimage);
-            dbg!(chain_hash);
-
-            let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-            let non_determinism_source = QuasiUARTSource::new_with_reads(
-                proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
-            );
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_final_reduced_machine(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &[],
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params: new_end_params,
-                recursion_chain_preimage: Some(preimage),
-                recursion_chain_hash: Some(chain_hash),
-            };
-
-            let is_valid = verify_final_recursion_layer(&program_proof);
-            assert!(is_valid);
-
-            let mut dst = std::fs::File::create("final_recursion_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-        }
-
-        #[test]
-        fn test_prove_final_recursion_over_final_recursion() {
-            let worker = prover::worker::Worker::new_with_num_threads(8);
-
-            let binary = FINAL_RECURSION_LAYER_VERIFIER;
-
-            let expected_final_pc = find_binary_exit_point(&binary);
-            println!(
-                "Expected final PC for recursion program is 0x{:08x}",
-                expected_final_pc
-            );
-
-            let binary = get_padded_binary(&binary);
-
-            let mut src = std::fs::File::open("final_recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            dbg!(proofs.end_params);
-            dbg!(proofs.recursion_chain_hash);
-            dbg!(proofs.recursion_chain_preimage);
-
-            let main_circuit_precomputations =
-                trace_and_split::setups::get_final_reduced_riscv_circuit_setup::<Global, Global>(
-                    &binary, &worker,
-                );
-
-            let new_end_params =
-                compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
-            let (preimage, chain_hash) = continue_chain_encoding(
-                &proofs.recursion_chain_hash.unwrap(),
-                &proofs.recursion_chain_preimage.unwrap(),
-                &proofs.end_params,
-            );
-
-            dbg!(new_end_params);
-            dbg!(preimage);
-            dbg!(chain_hash);
-
-            let allowed_delegations: Vec<_> =
-                FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                    .iter()
-                    .map(|el| el.0)
-                    .collect();
-            let non_determinism_source = QuasiUARTSource::new_with_reads(
-                proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
-            );
-
-            let (main_proofs, delegation_proofs, register_values) =
-                prover_examples::prove_image_execution_on_final_reduced_machine(
-                    10,
-                    &binary,
-                    non_determinism_source,
-                    &main_circuit_precomputations,
-                    &[],
-                    &worker,
-                );
-
-            let total_delegation_proofs: usize =
-                delegation_proofs.iter().map(|(_, x)| x.len()).sum();
-
-            println!(
-                "Created {} basic proofs and {} delegation proofs.",
-                main_proofs.len(),
-                total_delegation_proofs
-            );
-            assert_eq!(main_proofs.len(), 1);
-            assert_eq!(total_delegation_proofs, 0);
-
-            let mut proofs_map = BTreeMap::new();
-            for (delegation_type, proofs) in delegation_proofs.into_iter() {
-                proofs_map.insert(delegation_type, proofs);
-            }
-
-            let program_proof = ProgramProof {
-                base_layer_proofs: main_proofs,
-                delegation_proofs: proofs_map,
-                register_final_values: register_values,
-                end_params: new_end_params,
-                recursion_chain_preimage: Some(preimage),
-                recursion_chain_hash: Some(chain_hash),
-            };
-
-            let is_valid = verify_final_recursion_layer(&program_proof);
-            assert!(is_valid);
-
-            let mut dst =
-                std::fs::File::create("final_recursion_over_final_recursion_layer.json").unwrap();
-            serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
-        }
-
-        // use verifier_common::VerifierFunctionPointer;
-        // pub fn verify_risc_v_proof(single_proof: &Proof, verification_fn_ptr: VerifierFunctionPointer<
-        //     CAP_SIZE,
-        //     NUM_COSETS,
-        //     NUM_DELEGATION_CHALLENGES,
-        //     1,
-        //     2,
-        // >) -> bool {
-        //     let responses = flatten_full_proof(single_proof, true);
-
-        //     println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
-        //     let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-        //         .iter()
-        //         .map(|el| el.0)
-        //         .collect();
-        //     let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
-        //     let binary = if RUN_VERIFIERS_WITH_OUTPUT {
-        //         RECURSION_LAYER_VERIFIER_WITH_OUTPUT
-        //     } else {
-        //         RECURSION_LAYER_VERIFIER
-        //     };
-
-        //     run_verifier_binary(binary, responses).is_some()
-        // }
-
-        #[cfg(feature = "extended_tests")]
-        #[test]
-        fn debug_verification() {
-            let mut src = std::fs::File::open("recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-            let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
-                .iter()
-                .map(|el| el.0)
-                .collect();
-            let source = proofs.flatten_for_delegation_circuits_set(&allowed_delegations);
-
-            verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-
-            let _ = full_statement_verifier::verify_recursion_layer();
-        }
-
-        #[cfg(feature = "extended_tests")]
-        #[test]
-        fn debug_single_risc_v_proof_verification() {
-            use std::mem::MaybeUninit;
-            use verifier_common::proof_flattener::flatten_full_proof;
-            use verifier_common::ProofPublicInputs;
-
-            let mut src = std::fs::File::open("recursion_layer.json").unwrap();
-            let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
-
-            // let fn_ptr = full_statement_verifier::RISC_V_REDUCED_MACHINE_VERIFIER_PTR;
-            let fn_ptr = full_statement_verifier::RISC_V_REDUCED_MACHINE_VERIFIER_PTR;
-
-            let proof = &proofs.base_layer_proofs[1];
-            let source = flatten_full_proof(proof, 1);
-
-            // we have a problem with a stack size in debug, so let's cheat
-            std::thread::Builder::new()
-                .stack_size(1 << 27)
-                .spawn(move || {
-                    verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-                    unsafe {
-                        fn_ptr(
-                            &mut MaybeUninit::uninit().assume_init(),
-                            &mut ProofPublicInputs::uninit(),
-                        );
-                    }
-                })
-                .unwrap()
-                .join()
-                .unwrap();
-
-            // verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-            // unsafe {
-            //     fn_ptr(
-            //         &mut MaybeUninit::uninit().assume_init(),
-            //         &mut ProofPublicInputs::uninit(),
-            //     );
-            // }
-        }
-
-        // #[test]
-        // fn compare_witness() {
-        //     use verifier_common::prover::tracers::main_cycle_optimized::CycleData;
-
-        //     let reference_file = std::fs::File::open("./riscv_witness_chunk_0_reference.bin").unwrap();
-        //     let new_file = std::fs::File::open("./riscv_witness_chunk_0.bin").unwrap();
-
-        //     let reference_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(reference_file).unwrap();
-        //     println!("Deserialized reference one");
-        //     let new_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(new_file).unwrap();
-        //     println!("Deserialized new one");
-
-        //     assert_eq!(reference_witness.per_cycle_data.len(), new_witness.per_cycle_data.len());
-
-        //     for (i, (reference, new)) in reference_witness.per_cycle_data.iter().zip(new_witness.per_cycle_data.iter()).enumerate() {
-        //         if reference != new {
-        //             println!("Diverged at cycle {}:", i);
-        //             println!("Reference = {:?}", reference);
-        //             println!("New = {:?}", new);
-        //             panic!();
-        //         }
-        //     }
-        // }
-
-        // #[test]
-        // fn compare_inits_and_teardowns() {
-        // use verifier_common::prover::ShuffleRamSetupAndTeardown;
-
-        //     let reference_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0_reference.bin").unwrap();
-        //     let new_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0.bin").unwrap();
-
-        //     let reference_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(reference_file).unwrap();
-        //     println!("Deserialized reference one");
-        //     let new_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(new_file).unwrap();
-        //     println!("Deserialized new one");
-
-        //     assert_eq!(reference_witness.lazy_init_data.len(), new_witness.lazy_init_data.len());
-
-        //     for (i, (reference, new)) in reference_witness.lazy_init_data.iter().zip(new_witness.lazy_init_data.iter()).enumerate() {
-        //         if reference != new {
-        //             println!("Diverged at cycle {}:", i);
-        //             println!("Reference = {:?}", reference);
-        //             println!("New = {:?}", new);
-        //             panic!();
-        //         }
-        //     }
-        // }
-
-        // #[test]
-        // fn debug_poseidon2() {
-        //     use verifier_common::ProofPublicInputs;
-
-        //     let mut src = std::fs::File::open("../prover/poseidon2_proof").unwrap();
-        //     let proofs: Proof = serde_json::from_reader(&mut src).unwrap();
-        //     let source = flatten_full_proof(&proofs, false);
-        //     verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-
-        //     let verifier_fn =
-        //         full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS[1].2;
-        //     unsafe {
-        //         (verifier_fn)(
-        //             &mut std::mem::MaybeUninit::uninit().assume_init(),
-        //             &mut ProofPublicInputs::uninit(),
-        //         );
-        //     }
-        // }
-    }
+    pub const RECURSION_UNROLLED_BIN: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+    pub const RECURSION_UNROLLED_TXT: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
 }
+
+// #[cfg(feature = "verifier_binaries")]
+// pub mod verifier_binaries {
+//     use super::*;
+
+//     // TODO: fix binaries and verification keys
+//     pub const BASE_LAYER_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     pub const RECURSION_LAYER_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_layer.bin");
+//     pub const RECURSION_LOG_23_LAYER_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_log_23_layer.bin");
+//     pub const RECURSION_LAYER_NO_DELEGATION_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_layer_no_delegation.bin");
+//     pub const FINAL_RECURSION_LAYER_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/final_recursion_layer.bin");
+
+//     pub const BASE_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/base_layer_with_output.bin");
+//     pub const RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_layer_with_output.bin");
+//     pub const RECURSION_LOG_23_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_log_23_layer_with_output.bin");
+//     pub const RECURSION_LAYER_NO_DELEGATION_VERIFIER_WITH_OUTPUT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/recursion_layer_no_delegation_with_output.bin");
+//     pub const FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/final_recursion_layer_with_output.bin");
+
+//     pub const UNIVERSAL_CIRCUIT_VERIFIER: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     // include_bytes!("../../tools/verifier/universal.bin");
+
+//     pub const RECURSION_UNROLLED_BIN: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+//     pub const RECURSION_UNROLLED_TXT: &[u8] =
+//         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
+
+//     // Methods to fetch the verification keys for the binaries above.
+//     // They are usually refreshed with build_vk.sh
+//     pub fn base_layer_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/base_layer.reduced.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn recursion_layer_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/recursion_layer.reduced.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn recursion_log_23_layer_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/recursion_log_23_layer.reduced.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn recursion_layer_no_delegation_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/recursion_layer_no_delegation.final.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn final_recursion_layer_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/final_recursion_layer.final.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn universal_circuit_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/universal.reduced.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub fn universal_circuit_log_23_verifier_vk() -> VerificationKey {
+//         // serde_json::from_slice::<VerificationKey>(include_bytes!(
+//         //     "../../tools/verifier/universal.reduced_log23.vk.json"
+//         // ))
+//         // .unwrap()
+//         todo!()
+//     }
+
+//     pub const FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
+//         u32,
+//         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+//     )] = &[];
+
+//     /// VerificationKey represents the verification key for a specific machine type and bytecode hash.
+//     #[derive(Serialize, Deserialize, Debug)]
+//     pub struct VerificationKey {
+//         /// Type of the machine (standard, reduced, final)
+//         pub machine_type: Machine,
+//         /// Keccak of the bytecode
+//         pub bytecode_hash_hex: String,
+//         /// Verification key (a.k.a params that are used in the verifier)
+//         pub params: [u32; 8],
+//         /// Same as above, but in a single hex format (for easier debugging)
+//         pub params_hex: String,
+//     }
+
+//     #[allow(deprecated)]
+//     pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> {
+//         use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
+
+//         let final_pc = find_binary_exit_point(binary);
+//         println!("Expected final PC = 0x{:08x}", final_pc);
+
+//         let source = QuasiUARTSource::new_with_reads(reads);
+
+//         let final_state = risc_v_simulator::runner::run_simple_for_num_cycles::<
+//             _,
+//             IMIsaConfigWithAllDelegations,
+//         >(binary, 0, 1 << 30, source);
+
+//         if final_state.state.pc != final_pc {
+//             println!(
+//                 "Execution ended on the unexpected PC: was expecting 0x{:08x}, but ended at {:08x}",
+//                 final_pc, final_state.state.pc
+//             );
+//             return None;
+//         }
+
+//         // our convention is to return 32 bytes placed into registers x10-x26
+
+//         let regs = final_state.state.registers[10..26].try_into().unwrap();
+
+//         Some(regs)
+//     }
+
+//     #[cfg(feature = "verifier_binaries")]
+//     pub fn verify_base_layer(full_proof: &ProgramProof) -> bool {
+//         println!("Verifying base layer proof using RISC-V simulator and the verifier program");
+//         let allowed_delegation_types: Vec<_> =
+//             BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//         let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+//         let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+//             crate::verifier_binaries::BASE_LAYER_VERIFIER_WITH_OUTPUT
+//         } else {
+//             crate::verifier_binaries::BASE_LAYER_VERIFIER
+//         };
+
+//         run_verifier_binary(binary, responses).is_some()
+//     }
+
+//     #[cfg(feature = "verifier_binaries")]
+//     pub fn verify_recursion_layer(full_proof: &ProgramProof) -> bool {
+//         println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
+//         let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//             .iter()
+//             .map(|el| el.0)
+//             .collect();
+//         let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+//         let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+//             crate::verifier_binaries::RECURSION_LAYER_VERIFIER_WITH_OUTPUT
+//         } else {
+//             crate::verifier_binaries::RECURSION_LAYER_VERIFIER
+//         };
+
+//         run_verifier_binary(binary, responses).is_some()
+//     }
+
+//     #[cfg(feature = "verifier_binaries")]
+//     pub fn verify_recursion_log_23_layer(full_proof: &ProgramProof) -> bool {
+//         println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
+//         let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//             .iter()
+//             .map(|el| el.0)
+//             .collect();
+//         let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+//         let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+//             crate::verifier_binaries::RECURSION_LOG_23_LAYER_VERIFIER_WITH_OUTPUT
+//         } else {
+//             crate::verifier_binaries::RECURSION_LOG_23_LAYER_VERIFIER
+//         };
+
+//         run_verifier_binary(binary, responses).is_some()
+//     }
+
+//     #[cfg(feature = "verifier_binaries")]
+//     pub fn verify_final_recursion_layer(full_proof: &ProgramProof) -> bool {
+//         println!(
+//             "Verifying final recursion layer proof using RISC-V simulator and the verifier program"
+//         );
+//         let allowed_delegation_types: Vec<_> =
+//             FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//         let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+//         let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+//             crate::verifier_binaries::FINAL_RECURSION_LAYER_VERIFIER_WITH_OUTPUT
+//         } else {
+//             crate::verifier_binaries::FINAL_RECURSION_LAYER_VERIFIER
+//         };
+
+//         run_verifier_binary(binary, responses).is_some()
+//     }
+
+//     #[cfg(all(feature = "verifier_binaries", test))]
+//     mod test {
+//         use std::alloc::Global;
+//         use std::collections::BTreeMap;
+//         use std::io::Read;
+//         use verifier_common::cs::machine::Machine;
+//         use verifier_common::field::Mersenne31Field;
+//         use verifier_common::prover;
+
+//         use super::*;
+
+//         fn run_on_binary(path: &str) -> u32 {
+//             let mut data = vec![];
+//             let mut file = std::fs::File::open(path).unwrap();
+//             file.read_to_end(&mut data).unwrap();
+
+//             find_binary_exit_point(&data)
+//         }
+
+//         #[test]
+//         fn test_binaries() {
+//             run_on_binary("../tools/verifier/base_layer.bin");
+//             run_on_binary("../tools/verifier/recursion_layer.bin");
+//             run_on_binary("../tools/verifier/base_layer_with_output.bin");
+//             run_on_binary("../tools/verifier/recursion_layer_with_output.bin");
+//             run_on_binary("../tools/verifier/individual.bin");
+//         }
+
+//         #[test]
+//         fn test_prove_fib() {
+//             let binary = BASE_PROGRAM;
+//             let text_section = BASE_PROGRAM_TEXT_SECTION;
+//             assert!(text_section.len() % 4 == 0);
+//             let text_section: Vec<u32> = text_section
+//                 .as_chunks::<4>()
+//                 .0
+//                 .iter()
+//                 .map(|el| u32::from_le_bytes(*el))
+//                 .collect();
+
+//             // let unsupported_opcodes = <prover::cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
+//             let unsupported_opcodes = <prover::cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions_no_signed_mul_div::FullIsaMachineWithDelegationNoExceptionHandlingNoSignedMulDiv as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
+//             // let unsupported_opcodes = <prover::cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation as Machine<Mersenne31Field>>::verify_bytecode_base(&text_section);
+//             for (pc, opcode) in unsupported_opcodes {
+//                 println!(
+//                     "Potentially unsupported opcode 0x{:08x} at PC = 0x{:08x}",
+//                     opcode, pc
+//                 );
+//             }
+
+//             let worker = prover::worker::Worker::new();
+
+//             let delegation_precomputations =
+//                 trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
+//                     &worker,
+//                 );
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for base program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_main_riscv_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(vec![123, 10]);
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &delegation_precomputations,
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             // base layer proofs know nothing about further recursion
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params,
+//                 recursion_chain_preimage: None,
+//                 recursion_chain_hash: None,
+//             };
+
+//             let is_valid = verify_base_layer(&program_proof);
+
+//             assert!(is_valid);
+
+//             let mut dst = std::fs::File::create("base_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+//         }
+
+//         #[test]
+//         fn test_prove_recursion_over_base() {
+//             let worker = prover::worker::Worker::new();
+
+//             let delegation_precomputations =
+//                 trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
+//                     &worker,
+//                 );
+
+//             let binary = BASE_LAYER_VERIFIER;
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for recursion program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let mut src = std::fs::File::open("base_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             dbg!(proofs.end_params);
+//             dbg!(proofs.recursion_chain_hash);
+//             dbg!(proofs.recursion_chain_preimage);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_reduced_riscv_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let base_layer_verifier_end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+//             let (preimage, chain_hash) = create_initial_chain_encoding_encoding(&proofs.end_params);
+
+//             dbg!(base_layer_verifier_end_params);
+//             dbg!(preimage);
+//             dbg!(chain_hash);
+
+//             let allowed_delegations: Vec<_> =
+//                 BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS
+//                     .iter()
+//                     .map(|el| el.0)
+//                     .collect();
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(
+//                 proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+//             );
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution_on_reduced_machine(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &delegation_precomputations,
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params: base_layer_verifier_end_params,
+//                 recursion_chain_preimage: Some(preimage),
+//                 recursion_chain_hash: Some(chain_hash),
+//             };
+
+//             let mut dst = std::fs::File::create("recursion_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+
+//             let is_valid = verify_recursion_layer(&program_proof);
+//             assert!(is_valid);
+//         }
+
+//         #[test]
+//         fn test_prove_recursion_over_recursion() {
+//             let worker = prover::worker::Worker::new();
+
+//             let delegation_precomputations =
+//                 trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
+//                     &worker,
+//                 );
+
+//             let binary = RECURSION_LAYER_VERIFIER;
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for recursion program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let mut src = std::fs::File::open("recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             dbg!(proofs.end_params);
+//             dbg!(proofs.recursion_chain_hash);
+//             dbg!(proofs.recursion_chain_preimage);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_reduced_riscv_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let new_end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+//             let (preimage, chain_hash) = continue_chain_encoding(
+//                 &proofs.recursion_chain_hash.unwrap(),
+//                 &proofs.recursion_chain_preimage.unwrap(),
+//                 &proofs.end_params,
+//             );
+
+//             dbg!(new_end_params);
+//             dbg!(preimage);
+//             dbg!(chain_hash);
+
+//             let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(
+//                 proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+//             );
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution_on_reduced_machine(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &delegation_precomputations,
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params: new_end_params,
+//                 recursion_chain_preimage: Some(preimage),
+//                 recursion_chain_hash: Some(chain_hash),
+//             };
+
+//             let is_valid = verify_recursion_layer(&program_proof);
+//             assert!(is_valid);
+
+//             let mut dst = std::fs::File::create("recursion_over_recursion_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+//         }
+
+//         #[test]
+//         fn test_prove_log_23_recursion_over_recursion() {
+//             let worker = prover::worker::Worker::new();
+
+//             let delegation_precomputations =
+//                 trace_and_split::setups::all_delegation_circuits_precomputations::<Global, Global>(
+//                     &worker,
+//                 );
+
+//             let binary = RECURSION_LAYER_VERIFIER;
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for recursion program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let mut src = std::fs::File::open("recursion_over_recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             dbg!(proofs.end_params);
+//             dbg!(proofs.recursion_chain_hash);
+//             dbg!(proofs.recursion_chain_preimage);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_reduced_riscv_log_23_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let new_end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+//             let (preimage, chain_hash) = continue_chain_encoding(
+//                 &proofs.recursion_chain_hash.unwrap(),
+//                 &proofs.recursion_chain_preimage.unwrap(),
+//                 &proofs.end_params,
+//             );
+
+//             dbg!(new_end_params);
+//             dbg!(preimage);
+//             dbg!(chain_hash);
+
+//             let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(
+//                 proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+//             );
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution_on_reduced_machine(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &delegation_precomputations,
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params: new_end_params,
+//                 recursion_chain_preimage: Some(preimage),
+//                 recursion_chain_hash: Some(chain_hash),
+//             };
+
+//             let is_valid = verify_recursion_log_23_layer(&program_proof);
+//             assert!(is_valid);
+
+//             let mut dst =
+//                 std::fs::File::create("log_23_recursion_over_recursion_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+//         }
+
+//         #[test]
+//         fn test_prove_final_recursion_over_recursion() {
+//             let worker = prover::worker::Worker::new_with_num_threads(8);
+
+//             let binary = RECURSION_LAYER_NO_DELEGATION_VERIFIER;
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for recursion program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let mut src = std::fs::File::open("recursion_over_recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             dbg!(proofs.end_params);
+//             dbg!(proofs.recursion_chain_hash);
+//             dbg!(proofs.recursion_chain_preimage);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_final_reduced_riscv_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let new_end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+//             let (preimage, chain_hash) = continue_chain_encoding(
+//                 &proofs.recursion_chain_hash.unwrap(),
+//                 &proofs.recursion_chain_preimage.unwrap(),
+//                 &proofs.end_params,
+//             );
+
+//             dbg!(new_end_params);
+//             dbg!(preimage);
+//             dbg!(chain_hash);
+
+//             let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(
+//                 proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+//             );
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution_on_final_reduced_machine(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &[],
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params: new_end_params,
+//                 recursion_chain_preimage: Some(preimage),
+//                 recursion_chain_hash: Some(chain_hash),
+//             };
+
+//             let is_valid = verify_final_recursion_layer(&program_proof);
+//             assert!(is_valid);
+
+//             let mut dst = std::fs::File::create("final_recursion_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+//         }
+
+//         #[test]
+//         fn test_prove_final_recursion_over_final_recursion() {
+//             let worker = prover::worker::Worker::new_with_num_threads(8);
+
+//             let binary = FINAL_RECURSION_LAYER_VERIFIER;
+
+//             let expected_final_pc = find_binary_exit_point(&binary);
+//             println!(
+//                 "Expected final PC for recursion program is 0x{:08x}",
+//                 expected_final_pc
+//             );
+
+//             let binary = get_padded_binary(&binary);
+
+//             let mut src = std::fs::File::open("final_recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             dbg!(proofs.end_params);
+//             dbg!(proofs.recursion_chain_hash);
+//             dbg!(proofs.recursion_chain_preimage);
+
+//             let main_circuit_precomputations =
+//                 trace_and_split::setups::get_final_reduced_riscv_circuit_setup::<Global, Global>(
+//                     &binary, &worker,
+//                 );
+
+//             let new_end_params =
+//                 compute_end_parameters(expected_final_pc, &main_circuit_precomputations);
+//             let (preimage, chain_hash) = continue_chain_encoding(
+//                 &proofs.recursion_chain_hash.unwrap(),
+//                 &proofs.recursion_chain_preimage.unwrap(),
+//                 &proofs.end_params,
+//             );
+
+//             dbg!(new_end_params);
+//             dbg!(preimage);
+//             dbg!(chain_hash);
+
+//             let allowed_delegations: Vec<_> =
+//                 FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                     .iter()
+//                     .map(|el| el.0)
+//                     .collect();
+//             let non_determinism_source = QuasiUARTSource::new_with_reads(
+//                 proofs.flatten_for_delegation_circuits_set(&allowed_delegations),
+//             );
+
+//             let (main_proofs, delegation_proofs, register_values) =
+//                 prover_examples::prove_image_execution_on_final_reduced_machine(
+//                     10,
+//                     &binary,
+//                     non_determinism_source,
+//                     &main_circuit_precomputations,
+//                     &[],
+//                     &worker,
+//                 );
+
+//             let total_delegation_proofs: usize =
+//                 delegation_proofs.iter().map(|(_, x)| x.len()).sum();
+
+//             println!(
+//                 "Created {} basic proofs and {} delegation proofs.",
+//                 main_proofs.len(),
+//                 total_delegation_proofs
+//             );
+//             assert_eq!(main_proofs.len(), 1);
+//             assert_eq!(total_delegation_proofs, 0);
+
+//             let mut proofs_map = BTreeMap::new();
+//             for (delegation_type, proofs) in delegation_proofs.into_iter() {
+//                 proofs_map.insert(delegation_type, proofs);
+//             }
+
+//             let program_proof = ProgramProof {
+//                 base_layer_proofs: main_proofs,
+//                 delegation_proofs: proofs_map,
+//                 register_final_values: register_values,
+//                 end_params: new_end_params,
+//                 recursion_chain_preimage: Some(preimage),
+//                 recursion_chain_hash: Some(chain_hash),
+//             };
+
+//             let is_valid = verify_final_recursion_layer(&program_proof);
+//             assert!(is_valid);
+
+//             let mut dst =
+//                 std::fs::File::create("final_recursion_over_final_recursion_layer.json").unwrap();
+//             serde_json::to_writer_pretty(&mut dst, &program_proof).unwrap();
+//         }
+
+//         // use verifier_common::VerifierFunctionPointer;
+//         // pub fn verify_risc_v_proof(single_proof: &Proof, verification_fn_ptr: VerifierFunctionPointer<
+//         //     CAP_SIZE,
+//         //     NUM_COSETS,
+//         //     NUM_DELEGATION_CHALLENGES,
+//         //     1,
+//         //     2,
+//         // >) -> bool {
+//         //     let responses = flatten_full_proof(single_proof, true);
+
+//         //     println!("Verifying recursion layer proof using RISC-V simulator and the verifier program");
+//         //     let allowed_delegation_types: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//         //         .iter()
+//         //         .map(|el| el.0)
+//         //         .collect();
+//         //     let responses = full_proof.flatten_for_delegation_circuits_set(&allowed_delegation_types);
+//         //     let binary = if RUN_VERIFIERS_WITH_OUTPUT {
+//         //         RECURSION_LAYER_VERIFIER_WITH_OUTPUT
+//         //     } else {
+//         //         RECURSION_LAYER_VERIFIER
+//         //     };
+
+//         //     run_verifier_binary(binary, responses).is_some()
+//         // }
+
+//         #[cfg(feature = "extended_tests")]
+//         #[test]
+//         fn debug_verification() {
+//             let mut src = std::fs::File::open("recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+//             let allowed_delegations: Vec<_> = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS
+//                 .iter()
+//                 .map(|el| el.0)
+//                 .collect();
+//             let source = proofs.flatten_for_delegation_circuits_set(&allowed_delegations);
+
+//             verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
+
+//             let _ = full_statement_verifier::verify_recursion_layer();
+//         }
+
+//         #[cfg(feature = "extended_tests")]
+//         #[test]
+//         fn debug_single_risc_v_proof_verification() {
+//             use std::mem::MaybeUninit;
+//             use verifier_common::proof_flattener::flatten_full_proof;
+//             use verifier_common::ProofPublicInputs;
+
+//             let mut src = std::fs::File::open("recursion_layer.json").unwrap();
+//             let proofs: ProgramProof = serde_json::from_reader(&mut src).unwrap();
+
+//             // let fn_ptr = full_statement_verifier::RISC_V_REDUCED_MACHINE_VERIFIER_PTR;
+//             let fn_ptr = full_statement_verifier::RISC_V_REDUCED_MACHINE_VERIFIER_PTR;
+
+//             let proof = &proofs.base_layer_proofs[1];
+//             let source = flatten_full_proof(proof, 1);
+
+//             // we have a problem with a stack size in debug, so let's cheat
+//             std::thread::Builder::new()
+//                 .stack_size(1 << 27)
+//                 .spawn(move || {
+//                     verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
+//                     unsafe {
+//                         fn_ptr(
+//                             &mut MaybeUninit::uninit().assume_init(),
+//                             &mut ProofPublicInputs::uninit(),
+//                         );
+//                     }
+//                 })
+//                 .unwrap()
+//                 .join()
+//                 .unwrap();
+
+//             // verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
+//             // unsafe {
+//             //     fn_ptr(
+//             //         &mut MaybeUninit::uninit().assume_init(),
+//             //         &mut ProofPublicInputs::uninit(),
+//             //     );
+//             // }
+//         }
+
+//         // #[test]
+//         // fn compare_witness() {
+//         //     use verifier_common::prover::tracers::main_cycle_optimized::CycleData;
+
+//         //     let reference_file = std::fs::File::open("./riscv_witness_chunk_0_reference.bin").unwrap();
+//         //     let new_file = std::fs::File::open("./riscv_witness_chunk_0.bin").unwrap();
+
+//         //     let reference_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(reference_file).unwrap();
+//         //     println!("Deserialized reference one");
+//         //     let new_witness: CycleData<IMStandardIsaConfig, Global> = bincode::deserialize_from(new_file).unwrap();
+//         //     println!("Deserialized new one");
+
+//         //     assert_eq!(reference_witness.per_cycle_data.len(), new_witness.per_cycle_data.len());
+
+//         //     for (i, (reference, new)) in reference_witness.per_cycle_data.iter().zip(new_witness.per_cycle_data.iter()).enumerate() {
+//         //         if reference != new {
+//         //             println!("Diverged at cycle {}:", i);
+//         //             println!("Reference = {:?}", reference);
+//         //             println!("New = {:?}", new);
+//         //             panic!();
+//         //         }
+//         //     }
+//         // }
+
+//         // #[test]
+//         // fn compare_inits_and_teardowns() {
+//         // use verifier_common::prover::ShuffleRamSetupAndTeardown;
+
+//         //     let reference_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0_reference.bin").unwrap();
+//         //     let new_file = std::fs::File::open("./riscv_shuffle_ram_inits_chunk_0.bin").unwrap();
+
+//         //     let reference_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(reference_file).unwrap();
+//         //     println!("Deserialized reference one");
+//         //     let new_witness: ShuffleRamSetupAndTeardown = bincode::deserialize_from(new_file).unwrap();
+//         //     println!("Deserialized new one");
+
+//         //     assert_eq!(reference_witness.lazy_init_data.len(), new_witness.lazy_init_data.len());
+
+//         //     for (i, (reference, new)) in reference_witness.lazy_init_data.iter().zip(new_witness.lazy_init_data.iter()).enumerate() {
+//         //         if reference != new {
+//         //             println!("Diverged at cycle {}:", i);
+//         //             println!("Reference = {:?}", reference);
+//         //             println!("New = {:?}", new);
+//         //             panic!();
+//         //         }
+//         //     }
+//         // }
+
+//         // #[test]
+//         // fn debug_poseidon2() {
+//         //     use verifier_common::ProofPublicInputs;
+
+//         //     let mut src = std::fs::File::open("../prover/poseidon2_proof").unwrap();
+//         //     let proofs: Proof = serde_json::from_reader(&mut src).unwrap();
+//         //     let source = flatten_full_proof(&proofs, false);
+//         //     verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
+
+//         //     let verifier_fn =
+//         //         full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS[1].2;
+//         //     unsafe {
+//         //         (verifier_fn)(
+//         //             &mut std::mem::MaybeUninit::uninit().assume_init(),
+//         //             &mut ProofPublicInputs::uninit(),
+//         //         );
+//         //     }
+//         // }
+//     }
+// }

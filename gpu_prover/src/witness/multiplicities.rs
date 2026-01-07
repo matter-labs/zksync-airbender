@@ -13,7 +13,7 @@ use crate::prover::arg_utils::{
 };
 use crate::prover::context::{DeviceAllocation, ProverContext};
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::witness::memory::ShuffleRamInitAndTeardownLayouts;
+use crate::witness::memory_unrolled::ShuffleRamInitAndTeardownLayouts;
 use cs::definitions::{split_timestamp, TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
@@ -184,13 +184,13 @@ pub(crate) fn generate_range_check_multiplicities(
     let expressions_layout = if range_check_16_width_1_lookups_access_via_expressions.len() > 0
         || timestamp_range_check_width_1_lookups_access_via_expressions.len() > 0
     {
-        let expect_constant_terms_are_zero = inits_and_teardown_layouts.count != 0;
+        // let expect_constant_terms_are_zero = inits_and_teardown_layouts.count != 0;
         FlattenedLookupExpressionsLayout::new(
             &range_check_16_width_1_lookups_access_via_expressions,
             &timestamp_range_check_width_1_lookups_access_via_expressions,
             num_stage_2_bf_cols,
             num_stage_2_e4_cols,
-            expect_constant_terms_are_zero,
+            false,
             &translate_e4_offset,
         )
     } else {

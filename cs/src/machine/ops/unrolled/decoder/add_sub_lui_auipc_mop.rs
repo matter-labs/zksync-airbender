@@ -74,17 +74,18 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
 
     fn define_decoder_subspace(
         &self,
-        opcode: u8,
-        func3: u8,
-        func7: u8,
-    ) -> (
-        bool, // is valid instruction or not
-        InstructionType,
-        InstructionFamilyBitmaskRepr, // Instruction specific data
-    ) {
+        opcode: u32,
+    ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
         let mut repr = 0u32;
+        let op = get_opcode_bits(opcode);
+        let func3 = funct3_bits(opcode);
+        let func7 = funct7_bits(opcode);
+        let mut imm = 0;
+        let (mut rs1_index, mut rs2_index, rd_index) =
+            formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
         let instruction_type;
-        match (opcode, func3, func7) {
+
+        match (op, func3, func7) {
             (OPERATION_OP, 0b000, 0b000_0000) => {
                 // ADD
                 instruction_type = InstructionType::RType;
@@ -92,7 +93,9 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
             }
             (OPERATION_OP_IMM, 0b000, _) => {
                 // ADDI
+                rs2_index = 0;
                 instruction_type = InstructionType::IType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << ADDI_OP_BIT;
             }
             (OPERATION_OP, 0b000, 0b010_0000) => {
@@ -102,12 +105,18 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
             }
             (OPERATION_LUI, _, _) => {
                 // LUI
+                rs1_index = 0;
+                rs2_index = 0;
                 instruction_type = InstructionType::UType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << LUI_OP_BIT;
             }
             (OPERATION_AUIPC, _, _) => {
                 // AUIPC
+                rs1_index = 0;
+                rs2_index = 0;
                 instruction_type = InstructionType::UType;
+                imm = instruction_type.parse_imm(opcode, false);
                 repr |= 1 << AUIPC_OP_BIT;
             }
             (OPERATION_SYSTEM, 0b100, 0b1000001) => {
@@ -125,9 +134,29 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
                 instruction_type = InstructionType::RType;
                 repr |= 1 << MULMOD_BIT;
             }
-            _ => return INVALID_OPCODE_DEFAULTS,
+            _ => {
+                return Err(());
+            }
         };
 
-        return (true, instruction_type, repr);
+        let rd_is_zero = rd_index == 0;
+
+        let decoded = ExecutorFamilyDecoderData {
+            imm,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            rd_is_zero,
+            funct3: func3,
+            funct7: Some(func7),
+            opcode_family_bits: repr,
+        };
+
+        let extended = ExecutorFamilyDecoderExtendedData {
+            data: decoded,
+            instruction_format: instruction_type,
+            validate_csr_index_in_immediate: false,
+        };
+        Ok(extended)
     }
 }

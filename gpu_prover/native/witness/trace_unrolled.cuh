@@ -28,7 +28,6 @@ static constexpr u16 MEM_STORE_TRACE_DATA_MARKER = MEM_LOAD_TRACE_DATA_MARKER + 
 
 struct LoadOpcodeTracingData {
   const u32 initial_pc;
-  const u32 opcode;
   const u32 rs1_value;
   const u32 aligned_ram_address;
   const u32 aligned_ram_read_value;
@@ -38,7 +37,6 @@ struct LoadOpcodeTracingData {
 
 struct StoreOpcodeTracingData {
   const u32 initial_pc;
-  const u32 opcode;
   const u32 rs1_value;
   const u32 aligned_ram_address;
   const u32 aligned_ram_old_value;
@@ -147,147 +145,71 @@ struct UnrolledMemoryOracle {
 
   DEVICE_FORCEINLINE ExecutorFamilyDecoderData get_executor_family_data(const unsigned trace_step) const {
     if (trace_step >= trace.cycles_count)
-      return { .rd_is_zero = true };
+      return {.rd_is_zero = true};
     const u32 pc = trace.tracing_data[trace_step].opcode_data.load.initial_pc;
     return decoder_table[pc / 4];
   }
 
-  template <typename T> [[nodiscard]] T get_witness_from_placeholder(Placeholder, unsigned) const;
-};
-
-template <> DEVICE_FORCEINLINE u32 UnrolledMemoryOracle::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count) {
+  DEVICE_FORCEINLINE u32 get_witness_from_placeholder_u32(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case PcInit:
+        return 0;
+      case PcFin:
+        return 4;
+      default:
+        return 0;
+      }
+    }
+    const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
     switch (placeholder.tag) {
     case PcInit:
-      return 0;
+      return cycle_data->initial_pc();
     case PcFin:
-      return 4;
-    default:
-      return 0;
-    }
-  }
-  const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
-  switch (placeholder.tag) {
-  case PcInit:
-    return cycle_data->initial_pc();
-  case PcFin:
-    return cycle_data->initial_pc() + 4;
-  case ShuffleRamReadValue: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return cycle_data->opcode_data.load.rs1_value;
-    case 1:
-      return cycle_data->rs2_or_ram_read_value();
-    case 2:
-      return cycle_data->rd_or_ram_read_value();
-    default:
-      __trap();
-    }
-  }
-  case ShuffleRamWriteValue: {
-    switch (placeholder.payload[0]) {
-    case 2:
-      return cycle_data->opcode_data.load.rd_value;
-    default:
-      __trap();
-    }
-  }
-  case ShuffleRamAddress: {
-    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
-    switch (placeholder.payload[0]) {
-    case 1: {
-      switch (cycle_data->discr) {
-      case MEM_LOAD_TRACE_DATA_MARKER:
-        return cycle_data->ram_address();
-      case MEM_STORE_TRACE_DATA_MARKER:
-        return decoded.rs2_index;
+      return cycle_data->initial_pc() + 4;
+    case ShuffleRamReadValue: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return cycle_data->opcode_data.load.rs1_value;
+      case 1:
+        return cycle_data->rs2_or_ram_read_value();
+      case 2:
+        return cycle_data->rd_or_ram_read_value();
       default:
         __trap();
       }
     }
-    case 2: {
-      switch (cycle_data->discr) {
-      case MEM_LOAD_TRACE_DATA_MARKER:
-        return decoded.rd_index;
-      case MEM_STORE_TRACE_DATA_MARKER:
-        return cycle_data->ram_address();
-      default:
-        __trap();
-      }
-    }
-    default:
-      __trap();
-    }
-  }
-  default:
-    __trap();
-  }
-}
-
-template <> DEVICE_FORCEINLINE u16 UnrolledMemoryOracle::get_witness_from_placeholder<u16>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count)
-    return 0;
-  switch (placeholder.tag) {
-  default:
-    __trap();
-  }
-}
-
-template <> DEVICE_FORCEINLINE u8 UnrolledMemoryOracle::get_witness_from_placeholder<u8>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count)
-    return 0;
-  const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
-  switch (placeholder.tag) {
-  case ShuffleRamAddress: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return decoded.rs1_index;
-    default:
-      __trap();
-    }
-  }
-  default:
-    __trap();
-  }
-}
-
-template <> DEVICE_FORCEINLINE bool UnrolledMemoryOracle::get_witness_from_placeholder<bool>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count) {
-    switch (placeholder.tag) {
-    case ShuffleRamIsRegisterAccess: {
+    case ShuffleRamWriteValue: {
       switch (placeholder.payload[0]) {
       case 2:
-        return true;
-      default:
-        return false;
-      }
-    }
-    default:
-      return false;
-    }
-  }
-  switch (placeholder.tag) {
-  case ShuffleRamIsRegisterAccess: {
-    const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
-    switch (placeholder.payload[0]) {
-    case 0:
-      return true;
-    case 1: {
-      switch (cycle_data->discr) {
-      case MEM_LOAD_TRACE_DATA_MARKER:
-        return false;
-      case MEM_STORE_TRACE_DATA_MARKER:
-        return true;
+        return cycle_data->opcode_data.load.rd_value;
       default:
         __trap();
       }
     }
-    case 2: {
-      switch (cycle_data->discr) {
-      case MEM_LOAD_TRACE_DATA_MARKER:
-        return true;
-      case MEM_STORE_TRACE_DATA_MARKER:
-        return false;
+    case ShuffleRamAddress: {
+      const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
+      switch (placeholder.payload[0]) {
+      case 1: {
+        switch (cycle_data->discr) {
+        case MEM_LOAD_TRACE_DATA_MARKER:
+          return cycle_data->ram_address();
+        case MEM_STORE_TRACE_DATA_MARKER:
+          return decoded.rs2_index;
+        default:
+          __trap();
+        }
+      }
+      case 2: {
+        switch (cycle_data->discr) {
+        case MEM_LOAD_TRACE_DATA_MARKER:
+          return decoded.rd_index;
+        case MEM_STORE_TRACE_DATA_MARKER:
+          return cycle_data->ram_address();
+        default:
+          __trap();
+        }
+      }
       default:
         __trap();
       }
@@ -296,48 +218,119 @@ template <> DEVICE_FORCEINLINE bool UnrolledMemoryOracle::get_witness_from_place
       __trap();
     }
   }
-  case  ExecuteOpcodeFamilyCycle:
-    return true;
-  default:
-    __trap();
-  }
-}
 
-template <>
-DEVICE_FORCEINLINE TimestampData UnrolledMemoryOracle::get_witness_from_placeholder<TimestampData>(const Placeholder placeholder,
-                                                                                                   const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count) {
+  DEVICE_FORCEINLINE u16 get_witness_from_placeholder_u16(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
     switch (placeholder.tag) {
-    case OpcodeFamilyCycleInitialTimestamp:
-      return TimestampData::from_scalar(TimestampData::MAX_INITIAL_TIMESTAMP);
-    default:
-      return {};
-    }
-  }
-  const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
-  switch (placeholder.tag) {
-  case ShuffleRamReadTimestamp: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return cycle_data->rs1_read_timestamp;
-    case 1:
-      return cycle_data->rs2_or_ram_read_timestamp;
-    case 2:
-      return cycle_data->rd_or_ram_read_timestamp;
     default:
       __trap();
     }
   }
-  case OpcodeFamilyCycleInitialTimestamp:
-    return cycle_data->cycle_timestamp;
-  default:
-    __trap();
+
+  DEVICE_FORCEINLINE u8 get_witness_from_placeholder_u8(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
+    switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      default:
+        __trap();
+      }
+    }
+    default:
+      __trap();
+    }
   }
-}
+
+  DEVICE_FORCEINLINE bool get_witness_from_placeholder_bool(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case ShuffleRamIsRegisterAccess: {
+        switch (placeholder.payload[0]) {
+        case 2:
+          return true;
+        default:
+          return false;
+        }
+      }
+      default:
+        return false;
+      }
+    }
+    switch (placeholder.tag) {
+    case ShuffleRamIsRegisterAccess: {
+      const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+      switch (placeholder.payload[0]) {
+      case 0:
+        return true;
+      case 1: {
+        switch (cycle_data->discr) {
+        case MEM_LOAD_TRACE_DATA_MARKER:
+          return false;
+        case MEM_STORE_TRACE_DATA_MARKER:
+          return true;
+        default:
+          __trap();
+        }
+      }
+      case 2: {
+        switch (cycle_data->discr) {
+        case MEM_LOAD_TRACE_DATA_MARKER:
+          return true;
+        case MEM_STORE_TRACE_DATA_MARKER:
+          return false;
+        default:
+          __trap();
+        }
+      }
+      default:
+        __trap();
+      }
+    }
+    case ExecuteOpcodeFamilyCycle:
+      return true;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData get_witness_from_placeholder_ts(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case OpcodeFamilyCycleInitialTimestamp:
+        return TimestampData::from_scalar(TimestampData::MAX_INITIAL_TIMESTAMP);
+      default:
+        return {};
+      }
+    }
+    const MemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case ShuffleRamReadTimestamp: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return cycle_data->rs1_read_timestamp;
+      case 1:
+        return cycle_data->rs2_or_ram_read_timestamp;
+      case 2:
+        return cycle_data->rd_or_ram_read_timestamp;
+      default:
+        __trap();
+      }
+    }
+    case OpcodeFamilyCycleInitialTimestamp:
+      return cycle_data->cycle_timestamp;
+    default:
+      __trap();
+    }
+  }
+};
 
 struct NonMemoryOpcodeTracingData {
   const u32 initial_pc;
-  const u32 opcode;
   const u32 rs1_value;
   const u32 rs2_value;
   const u32 rd_old_value;
@@ -366,151 +359,522 @@ struct UnrolledNonMemoryOracle {
 
   DEVICE_FORCEINLINE ExecutorFamilyDecoderData get_executor_family_data(const unsigned trace_step) const {
     if (trace_step >= trace.cycles_count)
-      return { .rd_is_zero = true };
+      return {.rd_is_zero = true};
     const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
     const u32 pc = opcode_data->initial_pc;
     return decoder_table[pc / 4];
   }
 
-  template <typename T> [[nodiscard]] T get_witness_from_placeholder(Placeholder, unsigned) const;
-};
-
-template <> DEVICE_FORCEINLINE u32 UnrolledNonMemoryOracle::get_witness_from_placeholder<u32>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count) {
+  DEVICE_FORCEINLINE u32 get_witness_from_placeholder_u32(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case PcFin:
+        return default_pc_value_in_padding;
+      default:
+        return 0;
+      }
+    }
+    const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
     switch (placeholder.tag) {
+    case PcInit:
+      return opcode_data->initial_pc;
     case PcFin:
-      return default_pc_value_in_padding;
+      return opcode_data->new_pc;
+    case ShuffleRamReadValue: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return opcode_data->rs1_value;
+      case 1:
+        return opcode_data->rs2_value;
+      case 2:
+        return opcode_data->rd_old_value;
+      default:
+        __trap();
+      }
+    }
+    case ShuffleRamWriteValue: {
+      switch (placeholder.payload[0]) {
+      case 2:
+        return opcode_data->rd_value;
+      default:
+        __trap();
+      }
+    }
+    case ExternalOracle:
+      return opcode_data->delegation_type == NON_DETERMINISM_CSR ? opcode_data->rd_value : 0;
     default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u16 get_witness_from_placeholder_u16(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
       return 0;
+    const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
+    switch (placeholder.tag) {
+    case DelegationType: {
+      const u16 delegation_type = opcode_data->delegation_type;
+      return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR ? delegation_type : 0;
     }
-  }
-  const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
-  switch (placeholder.tag) {
-  case PcInit:
-    return opcode_data->initial_pc;
-  case PcFin:
-    return opcode_data->new_pc;
-  case ShuffleRamReadValue: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return opcode_data->rs1_value;
-    case 1:
-      return opcode_data->rs2_value;
-    case 2:
-      return opcode_data->rd_old_value;
+    case DelegationABIOffset:
+      return 0;
     default:
       __trap();
     }
   }
-  case ShuffleRamWriteValue: {
-    switch (placeholder.payload[0]) {
-    case 2:
-      return opcode_data->rd_value;
+
+  DEVICE_FORCEINLINE u8 get_witness_from_placeholder_u8(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
+    switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      case 1:
+        return decoded.rs2_index;
+      case 2:
+        return decoded.rd_index;
+      default:
+        __trap();
+      }
+    }
     default:
       __trap();
     }
   }
-  case ExternalOracle:
-    return opcode_data->delegation_type == NON_DETERMINISM_CSR ? opcode_data->rd_value : 0;
-  default:
-    __trap();
-  }
-}
 
-template <> DEVICE_FORCEINLINE u16 UnrolledNonMemoryOracle::get_witness_from_placeholder<u16>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count)
-    return 0;
-  const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
-  switch (placeholder.tag) {
-  case DelegationType: {
-    const u16 delegation_type = opcode_data->delegation_type;
-    return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR ? delegation_type : 0;
-  }
-  case DelegationABIOffset:
-    return 0;
-  default:
-    __trap();
-  }
-}
-
-template <> DEVICE_FORCEINLINE u8 UnrolledNonMemoryOracle::get_witness_from_placeholder<u8>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count)
-    return 0;
-  const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
-  switch (placeholder.tag) {
-  case ShuffleRamAddress: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return decoded.rs1_index;
-    case 1:
-      return decoded.rs2_index;
-    case 2:
-      return decoded.rd_index;
-    default:
-      __trap();
+  DEVICE_FORCEINLINE bool get_witness_from_placeholder_bool(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return false;
+    switch (placeholder.tag) {
+    case ShuffleRamIsRegisterAccess: {
+      switch (placeholder.payload[0]) {
+      case 0:
+      case 1:
+      case 2:
+        return true;
+      default:
+        __trap();
+      }
     }
-  }
-  default:
-    __trap();
-  }
-}
-
-template <>
-DEVICE_FORCEINLINE bool UnrolledNonMemoryOracle::get_witness_from_placeholder<bool>(const Placeholder placeholder, const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count)
-    return false;
-  switch (placeholder.tag) {
-  case ShuffleRamIsRegisterAccess: {
-    switch (placeholder.payload[0]) {
-    case 0:
-    case 1:
-    case 2:
+    case ExecuteDelegation: {
+      const u16 delegation_type = trace.tracing_data[trace_step].opcode_data.delegation_type;
+      return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR;
+    }
+    case ExecuteOpcodeFamilyCycle:
       return true;
     default:
       __trap();
     }
   }
-  case ExecuteDelegation: {
-    const u16 delegation_type = trace.tracing_data[trace_step].opcode_data.delegation_type;
-    return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR;
-  }
-  case  ExecuteOpcodeFamilyCycle:
-    return true;
-  default:
-    __trap();
-  }
-}
 
-template <>
-DEVICE_FORCEINLINE TimestampData UnrolledNonMemoryOracle::get_witness_from_placeholder<TimestampData>(const Placeholder placeholder,
-                                                                                                      const unsigned trace_step) const {
-  if (trace_step >= trace.cycles_count) {
-    switch (placeholder.tag) {
-    case OpcodeFamilyCycleInitialTimestamp:
-      return TimestampData::from_scalar(TimestampData::MAX_INITIAL_TIMESTAMP);
-    default:
-      return {};
+  DEVICE_FORCEINLINE TimestampData get_witness_from_placeholder_ts(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case OpcodeFamilyCycleInitialTimestamp:
+        return TimestampData::from_scalar(TimestampData::MAX_INITIAL_TIMESTAMP);
+      default:
+        return {};
+      }
     }
-  }
-  const NonMemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
-  switch (placeholder.tag) {
-  case ShuffleRamReadTimestamp: {
-    switch (placeholder.payload[0]) {
-    case 0:
-      return cycle_data->rs1_read_timestamp;
-    case 1:
-      return cycle_data->rs2_read_timestamp;
-    case 2:
-      return cycle_data->rd_read_timestamp;
+    const NonMemoryOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case ShuffleRamReadTimestamp: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return cycle_data->rs1_read_timestamp;
+      case 1:
+        return cycle_data->rs2_read_timestamp;
+      case 2:
+        return cycle_data->rd_read_timestamp;
+      default:
+        __trap();
+      }
+    }
+    case OpcodeFamilyCycleInitialTimestamp:
+      return cycle_data->cycle_timestamp;
     default:
       __trap();
     }
   }
-  case OpcodeFamilyCycleInitialTimestamp:
-    return cycle_data->cycle_timestamp;
-  default:
-    __trap();
+};
+
+enum UnifiedOpcodeTracingDataWithTimestampTag : u32 {
+  NonMem = 0,
+  Mem,
+};
+
+struct UnifiedOpcodeTracingDataWithTimestamp {
+  const UnifiedOpcodeTracingDataWithTimestampTag tag;
+  union {
+    NonMemoryOpcodeTracingDataWithTimestamp non_mem;
+    MemoryOpcodeTracingDataWithTimestamp mem;
+  } value;
+
+  DEVICE_FORCEINLINE u32 initial_pc() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.initial_pc;
+    case Mem:
+      return value.mem.initial_pc();
+    default:
+      __trap();
+    }
   }
-}
+
+  DEVICE_FORCEINLINE u32 final_pc() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.new_pc;
+    case Mem:
+      return value.mem.initial_pc() + 4;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE bool rs2_is_reg() const {
+    switch (tag) {
+    case NonMem:
+      return true;
+    case Mem: {
+      switch (value.mem.discr) {
+      case MEM_LOAD_TRACE_DATA_MARKER:
+        return false;
+      case MEM_STORE_TRACE_DATA_MARKER:
+        return true;
+      default:
+        __trap();
+      }
+    }
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE bool rd_is_reg() const {
+    switch (tag) {
+    case NonMem:
+      return true;
+    case Mem: {
+      switch (value.mem.discr) {
+      case MEM_LOAD_TRACE_DATA_MARKER:
+        return true;
+      case MEM_STORE_TRACE_DATA_MARKER:
+        return false;
+      default:
+        __trap();
+      }
+    }
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u16 delegation_type() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.delegation_type;
+    case Mem:
+      return 0;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u32 rs1_read_value() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.rs1_value;
+    case Mem:
+      return value.mem.opcode_data.load.rs1_value;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u32 rs2_or_mem_load_read_value() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.rs2_value;
+    case Mem:
+      return value.mem.rs2_or_ram_read_value();
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u32 rd_or_mem_store_read_value() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.rd_old_value;
+    case Mem:
+      return value.mem.rd_or_ram_read_value();
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u32 rd_or_mem_store_write_value() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.opcode_data.rd_value;
+    case Mem:
+      return value.mem.rd_or_ram_write_value();
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData rs1_read_timestamp() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.rs1_read_timestamp;
+    case Mem:
+      return value.mem.rs1_read_timestamp;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData rs2_or_mem_load_read_timestamp() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.rs2_read_timestamp;
+    case Mem:
+      return value.mem.rs2_or_ram_read_timestamp;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData rd_or_mem_store_read_timestamp() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.rd_read_timestamp;
+    case Mem:
+      return value.mem.rd_or_ram_read_timestamp;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData cycle_timestamp() const {
+    switch (tag) {
+    case NonMem:
+      return value.non_mem.cycle_timestamp;
+    case Mem:
+      return value.mem.cycle_timestamp;
+    default:
+      __trap();
+    }
+  }
+};
+
+struct UnrolledUnifiedTrace {
+  const u32 cycles_count;
+  const UnifiedOpcodeTracingDataWithTimestamp *const __restrict__ tracing_data;
+};
+
+struct UnrolledUnifiedOracle {
+  const UnrolledUnifiedTrace trace;
+  const ExecutorFamilyDecoderData *const __restrict__ decoder_table;
+
+  DEVICE_FORCEINLINE ExecutorFamilyDecoderData get_executor_family_data(const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return {.rd_is_zero = true};
+    const u32 pc = trace.tracing_data[trace_step].initial_pc();
+    return decoder_table[pc / 4];
+  }
+
+  DEVICE_FORCEINLINE u32 get_witness_from_placeholder_u32(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
+    const UnifiedOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case PcInit:
+      return cycle_data->initial_pc();
+    case PcFin:
+      return cycle_data->final_pc();
+    case ShuffleRamAddress: {
+      const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
+      switch (placeholder.payload[0]) {
+      case 1: {
+        switch (cycle_data->tag) {
+        case Mem:
+          switch (cycle_data->value.mem.discr) {
+          case MEM_LOAD_TRACE_DATA_MARKER:
+            return cycle_data->value.mem.ram_address();
+          case MEM_STORE_TRACE_DATA_MARKER:
+            return decoded.rs2_index;
+          default:
+            __trap();
+          }
+        case NonMem:
+          return decoded.rs2_index;
+        default:
+          __trap();
+        }
+      }
+      case 2: {
+        switch (cycle_data->tag) {
+        case Mem:
+          switch (cycle_data->value.mem.discr) {
+          case MEM_LOAD_TRACE_DATA_MARKER:
+            return decoded.rd_index;
+          case MEM_STORE_TRACE_DATA_MARKER:
+            return cycle_data->value.mem.ram_address();
+          default:
+            __trap();
+          }
+        case NonMem:
+          return decoded.rd_index;
+        default:
+          __trap();
+        }
+      }
+      default:
+        __trap();
+      }
+    }
+    case ShuffleRamReadValue: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return cycle_data->rs1_read_value();
+      case 1:
+        return cycle_data->rs2_or_mem_load_read_value();
+      case 2:
+        return cycle_data->rd_or_mem_store_read_value();
+      default:
+        __trap();
+      }
+    }
+    case ShuffleRamWriteValue: {
+      switch (placeholder.payload[0]) {
+      case 2:
+        return cycle_data->rd_or_mem_store_write_value();
+      default:
+        __trap();
+      }
+    }
+    case ExternalOracle:
+      return cycle_data->delegation_type() == NON_DETERMINISM_CSR ? cycle_data->rd_or_mem_store_write_value() : 0;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u16 get_witness_from_placeholder_u16(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
+    const UnifiedOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case DelegationType: {
+      const u16 delegation_type = cycle_data->delegation_type();
+      return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR ? delegation_type : 0;
+    }
+    case DelegationABIOffset:
+      return 0;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE u8 get_witness_from_placeholder_u8(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count)
+      return 0;
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
+    switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      // case 1:
+      //   return decoded.rs2_index;
+      // case 2:
+      //   return decoded.rd_index;
+      default:
+        __trap();
+      }
+    }
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE bool get_witness_from_placeholder_bool(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case ShuffleRamIsRegisterAccess: {
+        switch (placeholder.payload[0]) {
+        case 0:
+        case 1:
+        case 2:
+          return true;
+        default:
+          __trap();
+        }
+      }
+      default:
+        return false;
+      }
+    }
+    const UnifiedOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case ShuffleRamIsRegisterAccess: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return true;
+      case 1:
+        return cycle_data->rs2_is_reg();
+      case 2:
+        return cycle_data->rd_is_reg();
+      default:
+        __trap();
+      }
+    }
+    case ExecuteDelegation: {
+      const u16 delegation_type = cycle_data->delegation_type();
+      return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR;
+    }
+    case ExecuteOpcodeFamilyCycle:
+      return true;
+    default:
+      __trap();
+    }
+  }
+
+  DEVICE_FORCEINLINE TimestampData get_witness_from_placeholder_ts(const Placeholder placeholder, const unsigned trace_step) const {
+    if (trace_step >= trace.cycles_count) {
+      switch (placeholder.tag) {
+      case OpcodeFamilyCycleInitialTimestamp:
+        return TimestampData::from_scalar(TimestampData::MAX_INITIAL_TIMESTAMP);
+      default:
+        return {};
+      }
+    }
+    const UnifiedOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    switch (placeholder.tag) {
+    case ShuffleRamReadTimestamp: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return cycle_data->rs1_read_timestamp();
+      case 1:
+        return cycle_data->rs2_or_mem_load_read_timestamp();
+      case 2:
+        return cycle_data->rd_or_mem_store_read_timestamp();
+      default:
+        __trap();
+      }
+    }
+    case OpcodeFamilyCycleInitialTimestamp:
+      return cycle_data->cycle_timestamp();
+    default:
+      __trap();
+    }
+  }
+};
 
 } // namespace airbender::witness::trace::unrolled

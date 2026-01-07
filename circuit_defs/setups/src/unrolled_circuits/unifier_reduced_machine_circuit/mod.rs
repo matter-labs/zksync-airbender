@@ -5,19 +5,14 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static, B: Good
     bytecode: &[u32],
     worker: &Worker,
 ) -> UnrolledCircuitPrecomputations<A, B> {
-    println!("Compiling circuit");
     let circuit = ::unified_reduced_machine::get_circuit_for_rom_bound::<
         { ::unified_reduced_machine::ROM_ADDRESS_SPACE_SECOND_WORD_BITS },
     >(binary_image);
-    println!("Creating tables");
     let table_driver = ::unified_reduced_machine::get_table_driver(binary_image);
-    println!("Creating decoder table");
     let (decoder_table_data, witness_gen_data) =
         ::unified_reduced_machine::get_decoder_table::<B>(bytecode);
     use prover::cs::machine::ops::unrolled::materialize_flattened_decoder_table;
-    println!("Flattening decoder table");
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
-    println!("Precomputing twiddles and LDE factors");
     let twiddles = Twiddles::get(::unified_reduced_machine::DOMAIN_SIZE, &worker);
     let lde_precomputations = LdePrecomputations::new(
         ::unified_reduced_machine::DOMAIN_SIZE,
@@ -25,7 +20,6 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static, B: Good
         ::unified_reduced_machine::LDE_SOURCE_COSETS,
         &worker,
     );
-    println!("Computing setup");
     let setup =
         SetupPrecomputations::<DEFAULT_TRACE_PADDING_MULTIPLE, A, DefaultTreeConstructor>::from_tables_and_trace_len_with_decoder_table(
             &table_driver,

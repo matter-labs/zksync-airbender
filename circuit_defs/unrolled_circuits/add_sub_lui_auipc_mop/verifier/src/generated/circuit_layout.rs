@@ -544,6 +544,18 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 constant_term: Mersenne31Field(0u32),
             },
             StaticVerifierCompiledDegree2Constraint {
+                quadratic_terms: &[(
+                    Mersenne31Field(1u32),
+                    ColumnAddress::MemorySubtree(17usize),
+                    ColumnAddress::MemorySubtree(17usize),
+                )],
+                linear_terms: &[(
+                    Mersenne31Field(2147483646u32),
+                    ColumnAddress::MemorySubtree(17usize),
+                )],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree2Constraint {
                 quadratic_terms: &[
                     (
                         Mersenne31Field(1u32),
@@ -1101,47 +1113,77 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 constant_term: Mersenne31Field(0u32),
             },
         ],
-        degree_1_constraints: &[StaticVerifierCompiledDegree1Constraint {
-            linear_terms: &[
-                (
-                    Mersenne31Field(2147483646u32),
-                    ColumnAddress::WitnessSubtree(4usize),
-                ),
-                (
-                    Mersenne31Field(1u32),
-                    ColumnAddress::WitnessSubtree(12usize),
-                ),
-                (
-                    Mersenne31Field(2u32),
-                    ColumnAddress::WitnessSubtree(13usize),
-                ),
-                (
-                    Mersenne31Field(4u32),
-                    ColumnAddress::WitnessSubtree(14usize),
-                ),
-                (
-                    Mersenne31Field(8u32),
-                    ColumnAddress::WitnessSubtree(15usize),
-                ),
-                (
-                    Mersenne31Field(16u32),
-                    ColumnAddress::WitnessSubtree(16usize),
-                ),
-                (
-                    Mersenne31Field(32u32),
-                    ColumnAddress::WitnessSubtree(17usize),
-                ),
-                (
-                    Mersenne31Field(64u32),
-                    ColumnAddress::WitnessSubtree(18usize),
-                ),
-                (
-                    Mersenne31Field(128u32),
-                    ColumnAddress::WitnessSubtree(19usize),
-                ),
-            ],
-            constant_term: Mersenne31Field(0u32),
-        }],
+        degree_1_constraints: &[
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(4usize),
+                    ),
+                    (
+                        Mersenne31Field(1u32),
+                        ColumnAddress::WitnessSubtree(12usize),
+                    ),
+                    (
+                        Mersenne31Field(2u32),
+                        ColumnAddress::WitnessSubtree(13usize),
+                    ),
+                    (
+                        Mersenne31Field(4u32),
+                        ColumnAddress::WitnessSubtree(14usize),
+                    ),
+                    (
+                        Mersenne31Field(8u32),
+                        ColumnAddress::WitnessSubtree(15usize),
+                    ),
+                    (
+                        Mersenne31Field(16u32),
+                        ColumnAddress::WitnessSubtree(16usize),
+                    ),
+                    (
+                        Mersenne31Field(32u32),
+                        ColumnAddress::WitnessSubtree(17usize),
+                    ),
+                    (
+                        Mersenne31Field(64u32),
+                        ColumnAddress::WitnessSubtree(18usize),
+                    ),
+                    (
+                        Mersenne31Field(128u32),
+                        ColumnAddress::WitnessSubtree(19usize),
+                    ),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (
+                        Mersenne31Field(524288u32),
+                        ColumnAddress::WitnessSubtree(27usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::MemorySubtree(20usize),
+                    ),
+                    (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(24usize)),
+                ],
+                constant_term: Mersenne31Field(2147483643u32),
+            },
+            StaticVerifierCompiledDegree1Constraint {
+                linear_terms: &[
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::WitnessSubtree(27usize),
+                    ),
+                    (
+                        Mersenne31Field(2147483646u32),
+                        ColumnAddress::MemorySubtree(21usize),
+                    ),
+                    (Mersenne31Field(1u32), ColumnAddress::MemorySubtree(25usize)),
+                ],
+                constant_term: Mersenne31Field(0u32),
+            },
+        ],
         state_linkage_constraints: &[],
         public_inputs: &[],
         lazy_init_address_aux_vars: &[],

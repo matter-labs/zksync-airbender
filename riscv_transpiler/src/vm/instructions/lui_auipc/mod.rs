@@ -7,8 +7,10 @@ pub(crate) fn lui<C: Counters, S: Snapshotter<C>, R: RAM>(
     snapshotter: &mut S,
     instr: Instruction,
 ) {
-    let _rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let _rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    debug_assert_eq!(instr.rs1, 0);
+    debug_assert_eq!(instr.rs2, 0);
+
+    touch_x0::<C, 1>(state);
     let mut rd = instr.imm;
     write_register::<C, 2>(state, instr.rd, &mut rd);
     default_increase_pc::<C>(state);
@@ -22,8 +24,10 @@ pub(crate) fn auipc<C: Counters, S: Snapshotter<C>, R: RAM>(
     snapshotter: &mut S,
     instr: Instruction,
 ) {
-    let _rs1_value = read_register::<C, 0>(state, instr.rs1);
-    let _rs2_value = read_register::<C, 1>(state, instr.rs2); // formal
+    debug_assert_eq!(instr.rs1, 0);
+    debug_assert_eq!(instr.rs2, 0);
+
+    touch_x0::<C, 1>(state);
     let mut rd = state.pc.wrapping_add(instr.imm);
     write_register::<C, 2>(state, instr.rd, &mut rd);
     default_increase_pc::<C>(state);

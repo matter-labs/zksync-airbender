@@ -586,11 +586,16 @@ impl ProverCachedData {
             .witness_layout
             .multiplicities_columns_for_timestamp_range_check
             .start();
-        let timestamp_range_check_multiplicities_dst = compiled_circuit
-            .stage_2_layout
-            .intermediate_poly_for_timestamp_range_check_multiplicity
-            .get_range(0)
-            .start;
+        let timestamp_range_check_multiplicities_dst = {
+            let columns = compiled_circuit
+                .stage_2_layout
+                .intermediate_poly_for_timestamp_range_check_multiplicity;
+            if columns.num_elements == 0 {
+                0
+            } else {
+                columns.get_range(0).start
+            }
+        };
         let timestamp_range_check_setup_column = compiled_circuit
             .setup_layout
             .timestamp_range_check_setup_column
@@ -626,11 +631,16 @@ impl ProverCachedData {
             .generic_lookup_setup_columns
             .start();
 
-        let memory_accumulator_dst_start = compiled_circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .get_range(0)
-            .start;
+        let memory_accumulator_dst_start = {
+            let columns = compiled_circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument;
+            if columns.num_elements == 0 {
+                0
+            } else {
+                columns.get_range(0).start
+            }
+        };
 
         let num_stage_3_quotient_terms = compiled_circuit.compute_num_quotient_terms();
 

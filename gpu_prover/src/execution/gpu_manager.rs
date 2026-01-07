@@ -1,34 +1,26 @@
-use super::gpu_worker::{get_gpu_worker_func, GpuWorkRequest, SetupToCache};
-use super::messages::WorkerResult;
-use crate::allocator::host::ConcurrentStaticHostAllocator;
+use super::gpu_worker::get_gpu_worker_func;
+use super::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, WorkerResult};
 use crate::cudart::device::get_device_count;
 use crate::cudart::result::CudaResult;
 use crate::prover::context::ProverContextConfig;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
-use fft::GoodAllocator;
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::exit;
 use std::thread;
 
-pub struct GpuWorkBatch<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub receiver: Receiver<GpuWorkRequest<A>>,
-    pub sender: Sender<WorkerResult<A>>,
-}
-
 pub struct GpuManager {
     wait_group: Option<WaitGroup>,
-    batches_sender: Option<Sender<GpuWorkBatch<ConcurrentStaticHostAllocator>>>,
+    batches_sender: Option<Sender<GpuWorkBatch>>,
 }
 
 impl GpuManager {
     pub fn new(
-        setups_to_cache: Vec<SetupToCache>, // vector of setups to cache on the device by each GPU worker
         initialized_wait_group: WaitGroup, // wait group is a synchronization mechanism to signal that all GPU workers are initialized and ready to process requests
+        prover_context_config: ProverContextConfig,
     ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
@@ -36,7 +28,12 @@ impl GpuManager {
         let wait_group_clone = wait_group.clone();
         thread::spawn(move || {
             let result = scope(|s| {
-                gpu_manager(initialized_wait_group, setups_to_cache, batches_receiver, s)
+                gpu_manager(
+                    initialized_wait_group,
+                    prover_context_config,
+                    batches_receiver,
+                    s,
+                )
             })
             .unwrap();
             if let Err(e) = result {
@@ -51,7 +48,7 @@ impl GpuManager {
         }
     }
 
-    pub fn send_batch(&self, batch: GpuWorkBatch<ConcurrentStaticHostAllocator>) {
+    pub fn send_batch(&self, batch: GpuWorkBatch) {
         self.batches_sender.as_ref().unwrap().send(batch).unwrap()
     }
 }
@@ -66,17 +63,12 @@ impl Drop for GpuManager {
 }
 fn gpu_manager(
     initialized_wait_group: WaitGroup,
-    setups_to_cache: Vec<SetupToCache>,
-    batches_receiver: Receiver<GpuWorkBatch<ConcurrentStaticHostAllocator>>,
+    prover_context_config: ProverContextConfig,
+    batches_receiver: Receiver<GpuWorkBatch>,
     scope: &Scope,
 ) -> CudaResult<()> {
     let device_count = get_device_count()? as usize;
     info!("GPU_MANAGER found {} CUDA capable device(s)", device_count);
-    let prover_context_config = {
-        let mut c = ProverContextConfig::default();
-        c.allocation_block_log_size = 22;
-        c
-    };
     let (worker_initialized_sender, worker_initialized_receiver) = bounded(device_count);
     let mut worker_senders = Vec::with_capacity(device_count);
     let mut worker_receivers = Vec::with_capacity(device_count);
@@ -90,7 +82,6 @@ fn gpu_manager(
         let gpu_worker_func = get_gpu_worker_func(
             device_id,
             prover_context_config,
-            setups_to_cache.clone(),
             worker_initialized_sender.clone(),
             request_receiver,
             result_sender,
@@ -162,12 +153,14 @@ fn gpu_manager(
                 match op.recv(&batch_receivers[&batch_id]) {
                     Ok(request) => {
                         assert_eq!(request.batch_id(), batch_id);
+                        let circuit_type = request.circuit_type();
+                        let sequence_id = request.sequence_id();
                         match &request {
                             GpuWorkRequest::MemoryCommitment(_) => trace!(
-                                "BATCH[{batch_id}] GPU_MANAGER received memory commitment request"
+                                "BATCH[{batch_id}] GPU_MANAGER received memory commitment request for circuit {circuit_type:?}[{sequence_id}]"
                             ),
                             GpuWorkRequest::Proof(_) => {
-                                trace!("BATCH[{batch_id}] GPU_MANAGER received proof request")
+                                trace!("BATCH[{batch_id}] GPU_MANAGER received proof request for circuit {circuit_type:?}[{sequence_id}]")
                             }
                         };
                         work_queue.push_back(request);
@@ -185,20 +178,19 @@ fn gpu_manager(
                 let item = worker_queues[worker_id].pop_front().unwrap();
                 if let Some(result) = result {
                     let batch_id = item.unwrap();
+                    let circuit_type = result.circuit_type();
+                    let sequence_id = result.sequence_id();
                     match &result {
-                        WorkerResult::MemoryCommitment(result) => {
+                        GpuWorkResult::MemoryCommitment(result) => {
                             assert_eq!(result.batch_id, batch_id);
-                            trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment from worker id {}", worker_id);
+                            trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
                         }
-                        WorkerResult::Proof(result) => {
+                        GpuWorkResult::Proof(result) => {
                             assert_eq!(result.batch_id, batch_id);
-                            trace!(
-                                "BATCH[{batch_id}] GPU_MANAGER received proof from worker id {}",
-                                worker_id
-                            );
+                            trace!("BATCH[{batch_id}] GPU_MANAGER received proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
                         }
-                        _ => unreachable!(),
                     };
+                    let result = WorkerResult::GpuWorkResult(result);
                     batch_senders[&batch_id].send(result).unwrap();
                     if batches_to_flush.contains(&batch_id)
                         && !work_queue
@@ -228,15 +220,17 @@ fn gpu_manager(
                     });
                     assert!(advance || flush);
                     trace!(
-                        "GPU_MANAGER {} queue for worker id {worker_id}",
+                        "GPU_MANAGER {} queue for GPU_WORKER[{worker_id}]",
                         if advance { "advancing" } else { "flushing" }
                     );
                     (None, None)
                 } else {
                     let request = work_queue.pop_front().unwrap();
                     let batch_id = request.batch_id();
+                    let circuit_type = request.circuit_type();
+                    let sequence_id = request.sequence_id();
                     trace!(
-                        "BATCH[{batch_id}] GPU_MANAGER sending {} request to worker id {worker_id}",
+                        "BATCH[{batch_id}] GPU_MANAGER sending {} request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]",
                         match &request {
                             GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
                             GpuWorkRequest::Proof(_) => "proof",
@@ -263,13 +257,11 @@ fn gpu_manager(
                     let worker_id = worker_senders_indexes[&op_index];
                     let request = work_queue.pop_front().unwrap();
                     let batch_id = request.batch_id();
+                    let circuit_type = request.circuit_type();
+                    let sequence_id = request.sequence_id();
                     match &request {
-                        GpuWorkRequest::MemoryCommitment(_) => trace!(
-                            "BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to worker id {worker_id}"
-                        ),
-                        GpuWorkRequest::Proof(_) => trace!(
-                            "BATCH[{batch_id}] GPU_MANAGER sending proof request to worker id {worker_id}"
-                        ),
+                        GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
+                        GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     };
                     op.send(&worker_senders[worker_id], Some(request)).unwrap();
                     worker_queues[worker_id].push_back(Some(batch_id));

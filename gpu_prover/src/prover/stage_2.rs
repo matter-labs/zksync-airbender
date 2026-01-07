@@ -76,6 +76,7 @@ impl StageTwoOutput {
         &mut self,
         seed: &mut HostAllocation<Seed>,
         circuit: &CompiledCircuitArtifact<BF>,
+        is_unrolled: bool,
         cached_data: &ProverCachedData,
         setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
@@ -192,6 +193,7 @@ impl StageTwoOutput {
             slice::from_ref(unsafe { lookup_challenges_accessor.get() }),
             stream,
         )?;
+        self.lookup_challenges = Some(lookup_challenges);
         if has_decoder {
             memory_copy_async(
                 &mut d_decoder_challenges,
@@ -199,12 +201,11 @@ impl StageTwoOutput {
                 stream,
             )?;
         }
-        self.lookup_challenges = Some(lookup_challenges);
+        self.decoder_challenges = Some(decoder_challenges);
         let witness_evaluations = stage_1_output.witness_holder.get_evaluations(context)?;
         let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
         let memory_evaluations = stage_1_output.memory_holder.get_evaluations(context)?;
         let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
-        let is_unrolled = false;
         if is_unrolled {
             super::unrolled_prover::stage_2_kernels::compute_stage_2_args_on_main_domain(
                 &setup_cols,

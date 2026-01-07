@@ -16,6 +16,7 @@ use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use std::alloc::Allocator;
 use std::collections::BTreeSet;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
@@ -23,7 +24,6 @@ use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_fam
 
 mod reduced_machine;
 pub mod with_transpiler;
-// pub mod word_specialized; // pub because some gpu_prover tests use it
 
 pub mod add_sub_lui_auipc_mod {
     use crate::unrolled::NonMemoryCircuitOracle;
@@ -291,11 +291,13 @@ pub(crate) unsafe fn parse_state_permutation_elements(
     }
 }
 
+#[track_caller]
 pub(crate) unsafe fn parse_shuffle_ram_accesses(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     trace_row: &[Mersenne31Field],
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
     read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    _row: usize,
 ) {
     let intermediate_state_layout = compiled_circuit
         .memory_layout
@@ -332,10 +334,19 @@ pub(crate) unsafe fn parse_shuffle_ram_accesses(
                 }
             }
 
-            // if is_register == false && address == 0 {
-            //     // special padding value to make ROM read via RAM read at 0
-            //     assert_eq!(read_value, 0);
-            //     continue;
+            if is_register == false && address < common_constants::rom::ROM_BYTE_SIZE as u32 {
+                assert_eq!(read_value, 0);
+                let ShuffleRamQueryColumns::Readonly(..) = access else {
+                    panic!("write access into ROM");
+                };
+            }
+
+            // if _row < 100 {
+            //     println!("Row {}, index {}: read reg = {}, address = {} at ts = {} into value {}", _row, access_idx, is_register, address, read_ts, read_value);
+            // }
+
+            // if _row < 100 {
+            //     println!("Row {}, index {}: write reg = {}, address = {} at ts = {} into value {}", _row, access_idx, is_register, address, write_ts, write_value);
             // }
 
             let to_write = (is_register, address, write_ts, write_value);
@@ -362,6 +373,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
     trace_row: &[Mersenne31Field],
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
     read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    _row: usize,
 ) {
     let delegation_processor_layout = compiled_circuit
         .memory_layout
@@ -417,7 +429,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
             };
 
             for indirect in access.indirect_accesses.iter() {
-                assert!(base_offset >= 1 << 21);
+                assert!(base_offset >= common_constants::rom::ROM_BYTE_SIZE as u32);
                 let mut offset = indirect.offset_constant();
                 assert_eq!(offset % 4, 0);
 
@@ -429,7 +441,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
 
                 let (address, of) = base_offset.overflowing_add(offset);
                 assert!(of == false);
-                assert!(address >= 1 << 21);
+                assert!(address as usize >= common_constants::rom::ROM_BYTE_SIZE);
                 let read_ts = read_timestamp(trace_row, indirect.get_read_timestamp_columns());
                 let read_value = read_u32(trace_row, indirect.get_read_value_columns());
                 let mut write_value = read_value;
@@ -523,7 +535,8 @@ pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
     let mut trace = witness
         .exec_trace
         .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
+    for _row in 0..(witness.exec_trace.len() - 1) {
+        // dbg!(_row);
         unsafe {
             let (_, memory) = trace.current_row_split(witness.num_witness_columns);
             parse_state_permutation_elements(compiled_circuit, &*memory, write_set, read_set);
@@ -541,10 +554,10 @@ pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
     let mut trace = witness
         .exec_trace
         .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
+    for row in 0..(witness.exec_trace.len() - 1) {
         unsafe {
             let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_shuffle_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
+            parse_shuffle_ram_accesses(compiled_circuit, &*memory, write_set, read_set, row);
             trace.advance_row();
         }
     }
@@ -559,11 +572,36 @@ pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
     let mut trace = witness
         .exec_trace
         .row_view(0..(witness.exec_trace.len() - 1));
-    for _ in 0..(witness.exec_trace.len() - 1) {
+    for row in 0..(witness.exec_trace.len() - 1) {
         unsafe {
             let (_, memory) = trace.current_row_split(witness.num_witness_columns);
-            parse_delegation_ram_accesses(compiled_circuit, &*memory, write_set, read_set);
+            parse_delegation_ram_accesses(compiled_circuit, &*memory, write_set, read_set, row);
             trace.advance_row();
+        }
+    }
+}
+
+pub(crate) fn ensure_memory_trace_consistency<const N: usize, const M: usize>(
+    memory_trace: &MemoryOnlyWitnessEvaluationDataForExecutionFamily<N, impl Allocator + Clone>,
+    witness_trace: &WitnessEvaluationDataForExecutionFamily<M, impl Allocator + Clone>,
+) {
+    assert_eq!(
+        witness_trace.exec_trace.len(),
+        witness_trace.exec_trace.len()
+    );
+    let mut trace = witness_trace
+        .exec_trace
+        .row_view(0..(witness_trace.exec_trace.len() - 1));
+    let mut memory = memory_trace
+        .memory_trace
+        .row_view(0..(memory_trace.memory_trace.len() - 1));
+    for row in 0..(witness_trace.exec_trace.len() - 1) {
+        unsafe {
+            let (_, memory_in_witness) = trace.current_row_split(witness_trace.num_witness_columns);
+            let memory_row = memory.current_row();
+            assert_eq!(memory_in_witness, memory_row, "diverged at row {}", row);
+            trace.advance_row();
+            memory.advance_row();
         }
     }
 }
@@ -1662,5 +1700,87 @@ fn test_bigint_with_replayer_oracle() {
         //     "state diverged for round {}",
         //     round
         // );
+    }
+}
+
+#[test]
+fn test_reference_block_exec() {
+    use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::ir::*;
+    use riscv_transpiler::vm::*;
+    use std::path::Path;
+
+    let (_, binary) = read_binary(&Path::new("../riscv_transpiler/examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new(
+        "../riscv_transpiler/examples/zksync_os/app.text",
+    ));
+
+    let (witness, _) = read_binary(&Path::new(
+        "../riscv_transpiler/examples/zksync_os/23620012_witness",
+    ));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<_> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+    let mut source = QuasiUARTSource::new_with_reads(witness);
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            &binary,
+            1 << 30,
+        );
+
+    let cycles_bound = 1 << 30;
+
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
+
+    let now = std::time::Instant::now();
+    VM::run_basic_unrolled::<_, _, _>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut source,
+    );
+    let elapsed = now.elapsed();
+
+    let final_timestamp = state.timestamp;
+    assert_eq!(final_timestamp % TIMESTAMP_STEP, 0);
+    let num_instructions = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+    println!(
+        "Frequency is {} MHz over {} instructions",
+        (num_instructions as f64) * 1000f64 / (elapsed.as_nanos() as f64),
+        num_instructions,
+    );
+
+    println!("PC = 0x{:08x}", state.pc);
+    dbg!(state.registers.map(|el| el.value));
+
+    {
+        let worker = Worker::new_with_num_threads(8);
+        use crate::unrolled::replay_non_mem;
+        let cycles_per_circuit = (1 << 24) - 1;
+        let now = std::time::Instant::now();
+        let t = replay_non_mem::<
+            ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            Global,
+            { common_constants::rom::ROM_SECOND_WORD_BITS },
+        >(&tape, &snapshotter, cycles_per_circuit, &worker);
+        let elapsed = now.elapsed();
+
+        println!(
+            "Replay frequency is {} MHz over {} instructions into {} circuits",
+            (num_instructions as f64) * 1000f64 / (elapsed.as_nanos() as f64),
+            num_instructions,
+            t.len(),
+        );
     }
 }

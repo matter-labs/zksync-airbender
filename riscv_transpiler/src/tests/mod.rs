@@ -18,16 +18,9 @@ const INITIAL_PC: u32 = 0;
 fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
     type CountersT = DelegationsAndFamiliesCounters;
     {
-        let period = 1;
-        let num_snapshots = 1;
-        let cycles_bound = period * num_snapshots;
-
         let mut state = State::initial_with_counters(CountersT::default());
         state.registers[1].value = op1;
         state.registers[2].value = op2;
-
-        let mut snapshotter: SimpleSnapshotter<CountersT, 5> =
-            SimpleSnapshotter::new_with_cycle_limit(cycles_bound, period, state);
 
         let instr = format!("{} x3, x1, x2", op_name);
         let mut empty_hash: HashMap<String, u32> = HashMap::new();
@@ -36,25 +29,17 @@ fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
             .unwrap();
         let text_section = vec![encoding];
 
-        let instructions: Vec<Instruction> = text_section
-            .iter()
-            .copied()
-            .map(|el| decode::<FullUnsignedMachineDecoderConfig>(el))
-            .collect();
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
 
-        VM::<CountersT>::run_basic_unrolled::<
-            SimpleSnapshotter<CountersT, 5>,
-            RamWithRomRegion<5>,
-            _,
-        >(
+        VM::<CountersT>::run_basic_unrolled::<_, _, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
-            &mut snapshotter,
+            &mut (),
             &tape,
-            period,
+            16,
             &mut (),
         );
 
@@ -65,15 +50,8 @@ fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
 fn test_reg_imm_op(op_name: &str, expected: u32, op1: u32, imm: u16) {
     type CountersT = DelegationsAndFamiliesCounters;
     {
-        let period = 1;
-        let num_snapshots = 1;
-        let cycles_bound = period * num_snapshots;
-
         let mut state = State::initial_with_counters(CountersT::default());
         state.registers[1].value = op1;
-
-        let mut snapshotter: SimpleSnapshotter<CountersT, 5> =
-            SimpleSnapshotter::new_with_cycle_limit(cycles_bound, period, state);
 
         let instr = format!("{} x3, x1, 0x{:x}", op_name, imm);
         let mut empty_hash: HashMap<String, u32> = HashMap::new();
@@ -82,25 +60,17 @@ fn test_reg_imm_op(op_name: &str, expected: u32, op1: u32, imm: u16) {
             .unwrap();
         let text_section = vec![encoding];
 
-        let instructions: Vec<Instruction> = text_section
-            .iter()
-            .copied()
-            .map(|el| decode::<FullUnsignedMachineDecoderConfig>(el))
-            .collect();
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
 
-        VM::<CountersT>::run_basic_unrolled::<
-            SimpleSnapshotter<CountersT, 5>,
-            RamWithRomRegion<5>,
-            _,
-        >(
+        VM::<CountersT>::run_basic_unrolled::<_, _, _>(
             &mut state,
-            num_snapshots,
             &mut ram,
-            &mut snapshotter,
+            &mut (),
             &tape,
-            period,
+            16,
             &mut (),
         );
 

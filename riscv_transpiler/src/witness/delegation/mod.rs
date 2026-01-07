@@ -9,6 +9,7 @@ pub mod bigint;
 pub mod blake2_round_function;
 pub mod keccak_special5;
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DelegationWitness<
     const REG_ACCESSES: usize,

@@ -37,8 +37,10 @@ impl DeviceProperties {
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
     pub powers_of_w_coarse_log_count: u32,
-    pub allocation_block_log_size: u32,
-    pub device_slack_blocks_count: usize,
+    pub allocator_block_log_size: u32,
+    pub device_slack_static_bytes: usize,
+    pub device_slack_per_thread_bytes: usize,
+    pub max_device_allocation_blocks_count: Option<usize>,
     pub host_allocator_blocks_count: usize,
 }
 
@@ -46,9 +48,11 @@ impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 12,
-            allocation_block_log_size: 22,    // 4 MB blocks
-            device_slack_blocks_count: 64,    // 256 MB slack
-            host_allocator_blocks_count: 128, // 512 MB host allocator pool
+            allocator_block_log_size: 24,           // 16 MB blocks
+            device_slack_static_bytes: 1 << 27,     // 128 MB static slack
+            device_slack_per_thread_bytes: 1 << 11, // 2 KB per thread slack
+            max_device_allocation_blocks_count: None,
+            host_allocator_blocks_count: 64, // 1 GB host allocator pool
         }
     }
 }
@@ -107,18 +111,29 @@ impl ProverContext {
     }
 
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        let slack_size = config.device_slack_blocks_count << config.allocation_block_log_size;
-        let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
         let device_id = get_device()?;
+        let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
+        let max_threads_per_mpc =
+            device_get_attribute(CudaDeviceAttr::MaxThreadsPerMultiProcessor, device_id)? as usize;
+        let max_threads_count = mpc * max_threads_per_mpc;
+        let device_slack_threads_bytes = config.device_slack_per_thread_bytes * max_threads_count;
+        let slack_size = config.device_slack_static_bytes + device_slack_threads_bytes;
+        let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
+        let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
         let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let (free, _) = memory_get_info()?;
-        let mut device_blocks_count = free >> config.allocation_block_log_size;
+        let mut device_blocks_count =
+            if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
+                max_blocks_count
+            } else {
+                let (free, _) = memory_get_info()?;
+                free >> allocator_block_log_size
+            };
         let device_allocation = loop {
             let result = era_cudart::memory::DeviceAllocation::<u8>::alloc(
-                device_blocks_count << config.allocation_block_log_size,
+                device_blocks_count << allocator_block_log_size,
             );
             match result {
                 Ok(allocation) => break allocation,
@@ -138,19 +153,16 @@ impl ProverContext {
             StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
         let device_allocator = NonConcurrentStaticDeviceAllocator::new(
             [device_allocation_backend],
-            config.allocation_block_log_size,
+            allocator_block_log_size,
         );
-        let device_allocator_mem_size = device_blocks_count << config.allocation_block_log_size;
-        let host_allocation_size =
-            config.host_allocator_blocks_count << config.allocation_block_log_size;
+        let device_allocator_mem_size = device_blocks_count << allocator_block_log_size;
+        let host_allocation_size = config.host_allocator_blocks_count << allocator_block_log_size;
         let host_allocation = era_cudart::memory::HostAllocation::alloc(
             host_allocation_size,
             CudaHostAllocFlags::DEFAULT,
         )?;
-        let host_allocator = NonConcurrentStaticHostAllocator::new(
-            [host_allocation],
-            config.allocation_block_log_size,
-        );
+        let host_allocator =
+            NonConcurrentStaticHostAllocator::new([host_allocation], allocator_block_log_size);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
