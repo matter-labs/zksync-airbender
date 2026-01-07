@@ -449,7 +449,7 @@ pub fn run_unrolled_reduced_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
+            63,
             80,
             &worker,
         );
@@ -461,7 +461,7 @@ pub fn run_unrolled_reduced_test_impl(
         );
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
 
-        serialize_to_file(&proof, "unrolled_reduced_proof");
+        serialize_to_file(&proof, "unified_reduced_unrolled_proof.json");
     }
 
     assert_eq!(permutation_argument_accumulator, Mersenne31Quartic::ONE);
