@@ -15,5 +15,4 @@ serde.workspace = true
 syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
 proc-macro2 = "1"
-proc-macro-error2 = "*"
 serde_json = "*"
