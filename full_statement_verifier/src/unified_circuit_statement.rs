@@ -1,8 +1,26 @@
 use super::*;
 use crate::imports::*;
-use crate::unrolled_proof_statement::read_setups;
+// use crate::unrolled_proof_statement::read_setups;
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
+
+#[allow(invalid_value)]
+#[inline(always)]
+pub unsafe fn read_setups<I: NonDeterminismSource, const N: usize>(
+) -> [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; N] {
+    let mut result: [[MaybeUninit<MerkleTreeCap<CAP_SIZE>>; 2]; N] =
+        [[const { core::mem::MaybeUninit::uninit() }; NUM_COSETS]; N];
+
+    for dst in result.iter_mut() {
+        MerkleTreeCap::<CAP_SIZE>::read_caps_into::<I, NUM_COSETS>(dst.as_mut_ptr().cast());
+    }
+
+    result.map(|el| el.map(|el| el.assume_init()))
+}
+
+pub const FINAL_PC_BUFFER_PC_IDX: usize = 0;
+pub const FINAL_PC_BUFFER_TS_LOW_IDX: usize = 1;
+pub const FINAL_PC_BUFFER_TS_HIGH_IDX: usize = 2;
 
 pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
@@ -57,7 +75,7 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
 
     transcript.absorb(&registers_buffer);
 
-    use crate::unrolled_proof_statement::*;
+    // use crate::unrolled_proof_statement::*;
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
@@ -404,7 +422,14 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
     use crate::definitions::*;
     match op_type {
         OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
-            crate::unrolled_proof_statement::verify_unrolled_recursion_layer()
+            #[cfg(feature = "verifiers")]
+            {
+                crate::unrolled_proof_statement::verify_unrolled_recursion_layer()
+            }
+            #[cfg(not(feature = "verifiers"))]
+            {
+                panic!("Unrolled recursion layer verification is not available. Enable `verifiers` feature.");
+            }
         }
         OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
             verify_unified_circuit_recursion_layer()
