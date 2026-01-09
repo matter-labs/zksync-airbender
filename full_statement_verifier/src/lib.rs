@@ -19,6 +19,9 @@ pub mod unified_circuit_statement;
 #[cfg(feature = "verifiers")]
 pub mod unrolled_proof_statement;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod statement_common;
+
 use self::constants::*;
 
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};

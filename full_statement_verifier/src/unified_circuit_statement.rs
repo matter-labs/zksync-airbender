@@ -1,26 +1,11 @@
 use super::*;
 use crate::imports::*;
-// use crate::unrolled_proof_statement::read_setups;
+use crate::statement_common::{
+    read_setups, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+};
+
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
-
-#[allow(invalid_value)]
-#[inline(always)]
-pub unsafe fn read_setups<I: NonDeterminismSource, const N: usize>(
-) -> [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; N] {
-    let mut result: [[MaybeUninit<MerkleTreeCap<CAP_SIZE>>; 2]; N] =
-        [[const { core::mem::MaybeUninit::uninit() }; NUM_COSETS]; N];
-
-    for dst in result.iter_mut() {
-        MerkleTreeCap::<CAP_SIZE>::read_caps_into::<I, NUM_COSETS>(dst.as_mut_ptr().cast());
-    }
-
-    result.map(|el| el.map(|el| el.assume_init()))
-}
-
-pub const FINAL_PC_BUFFER_PC_IDX: usize = 0;
-pub const FINAL_PC_BUFFER_TS_LOW_IDX: usize = 1;
-pub const FINAL_PC_BUFFER_TS_HIGH_IDX: usize = 2;
 
 pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
@@ -74,8 +59,6 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     assert_eq!(registers_buffer[0], 0);
 
     transcript.absorb(&registers_buffer);
-
-    // use crate::unrolled_proof_statement::*;
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
