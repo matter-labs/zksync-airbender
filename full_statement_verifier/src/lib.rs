@@ -10,11 +10,11 @@ pub use verifier_common;
 mod constants;
 pub mod definitions;
 
-#[cfg(any(feature = "verifiers", feature = "universal_verifiers_set"))]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod imports;
 #[cfg(feature = "verifiers")]
 pub mod legacy_circuits;
-#[cfg(any(feature = "verifiers", feature = "universal_verifiers_set"))]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod unified_circuit_statement;
 #[cfg(feature = "verifiers")]
 pub mod unrolled_proof_statement;

@@ -2,7 +2,7 @@ use crate::constants::*;
 use crate::MerkleTreeCap;
 use crate::VerifierFunctionPointer;
 
-#[cfg(any(feature = "verifiers", feature = "universal_verifiers_set"))]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub const BLAKE_WITH_COMPRESSION_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -29,7 +29,7 @@ pub const KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
     0,
 > = keccak_special5_verifier::verify;
 
-#[cfg(any(feature = "verifiers", feature = "universal_verifiers_set"))]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use crate::constants::ALL_DELEGATION_CIRCUITS_PARAMS;
 
 #[cfg(feature = "verifiers")]
@@ -59,7 +59,7 @@ pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
 ];
 
-#[cfg(any(feature = "verifiers", feature = "universal_verifiers_set"))]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32,
     u32,
