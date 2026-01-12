@@ -52,9 +52,24 @@ verifiers = [
     "shift_binary_csr_verifier",
 
     "inits_and_teardowns_verifier",
-    
     "unified_reduced_machine_verifier"
 ]
+
+# This feature exists to only depend on the verifiers that are needed for
+# `verify_unified_circuit_recursion_layer` function call. This way, we significantly
+# reduce the dependency graph / artifact size, which might be important
+# for certain use cases (e.g., WASM).
+unified_verifier_only = [
+    "blake2_with_compression_verifier",
+    "unified_reduced_machine_verifier"
+]
+unified_verifier_only_security_80 = [
+    "unified_verifier_only",
+    "verifier_common/security_80", 
+    "blake2_with_compression_verifier/security_80",
+    "unified_reduced_machine_verifier/security_80"
+]
+
 security_80 = ["verifiers", "verifier_common/security_80", "risc_v_cycles_verifier/security_80", "reduced_risc_v_machine_verifier/security_80", "reduced_risc_v_log_23_machine_verifier/security_80", "final_reduced_risc_v_machine_verifier/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
 security_100 = ["verifiers", "verifier_common/security_100", "risc_v_cycles_verifier/security_100", "reduced_risc_v_machine_verifier/security_100", "reduced_risc_v_log_23_machine_verifier/security_100", "final_reduced_risc_v_machine_verifier/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
 blake2_with_compression = ["verifier_common/blake2_with_compression", "risc_v_cycles_verifier/blake2_with_compression", "reduced_risc_v_machine_verifier/blake2_with_compression", "reduced_risc_v_log_23_machine_verifier/blake2_with_compression", "final_reduced_risc_v_machine_verifier/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression", "keccak_special5_verifier/blake2_with_compression"]

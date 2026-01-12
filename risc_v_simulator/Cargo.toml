@@ -12,11 +12,10 @@ categories.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ringbuffer = "*"
 addr2line = "0.22"
 object = "*"
 memmap2 = "*"
-inferno = "*"
+inferno = { version = "*" }
 blake2s_u32 = { workspace = true, optional = true }
 common_constants = { workspace = true }
 cs = { workspace = true, default-features = false }
