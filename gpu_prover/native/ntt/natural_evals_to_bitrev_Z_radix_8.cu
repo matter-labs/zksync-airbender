@@ -18,11 +18,11 @@ EXTERN __launch_bounds__(256, 3) __global__
   constexpr unsigned TILE_SIZE = 1 << LOG_TILE_SIZE;
   constexpr unsigned TILE_MASK = TILE_SIZE - 1;
 
-  __shared__ e2f static_smem[VALS_PER_BLOCK];
+  __shared__ e2 static_smem[VALS_PER_BLOCK];
 
   const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned warp_id = threadIdx.x >> 5;
-  e2f *smem = static_smem + warp_id * (WARP_SIZE << LOG_VALS_PER_THREAD);
+  e2 *smem = static_smem + warp_id * (WARP_SIZE << LOG_VALS_PER_THREAD);
   const unsigned lane_id = threadIdx.x & 31;
   const unsigned tile_id = lane_id >> LOG_TILE_SIZE;
   const unsigned lane_in_tile = lane_id & TILE_MASK;
@@ -33,10 +33,12 @@ EXTERN __launch_bounds__(256, 3) __global__
   gmem_in.add_row(gmem_block_offset + gmem_warp_offset);
   gmem_out.add_row(gmem_block_offset + gmem_warp_offset);
 
-  e2f vals0[RADIX];
-  e2f vals1[RADIX];
+  e2 vals0[RADIX];
+  e2 vals1[RADIX];
 
   unsigned twiddle_stride = 1 << (OMEGA_LOG_ORDER - LOG_RADIX * (start_stage + 1));
+
+  const auto twiddle = get_twiddle_with_direct_index<true>(log_n);
 
   // First three stages
   {
@@ -48,7 +50,7 @@ EXTERN __launch_bounds__(256, 3) __global__
     }
 
     if (start_stage > 0)
-      apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, block_exchg_region, twiddle_stride, exchg_region_bit_chunks);
+      apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, block_exchg_region, twiddle_stride, exchg_region_bit_chunks, twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
@@ -79,7 +81,8 @@ EXTERN __launch_bounds__(256, 3) __global__
     const unsigned exchg_region_0 = block_exchg_region * RADIX + 2 * tile_id;
     const unsigned exchg_region_1 = exchg_region_0 + 1;
     twiddle_stride >>= LOG_RADIX;
-    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks);
+    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks,
+                                               twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
@@ -102,8 +105,8 @@ EXTERN __launch_bounds__(256, 3) __global__
   constexpr unsigned RADIX = 1 << LOG_RADIX;
   constexpr unsigned VALS_PER_BLOCK = 4096;
 
-  __shared__ e2f static_smem[VALS_PER_BLOCK];
-  e2f *smem = static_smem;
+  __shared__ e2 static_smem[VALS_PER_BLOCK];
+  e2 *smem = static_smem;
 
   const unsigned effective_block_idx_x = blockIdx.x + grid_offset;
   const unsigned warp_id{threadIdx.x >> 5};
@@ -112,10 +115,12 @@ EXTERN __launch_bounds__(256, 3) __global__
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
-  e2f vals0[RADIX];
-  e2f vals1[RADIX];
+  e2 vals0[RADIX];
+  e2 vals1[RADIX];
 
   unsigned twiddle_stride = 1 << (OMEGA_LOG_ORDER - LOG_RADIX * (start_stage + 1));
+
+  const auto twiddle = get_twiddle_with_direct_index<true>(log_n);
 
   // First three stages
   {
@@ -126,7 +131,7 @@ EXTERN __launch_bounds__(256, 3) __global__
     }
 
     if (start_stage > 0)
-      apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, effective_block_idx_x, twiddle_stride, exchg_region_bit_chunks);
+      apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, effective_block_idx_x, twiddle_stride, exchg_region_bit_chunks, twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
@@ -157,7 +162,7 @@ EXTERN __launch_bounds__(256, 3) __global__
     }
 
     twiddle_stride >>= LOG_RADIX;
-    apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, warp_exchg_region_offset, twiddle_stride, ++exchg_region_bit_chunks);
+    apply_twiddles_same_region<LOG_RADIX>(vals0, vals1, warp_exchg_region_offset, twiddle_stride, ++exchg_region_bit_chunks, twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
@@ -189,7 +194,8 @@ EXTERN __launch_bounds__(256, 3) __global__
     const unsigned exchg_region_0 = warp_exchg_region_offset + tile_id * 2;
     const unsigned exchg_region_1 = exchg_region_0 + 1;
     twiddle_stride >>= LOG_RADIX;
-    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks);
+    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks,
+                                               twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
@@ -218,15 +224,16 @@ EXTERN __launch_bounds__(256, 3) __global__
     const unsigned exchg_region_0 = warp_exchg_region_offset + lane_id;
     const unsigned exchg_region_1 = exchg_region_0 + 32;
     twiddle_stride >>= LOG_RADIX;
-    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks);
+    apply_twiddles_distinct_regions<LOG_RADIX>(vals0, vals1, exchg_region_0, exchg_region_1, twiddle_stride, ++exchg_region_bit_chunks,
+                                               twiddle);
 
     size_8_inv_dit(vals0);
     size_8_inv_dit(vals1);
 
 #pragma unroll
     for (unsigned i{0}; i < RADIX; i++) {
-      vals0[i] = e2f::mul(vals0[i], ab_inv_sizes[log_n]);
-      vals1[i] = e2f::mul(vals1[i], ab_inv_sizes[log_n]);
+      vals0[i] = e2::mul(vals0[i], ab_inv_sizes[log_n]);
+      vals1[i] = e2::mul(vals1[i], ab_inv_sizes[log_n]);
     }
 
     gmem_out.set_four_adjacent(thread_offset, vals0[0], vals0[1], vals0[2], vals0[3]);

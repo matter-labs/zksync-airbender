@@ -11,6 +11,7 @@ namespace airbender::ntt {
 
 using bf = base_field;
 using e2f = ext2_field;
+using e2 = ext2_field;
 using e4f = ext2_field;
 
 DEVICE_FORCEINLINE unsigned bitrev(const unsigned idx, const unsigned log_n) { return __brev(idx) >> (32 - log_n); }
