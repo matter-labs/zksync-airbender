@@ -149,8 +149,8 @@ impl StageTwoOutput {
         let d_generic_lookups_args_to_table_entries_map =
             DeviceMatrix::new(&generic_lookup_mapping, trace_len);
         let trace_holder = &mut self.trace_holder;
-        let evaluations = trace_holder.get_uninit_evaluations_mut();
-        let mut d_stage_2_cols = DeviceMatrixMut::new(evaluations, trace_len);
+        let mut evaluations = trace_holder.get_uninit_evaluations_mut();
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut evaluations, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
         let mut d_alloc_e4_scratch =
             context.alloc(num_e4_scratch_elems, AllocationPlacement::BestFit)?;
@@ -245,6 +245,7 @@ impl StageTwoOutput {
                 context.get_device_properties(),
             )?;
         }
+        drop(evaluations);
         generic_lookup_mapping.free();
         d_alloc_e4_scratch.free();
         d_alloc_scratch_for_cub_ops.free();
@@ -262,7 +263,7 @@ impl StageTwoOutput {
         trace_holder.extend_and_commit(0, context)?;
         let mut d_last_row = context.alloc(num_stage_2_cols, AllocationPlacement::BestFit)?;
         let evaluations = trace_holder.get_evaluations(context)?;
-        let last_row_src = DeviceMatrixChunk::new(evaluations, trace_len, trace_len - 1, 1);
+        let last_row_src = DeviceMatrixChunk::new(&evaluations, trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
         let mut last_row = unsafe { context.alloc_host_uninit_slice(num_stage_2_cols) };
