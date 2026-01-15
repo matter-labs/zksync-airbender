@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 unroll.workspace = true
+common_constants = { workspace = true, optional = true }
 
 [dev-dependencies]
 blake2 = "*"
@@ -21,6 +22,6 @@ name = "neon"
 harness = false
 
 [features]
-blake2_with_compression = []
+blake2_with_compression = ["common_constants"]
 
 default = []

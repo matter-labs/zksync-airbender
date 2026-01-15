@@ -30,7 +30,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
-    pow_bits: ProofPowConfig,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> ThirdStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
@@ -46,7 +46,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
     let num_transcript_challenges = 2usize * 4;
     let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
         seed,
-        pow_bits.quotient_alpha_pow_bits,
+        security_config.quotient_alpha_pow_bits,
         num_transcript_challenges,
         worker,
     );

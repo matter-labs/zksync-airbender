@@ -13,7 +13,6 @@ use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
-use crate::prover_stages::ProofPowConfig;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_unified_executor;
 
 pub mod reduced_machine {
@@ -457,6 +456,9 @@ pub fn run_unrolled_reduced_test_impl(
         //     None
         // };
 
+        let default_security_config =
+            prover_stages::ProofSecurityConfig::for_queries_only(5, 28, 63);
+
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
@@ -476,8 +478,7 @@ pub fn run_unrolled_reduced_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            63,
-            80,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());

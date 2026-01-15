@@ -518,8 +518,7 @@ pub fn prove_unified_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    SECURITY_BITS,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
@@ -811,8 +810,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            crate::NUM_QUERIES,
-            SECURITY_BITS,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]

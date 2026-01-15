@@ -599,8 +599,7 @@ pub fn prove_unrolled_execution<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    SECURITY_BITS,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -718,8 +717,7 @@ pub fn prove_unrolled_execution<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    SECURITY_BITS,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -803,8 +801,7 @@ pub fn prove_unrolled_execution<
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
-                crate::NUM_QUERIES,
-                SECURITY_BITS,
+                &crate::SECURITY_CONFIG.for_prover(),
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -918,8 +915,7 @@ pub fn prove_unrolled_execution<
                 Some(delegation_type as u16),
                 prec.lde_factor,
                 prec.tree_cap_size,
-                crate::NUM_QUERIES,
-                SECURITY_BITS,
+                &crate::SECURITY_CONFIG.for_prover(),
                 worker,
             );
             #[cfg(feature = "timing_logs")]
@@ -1552,8 +1548,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    SECURITY_BITS,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -1673,8 +1668,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    SECURITY_BITS,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -1748,8 +1742,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
-                crate::NUM_QUERIES,
-                SECURITY_BITS,
+                &crate::SECURITY_CONFIG.for_prover(),
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -2036,8 +2029,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            crate::NUM_QUERIES,
-            SECURITY_BITS,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]
@@ -2064,7 +2056,7 @@ pub(crate) mod test {
     use crate::bincode_deserialize_from_file;
     use crate::deserialize_from_file;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-    use prover::prover_stages::pow_bits_calculator;
+    use prover::prover_stages::pow_bits;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
     use std::path::Path;

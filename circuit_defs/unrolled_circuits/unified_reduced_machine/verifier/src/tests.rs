@@ -82,23 +82,18 @@ fn test_unified_cycle_or_delegation() {
 fn test_unrolled_circuit() {
     // create an oracle to feed into verifier and look at the transcript values
 
-    let name = "unified_reduced";
-
     // let name = "add_sub_lui_auipc_mop";
     // let name = "jump_branch_slt";
-    // let name = "shift_binop_csrrw";
+    let name = "shift_binop_csrrw";
     // let name = "mul_div_unsigned";
     // let name = "word_only_load_store";
     // let name = "subword_only_load_store";
     // let name = "inits_and_teardowns";
 
     let proof: prover::prover_stages::unrolled_prover::UnrolledModeProof =
-        deserialize_from_file(&format!("../../../../prover/{}_unrolled_proof.json", name));
-    // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //     deserialize_from_file(&format!("../cs/{}_preprocessed_layout.json", name));
-
+        deserialize_from_file(&format!("../prover/{}_unrolled_proof.json", name));
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-        deserialize_from_file(&"../../../../cs/reduced_machine_preprocessed_layout.json");
+        deserialize_from_file(&format!("../cs/{}_preprocessed_layout.json", name));
 
     dbg!(&proof.public_inputs);
     dbg!(&proof.aux_boundary_values);

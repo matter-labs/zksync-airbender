@@ -7,7 +7,7 @@ edition = "2024"
 quote = { version = "1" }
 proc-macro2 = "1"
 
-prover = { workspace = true, features = ["prover", "worst_case_config_generation"] }
+prover = { workspace = true, features = ["prover"] }
 verifier_common = { workspace = true, features = ["proof_utils", "worst_case_config_generation"] }
 
 risc_v_cycles_verifier = {path = "../../circuit_defs/risc_v_cycles/verifier", features = ["worst_case_config_generation"]}

@@ -150,7 +150,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
-    pow_bits: ProofPowConfig,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> FourthStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
@@ -161,7 +161,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let (quotient_z_pow_challenge, transcript_challenges) =
         get_pow_challenge_and_transcript_challenges(
             seed,
-            pow_bits.quotient_z_pow_bits,
+            security_config.quotient_z_pow_bits,
             num_transcript_challenges,
             worker,
         );
@@ -496,7 +496,7 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let (deep_poly_alpha_pow_challenge, transcript_challenges) =
         get_pow_challenge_and_transcript_challenges(
             seed,
-            pow_bits.deep_poly_alpha_pow_bits,
+            security_config.deep_poly_alpha_pow_bits,
             num_transcript_challenges,
             worker,
         );

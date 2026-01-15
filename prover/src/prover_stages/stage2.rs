@@ -52,7 +52,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
-    pow_bits: ProofPowConfig,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> SecondStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
@@ -68,7 +68,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let num_transcript_challenges = (NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
     let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
         seed,
-        pow_bits.lookup_pow_bits,
+        security_config.lookup_pow_bits,
         num_transcript_challenges,
         worker,
     );

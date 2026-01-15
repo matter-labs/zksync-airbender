@@ -36,8 +36,8 @@ pub mod stage3;
 pub mod stage4;
 pub mod stage5;
 
-pub mod pow_bits_calculator;
-pub use pow_bits_calculator::{ProofPowChallenges, ProofPowConfig};
+pub mod pow_bits;
+pub use pow_bits::*;
 
 pub(crate) mod stage2_utils;
 
@@ -89,48 +89,6 @@ pub struct CosetBoundColumnMajorTracePart<A: Allocator + Clone> {
 pub struct SetupPrecomputations<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
     pub ldes: Vec<CosetBoundTracePart<N, A>>,
     pub trees: Vec<T>,
-}
-
-#[inline(always)]
-pub(crate) fn get_pow_challenge_and_transcript_challenges(
-    seed: &mut Seed,
-    pow_bits: u32,
-    num_elements: usize,
-    worker: &Worker,
-) -> (u64, Vec<u32>) {
-    let pow_challenge;
-    if pow_bits > 0 {
-        #[cfg(feature = "debug_logs")]
-        println!("Searching for PoW for {} bits", pow_bits);
-        #[cfg(feature = "timing_logs")]
-        let now = std::time::Instant::now();
-        (*seed, pow_challenge) = Transcript::search_pow(seed, pow_bits, worker);
-        #[cfg(feature = "timing_logs")]
-        println!(
-            "PoW for {} took {:?}",
-            pow_bits.fri_queries_pow_bits,
-            now.elapsed()
-        );
-    } else {
-        #[cfg(feature = "debug_logs")]
-        println!("Skip searching for PoW");
-        pow_challenge = 0;
-    };
-
-    let mut transcript_challenges = if pow_bits > 0 {
-        vec![0u32; (num_elements + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)]
-    } else {
-        vec![0u32; num_elements.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)]
-    };
-
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
-
-    if pow_bits > 0 {
-        // Skip first challenge used for pow
-        transcript_challenges.remove(0);
-    }
-
-    (pow_challenge, transcript_challenges)
 }
 
 #[inline(always)]
@@ -473,8 +431,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
     _tree_cap_size: usize,
-    num_queries: usize,
-    security_bits: usize,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> (ProverData<N, A, DefaultTreeConstructor>, Proof) {
     prove_configured::<N, A, DefaultTreeConstructor>(
@@ -489,8 +446,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
         delegation_processing_type,
         lde_factor,
         _tree_cap_size,
-        num_queries,
-        security_bits,
+        security_config,
         worker,
     )
 }
@@ -507,8 +463,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
     _tree_cap_size: usize,
-    num_queries: usize,
-    security_bits: usize,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> (ProverData<N, A, T>, Proof) {
     let WitnessEvaluationData {
@@ -618,8 +573,8 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    let pow_bits =
-        ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
+    // let pow_bits =
+    //     ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
 
     let stage_2_output = stage2::prover_stage_2(
         &mut seed,
@@ -632,7 +587,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
-        pow_bits.clone(),
+        security_config,
         worker,
     );
 
@@ -695,7 +650,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
-        pow_bits.clone(),
+        security_config,
         worker,
     );
 
@@ -717,7 +672,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
-        pow_bits.clone(),
+        security_config,
         worker,
     );
 
@@ -731,17 +686,16 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         precomputations,
         lde_factor,
         &optimal_folding,
-        num_queries,
-        pow_bits.clone(),
+        security_config,
         worker,
     );
 
-    let mut queries = Vec::with_capacity(num_queries);
+    let mut queries = Vec::with_capacity(security_config.num_queries);
     let tree_index_bits = trace_len.trailing_zeros();
     let tree_index_mask = (1 << tree_index_bits) - 1;
     let coset_index_bits = lde_factor.trailing_zeros();
     let query_index_bits = tree_index_bits + coset_index_bits;
-    let num_required_bits = (query_index_bits as usize) * num_queries;
+    let num_required_bits = (query_index_bits as usize) * security_config.num_queries;
     let num_required_words =
         num_required_bits.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
 
@@ -754,13 +708,13 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let (pow_challenge, source) = get_pow_challenge_and_transcript_challenges(
         &mut seed,
-        pow_bits.fri_queries_pow_bits,
+        security_config.fri_queries_pow_bits,
         num_required_words,
         worker,
     );
     let mut bit_source = BitSource::new(source[..].to_vec());
 
-    for _i in 0..num_queries {
+    for _i in 0..security_config.num_queries {
         let query_index = assemble_query_index(query_index_bits as usize, &mut bit_source);
         let tree_index = query_index & tree_index_mask;
         let coset_index = query_index >> tree_index_bits;

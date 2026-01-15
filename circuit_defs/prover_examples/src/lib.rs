@@ -42,13 +42,10 @@ pub mod unified;
 pub mod unrolled;
 
 pub const LDE_FACTOR_LOG2: usize = 1;
-pub const POW_BITS: usize = verifier_common::POW_BITS;
+pub const NUM_FOLDINGS: usize = 5; // same for all circuits we use here
+pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FOLDINGS> =
+    verifier_common::SizedProofSecurityConfig::<NUM_FOLDINGS>::worst_case_config();
 pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
-pub const NUM_QUERIES: usize = verifier_common::num_queries_for_security_params(
-    verifier_common::SECURITY_BITS,
-    verifier_common::POW_BITS,
-    LDE_FACTOR_LOG2,
-);
 
 #[cfg(not(feature = "precheck_satisfied"))]
 const PRECHECK_SATISFIED: bool = false;
@@ -573,8 +570,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             None,
             lde_factor,
             risc_v_cycles::TREE_CAP_SIZE,
-            NUM_QUERIES,
-            SECURITY_BITS,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]
@@ -706,8 +702,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
                 Some(*delegation_type as u16),
                 prec.lde_factor,
                 prec.tree_cap_size,
-                NUM_QUERIES,
-                SECURITY_BITS,
+                &crate::SECURITY_CONFIG.for_prover(),
                 worker,
             );
             #[cfg(feature = "timing_logs")]

@@ -115,12 +115,12 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_before_stage2(),
     );
 
-    if POW_CONFIG.lookup_pow_bits > 0 {
+    if SECURITY_CONFIG.lookup_pow_bits > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.lookup_pow_challenge,
-            POW_CONFIG.lookup_pow_bits as u32,
+            SECURITY_CONFIG.lookup_pow_bits as u32,
         );
     }
 
@@ -128,7 +128,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     let mut transcript_challenges = MaybeUninit::<
         [u32; transcript_challenge_array_size(
             NUM_STAGE_2_CHALLENGES * 4,
-            POW_CONFIG.lookup_pow_bits as usize,
+            SECURITY_CONFIG.lookup_pow_bits as usize,
         )],
     >::uninit()
     .assume_init();
@@ -138,7 +138,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if POW_CONFIG.lookup_pow_bits > 0 {
+    let mut it = if SECURITY_CONFIG.lookup_pow_bits > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -196,12 +196,12 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_stage2_to_stage3(),
     );
 
-    if POW_CONFIG.quotient_alpha_pow_bits > 0 {
+    if SECURITY_CONFIG.quotient_alpha_pow_bits > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.quotient_alpha_pow_challenge,
-            POW_CONFIG.quotient_alpha_pow_bits as u32,
+            SECURITY_CONFIG.quotient_alpha_pow_bits as u32,
         );
     }
 
@@ -209,7 +209,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     let mut transcript_challenges = MaybeUninit::<
         [u32; transcript_challenge_array_size(
             2usize * 4,
-            POW_CONFIG.quotient_alpha_pow_bits as usize,
+            SECURITY_CONFIG.quotient_alpha_pow_bits as usize,
         )],
     >::uninit()
     .assume_init();
@@ -219,7 +219,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if POW_CONFIG.quotient_alpha_pow_bits > 0 {
+    let mut it = if SECURITY_CONFIG.quotient_alpha_pow_bits > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -245,18 +245,21 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_stage3_to_stage4(),
     );
 
-    if POW_CONFIG.quotient_z_pow_bits > 0 {
+    if SECURITY_CONFIG.quotient_z_pow_bits > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.quotient_z_pow_challenge,
-            POW_CONFIG.quotient_z_pow_bits as u32,
+            SECURITY_CONFIG.quotient_z_pow_bits as u32,
         );
     }
 
     // draw DEEP poly linearization challenge
     let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(1usize * 4, POW_CONFIG.quotient_z_pow_bits as usize)],
+        [u32; transcript_challenge_array_size(
+            1usize * 4,
+            SECURITY_CONFIG.quotient_z_pow_bits as usize,
+        )],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(
@@ -265,7 +268,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if POW_CONFIG.quotient_z_pow_bits > 0 {
+    let mut it = if SECURITY_CONFIG.quotient_z_pow_bits > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -285,12 +288,12 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_evaluations_at_z(),
     );
 
-    if POW_CONFIG.deep_poly_alpha_pow_bits > 0 {
+    if SECURITY_CONFIG.deep_poly_alpha_pow_bits > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.deep_poly_alpha_pow_challenge,
-            POW_CONFIG.deep_poly_alpha_pow_bits as u32,
+            SECURITY_CONFIG.deep_poly_alpha_pow_bits as u32,
         );
     }
 
@@ -298,7 +301,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
     let mut transcript_challenges = MaybeUninit::<
         [u32; transcript_challenge_array_size(
             1usize * 4,
-            POW_CONFIG.deep_poly_alpha_pow_bits as usize,
+            SECURITY_CONFIG.deep_poly_alpha_pow_bits as usize,
         )],
     >::uninit()
     .assume_init();
@@ -308,7 +311,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if POW_CONFIG.deep_poly_alpha_pow_bits > 0 {
+    let mut it = if SECURITY_CONFIG.deep_poly_alpha_pow_bits > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -331,7 +334,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         .into_iter()
         .zip(fri_folding_challenges.iter_mut())
         .zip(skeleton.pow_challenges.foldings_pow_challenges)
-        .zip(POW_CONFIG.foldings_pow_bits)
+        .zip(SECURITY_CONFIG.foldings_pow_bits)
     {
         Blake2sTranscript::commit_with_seed_using_hasher(&mut transcript_hasher, &mut seed, caps);
 
@@ -391,12 +394,12 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             skeleton.transcript_elements_last_fri_step_leaf_values(),
         );
 
-        if POW_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
+        if SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
             Blake2sTranscript::verify_pow_using_hasher(
                 &mut transcript_hasher,
                 &mut seed,
                 skeleton.pow_challenges.foldings_pow_challenges[NUM_FRI_STEPS - 1],
-                POW_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1],
+                SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1],
             );
         }
 
@@ -404,7 +407,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         let mut transcript_challenges = MaybeUninit::<
             [u32; transcript_challenge_array_size(
                 1usize * 4,
-                POW_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] as usize,
+                SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] as usize,
             )],
         >::uninit()
         .assume_init();
@@ -414,7 +417,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = if POW_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
+        let mut it = if SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
             // skip 1 word used for PoW
             transcript_challenges[1..].as_chunks::<4>().0.iter()
         } else {
@@ -440,7 +443,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_hasher,
         &mut seed,
         skeleton.pow_challenges.fri_queries_pow_challenge,
-        POW_CONFIG.fri_queries_pow_bits as u32,
+        SECURITY_CONFIG.fri_queries_pow_bits as u32,
     );
 
     // now we need to draw enough bits to form query indexes

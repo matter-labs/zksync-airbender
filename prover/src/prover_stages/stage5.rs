@@ -32,8 +32,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     twiddles: &Twiddles<Mersenne31Complex, A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
-    num_queries: usize,
-    pow_bits: ProofPowConfig,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> FifthStageOutput<A, T> {
     // we have our FRI initial oracles in the bitreversed form, so we can can just commit and start folding
@@ -128,7 +127,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let mut last_fri_step_plain_leaf_values = vec![];
     let folding_with_merkle_tree_formations = folding_description.folding_sequence.len() - 1;
     assert_eq!(
-        pow_bits.foldings_pow_bits.len(),
+        security_config.foldings_pow_bits.len(),
         folding_description.folding_sequence.len()
     );
 
@@ -147,7 +146,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
             let (pow_challenge, transcript_challenges) =
                 get_pow_challenge_and_transcript_challenges(
                     seed,
-                    pow_bits.foldings_pow_bits[i],
+                    security_config.foldings_pow_bits[i],
                     num_transcript_challenges,
                     worker,
                 );
@@ -229,10 +228,10 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
             let combine_by = 1 << folding_description.folding_sequence[i + 1]; // account for next folding
 
-            let bound = if num_queries.is_power_of_two() {
-                num_queries
+            let bound = if security_config.num_queries.is_power_of_two() {
+                security_config.num_queries
             } else {
-                num_queries.next_power_of_two()
+                security_config.num_queries.next_power_of_two()
             };
             let domain_size = folded_cosets[0].trace.len();
             assert!(domain_size.is_power_of_two());
@@ -330,7 +329,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         let final_folding_degree_log_2 = *folding_description.folding_sequence.last().unwrap();
         let final_folding_challenge = {
             let num_transcript_challenges = 1usize * 4;
-            let pow_bits = pow_bits.foldings_pow_bits.last().copied().unwrap();
+            let pow_bits = security_config.foldings_pow_bits.last().copied().unwrap();
             let (pow_challenge, transcript_challenges) =
                 get_pow_challenge_and_transcript_challenges(
                     seed,
