@@ -25,7 +25,7 @@ use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
-use prover::prover_stages::{ProofPowChallenges, ProofPowConfig};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::slice;
 
@@ -79,7 +79,7 @@ impl StageTwoOutput {
     pub fn generate(
         &mut self,
         seed: &mut HostAllocation<Seed>,
-        pow_config: &ProofPowConfig,
+        security_config: &ProofSecurityConfig,
         external_challenges: &Option<ProofPowChallenges>,
         circuit: &CompiledCircuitArtifact<BF>,
         is_unrolled: bool,
@@ -100,7 +100,7 @@ impl StageTwoOutput {
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
         let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-        let pow_bits = pow_config.lookup_pow_bits;
+        let pow_bits = security_config.lookup_pow_bits;
         search_pow_challenge(
             seed,
             &mut pow_challenge,

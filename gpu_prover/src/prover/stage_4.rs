@@ -30,7 +30,7 @@ use field::{Field, FieldExtension};
 use itertools::Itertools;
 use prover::definitions::FoldingDescription;
 use prover::prover_stages::cached_data::ProverCachedData;
-use prover::prover_stages::{ProofPowChallenges, ProofPowConfig, Transcript};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig, Transcript};
 use prover::transcript::Seed;
 use std::ops::DerefMut;
 use std::slice;
@@ -46,7 +46,7 @@ pub(crate) struct StageFourOutput {
 impl StageFourOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
-        pow_config: &ProofPowConfig,
+        security_config: &ProofSecurityConfig,
         external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         is_unrolled: bool,
@@ -89,7 +89,7 @@ impl StageFourOutput {
         }
         let stream = context.get_exec_stream();
         let mut quotient_z_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-        let quotient_z_pow_bits = pow_config.quotient_z_pow_bits;
+        let quotient_z_pow_bits = security_config.quotient_z_pow_bits;
         search_pow_challenge(
             seed,
             &mut quotient_z_pow_challenge,
@@ -212,7 +212,7 @@ impl StageFourOutput {
         };
         callbacks.schedule(commit_values_at_z, stream)?;
         let mut deep_poly_alpha_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-        let deep_poly_alpha_pow_bits = pow_config.deep_poly_alpha_pow_bits;
+        let deep_poly_alpha_pow_bits = security_config.deep_poly_alpha_pow_bits;
         search_pow_challenge(
             seed,
             &mut deep_poly_alpha_pow_challenge,

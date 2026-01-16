@@ -26,7 +26,7 @@ use prover::definitions::{
 };
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
-use prover::prover_stages::{ProofPowChallenges, ProofPowConfig};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::sync::Arc;
 
@@ -81,8 +81,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
-    num_queries: usize,
-    security_bits: usize,
+    security_config: &ProofSecurityConfig,
     external_pow_challenges: Option<ProofPowChallenges>,
     recompute_cosets: bool,
     trees_cache_mode: TreesCacheMode,
@@ -103,8 +102,6 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
     let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize];
-    let optimal_folding_sequence_len = optimal_folding.folding_sequence.len();
-    let pow_config = ProofPowConfig::worst_case_config(security_bits, optimal_folding_sequence_len);
     let delegation_processing_type = delegation_processing_type.unwrap_or_default();
     let cached_data_values = ProverCachedData::new(
         &circuit,
@@ -194,7 +191,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_2_range.start(stream)?;
     stage_2_output.generate(
         &mut seed,
-        &pow_config,
+        security_config,
         &external_pow_challenges,
         &circuit,
         is_unrolled,
@@ -213,7 +210,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_3_range.start(stream)?;
     let mut stage_3_output = StageThreeOutput::new(
         &mut seed,
-        &pow_config,
+        security_config,
         &external_pow_challenges,
         &circuit,
         is_unrolled,
@@ -238,7 +235,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_4_range.start(stream)?;
     let mut stage_4_output = StageFourOutput::new(
         &mut seed,
-        &pow_config,
+        security_config,
         &external_pow_challenges,
         &circuit,
         is_unrolled,
@@ -262,13 +259,12 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_5_range.start(stream)?;
     let stage_5_output = StageFiveOutput::new(
         &mut seed,
-        &pow_config,
+        security_config,
         &external_pow_challenges,
         &mut stage_4_output,
         log_domain_size,
         log_lde_factor,
         &optimal_folding,
-        num_queries,
         &lde_precomputations,
         &mut callbacks,
         context,
@@ -281,7 +277,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     let fri_queries_pow_range = device_tracing::Range::new("fri_queries_pow")?;
     fri_queries_pow_range.start(stream)?;
     let mut fri_queries_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-    let fri_queries_pow_bits = pow_config.fri_queries_pow_bits;
+    let fri_queries_pow_bits = security_config.fri_queries_pow_bits;
     assert_ne!(fri_queries_pow_bits, 0);
     search_pow_challenge(
         &mut seed,
@@ -310,7 +306,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         &stage_5_output,
         log_domain_size,
         log_lde_factor,
-        num_queries,
+        security_config.num_queries,
         &optimal_folding,
         &mut callbacks,
         context,

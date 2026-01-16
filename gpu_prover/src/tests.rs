@@ -92,13 +92,8 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use trace_holder::RowMajorTrace;
-use verifier_common::{num_queries_for_security_params, MEMORY_DELEGATION_POW_BITS};
+use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
-
-pub const FRI_FACTOR_LOG2: usize = 1;
-pub const SECURITY_BITS: usize = verifier_common::SECURITY_BITS;
-pub const NUM_QUERIES: usize =
-    num_queries_for_security_params(SECURITY_BITS, verifier_common::POW_BITS, FRI_FACTOR_LOG2);
 
 const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = false;
 const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CachePatrial;
@@ -3102,6 +3097,8 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     //     None
     // };
 
+    let security_config = CIRCUIT_TYPE.get_security_config();
+
     println!("Trying to prove");
 
     let now = std::time::Instant::now();
@@ -3121,8 +3118,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
         None,
         lde_factor,
         tree_cap_size,
-        53,
-        28,
+        &security_config,
         &worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -3184,8 +3180,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
             &lde_precomputations,
             None,
             lde_factor,
-            53,
-            28,
+            &security_config,
             Some(proof.pow_challenges.clone()),
             RECOMPUTE_COSETS_FOR_CORRECTNESS,
             TREES_CACHE_MODE_FOR_CORRECTNESS,
@@ -3922,6 +3917,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -3969,8 +3965,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                SECURITY_BITS,
+                &security_config,
                 &worker,
             );
             println!(
@@ -4032,8 +4027,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    SECURITY_BITS,
+                    &security_config,
                     Some(proof.pow_challenges.clone()),
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
                     TREES_CACHE_MODE_FOR_CORRECTNESS,
@@ -4075,6 +4069,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -4120,8 +4115,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                SECURITY_BITS,
+                &security_config,
                 &worker,
             );
             println!(
@@ -4183,8 +4177,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    SECURITY_BITS,
+                    &security_config,
                     Some(proof.pow_challenges.clone()),
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
                     TREES_CACHE_MODE_FOR_CORRECTNESS,
@@ -4225,7 +4218,7 @@ pub fn prove_unrolled_execution_with_replayer<
             num_witness_columns,
             lookup_mapping,
         };
-
+        let security_config = UnrolledCircuitType::InitsAndTeardowns.get_security_config();
         let now = std::time::Instant::now();
         let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
@@ -4243,8 +4236,7 @@ pub fn prove_unrolled_execution_with_replayer<
             None,
             inits_and_teardowns_precomputation.lde_factor,
             inits_and_teardowns_precomputation.tree_cap_size,
-            NUM_QUERIES,
-            SECURITY_BITS,
+            &security_config,
             &worker,
         );
         println!(
@@ -4306,8 +4298,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &inits_and_teardowns_precomputation.lde_precomputations,
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
-                NUM_QUERIES,
-                SECURITY_BITS,
+                &security_config,
                 Some(proof.pow_challenges.clone()),
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
                 TREES_CACHE_MODE_FOR_CORRECTNESS,
@@ -4508,6 +4499,8 @@ where
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
 
+        let security_config = circuit_type.get_security_config();
+
         assert!(delegation_type < 1 << 12);
         let (_, proof) = prover::prover_stages::prove(
             &prec.compiled_circuit.compiled_circuit,
@@ -4521,8 +4514,7 @@ where
             Some(delegation_type),
             prec.lde_factor,
             prec.tree_cap_size,
-            NUM_QUERIES,
-            SECURITY_BITS,
+            &security_config,
             worker,
         );
 
@@ -4585,8 +4577,7 @@ where
                 &prec.lde_precomputations,
                 Some(delegation_type),
                 prec.lde_factor,
-                NUM_QUERIES,
-                SECURITY_BITS,
+                &security_config,
                 Some(proof.pow_challenges.clone()),
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
                 TREES_CACHE_MODE_FOR_CORRECTNESS,

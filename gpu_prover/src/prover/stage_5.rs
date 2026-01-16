@@ -19,7 +19,7 @@ use fft::{
 use field::{Field, FieldExtension, Mersenne31Field};
 use itertools::Itertools;
 use prover::definitions::{FoldingDescription, Transcript};
-use prover::prover_stages::{ProofPowChallenges, ProofPowConfig};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::iter;
 
@@ -48,13 +48,12 @@ pub(crate) struct StageFiveOutput {
 impl StageFiveOutput {
     pub fn new<'a>(
         seed: &mut HostAllocation<Seed>,
-        pow_config: &ProofPowConfig,
+        security_config: &ProofSecurityConfig,
         external_challenges: &Option<ProofPowChallenges>,
         stage_4_output: &mut StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         folding_description: &FoldingDescription,
-        num_queries: usize,
         lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
@@ -64,7 +63,7 @@ impl StageFiveOutput {
         let lde_factor = 1usize << log_lde_factor;
         let mut log_current_domain_size = log_domain_size;
         assert_eq!(
-            pow_config.foldings_pow_bits.len(),
+            security_config.foldings_pow_bits.len(),
             folding_description.folding_sequence.len()
         );
         let oracles_count = folding_description.folding_sequence.len() - 1;
@@ -107,7 +106,7 @@ impl StageFiveOutput {
                 &fri_oracles[i - 1].ldes
             };
             let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-            let pow_bits = pow_config.foldings_pow_bits[i];
+            let pow_bits = security_config.foldings_pow_bits[i];
             search_pow_challenge(
                 seed,
                 &mut pow_challenge,
@@ -154,7 +153,10 @@ impl StageFiveOutput {
             }
             d_challenges.free();
             let expose_all_leafs = if i == oracles_count - 1 {
-                let log_bound = num_queries.next_power_of_two().trailing_zeros();
+                let log_bound = security_config
+                    .num_queries
+                    .next_power_of_two()
+                    .trailing_zeros();
                 log_num_leafs + 1 - log_lde_factor <= log_bound
             } else {
                 false
@@ -246,7 +248,7 @@ impl StageFiveOutput {
         );
         let final_monomials = {
             let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-            let pow_bits = pow_config.foldings_pow_bits[oracles_count];
+            let pow_bits = security_config.foldings_pow_bits[oracles_count];
             search_pow_challenge(
                 seed,
                 &mut pow_challenge,

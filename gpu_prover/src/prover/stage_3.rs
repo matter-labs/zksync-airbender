@@ -20,7 +20,7 @@ use field::FieldExtension;
 use prover::definitions::AuxArgumentsBoundaryValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
-use prover::prover_stages::{ProofPowChallenges, ProofPowConfig};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::alloc::Global;
 use std::slice;
@@ -34,7 +34,7 @@ pub(crate) struct StageThreeOutput {
 impl StageThreeOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
-        pow_config: &ProofPowConfig,
+        security_config: &ProofSecurityConfig,
         external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         is_unrolled: bool,
@@ -69,7 +69,7 @@ impl StageThreeOutput {
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
         let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
-        let pow_bits = pow_config.quotient_alpha_pow_bits;
+        let pow_bits = security_config.quotient_alpha_pow_bits;
         search_pow_challenge(
             seed,
             &mut pow_challenge,
