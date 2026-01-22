@@ -1,4 +1,15 @@
 [advisories]
+ignore = [
+    # TODO: upgrade to ruint 1.17.1
+    { id = "RUSTSEC-2025-0137", reason = "Unsoundness in reciprocal_mg10, which we do not use" },
+    # TODO: replace paste with pastey
+    { id = "RUSTSEC-2024-0436", reason = "Use of unmaintained crate paste" },
+    # TODO: replace instant with web-time
+    { id = "RUSTSEC-2024-0384", reason = "Use of unmaintained crate instant" },
+    { id = "RUSTSEC-2025-0141", reason = "Use of unmaintained crate bincode" },
+    { id = "RUSTSEC-2024-0388", reason = "Use of unmaintained crate derivative" }
+]
+
 
 [bans]
 multiple-versions = "warn"
