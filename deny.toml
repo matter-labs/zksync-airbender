@@ -27,6 +27,8 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "CC0-1.0",
+    "CDDL-1.0",
+
 ]
 exceptions = [
 ]
