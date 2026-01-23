@@ -124,7 +124,7 @@ impl DelegationRequestMetadata {
             timestamp_col: timestamp_columns.start() as u32,
             memory_timestamp_high_from_circuit_idx,
             delegation_type_col: layout.delegation_type.start() as u32,
-            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+            in_cycle_write_idx: BF::from_u32_unchecked(layout.in_cycle_write_index as u32),
             abi_mem_offset_high_col,
             has_abi_mem_offset_high,
         }
@@ -1107,7 +1107,7 @@ impl RegisterAndIndirectAccesses {
                     read_value,
                     register_index,
                 } => {
-                    let address_low = BF::from_u64_unchecked(register_index as u64);
+                    let address_low = BF::from_u32_unchecked(register_index);
                     let mut gamma_plus_one_plus_address_low_contribution =
                         challenges.address_low_challenge.clone();
                     gamma_plus_one_plus_address_low_contribution.mul_assign_by_base(&address_low);
@@ -1127,7 +1127,7 @@ impl RegisterAndIndirectAccesses {
                     write_value,
                     register_index,
                 } => {
-                    let address_low = BF::from_u64_unchecked(register_index as u64);
+                    let address_low = BF::from_u32_unchecked(register_index);
                     let mut gamma_plus_one_plus_address_low_contribution =
                         challenges.address_low_challenge.clone();
                     gamma_plus_one_plus_address_low_contribution.mul_assign_by_base(&address_low);
