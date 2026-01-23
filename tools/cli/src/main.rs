@@ -85,6 +85,10 @@ enum Commands {
         input: InputConfig,
         #[arg(long, default_value = "output")]
         output_dir: String,
+
+        #[arg(long, default_value = "final_program_proof.json")]
+        final_proof_name: String,
+
         #[arg(long, value_enum, default_value = "standard")]
         machine: Machine,
         // If proving for recursion - you must also pass the previous metadata info.
@@ -288,6 +292,7 @@ fn main() {
             bin,
             input,
             output_dir,
+            final_proof_name,
             machine,
             prev_metadata,
             cycles,
@@ -300,6 +305,7 @@ fn main() {
             create_proofs(
                 bin,
                 output_dir,
+                final_proof_name,
                 input_data,
                 prev_metadata,
                 machine,

@@ -61,6 +61,7 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
 pub fn create_proofs(
     bin_path: &String,
     output_dir: &String,
+    final_proof_name: &String,
     input_data: Option<Vec<u32>>,
     prev_metadata: &Option<String>,
     machine: &Machine,
@@ -176,7 +177,7 @@ pub fn create_proofs(
 
                 serialize_to_file(
                     &program_proof,
-                    &Path::new(output_dir).join("final_program_proof.json"),
+                    &Path::new(output_dir).join(final_proof_name),
                 );
             }
             ProvingLimit::Snark => todo!(),
