@@ -889,7 +889,7 @@ pub(super) fn prepare_async_challenge_data(
     assert_eq!(helpers.capacity(), MAX_HELPER_VALUES);
     let decompression_factor = flat_generic_constraints_metadata.decompression_factor;
     let decompression_factor_inv = decompression_factor.inverse().expect("must exist");
-    let two = BF::from_u64_unchecked(2);
+    let two = BF::from_u32_unchecked(2);
     let lookup_linearization_challenges = &lookup_challenges.linearization_challenges;
     let lookup_gamma = lookup_challenges.gamma;
     let lookup_gamma_squared = *lookup_gamma.clone().square();
@@ -1197,7 +1197,7 @@ pub(super) fn prepare_async_challenge_data(
         let write_timestamp_low_constant = *mc
             .timestamp_low_challenge
             .clone()
-            .mul_assign_by_base(&BF::from_u64_unchecked(i as u64));
+            .mul_assign_by_base(&BF::from_u32_unchecked(i as u32));
         numerator_constant.add_assign(&write_timestamp_low_constant);
         if !is_unrolled {
             let write_timestamp_high_constant = *mc
@@ -1324,7 +1324,7 @@ pub(super) fn prepare_async_challenge_data(
             } else {
                 assert_eq!(j == 0, indirect_access.offset_constant == 0);
             }
-            let offset = BF::from_u64_unchecked(indirect_access.offset_constant as u64);
+            let offset = BF::from_u32_unchecked(indirect_access.offset_constant);
             let mut constant = *mc
                 .address_low_challenge
                 .clone()

@@ -455,7 +455,7 @@ impl<
             let internal_constants_helper_idx = helpers.len();
             match lookup_set.table_index {
                 TableIndex::Constant(table_type) => {
-                    let id = BF::from_u64_unchecked(table_type.to_table_id() as u64);
+                    let id = BF::from_u32_unchecked(table_type.to_table_id());
                     helpers.push(
                         *table_id_challenge
                             .clone()

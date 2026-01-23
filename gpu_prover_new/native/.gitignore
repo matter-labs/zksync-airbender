@@ -1,0 +1,3 @@
+/cmake-build-*/
+/gates.cu
+/poseidon_constants.cuh
