@@ -1,8 +1,8 @@
 use crate::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
-use crate::field::BaseField;
-use crate::ops_complex::bit_reverse_in_place;
+use crate::field::BF;
+use crate::ops::complex::bit_reverse_in_place;
 use crate::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
@@ -14,18 +14,18 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaDeviceAttr;
 
-type BF = BaseField;
-
 pub const STATE_SIZE: usize = 8;
 pub const BLOCK_SIZE: usize = 16;
 
 pub type Digest = [u32; STATE_SIZE];
 
+pub type DG = Digest;
+
 cuda_kernel!(
     Leaves,
     ab_blake2s_leaves_kernel(
         values: *const BF,
-        results: *mut Digest,
+        results: *mut DG,
         log_rows_per_hash: u32,
         cols_count: u32,
         count: u32,
@@ -34,7 +34,7 @@ cuda_kernel!(
 
 pub fn launch_leaves_kernel(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<Digest>,
+    results: &mut DeviceSlice<DG>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -56,7 +56,7 @@ pub fn launch_leaves_kernel(
 
 pub fn build_merkle_tree_leaves(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<Digest>,
+    results: &mut DeviceSlice<DG>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -66,11 +66,11 @@ pub fn build_merkle_tree_leaves(
     launch_leaves_kernel(values, results, log_rows_per_hash, stream)
 }
 
-cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
+cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const DG, results: *mut DG, count: u32,));
 
 pub fn launch_nodes_kernel(
-    values: &DeviceSlice<Digest>,
-    results: &mut DeviceSlice<Digest>,
+    values: &DeviceSlice<DG>,
+    results: &mut DeviceSlice<DG>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let values_len = values.len();
@@ -87,8 +87,8 @@ pub fn launch_nodes_kernel(
 }
 
 pub fn build_merkle_tree_nodes(
-    values: &DeviceSlice<Digest>,
-    results: &mut DeviceSlice<Digest>,
+    values: &DeviceSlice<DG>,
+    results: &mut DeviceSlice<DG>,
     layers_count: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -108,7 +108,7 @@ pub fn build_merkle_tree_nodes(
 
 pub fn build_merkle_tree(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<Digest>,
+    results: &mut DeviceSlice<DG>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
     layers_count: u32,
@@ -192,16 +192,16 @@ cuda_kernel!(
     ab_gather_merkle_paths_kernel(
         indexes: *const u32,
         indexes_count: u32,
-        values: *const Digest,
+        values: *const DG,
         log_leaves_count: u32,
-        results: *mut Digest,
+        results: *mut DG,
     )
 );
 
-pub fn gather_merkle_paths(
+pub fn gather_merkle_paths_device(
     indexes: &DeviceSlice<u32>,
-    values: &DeviceSlice<Digest>,
-    results: &mut DeviceSlice<Digest>,
+    values: &DeviceSlice<DG>,
+    results: &mut DeviceSlice<DG>,
     layers_count: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -228,74 +228,44 @@ pub fn gather_merkle_paths(
     GatherMerklePathsFunction::default().launch(&config, &args)
 }
 
-cuda_kernel!(
-    GatherRowsAndMerklePaths,
-    ab_gather_rows_and_merkle_paths_kernel(
-        indexes: *const u32,
-        indexes_count: u32,
-        bit_reverse_indexes: bool,
-        values: *const BF,
-        log_rows_per_leaf: u32,
-        cols_count: u32,
-        log_total_leaves_count: u32,
-        leaf_values: MutPtrAndStride<BF>,
-        tree_bottom: *const Digest,
-        layers_count: u32,
-        merkle_paths: *mut Digest,
-    )
-);
-
-pub fn gather_rows_and_merkle_paths(
-    indexes: &DeviceSlice<u32>,
-    bit_reverse_indexes: bool,
-    values: &DeviceSlice<BF>,
-    log_rows_per_index: u32,
-    leaf_values: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
-    tree_bottom: &DeviceSlice<Digest>,
-    merkle_paths: &mut DeviceSlice<Digest>,
+pub fn gather_merkle_paths_host(
+    indexes: &[u32],
+    values: &[DG],
+    results: &mut [DG],
     layers_count: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let indexes_len = indexes.len();
-    let values_len = values.len();
-    let cols_count = leaf_values.cols();
-    assert_eq!(values_len % cols_count, 0);
-    let log_rows_count = (values_len / cols_count).trailing_zeros();
-    assert_eq!(leaf_values.rows(), indexes_len << log_rows_per_index);
-    assert!(indexes_len <= u32::MAX as usize);
-    let indexes_count = indexes_len as u32;
-    assert!(layers_count >= LOG_WARP_SIZE);
-    assert_eq!(indexes_len * layers_count as usize, merkle_paths.len());
-    let cols_count = cols_count as u32;
-    let log_total_leaves_count = log_rows_count - log_rows_per_index;
-    let grid_dim = indexes_count;
-    let block_dim = WARP_SIZE;
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let indexes = indexes.as_ptr();
-    let values = values.as_ptr();
-    let leaf_values = leaf_values.as_mut_ptr_and_stride();
-    let tree_bottom = tree_bottom.as_ptr();
-    let merkle_paths = merkle_paths.as_mut_ptr();
-    let args = GatherRowsAndMerklePathsArguments::new(
-        indexes,
-        indexes_count,
-        bit_reverse_indexes,
-        values,
-        log_rows_per_index,
-        cols_count,
-        log_total_leaves_count,
-        leaf_values,
-        tree_bottom,
-        layers_count,
-        merkle_paths,
-    );
-    GatherRowsAndMerklePathsFunction::default().launch(&config, &args)
+) {
+    assert!(indexes.len() <= u32::MAX as usize);
+    let indexes_count = indexes.len() as u32;
+    let values_count = values.len();
+    assert!(values_count.is_power_of_two());
+    let log_values_count = values_count.trailing_zeros();
+    assert_ne!(log_values_count, 0);
+    let log_leaves_count = log_values_count - 1;
+    assert!(layers_count < log_leaves_count);
+    assert_eq!(indexes.len() * layers_count as usize, results.len());
+    for layer_index in 0..layers_count {
+        let layer_offset =
+            (1 << (log_leaves_count + 1)) - (1 << (log_leaves_count + 1 - layer_index));
+        for (idx, &leaf_index) in indexes.iter().enumerate() {
+            let hash_offset = ((leaf_index >> layer_index) ^ 1) as usize;
+            let dst_index = idx + (layer_index * indexes_count) as usize;
+            let src_index = layer_offset + hash_offset;
+            results[dst_index] = values[src_index];
+        }
+    }
+    /*
+     const unsigned leaf_index = indexes[idx];
+     const unsigned layer_index = blockIdx.y;
+     const unsigned layer_offset = ((1u << log_leaves_count + 1) - (1u << log_leaves_count + 1 - layer_index)) * STATE_SIZE;
+     const unsigned hash_offset = (leaf_index >> layer_index ^ 1) * STATE_SIZE;
+     const unsigned element_offset = threadIdx.x;
+     const unsigned src_index = layer_offset + hash_offset + element_offset;
+     const unsigned dst_index = layer_index * indexes_count * STATE_SIZE + idx * STATE_SIZE + element_offset;
+     results[dst_index] = values[src_index];
+    */
 }
 
-pub fn merkle_tree_cap(
-    values: &DeviceSlice<Digest>,
-    log_tree_cap_size: u32,
-) -> &DeviceSlice<Digest> {
+pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &DeviceSlice<DG> {
     let values_len = values.len();
     assert_ne!(values_len, 0);
     assert!(values_len.is_power_of_two());
@@ -348,7 +318,7 @@ mod tests {
 
     use super::*;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
-    use crate::ops_simple::set_to_zero;
+    use crate::ops::simple::set_to_zero;
     use crate::utils::GetChunksCount;
 
     const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
@@ -582,7 +552,7 @@ mod tests {
         let mut results_device = DeviceAllocation::alloc(results_host.len()).unwrap();
         memory_copy_async(&mut indexes_device, &indexes_host, &stream).unwrap();
         memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-        super::gather_merkle_paths(
+        gather_merkle_paths_device(
             &indexes_device,
             &values_device,
             &mut results_device,
