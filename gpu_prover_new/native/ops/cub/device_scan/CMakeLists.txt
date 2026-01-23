@@ -1,0 +1,21 @@
+target_sources(gpu_prover_new_native PRIVATE
+        common.cuh
+        e_add_bf.cu
+        e_add_e2.cu
+        e_add_e4.cu
+        e_add_e6.cu
+        e_add_u32.cu
+        e_mul_bf.cu
+        e_mul_e2.cu
+        e_mul_e4.cu
+        e_mul_e6.cu
+        i_add_bf.cu
+        i_add_e2.cu
+        i_add_e4.cu
+        i_add_e6.cu
+        i_add_u32.cu
+        i_mul_bf.cu
+        i_mul_e2.cu
+        i_mul_e4.cu
+        i_mul_e6.cu
+)
