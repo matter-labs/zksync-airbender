@@ -18,6 +18,9 @@ use self::everywhere_except_last_two::*;
 mod first_or_last_rows;
 use self::first_or_last_rows::*;
 
+pub mod mersenne_wrapper;
+pub use mersenne_wrapper::{DefaultMersenne31Field, MersenneWrapper};
+
 #[derive(Clone)]
 struct Idents {
     random_point_ident: Ident,
@@ -55,8 +58,19 @@ struct Idents {
 }
 
 pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Field>) -> TokenStream {
+    generate_inlined_configured::<DefaultMersenne31Field>(compiled_circuit)
+}
+
+pub fn generate_inlined_configured<MW: MersenneWrapper>(
+    compiled_circuit: CompiledCircuitArtifact<Mersenne31Field>,
+) -> TokenStream {
     // we need to prepare a description for quotient evaluator, so we will assign the layout to the constant, and will also
     // will transform a description of the constraints to the literals
+
+    let field_struct = MW::field_struct();
+    let complex_struct = MW::complex_struct();
+    let quartic_struct = MW::quartic_struct();
+    let quartic_zero = MW::quartic_zero();
 
     let CompiledCircuitArtifact {
         witness_layout,
@@ -176,7 +190,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     // specialized boolean constraints, that can be degraded to single multiplication effectively
     for i in 0..num_boolean_constraints {
         let column_index = witness_layout.boolean_vars_columns_range.get_range(i).start;
-        let expr = produce_boolean_constraint(column_index, &idents);
+        let expr = produce_boolean_constraint::<MW>(column_index, &idents);
         common_constraints.push(expr);
     }
     // constraints themselves, skipping boolean
@@ -184,15 +198,15 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         .into_iter()
         .skip(num_boolean_constraints)
     {
-        let expr = transform_degree_2_constraint(el, &idents);
+        let expr = transform_degree_2_constraint::<MW>(el, &idents);
         common_constraints.push(expr);
     }
 
     for el in degree_1_constraints.into_iter() {
-        let expr = transform_degree_1_constraint(el, &idents);
+        let expr = transform_degree_1_constraint::<MW>(el, &idents);
         common_constraints.push(expr);
     }
-    accumulate_contributions(
+    accumulate_contributions::<MW>(
         &mut every_row_except_last_stream,
         None,
         common_constraints,
@@ -204,8 +218,8 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
     // if we process delegations - we should process checks in case if processing doesn't happen
     if memory_layout.delegation_processor_layout.is_some() {
-        let (common, exprs) = transform_delegation_ram_conventions(&memory_layout, &idents);
-        accumulate_contributions(
+        let (common, exprs) = transform_delegation_ram_conventions::<MW>(&memory_layout, &idents);
+        accumulate_contributions::<MW>(
             &mut every_row_except_last_stream,
             Some(common),
             exprs,
@@ -240,7 +254,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 .iter()
                 .enumerate()
             {
-                let (common, exprs) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair::<MW>(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_range_check_16,
@@ -248,7 +262,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     &stage_2_layout,
                     false,
                 );
-                accumulate_contributions(
+                accumulate_contributions::<MW>(
                     &mut every_row_except_last_stream,
                     Some(common),
                     exprs,
@@ -262,7 +276,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             let lazy_init_address_range_check_16 = stage_2_layout
                 .lazy_init_address_range_check_16
                 .expect("must exist if we do lazy init");
-            transform_shuffle_ram_lazy_init_range_checks(
+            transform_shuffle_ram_lazy_init_range_checks::<MW>(
                 lazy_init_address_range_check_16,
                 &memory_layout.shuffle_ram_inits_and_teardowns,
                 &idents,
@@ -312,7 +326,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             .enumerate()
         {
             if i < shuffle_ram_special_case_bound / 2 {
-                let (common, exprs) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair::<MW>(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_timestamp_range_checks,
@@ -321,14 +335,14 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     false,
                 );
 
-                accumulate_contributions(
+                accumulate_contributions::<MW>(
                     &mut every_row_except_last_stream,
                     Some(common),
                     exprs,
                     &idents,
                 );
             } else {
-                let (common, exprs) = transform_width_1_range_checks_pair(
+                let (common, exprs) = transform_width_1_range_checks_pair::<MW>(
                     pair,
                     i,
                     stage_2_layout.intermediate_polys_for_timestamp_range_checks,
@@ -337,7 +351,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                     true,
                 );
 
-                accumulate_contributions(
+                accumulate_contributions::<MW>(
                     &mut every_row_except_last_stream,
                     Some(common),
                     exprs,
@@ -427,9 +441,10 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         let c0_expr = read_value_expr(key_values_to_aggregate[0], &idents, false);
 
         let decoder_lookup_argument_gamma_ident = &idents.decoder_lookup_argument_gamma_ident;
+        let denom_add_assign_c0_expr = MW::add_assign(quote! {denom}, c0_expr);
         let mut accumulation_expr = quote! {
             let mut denom = #decoder_lookup_argument_gamma_ident;
-            denom.add_assign(& #c0_expr);
+            #denom_add_assign_c0_expr;
         };
 
         // now in the cycle
@@ -440,14 +455,22 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
             let decoder_lookup_argument_linearization_challenges_ident =
                 &idents.decoder_lookup_argument_linearization_challenges_ident;
+            let t_mul_assign_column_expr = MW::mul_assign(quote! { t }, column_expr);
+            let denom_add_assign_t = MW::add_assign(quote! {denom}, quote! { t });
             accumulation_expr.extend(quote! {
                 let mut t = #decoder_lookup_argument_linearization_challenges_ident[#challenge_idx];
-                t.mul_assign(& #column_expr);
-                denom.add_assign(&t);
+                #t_mul_assign_column_expr;
+                #denom_add_assign_t;
             });
         }
 
         let individual_term_ident = &idents.individual_term_ident;
+        let individual_term_ident_mul_assign_accumulator_expr = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #accumulator_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
         let t = quote! {
             let #individual_term_ident = {
                 let m = #multiplicity_expr;
@@ -455,14 +478,14 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
                 #accumulation_expr
 
                 let mut #individual_term_ident = denom;
-                #individual_term_ident.mul_assign(& #accumulator_expr);
-                #individual_term_ident.sub_assign(&m);
+                #individual_term_ident_mul_assign_accumulator_expr;
+                #individual_term_ident_sub_assign_m;
 
                 #individual_term_ident
             };
         };
 
-        accumulate_contributions(&mut every_row_except_last_stream, None, vec![t], &idents);
+        accumulate_contributions::<MW>(&mut every_row_except_last_stream, None, vec![t], &idents);
     }
 
     // now generic lookup
@@ -471,41 +494,52 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
         .num_elements()
         > 0
     {
-        let exprs =
-            transform_generic_lookup(&witness_layout, &stage_2_layout, &setup_layout, &idents);
-        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
+        let exprs = transform_generic_lookup::<MW>(
+            &witness_layout,
+            &stage_2_layout,
+            &setup_layout,
+            &idents,
+        );
+        accumulate_contributions::<MW>(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // multiplicities
     {
-        let exprs =
-            transform_multiplicities(&witness_layout, &stage_2_layout, &setup_layout, &idents);
-        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
+        let exprs = transform_multiplicities::<MW>(
+            &witness_layout,
+            &stage_2_layout,
+            &setup_layout,
+            &idents,
+        );
+        accumulate_contributions::<MW>(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // if we work with delegation argument - then transform them
 
     // creating of requests
     if memory_layout.delegation_request_layout.is_some() {
-        let exprs = transform_delegation_requests_creation(
+        let exprs = transform_delegation_requests_creation::<MW>(
             &memory_layout,
             &stage_2_layout,
             &setup_layout,
             &idents,
         );
-        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
+        accumulate_contributions::<MW>(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // processing of requests
     if memory_layout.delegation_processor_layout.is_some() {
-        let exprs =
-            transform_delegation_requests_processing(&memory_layout, &stage_2_layout, &idents);
-        accumulate_contributions(&mut every_row_except_last_stream, None, exprs, &idents);
+        let exprs = transform_delegation_requests_processing::<MW>(
+            &memory_layout,
+            &stage_2_layout,
+            &idents,
+        );
+        accumulate_contributions::<MW>(&mut every_row_except_last_stream, None, exprs, &idents);
     }
 
     // check padding of lazy-init
     if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
-        transform_shuffle_ram_lazy_init_padding(
+        transform_shuffle_ram_lazy_init_padding::<MW>(
             &memory_layout.shuffle_ram_inits_and_teardowns,
             &lazy_init_address_aux_vars,
             &idents,
@@ -515,7 +549,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
     // Memory and machines state related accumulators
     {
-        transform_grand_product_accumulators(
+        transform_grand_product_accumulators::<MW>(
             &memory_layout,
             &stage_2_layout,
             &setup_layout,
@@ -531,16 +565,18 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
 
     let every_row_except_last = if every_row_except_last_stream.is_empty() {
         quote! {
-            let every_row_except_last_contribution = Mersenne31Quartic::ZERO;
+            let every_row_except_last_contribution = #quartic_zero;
         }
     } else {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let every_row_except_last_contribution = {
                 #every_row_except_last_stream
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
@@ -552,13 +588,13 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     let mut every_row_except_last_two_stream = TokenStream::new();
     // linking constraints
     if state_linkage_constraints.len() > 0 {
-        let exprs = transform_linking_constraints(&state_linkage_constraints, &idents);
-        accumulate_contributions(&mut every_row_except_last_two_stream, None, exprs, &idents);
+        let exprs = transform_linking_constraints::<MW>(&state_linkage_constraints, &idents);
+        accumulate_contributions::<MW>(&mut every_row_except_last_two_stream, None, exprs, &idents);
     }
 
     // and shuffle RAM lazy init if it exists
     if memory_layout.shuffle_ram_inits_and_teardowns.len() > 0 {
-        transform_shuffle_ram_lazy_init_address_ordering(
+        transform_shuffle_ram_lazy_init_address_ordering::<MW>(
             &memory_layout.shuffle_ram_inits_and_teardowns,
             &lazy_init_address_aux_vars,
             &idents,
@@ -569,105 +605,120 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     let divisor_idx = DIVISOR_EVERYWHERE_EXCEPT_LAST_TWO_ROWS_INDEX;
 
     let every_row_except_two_last = if every_row_except_last_two_stream.is_empty() == false {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let every_row_except_two_last_contribution = {
                 #every_row_except_last_two_stream
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
         }
     } else {
         quote! {
-            let every_row_except_two_last_contribution = Mersenne31Quartic::ZERO;
+            let every_row_except_two_last_contribution = #quartic_zero;
         }
     };
 
     // first, one before last, last and last+0 cases
 
     let (first_row, one_before_last_row, last_row, last_row_and_zero) =
-        transform_first_or_last_rows(&memory_layout, &stage_2_layout, &public_inputs, &idents);
+        transform_first_or_last_rows::<MW>(
+            &memory_layout,
+            &stage_2_layout,
+            &public_inputs,
+            &idents,
+        );
 
     let divisor_idx = DIVISOR_FIRST_ROW_INDEX;
 
     let first_row = if first_row.is_empty() == false {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let first_row_contribution = {
                 #first_row
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
         }
     } else {
         quote! {
-            let first_row_contribution = Mersenne31Quartic::ZERO;
+            let first_row_contribution = #quartic_zero;
         }
     };
 
     let divisor_idx = DIVISOR_ONE_BEFORE_LAST_ROW_INDEX;
 
     let one_before_last_row = if one_before_last_row.is_empty() == false {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let one_before_last_row_contribution = {
                 #one_before_last_row
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
         }
     } else {
         quote! {
-            let one_before_last_row_contribution = Mersenne31Quartic::ZERO;
+            let one_before_last_row_contribution = #quartic_zero;
         }
     };
 
     let divisor_idx = DIVISOR_LAST_ROW_INDEX;
 
     let last_row = if last_row.is_empty() == false {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let last_row_contribution = {
                 #last_row
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
         }
     } else {
         quote! {
-            let last_row_contribution = Mersenne31Quartic::ZERO;
+            let last_row_contribution = #quartic_zero;
         }
     };
 
     let divisor_idx = DIVISOR_LAST_ROW_AND_ZERO_INDEX;
 
     let last_row_and_zero = if last_row_and_zero.is_empty() == false {
+        let terms_accumulator_ident_mul_assign_divisor =
+            MW::mul_assign(quote! { #terms_accumulator_ident }, quote! { divisor });
         quote! {
             let last_row_and_zero_contribution = {
                 #last_row_and_zero
 
                 // now divide
                 let divisor = #divisors_ident[#divisor_idx];
-                #terms_accumulator_ident.mul_assign(&divisor);
+                #terms_accumulator_ident_mul_assign_divisor;
 
                 #terms_accumulator_ident
             };
         }
     } else {
         quote! {
-            let last_row_and_zero_contribution = Mersenne31Quartic::ZERO;
+            let last_row_and_zero_contribution = #quartic_zero;
         }
     };
 
@@ -706,148 +757,173 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
     let num_different_divisors = NUM_DIFFERENT_DIVISORS;
     let num_aux_boundary_values = memory_layout.shuffle_ram_inits_and_teardowns.len();
 
+    let generic_function_parameters = MW::generic_function_parameters();
+    let additional_function_arguments = MW::additional_function_arguments();
+    let additional_definition_function_arguments = MW::additional_definition_function_arguments();
+    let proof_aux_values_struct = MW::proof_aux_values_struct();
+    let aux_arguments_boundary_values_struct = MW::aux_arguments_boundary_values_struct();
+
+    let quotient_mul_assign_beta = MW::mul_assign(quote! {quotient}, quote! {#quotient_beta_ident});
+    let quotient_add_assign_every_row_except_two_last_contribution = MW::add_assign(
+        quote! {quotient},
+        quote! {every_row_except_two_last_contribution},
+    );
+    let quotient_add_assign_first_row_contribution =
+        MW::add_assign(quote! {quotient}, quote! {first_row_contribution});
+    let quotient_add_assign_one_before_last_row_contribution =
+        MW::add_assign(quote! {quotient}, quote! {one_before_last_row_contribution});
+    let quotient_add_assign_last_row_contribution =
+        MW::add_assign(quote! {quotient}, quote! {last_row_contribution});
+    let quotient_add_assign_last_row_and_zero_contribution =
+        MW::add_assign(quote! {quotient}, quote! {last_row_and_zero_contribution});
+
     quote! {
 
         #[allow(unused_braces, unused_mut, unused_variables)]
-        unsafe fn evaluate_every_row_except_last(
-            #random_point_ident: Mersenne31Quartic,
-            #witness_values_ident: &[Mersenne31Quartic],
-            #memory_values_ident: &[Mersenne31Quartic],
-            #setup_values_ident: &[Mersenne31Quartic],
-            #stage_2_values_ident: &[Mersenne31Quartic],
-            #witness_values_next_row_ident: &[Mersenne31Quartic],
-            #memory_values_next_row_ident: &[Mersenne31Quartic],
-            #stage_2_values_next_row_ident: &[Mersenne31Quartic],
-            #quotient_alpha_ident: Mersenne31Quartic,
-            #quotient_beta_ident: Mersenne31Quartic,
-            #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #lookup_argument_gamma_ident: Mersenne31Quartic,
-            #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #delegation_argument_gamma_ident: Mersenne31Quartic,
-            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
-            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
-            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
-            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
-            #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
-            #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
-            #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
-            #delegation_type_ident: Mersenne31Field,
-            #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
-        ) -> Mersenne31Quartic {
+        unsafe fn evaluate_every_row_except_last #generic_function_parameters (
+            #additional_definition_function_arguments
+            #random_point_ident: #quartic_struct,
+            #witness_values_ident: &[#quartic_struct],
+            #memory_values_ident: &[#quartic_struct],
+            #setup_values_ident: &[#quartic_struct],
+            #stage_2_values_ident: &[#quartic_struct],
+            #witness_values_next_row_ident: &[#quartic_struct],
+            #memory_values_next_row_ident: &[#quartic_struct],
+            #stage_2_values_next_row_ident: &[#quartic_struct],
+            #quotient_alpha_ident: #quartic_struct,
+            #quotient_beta_ident: #quartic_struct,
+            #divisors_ident: &[#quartic_struct; #num_different_divisors],
+            #lookup_argument_linearization_challenges_ident: &[#quartic_struct; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_gamma_ident: #quartic_struct,
+            #lookup_argument_two_gamma_ident: #quartic_struct,
+            #memory_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_gamma_ident: #quartic_struct,
+            #delegation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_gamma_ident: #quartic_struct,
+            #decoder_lookup_argument_linearization_challenges_ident: &[#quartic_struct; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: #quartic_struct,
+            #state_permutation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: #quartic_struct,
+            #public_inputs_ident: &[#field_struct; #num_public_inputs],
+            #aux_proof_values_ident: &#proof_aux_values_struct,
+            #aux_boundary_values_ident: &[#aux_arguments_boundary_values_struct; #num_aux_boundary_values],
+            #memory_timestamp_high_from_sequence_idx_ident: #field_struct,
+            #delegation_type_ident: #field_struct,
+            #delegation_argument_interpolant_linear_coeff_ident: #quartic_struct,
+        ) -> #quartic_struct {
             #every_row_except_last
 
             every_row_except_last_contribution
         }
 
         #[allow(unused_braces, unused_mut, unused_variables)]
-        unsafe fn evaluate_every_row_except_two(
-            #random_point_ident: Mersenne31Quartic,
-            #witness_values_ident: &[Mersenne31Quartic],
-            #memory_values_ident: &[Mersenne31Quartic],
-            #setup_values_ident: &[Mersenne31Quartic],
-            #stage_2_values_ident: &[Mersenne31Quartic],
-            #witness_values_next_row_ident: &[Mersenne31Quartic],
-            #memory_values_next_row_ident: &[Mersenne31Quartic],
-            #stage_2_values_next_row_ident: &[Mersenne31Quartic],
-            #quotient_alpha_ident: Mersenne31Quartic,
-            #quotient_beta_ident: Mersenne31Quartic,
-            #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #lookup_argument_gamma_ident: Mersenne31Quartic,
-            #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #delegation_argument_gamma_ident: Mersenne31Quartic,
-            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
-            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
-            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
-            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
-            #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
-            #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
-            #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
-            #delegation_type_ident: Mersenne31Field,
-            #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
-        ) -> Mersenne31Quartic {
+        unsafe fn evaluate_every_row_except_two #generic_function_parameters (
+            #additional_definition_function_arguments
+            #random_point_ident: #quartic_struct,
+            #witness_values_ident: &[#quartic_struct],
+            #memory_values_ident: &[#quartic_struct],
+            #setup_values_ident: &[#quartic_struct],
+            #stage_2_values_ident: &[#quartic_struct],
+            #witness_values_next_row_ident: &[#quartic_struct],
+            #memory_values_next_row_ident: &[#quartic_struct],
+            #stage_2_values_next_row_ident: &[#quartic_struct],
+            #quotient_alpha_ident: #quartic_struct,
+            #quotient_beta_ident: #quartic_struct,
+            #divisors_ident: &[#quartic_struct; #num_different_divisors],
+            #lookup_argument_linearization_challenges_ident: &[#quartic_struct; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_gamma_ident: #quartic_struct,
+            #lookup_argument_two_gamma_ident: #quartic_struct,
+            #memory_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_gamma_ident: #quartic_struct,
+            #delegation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_gamma_ident: #quartic_struct,
+            #decoder_lookup_argument_linearization_challenges_ident: &[#quartic_struct; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: #quartic_struct,
+            #state_permutation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: #quartic_struct,
+            #public_inputs_ident: &[#field_struct; #num_public_inputs],
+            #aux_proof_values_ident: &#proof_aux_values_struct,
+            #aux_boundary_values_ident: &[#aux_arguments_boundary_values_struct; #num_aux_boundary_values],
+            #memory_timestamp_high_from_sequence_idx_ident: #field_struct,
+            #delegation_type_ident: #field_struct,
+            #delegation_argument_interpolant_linear_coeff_ident: #quartic_struct,
+        ) -> #quartic_struct {
             #every_row_except_two_last
 
             every_row_except_two_last_contribution
         }
 
         #[allow(unused_braces, unused_mut, unused_variables)]
-        unsafe fn evaluate_last_row_and_zero(
-            #random_point_ident: Mersenne31Quartic,
-            #witness_values_ident: &[Mersenne31Quartic],
-            #memory_values_ident: &[Mersenne31Quartic],
-            #setup_values_ident: &[Mersenne31Quartic],
-            #stage_2_values_ident: &[Mersenne31Quartic],
-            #witness_values_next_row_ident: &[Mersenne31Quartic],
-            #memory_values_next_row_ident: &[Mersenne31Quartic],
-            #stage_2_values_next_row_ident: &[Mersenne31Quartic],
-            #quotient_alpha_ident: Mersenne31Quartic,
-            #quotient_beta_ident: Mersenne31Quartic,
-            #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #lookup_argument_gamma_ident: Mersenne31Quartic,
-            #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #delegation_argument_gamma_ident: Mersenne31Quartic,
-            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
-            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
-            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
-            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
-            #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
-            #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
-            #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
-            #delegation_type_ident: Mersenne31Field,
-            #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
-        ) -> Mersenne31Quartic {
+        unsafe fn evaluate_last_row_and_zero #generic_function_parameters (
+            #additional_definition_function_arguments
+            #random_point_ident: #quartic_struct,
+            #witness_values_ident: &[#quartic_struct],
+            #memory_values_ident: &[#quartic_struct],
+            #setup_values_ident: &[#quartic_struct],
+            #stage_2_values_ident: &[#quartic_struct],
+            #witness_values_next_row_ident: &[#quartic_struct],
+            #memory_values_next_row_ident: &[#quartic_struct],
+            #stage_2_values_next_row_ident: &[#quartic_struct],
+            #quotient_alpha_ident: #quartic_struct,
+            #quotient_beta_ident: #quartic_struct,
+            #divisors_ident: &[#quartic_struct; #num_different_divisors],
+            #lookup_argument_linearization_challenges_ident: &[#quartic_struct; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_gamma_ident: #quartic_struct,
+            #lookup_argument_two_gamma_ident: #quartic_struct,
+            #memory_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_gamma_ident: #quartic_struct,
+            #delegation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_gamma_ident: #quartic_struct,
+            #decoder_lookup_argument_linearization_challenges_ident: &[#quartic_struct; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: #quartic_struct,
+            #state_permutation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: #quartic_struct,
+            #public_inputs_ident: &[#field_struct; #num_public_inputs],
+            #aux_proof_values_ident: &#proof_aux_values_struct,
+            #aux_boundary_values_ident: &[#aux_arguments_boundary_values_struct; #num_aux_boundary_values],
+            #memory_timestamp_high_from_sequence_idx_ident: #field_struct,
+            #delegation_type_ident: #field_struct,
+            #delegation_argument_interpolant_linear_coeff_ident: #quartic_struct,
+        ) -> #quartic_struct {
             #last_row_and_zero
 
             last_row_and_zero_contribution
         }
 
         #[allow(unused_braces, unused_mut, unused_variables)]
-        pub unsafe fn evaluate_quotient(
-            #random_point_ident: Mersenne31Quartic,
-            #witness_values_ident: &[Mersenne31Quartic],
-            #memory_values_ident: &[Mersenne31Quartic],
-            #setup_values_ident: &[Mersenne31Quartic],
-            #stage_2_values_ident: &[Mersenne31Quartic],
-            #witness_values_next_row_ident: &[Mersenne31Quartic],
-            #memory_values_next_row_ident: &[Mersenne31Quartic],
-            #stage_2_values_next_row_ident: &[Mersenne31Quartic],
-            #quotient_alpha_ident: Mersenne31Quartic,
-            #quotient_beta_ident: Mersenne31Quartic,
-            #divisors_ident: &[Mersenne31Quartic; #num_different_divisors],
-            #lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #lookup_argument_gamma_ident: Mersenne31Quartic,
-            #lookup_argument_two_gamma_ident: Mersenne31Quartic,
-            #memory_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #memory_argument_gamma_ident: Mersenne31Quartic,
-            #delegation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
-            #delegation_argument_gamma_ident: Mersenne31Quartic,
-            #decoder_lookup_argument_linearization_challenges_ident: &[Mersenne31Quartic; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
-            #decoder_lookup_argument_gamma_ident: Mersenne31Quartic,
-            #state_permutation_argument_linearization_challenges_ident: &[Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
-            #state_permutation_argument_gamma_ident: Mersenne31Quartic,
-            #public_inputs_ident: &[Mersenne31Field; #num_public_inputs],
-            #aux_proof_values_ident: &ProofAuxValues,
-            #aux_boundary_values_ident: &[AuxArgumentsBoundaryValues; #num_aux_boundary_values],
-            #memory_timestamp_high_from_sequence_idx_ident: Mersenne31Field,
-            #delegation_type_ident: Mersenne31Field,
-            #delegation_argument_interpolant_linear_coeff_ident: Mersenne31Quartic,
-        ) -> Mersenne31Quartic {
+        pub unsafe fn evaluate_quotient #generic_function_parameters (
+            #additional_definition_function_arguments
+            #random_point_ident: #quartic_struct,
+            #witness_values_ident: &[#quartic_struct],
+            #memory_values_ident: &[#quartic_struct],
+            #setup_values_ident: &[#quartic_struct],
+            #stage_2_values_ident: &[#quartic_struct],
+            #witness_values_next_row_ident: &[#quartic_struct],
+            #memory_values_next_row_ident: &[#quartic_struct],
+            #stage_2_values_next_row_ident: &[#quartic_struct],
+            #quotient_alpha_ident: #quartic_struct,
+            #quotient_beta_ident: #quartic_struct,
+            #divisors_ident: &[#quartic_struct; #num_different_divisors],
+            #lookup_argument_linearization_challenges_ident: &[#quartic_struct; NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #lookup_argument_gamma_ident: #quartic_struct,
+            #lookup_argument_two_gamma_ident: #quartic_struct,
+            #memory_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #memory_argument_gamma_ident: #quartic_struct,
+            #delegation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+            #delegation_argument_gamma_ident: #quartic_struct,
+            #decoder_lookup_argument_linearization_challenges_ident: &[#quartic_struct; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+            #decoder_lookup_argument_gamma_ident: #quartic_struct,
+            #state_permutation_argument_linearization_challenges_ident: &[#quartic_struct; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+            #state_permutation_argument_gamma_ident: #quartic_struct,
+            #public_inputs_ident: &[#field_struct; #num_public_inputs],
+            #aux_proof_values_ident: &#proof_aux_values_struct,
+            #aux_boundary_values_ident: &[#aux_arguments_boundary_values_struct; #num_aux_boundary_values],
+            #memory_timestamp_high_from_sequence_idx_ident: #field_struct,
+            #delegation_type_ident: #field_struct,
+            #delegation_argument_interpolant_linear_coeff_ident: #quartic_struct,
+        ) -> #quartic_struct {
             let every_row_except_last_contribution = evaluate_every_row_except_last(
+                #additional_function_arguments
                 #random_point_ident,
                 #witness_values_ident,
                 #memory_values_ident,
@@ -879,6 +955,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             );
 
             let every_row_except_two_last_contribution = evaluate_every_row_except_two(
+                #additional_function_arguments
                 #random_point_ident,
                 #witness_values_ident,
                 #memory_values_ident,
@@ -910,6 +987,7 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             );
 
             let last_row_and_zero_contribution = evaluate_last_row_and_zero(
+                #additional_function_arguments
                 #random_point_ident,
                 #witness_values_ident,
                 #memory_values_ident,
@@ -947,16 +1025,16 @@ pub fn generate_inlined(compiled_circuit: CompiledCircuitArtifact<Mersenne31Fiel
             #last_row
 
             let mut quotient = every_row_except_last_contribution;
-            quotient.mul_assign(&#quotient_beta_ident);
-            quotient.add_assign(&every_row_except_two_last_contribution);
-            quotient.mul_assign(&#quotient_beta_ident);
-            quotient.add_assign(&first_row_contribution);
-            quotient.mul_assign(&#quotient_beta_ident);
-            quotient.add_assign(&one_before_last_row_contribution);
-            quotient.mul_assign(&#quotient_beta_ident);
-            quotient.add_assign(&last_row_contribution);
-            quotient.mul_assign(&#quotient_beta_ident);
-            quotient.add_assign(&last_row_and_zero_contribution);
+            #quotient_mul_assign_beta;
+            #quotient_add_assign_every_row_except_two_last_contribution;
+            #quotient_mul_assign_beta;
+            #quotient_add_assign_first_row_contribution;
+            #quotient_mul_assign_beta;
+            #quotient_add_assign_one_before_last_row_contribution;
+            #quotient_mul_assign_beta;
+            #quotient_add_assign_last_row_contribution;
+            #quotient_mul_assign_beta;
+            #quotient_add_assign_last_row_and_zero_contribution;
 
             quotient
         }

@@ -1,6 +1,7 @@
+use super::mersenne_wrapper::MersenneWrapper;
 use super::*;
 
-pub(crate) fn transform_first_or_last_rows(
+pub(crate) fn transform_first_or_last_rows<MW: MersenneWrapper>(
     memory_layout: &MemorySubtree,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     public_inputs: &[(BoundaryConstraintLocation, ColumnAddress)],
@@ -143,17 +144,19 @@ pub(crate) fn transform_first_or_last_rows(
         for (_i, (place, expected_value)) in first_row_boundary_constraints.iter().enumerate() {
             let value_expr = read_value_expr(*place, idents, false);
 
+            let individual_term_ident_sub_assign_base_t =
+                MW::sub_assign_base(quote! { #individual_term_ident }, quote! { t });
             let t = quote! {
                 let #individual_term_ident = {
                     let mut #individual_term_ident = #value_expr;
                     let t = #expected_value;
-                    #individual_term_ident.sub_assign_base(&t);
+                    #individual_term_ident_sub_assign_base_t;
 
                     #individual_term_ident
                 };
             };
 
-            accumulate_contributions(&mut first_row_stream, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut first_row_stream, None, vec![t], idents);
         }
 
         // 1 constraint for memory accumulator initial value == 1
@@ -162,16 +165,18 @@ pub(crate) fn transform_first_or_last_rows(
                 .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
             let value_expr = read_stage_2_value_expr(offset, idents, false);
 
+            let individual_term_ident_sub_assign_base_field_one =
+                MW::sub_assign_base(quote! { #individual_term_ident }, MW::field_one());
             let t = quote! {
                 let #individual_term_ident = {
                     let mut #individual_term_ident = #value_expr;
-                    #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
+                    #individual_term_ident_sub_assign_base_field_one;
 
                     #individual_term_ident
                 };
             };
 
-            accumulate_contributions(&mut first_row_stream, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut first_row_stream, None, vec![t], idents);
         }
 
         first_row_stream
@@ -185,17 +190,19 @@ pub(crate) fn transform_first_or_last_rows(
         {
             let value_expr = read_value_expr(*place, idents, false);
 
+            let individual_term_ident_sub_assign_base_t =
+                MW::sub_assign_base(quote! { #individual_term_ident }, quote! { t });
             let t = quote! {
                 let #individual_term_ident = {
                     let mut #individual_term_ident = #value_expr;
                     let t = #expected_value;
-                    #individual_term_ident.sub_assign_base(&t);
+                    #individual_term_ident_sub_assign_base_t;
 
                     #individual_term_ident
                 };
             };
 
-            accumulate_contributions(&mut one_before_last_row_stream, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut one_before_last_row_stream, None, vec![t], idents);
         }
 
         one_before_last_row_stream
@@ -208,16 +215,18 @@ pub(crate) fn transform_first_or_last_rows(
             .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
         let value_expr = read_stage_2_value_expr(offset, idents, false);
 
+        let individual_term_ident_sub_assign_t =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { t });
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = #value_expr;
                 let t = #aux_proof_values_ident.grand_product_accumulator_final_value;
-                #individual_term_ident.sub_assign(&t);
+                #individual_term_ident_sub_assign_t;
 
                 #individual_term_ident
             };
         };
-        accumulate_contributions(&mut last_row_streams, None, vec![t], idents);
+        accumulate_contributions::<MW>(&mut last_row_streams, None, vec![t], idents);
 
         last_row_streams
     };
@@ -245,6 +254,9 @@ pub(crate) fn transform_first_or_last_rows(
                     .intermediate_polys_for_range_check_16
                     .num_pairs;
 
+                let individual_term_ident_sub_assign_t =
+                    MW::sub_assign(quote! { #individual_term_ident }, quote! { t });
+
                 for i in 0..num_pairs {
                     let offset = stage_2_layout
                         .intermediate_polys_for_range_check_16
@@ -253,7 +265,7 @@ pub(crate) fn transform_first_or_last_rows(
 
                     let t = quote! {
                         let t = #el_expr;
-                        #individual_term_ident.sub_assign(&t);
+                        #individual_term_ident_sub_assign_t;
                     };
                     substream.extend(t);
                 }
@@ -268,7 +280,7 @@ pub(crate) fn transform_first_or_last_rows(
 
                         let t = quote! {
                             let t = #el_expr;
-                            #individual_term_ident.sub_assign(&t);
+                            #individual_term_ident_sub_assign_t;
                         };
                         substream.extend(t);
                     }
@@ -286,7 +298,12 @@ pub(crate) fn transform_first_or_last_rows(
                     };
                 };
 
-                accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
+                accumulate_contributions::<MW>(
+                    &mut last_row_and_zero_streams,
+                    None,
+                    vec![t],
+                    idents,
+                );
             }
 
             // timestamp range checks
@@ -307,6 +324,9 @@ pub(crate) fn transform_first_or_last_rows(
                     .intermediate_polys_for_timestamp_range_checks
                     .num_pairs;
 
+                let individual_term_ident_sub_assign_t =
+                    MW::sub_assign(quote! { #individual_term_ident }, quote! { t });
+
                 for i in 0..num_pairs {
                     let offset = stage_2_layout
                         .intermediate_polys_for_timestamp_range_checks
@@ -315,7 +335,7 @@ pub(crate) fn transform_first_or_last_rows(
 
                     let t = quote! {
                         let t = #el_expr;
-                        #individual_term_ident.sub_assign(&t);
+                        #individual_term_ident_sub_assign_t;
                     };
                     substream.extend(t);
                 }
@@ -328,7 +348,12 @@ pub(crate) fn transform_first_or_last_rows(
                     };
                 };
 
-                accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
+                accumulate_contributions::<MW>(
+                    &mut last_row_and_zero_streams,
+                    None,
+                    vec![t],
+                    idents,
+                );
             }
         }
 
@@ -347,16 +372,20 @@ pub(crate) fn transform_first_or_last_rows(
                 .get_intermediate_poly_for_decoder_lookup_absolute_poly_idx_for_verifier();
             let lookup_acc_expr = read_stage_2_value_expr(offset, idents, false);
 
+            let individual_term_ident_sub_assign_lookup_acc = MW::sub_assign(
+                quote! { #individual_term_ident },
+                quote! { #lookup_acc_expr },
+            );
             let t = quote! {
                 let #individual_term_ident = {
                     let mut #individual_term_ident = #multiplicities_acc_expr;
-                    #individual_term_ident.sub_assign(&#lookup_acc_expr);
+                    #individual_term_ident_sub_assign_lookup_acc;
 
                     #individual_term_ident
                 };
             };
 
-            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
         // generic lookup
@@ -376,13 +405,18 @@ pub(crate) fn transform_first_or_last_rows(
                 let mut #individual_term_ident = #multiplicities_acc_expr;
             };
 
+            let individual_term_ident_add_assign_t =
+                MW::add_assign(quote! { #individual_term_ident }, quote! { t });
+            let individual_term_ident_sub_assign_t =
+                MW::sub_assign(quote! { #individual_term_ident }, quote! { t });
+
             for i in 1..bound {
                 let offset = stage_2_layout
                     .generic_width_3_lookup_intermediate_polys_for_multiplicities_absolute_poly_idx_for_verifier(i);
                 let multiplicities_acc_expr = read_stage_2_value_expr(offset, idents, false);
                 let t = quote! {
                     let t = #multiplicities_acc_expr;
-                    #individual_term_ident.add_assign(&t);
+                    #individual_term_ident_add_assign_t;
                 };
                 substream.extend(t);
             }
@@ -397,7 +431,7 @@ pub(crate) fn transform_first_or_last_rows(
 
                 let t = quote! {
                     let t = #el_expr;
-                    #individual_term_ident.sub_assign(&t);
+                    #individual_term_ident_sub_assign_t;
                 };
                 substream.extend(t);
             }
@@ -410,7 +444,7 @@ pub(crate) fn transform_first_or_last_rows(
                 };
             };
 
-            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
         // and delegation creation/processing
@@ -427,19 +461,25 @@ pub(crate) fn transform_first_or_last_rows(
                 .expect("must exist");
             let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
 
+            let t_mul_assign_coeff = MW::mul_assign(
+                quote! { t },
+                quote! { #delegation_argument_interpolant_linear_coeff_ident },
+            );
+            let individual_term_ident_sub_assign_t =
+                MW::sub_assign(quote! { #individual_term_ident }, quote! { t });
             let t = quote! {
                 let #individual_term_ident = {
                     let mut #individual_term_ident = #accumulator_expr;
                     // coeff should be accumulator value / omega^-1
                     let mut t = #random_point_ident;
-                    t.mul_assign(& #delegation_argument_interpolant_linear_coeff_ident);
-                    #individual_term_ident.sub_assign(&t);
+                    #t_mul_assign_coeff;
+                    #individual_term_ident_sub_assign_t;
 
                     #individual_term_ident
                 };
             };
 
-            accumulate_contributions(&mut last_row_and_zero_streams, None, vec![t], idents);
+            accumulate_contributions::<MW>(&mut last_row_and_zero_streams, None, vec![t], idents);
         }
 
         last_row_and_zero_streams
