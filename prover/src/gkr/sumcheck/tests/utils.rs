@@ -13,15 +13,11 @@ use worker::Worker;
 
 use rand::RngCore;
 
-
-
-pub(super) fn random_poly_in_ext<F, E>(
-    size: usize,
-) -> Vec<E>
+pub(super) fn random_poly_in_ext<F, E>(size: usize) -> Vec<E>
 where
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized
+    [(); E::DEGREE]: Sized,
 {
     let mut rng = rand::rng();
 
@@ -29,7 +25,8 @@ where
         .map(|_| {
             let coefs: Vec<F> = [rng.next_u32(); E::DEGREE]
                 .into_iter()
-                .map(|value| F::from_u32_with_reduction(value)).collect();
+                .map(|value| F::from_u32_with_reduction(value))
+                .collect();
             E::from_coeffs_in_base(&coefs)
         })
         .collect()
@@ -69,9 +66,9 @@ pub(super) fn setup_sumcheck_params<F, E>(
     folding_steps: usize,
 ) -> (E, Vec<E>, Vec<E>, BTreeMap<GKRAddress, E>)
 where
-    F: PrimeField, 
+    F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized
+    [(); E::DEGREE]: Sized,
 {
     let previous_round_challenges = random_poly_in_ext(folding_steps);
 
@@ -101,7 +98,12 @@ where
         );
     }
 
-    (claim, previous_round_challenges, folding_challenges, expected)
+    (
+        claim,
+        previous_round_challenges,
+        folding_challenges,
+        expected,
+    )
 }
 
 pub(super) fn compute_product<F: PrimeField, E: FieldExtension<F> + Field>(

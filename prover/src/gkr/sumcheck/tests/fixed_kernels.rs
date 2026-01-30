@@ -14,9 +14,18 @@ fn test_initial_grand_product() {
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
 
     // InitialGrandProductFromCaches requires both inputs to be Cached addresses
-    let addr_a = GKRAddress::Cached { layer: 0, offset: 0 };
-    let addr_b = GKRAddress::Cached { layer: 0, offset: 1 };
-    let addr_out = GKRAddress::InnerLayer { layer: 1, offset: 0 };
+    let addr_a = GKRAddress::Cached {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_b = GKRAddress::Cached {
+        layer: 0,
+        offset: 1,
+    };
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
 
     let a = random_poly_in_ext::<F, E>(POLY_SIZE);
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -55,9 +64,15 @@ fn test_unbalanced_grand_product() {
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
 
     // UnbalancedGrandProductWithCache requires exactly one Cached input
-    let addr_cached = GKRAddress::Cached { layer: 0, offset: 0 };
+    let addr_cached = GKRAddress::Cached {
+        layer: 0,
+        offset: 0,
+    };
     let addr_scalar = GKRAddress::BaseLayerMemory(0);
-    let addr_out = GKRAddress::InnerLayer { layer: 1, offset: 0 };
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
 
     let a = random_poly_in_ext::<F, E>(POLY_SIZE);
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -98,7 +113,10 @@ fn test_same_size_product() {
     // SameSizeProduct requires neither input to be Cached
     let addr_a = GKRAddress::BaseLayerMemory(0);
     let addr_b = GKRAddress::BaseLayerMemory(1);
-    let addr_out = GKRAddress::InnerLayer { layer: 1, offset: 0 };
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
 
     let a = random_poly_in_ext::<F, E>(POLY_SIZE);
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -139,12 +157,21 @@ fn test_lookup_with_cached_dens() {
     // LookupWithCachedDensAndSetup computes input/input - setup/setup = (a*d - c*b) / (b*d)
     // where input = [mask (a), denominator (b)], setup = [multiplicity (c), setup_denominator (d)]
     // Validation: input[0] (mask) NOT cached, input[1] (denominator) IS cached
-    let addr_mask = GKRAddress::BaseLayerMemory(0);  // input[0] - NOT cached
-    let addr_den = GKRAddress::Cached { layer: 0, offset: 0 };  // input[1] - IS cached
-    let addr_mult = GKRAddress::BaseLayerMemory(1);  // setup[0] - multiplicity
-    let addr_setup_den = GKRAddress::BaseLayerMemory(2);  // setup[1] - setup denominator
-    let addr_out_num = GKRAddress::InnerLayer { layer: 1, offset: 0 };
-    let addr_out_den = GKRAddress::InnerLayer { layer: 1, offset: 1 };
+    let addr_mask = GKRAddress::BaseLayerMemory(0); // input[0] - NOT cached
+    let addr_den = GKRAddress::Cached {
+        layer: 0,
+        offset: 0,
+    }; // input[1] - IS cached
+    let addr_mult = GKRAddress::BaseLayerMemory(1); // setup[0] - multiplicity
+    let addr_setup_den = GKRAddress::BaseLayerMemory(2); // setup[1] - setup denominator
+    let addr_out_num = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
+    let addr_out_den = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 1,
+    };
 
     let mask = random_poly_in_ext::<F, E>(POLY_SIZE);
     let den = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -172,7 +199,12 @@ fn test_lookup_with_cached_dens() {
     let (claim, prev_challenges, folding_challenges, expected_evals) = setup_sumcheck_params(
         &storage,
         &[addr_out_num, addr_out_den],
-        &[(addr_mask, &mask), (addr_den, &den), (addr_mult, &mult), (addr_setup_den, &setup_den)],
+        &[
+            (addr_mask, &mask),
+            (addr_den, &den),
+            (addr_mult, &mult),
+            (addr_setup_den, &setup_den),
+        ],
         FOLDING_STEPS,
     );
 
@@ -227,10 +259,14 @@ fn test_lookup_pair() {
 
     let kernel = LookupPairGKRRelation {
         inputs: [
-            [GKRAddress::BaseLayerMemory(0),
-            GKRAddress::BaseLayerMemory(1)],
-            [GKRAddress::BaseLayerMemory(2),
-            GKRAddress::BaseLayerMemory(3)]
+            [
+                GKRAddress::BaseLayerMemory(0),
+                GKRAddress::BaseLayerMemory(1),
+            ],
+            [
+                GKRAddress::BaseLayerMemory(2),
+                GKRAddress::BaseLayerMemory(3),
+            ],
         ],
         outputs: [
             GKRAddress::InnerLayer {

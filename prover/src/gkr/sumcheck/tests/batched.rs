@@ -1,11 +1,14 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use field::{Mersenne31Field, Mersenne31Quartic, Field, FieldExtension, PrimeField};
+use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
 use worker::Worker;
 
-use crate::gkr::sumcheck::{eq_poly::*, evaluate_eq_poly, evaluate_eq_poly_at_line, evaluate_small_univariate_poly, evaluation_kernels::*, output_univariate_monomial_form_max_quadratic};
 use super::utils::*;
+use crate::gkr::sumcheck::{
+    eq_poly::*, evaluate_eq_poly, evaluate_eq_poly_at_line, evaluate_small_univariate_poly,
+    evaluation_kernels::*, output_univariate_monomial_form_max_quadratic,
+};
 
 type F = Mersenne31Field;
 type E = Mersenne31Quartic;
@@ -50,14 +53,26 @@ fn test_batched_kernels() {
     // - LookupWithCachedDensAndSetup: inputs[1] (denominator) must be Cached
     // - Others: non-cached
     let addr_copy = GKRAddress::BaseLayerMemory(0);
-    let addr_initial_b = GKRAddress::Cached { layer: 0, offset: 0 };
-    let addr_initial_c = GKRAddress::Cached { layer: 0, offset: 1 };
-    let addr_unbalanced_cached = GKRAddress::Cached { layer: 0, offset: 2 };
+    let addr_initial_b = GKRAddress::Cached {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_initial_c = GKRAddress::Cached {
+        layer: 0,
+        offset: 1,
+    };
+    let addr_unbalanced_cached = GKRAddress::Cached {
+        layer: 0,
+        offset: 2,
+    };
     let addr_unbalanced_scalar = GKRAddress::BaseLayerMemory(1);
     let addr_mask_f = GKRAddress::BaseLayerMemory(2);
     let addr_mask_m = GKRAddress::BaseLayerMemory(3);
     let addr_lookup_sub_g = GKRAddress::BaseLayerMemory(4);
-    let addr_lookup_sub_h = GKRAddress::Cached { layer: 0, offset: 3 };  // denominator - must be Cached
+    let addr_lookup_sub_h = GKRAddress::Cached {
+        layer: 0,
+        offset: 3,
+    }; // denominator - must be Cached
     let addr_lookup_sub_i = GKRAddress::BaseLayerMemory(5);
     let addr_lookup_sub_j = GKRAddress::BaseLayerMemory(6);
     let addr_lookup_add_k = GKRAddress::BaseLayerMemory(7);
@@ -84,14 +99,38 @@ fn test_batched_kernels() {
         (addr_lookup_add_n, lookup_add_n.clone()),
     ];
     // Output addresses
-    let addr_out_copy = GKRAddress::InnerLayer { layer: 1, offset: 0 };
-    let addr_out_initial = GKRAddress::InnerLayer { layer: 1, offset: 1 };
-    let addr_out_unbalanced = GKRAddress::InnerLayer { layer: 1, offset: 2 };
-    let addr_out_mask = GKRAddress::InnerLayer { layer: 1, offset: 3 };
-    let addr_out_lookup_sub_num = GKRAddress::InnerLayer { layer: 1, offset: 4 };
-    let addr_out_lookup_sub_den = GKRAddress::InnerLayer { layer: 1, offset: 5 };
-    let addr_out_lookup_add_num = GKRAddress::InnerLayer { layer: 1, offset: 6 };
-    let addr_out_lookup_add_den = GKRAddress::InnerLayer { layer: 1, offset: 7 };
+    let addr_out_copy = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
+    let addr_out_initial = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 1,
+    };
+    let addr_out_unbalanced = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 2,
+    };
+    let addr_out_mask = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 3,
+    };
+    let addr_out_lookup_sub_num = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 4,
+    };
+    let addr_out_lookup_sub_den = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 5,
+    };
+    let addr_out_lookup_add_num = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 6,
+    };
+    let addr_out_lookup_add_den = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 7,
+    };
 
     let outputs = vec![
         (addr_out_copy, copy_output.clone()),
@@ -129,7 +168,10 @@ fn test_batched_kernels() {
         output: [addr_out_lookup_sub_num, addr_out_lookup_sub_den],
     };
     let lookup_add_kernel = LookupPairGKRRelation {
-        inputs: [[addr_lookup_add_k, addr_lookup_add_l], [addr_lookup_add_m, addr_lookup_add_n]],
+        inputs: [
+            [addr_lookup_add_k, addr_lookup_add_l],
+            [addr_lookup_add_m, addr_lookup_add_n],
+        ],
         outputs: [addr_out_lookup_add_num, addr_out_lookup_add_den],
     };
 

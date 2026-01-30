@@ -91,7 +91,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Cop
     }
 }
 
-
 #[derive(Default)]
 pub struct CopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
@@ -408,8 +407,7 @@ pub struct ProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field>
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1>
-    for ProductGKRRelationKernel<F, E>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1> for ProductGKRRelationKernel<F, E>
 {
     #[inline(always)]
     fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
@@ -493,7 +491,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 }
-
 
 #[derive(Default)]
 pub struct MaskIntoIdentityProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
@@ -624,8 +621,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 }
 
 pub struct LookupWithCachedDensAndSetupGKRRelation {
-    pub input: [GKRAddress; 2],   // [mask, denominator]
-    pub setup: [GKRAddress; 2],   // [multiplicity, setup_denominator]
+    pub input: [GKRAddress; 2], // [mask, denominator]
+    pub setup: [GKRAddress; 2], // [multiplicity, setup_denominator]
     pub output: [GKRAddress; 2],
 }
 
@@ -648,7 +645,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         debug_assert!(self.validate());
         GKRInputs {
             inputs_in_base: Vec::new(),
-            inputs_in_extension: [self.input[0], self.input[1], self.setup[0], self.setup[1]].to_vec(),
+            inputs_in_extension: [self.input[0], self.input[1], self.setup[0], self.setup[1]]
+                .to_vec(),
             outputs_in_base: Vec::new(),
             outputs_in_extension: self.output.to_vec(),
         }
@@ -712,8 +710,7 @@ pub struct LookupSubGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Fiel
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
-    for LookupSubGKRRelationKernel<F, E>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2> for LookupSubGKRRelationKernel<F, E>
 {
     #[inline(always)]
     fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 4]) -> [E; 2] {
@@ -744,7 +741,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
     fn get_inputs(&self) -> GKRInputs {
         GKRInputs {
             inputs_in_base: Vec::new(),
-            inputs_in_extension: [self.inputs[0][0], self.inputs[0][1], self.inputs[1][0], self.inputs[1][1]].to_vec(),
+            inputs_in_extension: [
+                self.inputs[0][0],
+                self.inputs[0][1],
+                self.inputs[1][0],
+                self.inputs[1][1],
+            ]
+            .to_vec(),
             outputs_in_base: Vec::new(),
             outputs_in_extension: self.outputs.to_vec(),
         }
