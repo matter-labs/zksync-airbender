@@ -1,6 +1,6 @@
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 
-use crate::gkr::sumcheck::evaluation_kernels::{trivial_product_in_extension, BatchedGKRKernel};
+use crate::gkr::sumcheck::evaluation_kernels::BatchedGKRKernel;
 
 use super::*;
 

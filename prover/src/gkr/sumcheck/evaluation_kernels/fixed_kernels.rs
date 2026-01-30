@@ -1,0 +1,828 @@
+use std::collections::BTreeMap;
+
+use cs::definitions::GKRAddress;
+use field::{Field, FieldExtension, PrimeField};
+use worker::Worker;
+
+use super::{
+    evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs,
+    forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs, BatchedGKRKernel,
+    EvaluationRepresentation, ExtensionFieldInOutFixedSizesEvaluationKernel,
+    ExtensionFieldRepresentation, GKRInputs,
+};
+use crate::gkr::sumcheck::access_and_fold::GKRStorage;
+
+pub struct CopyGKRRelation {
+    pub input: GKRAddress,
+    pub output: GKRAddress,
+}
+
+impl CopyGKRRelation {
+    #[inline]
+    fn validate(&self) -> bool {
+        !self.output.is_cache()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for CopyGKRRelation {
+    fn num_challenges(&self) -> usize {
+        1
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        debug_assert!(self.validate());
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: vec![self.input],
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![self.output],
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = CopyGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = CopyGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+
+#[derive(Default)]
+pub struct CopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+    _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 1, 1> for CopyGKRRelationKernel<F, E>
+{
+    fn evaluate_first_round<
+        S: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        SOUT: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+    >(
+        &self,
+        index: usize,
+        _sources: &[S; 1],
+        output_sources: &[SOUT; 1],
+        batch_challenges: &[E; 1],
+    ) -> [E; 2] {
+        let output_f0 = output_sources[0].get_f0_only(index).into_value();
+        let mut eval_c0 = batch_challenges[0];
+        eval_c0.mul_assign(&output_f0);
+
+        // result[1] = 0 because the quadratic coefficient is 0 for a linear function
+        [eval_c0, E::ZERO]
+    }
+
+    fn evaluate<
+        S: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        const EXPLICIT_FORM: bool,
+    >(
+        &self,
+        index: usize,
+        sources: &[S; 1],
+        batch_challenges: &[E; 1],
+    ) -> [E; 2] {
+        if EXPLICIT_FORM {
+            // For explicit form (final round), return [kernel(f0), kernel(f1)]
+            // For Copy, kernel is identity, so this is just [f0, f1]
+            let [f0, f1] = sources[0].get_two_points::<true>(index);
+            let f0_val = f0.into_value();
+            let f1_val = f1.into_value();
+            let mut eval_c0 = batch_challenges[0];
+            eval_c0.mul_assign(&f0_val);
+            let mut eval_c1 = batch_challenges[0];
+            eval_c1.mul_assign(&f1_val);
+            [eval_c0, eval_c1]
+        } else {
+            // For non-explicit form (intermediate rounds), return [f0, 0]
+            // The quadratic coefficient is 0 for a linear function
+            let f0 = sources[0].get_f0_only(index).into_value();
+            let mut eval_c0 = batch_challenges[0];
+            eval_c0.mul_assign(&f0);
+            [eval_c0, E::ZERO]
+        }
+    }
+
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        [input[0].into_value()]
+    }
+}
+
+pub struct InitialGrandProductFromCachesGKRRelation {
+    pub inputs: [GKRAddress; 2],
+    pub output: GKRAddress,
+}
+
+impl InitialGrandProductFromCachesGKRRelation {
+    /// Validates that both inputs are from caches
+    #[inline]
+    fn validate(&self) -> bool {
+        self.inputs[0].is_cache() && self.inputs[1].is_cache() && !self.output.is_cache()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
+    for InitialGrandProductFromCachesGKRRelation
+{
+    fn num_challenges(&self) -> usize {
+        1
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        debug_assert!(self.validate());
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: self.inputs.to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![self.output],
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+pub struct UnbalancedGrandProductWithCacheGKRRelation {
+    pub inputs: [GKRAddress; 2],
+    pub output: GKRAddress,
+}
+
+impl UnbalancedGrandProductWithCacheGKRRelation {
+    /// Validates that exactly one input is from cache, output is not cached
+    #[inline]
+    fn validate(&self) -> bool {
+        let cached_count = self.inputs.iter().filter(|a| a.is_cache()).count();
+        cached_count == 1 && !self.output.is_cache()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
+    for UnbalancedGrandProductWithCacheGKRRelation
+{
+    fn num_challenges(&self) -> usize {
+        1
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        debug_assert!(self.validate());
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: self.inputs.to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![self.output],
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+pub struct SameSizeProductGKRRelation {
+    pub inputs: [GKRAddress; 2],
+    pub output: GKRAddress,
+}
+
+impl SameSizeProductGKRRelation {
+    /// Validates that neither input is from a cache, output is not cached
+    #[inline]
+    fn validate(&self) -> bool {
+        !self.inputs[0].is_cache() && !self.inputs[1].is_cache() && !self.output.is_cache()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
+    for SameSizeProductGKRRelation
+{
+    fn num_challenges(&self) -> usize {
+        1
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        debug_assert!(self.validate());
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: self.inputs.to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![self.output],
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = ProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+// Shared product kernel used by kernels 2, 3, and 4 (all compute a * b)
+#[derive(Default)]
+pub struct ProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+    _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1>
+    for ProductGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
+        let [a, b] = input;
+        let mut a = *a;
+        a.repr_mul_assign::<false>(b);
+        [a.into_value()]
+    }
+}
+
+pub struct MaskIntoIdentityProductGKRRelation {
+    pub input: GKRAddress,
+    pub mask: GKRAddress,
+    pub output: GKRAddress,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
+    for MaskIntoIdentityProductGKRRelation
+{
+    fn num_challenges(&self) -> usize {
+        1
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: vec![self.input, self.mask],
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![self.output],
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = MaskIntoIdentityProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = MaskIntoIdentityProductGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+
+#[derive(Default)]
+pub struct MaskIntoIdentityProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+    _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1>
+    for MaskIntoIdentityProductGKRRelationKernel<F, E>
+{
+    // The quadratic coefficient is La * Lm, NOT kernel([La, Lm]) which would include (1 - Lm).
+    fn evaluate_first_round<
+        S: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        SOUT: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+    >(
+        &self,
+        index: usize,
+        sources: &[S; 2],
+        output_sources: &[SOUT; 1],
+        batch_challenges: &[E; 1],
+    ) -> [E; 2] {
+        // constant term comes from output.f0 (like the default implementation)
+        let output_f0 = output_sources[0].get_f0_only(index).into_value();
+        let mut eval_c0 = batch_challenges[0];
+        eval_c0.mul_assign(&output_f0);
+
+        // quadratic coefficient = La * Lm (product of slopes)
+        let input_slope = sources[0].get_f1_minus_f0_only(index).into_value();
+        let mask_slope = sources[1].get_f1_minus_f0_only(index).into_value();
+
+        let mut c2 = input_slope;
+        c2.mul_assign(&mask_slope);
+
+        let mut eval_c2 = batch_challenges[0];
+        eval_c2.mul_assign(&c2);
+
+        [eval_c0, eval_c2]
+    }
+
+    // Override evaluate because this kernel has an affine term (1 - mask).
+    // The sumcheck polynomial s(X) = input(X) * mask(X) + (1 - mask(X))
+    // Let input(X) = a0 + La*X, mask(X) = m0 + Lm*X
+    // Then s(X) = (a0*m0 + 1 - m0) + (a0*Lm + La*m0 - Lm)*X + La*Lm*X²
+    //
+    // The quadratic coefficient is La*Lm, NOT kernel([La, Lm]) which would incorrectly
+    // include the (1 - Lm) affine term.
+    fn evaluate<
+        S: super::EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        const EXPLICIT_FORM: bool,
+    >(
+        &self,
+        index: usize,
+        sources: &[S; 2],
+        batch_challenges: &[E; 1],
+    ) -> [E; 2] {
+        if EXPLICIT_FORM {
+            // For explicit form (final round), return [kernel(f0), kernel(f1)]
+            let [input_f0, input_f1] = sources[0].get_two_points::<true>(index);
+            let [mask_f0, mask_f1] = sources[1].get_two_points::<true>(index);
+
+            let input_f0_val = input_f0.into_value();
+            let mask_f0_val = mask_f0.into_value();
+            let input_f1_val = input_f1.into_value();
+            let mask_f1_val = mask_f1.into_value();
+
+            // kernel(a, m) = a * m + (1 - m)
+            let mut k0 = input_f0_val;
+            k0.mul_assign(&mask_f0_val);
+            let mut one_minus_m0 = E::ONE;
+            one_minus_m0.sub_assign(&mask_f0_val);
+            k0.add_assign(&one_minus_m0);
+
+            let mut k1 = input_f1_val;
+            k1.mul_assign(&mask_f1_val);
+            let mut one_minus_m1 = E::ONE;
+            one_minus_m1.sub_assign(&mask_f1_val);
+            k1.add_assign(&one_minus_m1);
+
+            let mut eval_c0 = batch_challenges[0];
+            eval_c0.mul_assign(&k0);
+            let mut eval_c1 = batch_challenges[0];
+            eval_c1.mul_assign(&k1);
+            [eval_c0, eval_c1]
+        } else {
+            // For non-explicit form, return [constant_term, quadratic_coeff]
+            // constant_term = kernel(input.f0, mask.f0) = input.f0 * mask.f0 + (1 - mask.f0)
+            // quadratic_coeff = La * Lm = (input.f1 - input.f0) * (mask.f1 - mask.f0)
+            let [input_f0, input_slope] = sources[0].get_two_points::<false>(index);
+            let [mask_f0, mask_slope] = sources[1].get_two_points::<false>(index);
+
+            let input_f0_val = input_f0.into_value();
+            let mask_f0_val = mask_f0.into_value();
+            let input_slope_val = input_slope.into_value();
+            let mask_slope_val = mask_slope.into_value();
+
+            // constant_term = input.f0 * mask.f0 + (1 - mask.f0)
+            let mut c0 = input_f0_val;
+            c0.mul_assign(&mask_f0_val);
+            let mut one_minus_m0 = E::ONE;
+            one_minus_m0.sub_assign(&mask_f0_val);
+            c0.add_assign(&one_minus_m0);
+
+            // quadratic_coeff = La * Lm (just the product of slopes, no affine term!)
+            let mut c2 = input_slope_val;
+            c2.mul_assign(&mask_slope_val);
+
+            let mut eval_c0 = batch_challenges[0];
+            eval_c0.mul_assign(&c0);
+            let mut eval_c2 = batch_challenges[0];
+            eval_c2.mul_assign(&c2);
+            [eval_c0, eval_c2]
+        }
+    }
+
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
+        let [val, mask] = input;
+        let val = val.into_value();
+        let mask = mask.into_value();
+        // input * mask + (1 - mask)
+        let mut result = val;
+        result.mul_assign(&mask);
+        let mut one_minus_mask = E::ONE;
+        one_minus_mask.sub_assign(&mask);
+        result.add_assign(&one_minus_mask);
+        [result]
+    }
+}
+
+pub struct LookupWithCachedDensAndSetupGKRRelation {
+    pub input: [GKRAddress; 2],   // [mask, denominator]
+    pub setup: [GKRAddress; 2],   // [multiplicity, setup_denominator]
+    pub output: [GKRAddress; 2],
+}
+
+impl LookupWithCachedDensAndSetupGKRRelation {
+    /// Validates: input[0] (mask) NOT cached, input[1] (denominator) IS cached
+    #[inline]
+    fn validate(&self) -> bool {
+        !self.input[0].is_cache() && self.input[1].is_cache()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
+    for LookupWithCachedDensAndSetupGKRRelation
+{
+    fn num_challenges(&self) -> usize {
+        2
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        debug_assert!(self.validate());
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: [self.input[0], self.input[1], self.setup[0], self.setup[1]].to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: self.output.to_vec(),
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = LookupSubGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = LookupSubGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+#[derive(Default)]
+pub struct LookupSubGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+    _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    for LookupSubGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 4]) -> [E; 2] {
+        let [a, b, c, d] = input.each_ref().map(|x| x.into_value());
+        // a/b - c/d = (a*d - c*b) / (b*d)
+        let mut num = a;
+        num.mul_assign(&d);
+        let mut cb = c;
+        cb.mul_assign(&b);
+        num.sub_assign(&cb);
+
+        let mut den = b;
+        den.mul_assign(&d);
+        [num, den]
+    }
+}
+
+pub struct LookupPairGKRRelation {
+    pub inputs: [[GKRAddress; 2]; 2], // [[a, b], [c, d]] -> a/b + c/d
+    pub outputs: [GKRAddress; 2],
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for LookupPairGKRRelation {
+    fn num_challenges(&self) -> usize {
+        2
+    }
+
+    fn get_inputs(&self) -> GKRInputs {
+        GKRInputs {
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: [self.inputs[0][0], self.inputs[0][1], self.inputs[1][0], self.inputs[1][1]].to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: self.outputs.to_vec(),
+        }
+    }
+
+    fn evaluate_forward_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        expected_output_layer: usize,
+        trace_len: usize,
+        worker: &Worker,
+    ) {
+        let kernel = LookupAdditionGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            expected_output_layer,
+            trace_len,
+            worker,
+        );
+    }
+
+    fn evaluate_over_storage(
+        &self,
+        storage: &mut GKRStorage<F, E>,
+        step: usize,
+        batch_challenges: &[E],
+        folding_challenges: &[E],
+        accumulator: &mut [[E; 2]],
+        total_sumcheck_rounds: usize,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        worker: &Worker,
+    ) {
+        assert_eq!(
+            batch_challenges.len(),
+            <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
+        );
+        let kernel = LookupAdditionGKRRelationKernel::default();
+        let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
+
+        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+            &kernel,
+            &inputs,
+            storage,
+            step,
+            batch_challenges,
+            folding_challenges,
+            accumulator,
+            total_sumcheck_rounds,
+            last_evaluations,
+            worker,
+        );
+    }
+}
+
+#[derive(Default)]
+pub struct LookupAdditionGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+    _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    for LookupAdditionGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 4]) -> [E; 2] {
+        let [a, b, c, d] = input.each_ref().map(|x| x.into_value());
+        // a/b + c/d = (a*d + c*b) / (b*d)
+        let mut num = a;
+        num.mul_assign(&d);
+        let mut cb = c;
+        cb.mul_assign(&b);
+        num.add_assign(&cb);
+
+        let mut den = b;
+        den.mul_assign(&d);
+        [num, den]
+    }
+}

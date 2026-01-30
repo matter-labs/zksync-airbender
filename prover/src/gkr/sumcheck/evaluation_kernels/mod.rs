@@ -5,12 +5,13 @@ use std::collections::BTreeMap;
 use worker::Worker;
 
 pub mod batch_constraint_eval_example;
-pub mod trivial_product_in_extension;
+pub mod fixed_kernels;
 
 pub mod generic_kernel;
 pub mod simple_in_base;
 pub mod simple_in_extension;
 
+pub use self::fixed_kernels::*;
 pub use self::generic_kernel::*;
 pub use self::simple_in_base::*;
 pub use self::simple_in_extension::*;

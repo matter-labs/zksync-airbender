@@ -1,4 +1,4 @@
-use crate::gkr::sumcheck::evaluation_kernels::{trivial_product_in_extension, BatchedGKRKernel};
+use crate::gkr::sumcheck::evaluation_kernels::{fixed_kernels, BatchedGKRKernel};
 
 use super::*;
 
@@ -14,6 +14,6 @@ pub fn forward_evaluate_initial_grand_product_from_caches<
     worker: &Worker,
 ) {
     // we just need to evaluate the corresponding kernel in the forward direction
-    let kernel = trivial_product_in_extension::SameSizeProductGKRRelation { inputs, output };
+    let kernel = fixed_kernels::SameSizeProductGKRRelation { inputs, output };
     kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
 }
