@@ -55,7 +55,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
         split_destinations(vec![accumulator], worker.get_geometry(work_size));
     match step {
         0 => {
-            let sources = storage.select_for_first_round(inputs);
+            let sources = storage.get_for_sumcheck_round_0(inputs);
             assert!(sources.extension_field_inputs.is_empty());
             if sources.base_field_outputs.is_empty() == false {
                 for index in 0..accumulator.len() {
@@ -98,7 +98,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
             todo!();
         }
         1 => {
-            let sources = storage.select_for_second_round(inputs, folding_challenges);
+            let sources = storage.get_for_sumcheck_round_1(inputs, folding_challenges);
             assert!(sources.base_field_inputs.is_empty());
             for index in 0..accumulator.len() {
                 let value = kernel.evaluate::<_, _, false>(
@@ -142,7 +142,7 @@ pub fn evaluate_single_input_kernel_with_extension_inputs<
         split_destinations(vec![accumulator], worker.get_geometry(work_size));
     match step {
         0 => {
-            let sources = storage.select_for_first_round(inputs);
+            let sources = storage.get_for_sumcheck_round_0(inputs);
             assert!(sources.base_field_inputs.is_empty());
             assert!(sources.base_field_outputs.is_empty());
             if sources.extension_field_outputs.is_empty() == false {
@@ -177,7 +177,7 @@ pub fn evaluate_single_input_kernel_with_extension_inputs<
             // }
         }
         i if i + 1 == total_sumcheck_rounds => {
-            let sources = storage.select_for_second_round(inputs, folding_challenges);
+            let sources = storage.get_for_sumcheck_round_1(inputs, folding_challenges);
             assert!(sources.base_field_inputs.is_empty());
             for index in 0..accumulator.len() {
                 let value = kernel.evaluate::<_, _, true>(
@@ -199,7 +199,7 @@ pub fn evaluate_single_input_kernel_with_extension_inputs<
             sources.collect_last_values(inputs, last_evaluations);
         }
         1.. => {
-            let sources = storage.select_for_second_round(inputs, folding_challenges);
+            let sources = storage.get_for_sumcheck_round_1(inputs, folding_challenges);
             assert!(sources.base_field_inputs.is_empty());
             for index in 0..accumulator.len() {
                 let value = kernel.evaluate::<_, _, false>(

@@ -11,6 +11,13 @@ impl<F: PrimeField> BaseFieldPoly<F> {
         assert!(values.len().is_power_of_two());
         Self { values }
     }
+
+    pub fn accessor(&self) -> BaseFieldPolySource<F> {
+        BaseFieldPolySource {
+            start: self.values.as_ptr(),
+            next_layer_size: self.values.len() / 2,
+        }
+    }
 }
 
 #[derive(Debug)]

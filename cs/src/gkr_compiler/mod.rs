@@ -443,8 +443,10 @@ impl NoFieldGKRRelation {
             } => {
                 assert!(input[0].is_cache() == false);
                 assert!(input[1].is_cache());
+                assert!(setup[0].is_cache() == false);
+                assert!(setup[1].is_cache());
 
-                vec![input[1]]
+                vec![input[1], setup[1]]
             }
             Self::LookupPairFromBaseInputs { input, output } => {
                 vec![]

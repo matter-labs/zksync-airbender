@@ -189,13 +189,42 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
-    pub fn select_for_first_round(
+    pub fn get_for_sumcheck_round_0(
         &mut self,
         inputs: &GKRInputs,
     ) -> FirstSumcheckRoundSelectedStorage<F, E> {
         let mut storage = FirstSumcheckRoundSelectedStorage::default();
         for input in inputs.inputs_in_base.iter() {
-            todo!()
+            if *input == GKRAddress::placeholder() {
+                storage
+                    .base_field_inputs
+                    .push(<BaseFieldPolySource<F> as EvaluationFormStorage<
+                        F,
+                        E,
+                        BaseFieldRepresentation<F>,
+                    >>::dummy());
+            } else {
+                let layer = match *input {
+                    GKRAddress::OptimizedOut(..) => {
+                        unreachable!()
+                    }
+                    GKRAddress::Cached { layer, .. }   => {
+                        assert_eq!(layer, 0);
+                        0
+                    }
+                    GKRAddress::InnerLayer { layer, .. } => {
+                        layer
+                    },
+                    GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) | GKRAddress::Setup(..) => {
+                        0
+                    }
+                };
+                let Some(source) = self.layers[layer].base_field_inputs.get(input) else {
+                    panic!("Polynomial with address {:?} is missing from input sources for base field polys", input);
+                };
+                let accessor = source.accessor();
+                storage.base_field_inputs.push(accessor);
+            }
         }
         for input in inputs.inputs_in_extension.iter() {
             if *input == GKRAddress::placeholder() {
@@ -203,19 +232,24 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     .extension_field_inputs
                     .push(ExtensionFieldPolyInitialSource::dummy());
             } else {
-                match *input {
-                    GKRAddress::OptimizedOut(..) | GKRAddress::InnerLayer { .. } => {
+                let layer = match *input {
+                    GKRAddress::OptimizedOut(..) => {
                         unreachable!()
                     }
-                    GKRAddress::Cached { layer, .. } => {
+                    GKRAddress::Cached { layer, .. }   => {
                         assert_eq!(layer, 0);
+                        0
                     }
-                    _ => {}
+                    GKRAddress::InnerLayer { layer, .. } => {
+                        layer
+                    },
+                    GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) | GKRAddress::Setup(..) => {
+                        0
+                    }
                 };
-                let source = self.layers[0]
-                    .extension_field_inputs
-                    .get_mut(input)
-                    .expect("must be present");
+                let Some(source) = self.layers[layer].extension_field_inputs.get(input) else {
+                    panic!("Polynomial with address {:?} is missing from input sources for extension field polys", input);
+                };
                 let accessor = source.accessor();
                 storage.extension_field_inputs.push(accessor);
             }
@@ -227,24 +261,24 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     .extension_field_outputs
                     .push(ExtensionFieldPolyInitialSource::dummy());
             } else {
-                match *output {
+                let layer = match *output {
                     GKRAddress::OptimizedOut(..)
                     | GKRAddress::BaseLayerMemory(..)
-                    | GKRAddress::BaseLayerWitness(..) => {
+                    | GKRAddress::BaseLayerWitness(..) | GKRAddress::Setup(..) => {
                         unreachable!()
                     }
                     GKRAddress::Cached { layer, .. } => {
-                        assert_eq!(layer, 1);
+                        unreachable!()
+                        // assert_eq!(layer, 1);
+                        // 1
                     }
                     GKRAddress::InnerLayer { layer, .. } => {
-                        assert_eq!(layer, 1);
+                        layer
                     }
-                    _ => {}
                 };
-                let source = self.layers[1]
-                    .extension_field_inputs
-                    .get_mut(output)
-                    .expect("must be present");
+                let Some(source) = self.layers[layer].extension_field_inputs.get(output) else {
+                    panic!("Polynomial with address {:?} is missing from output sources for extension field polys", output);
+                };
                 let accessor = source.accessor();
                 storage.extension_field_outputs.push(accessor);
             }
@@ -255,7 +289,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         storage
     }
 
-    pub fn select_for_second_round(
+    pub fn get_for_sumcheck_round_1(
         &mut self,
         inputs: &GKRInputs,
         folding_challenges: &[E],
@@ -279,7 +313,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         storage
     }
 
-    pub fn select_for_third_round(
+    pub fn get_for_sumcheck_round_2(
         &mut self,
         inputs: &GKRInputs,
         folding_challenges: &[E],
@@ -287,7 +321,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         todo!()
     }
 
-    pub fn select_for_fourth_and_beyond_rounds(
+    pub fn get_for_sumcheck_round_3_and_beyond(
         &mut self,
         inputs: &GKRInputs,
         folding_challenges: &[E],

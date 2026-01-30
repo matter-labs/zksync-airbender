@@ -14,9 +14,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPoly<F, E> {
         }
     }
 
-    pub fn accessor(&mut self) -> ExtensionFieldPolyInitialSource<F, E> {
+    pub fn accessor(&self) -> ExtensionFieldPolyInitialSource<F, E> {
         ExtensionFieldPolyInitialSource {
-            start: self.values.as_mut_ptr(),
+            start: self.values.as_ptr(),
             next_layer_size: self.values.len() / 2,
             _marker: core::marker::PhantomData,
         }

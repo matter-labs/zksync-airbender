@@ -162,6 +162,8 @@ pub fn prove_configured_with_gkr<
         E::from_base(F::from_u32_unchecked(0xff)),
     ];
 
+    let mut gkr_storage = GKRStorage::<F, E>::default();
+
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ... + additive_part)
     let (
         preprocessed_range_check_16,
@@ -172,13 +174,13 @@ pub fn prove_configured_with_gkr<
         lookup_alpha,
         lookup_additive_part,
         trace_len,
+        &mut gkr_storage,
         worker,
     );
 
     // now we should perform "forward" evaluation, and fill the GKR storage
     let num_layers = compiled_circuit.layers.len();
     let mut witness_eval_data = witness_eval_data;
-    let mut gkr_storage = GKRStorage::<F, E>::default();
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         forward_loop::evaluate_layer(

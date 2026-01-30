@@ -2,7 +2,7 @@ use crate::gkr::sumcheck::evaluation_kernels::{fixed_kernels, BatchedGKRKernel};
 
 use super::*;
 
-pub fn forward_evaluate_initial_grand_product_from_caches<
+pub fn forward_evaluate_pairwise_product<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(

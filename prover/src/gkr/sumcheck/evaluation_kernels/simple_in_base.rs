@@ -117,13 +117,8 @@ fn evaluate_base_field_in_out_fixed_sizes_evaluation_kernel<
     debug_assert_eq!(sources.len(), IN);
     debug_assert_eq!(batch_challenges.len(), OUT);
     unsafe {
-        let inputs = sources.as_chunks::<IN>().0.iter().next().unwrap_unchecked();
-        let challenges = batch_challenges
-            .as_chunks::<OUT>()
-            .0
-            .iter()
-            .next()
-            .unwrap_unchecked();
+        let inputs = sources.as_array().unwrap_unchecked();
+        let challenges = batch_challenges.as_array().unwrap_unchecked();
         let ctx = inputs.get_unchecked(0).get_collapse_context();
         K::evaluate::<R, S, EXPLICIT_FORM>(kernel, index, inputs, challenges, ctx)
     }
@@ -148,19 +143,9 @@ fn evaluate_base_field_in_out_fixed_sizes_evaluation_kernel_first_round<
     debug_assert_eq!(outputs.len(), OUT);
     debug_assert_eq!(batch_challenges.len(), OUT);
     unsafe {
-        let inputs = sources.as_chunks::<IN>().0.iter().next().unwrap_unchecked();
-        let outputs = outputs
-            .as_chunks::<OUT>()
-            .0
-            .iter()
-            .next()
-            .unwrap_unchecked();
-        let challenges = batch_challenges
-            .as_chunks::<OUT>()
-            .0
-            .iter()
-            .next()
-            .unwrap_unchecked();
+        let inputs = sources.as_array().unwrap_unchecked();
+        let outputs = outputs.as_array().unwrap_unchecked();
+        let challenges = batch_challenges.as_array().unwrap_unchecked();
         K::evaluate_first_round::<S, SOUT>(kernel, index, inputs, outputs, challenges)
     }
 }

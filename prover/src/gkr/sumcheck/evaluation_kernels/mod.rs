@@ -4,17 +4,20 @@ use field::{Field, FieldExtension, PrimeField};
 use std::collections::BTreeMap;
 use worker::Worker;
 
-pub mod batch_constraint_eval_example;
 pub mod fixed_kernels;
+pub mod kernel_impls;
 
 pub mod generic_kernel;
 pub mod simple_in_base;
 pub mod simple_in_extension;
+pub mod simple_mixed;
 
 pub use self::fixed_kernels::*;
 pub use self::generic_kernel::*;
+pub use self::kernel_impls::*;
 pub use self::simple_in_base::*;
 pub use self::simple_in_extension::*;
+pub use self::simple_mixed::*;
 
 pub trait EvaluationRepresentation<F: PrimeField, E: FieldExtension<F> + Field>:
     'static + Clone + Copy + core::fmt::Debug + Send + Sync
@@ -28,6 +31,17 @@ pub trait EvaluationRepresentation<F: PrimeField, E: FieldExtension<F> + Field>:
     fn repr_add_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self);
     fn repr_sub_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self);
     fn repr_mul_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self);
+
+    fn add_with_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        ctx: &Self::CollapseContext,
+    ) -> E;
+    fn mul_by_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        ctx: &Self::CollapseContext,
+    ) -> E;
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E> for () {
@@ -47,6 +61,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
     fn repr_sub_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, _other: &Self) {}
     #[inline(always)]
     fn repr_mul_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, _other: &Self) {}
+    #[inline(always)]
+    fn add_with_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        _other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        unreachable!()
+    }
+    #[inline(always)]
+    fn mul_by_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        _other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        unreachable!()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,6 +108,26 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
     #[inline(always)]
     fn repr_mul_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self) {
         self.0.mul_assign(&other.0);
+    }
+    #[inline(always)]
+    fn add_with_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        let mut result = other.value;
+        result.add_assign_base(&self.0);
+        result
+    }
+    #[inline(always)]
+    fn mul_by_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        let mut result = other.value;
+        result.mul_assign_by_base(&self.0);
+        result
     }
 }
 
@@ -151,6 +201,38 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
 
         self.c0.mul_assign(&other.c0);
     }
+    #[inline(always)]
+    fn add_with_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        ctx: &Self::CollapseContext,
+    ) -> E {
+        if ASSUME_NO_PRODUCTS_BEFORE == false {
+            panic!();
+        }
+        let mut t = ctx.0;
+        t.mul_assign_by_base(&self.c1);
+        t.add_assign_base(&self.c0);
+        t.add_assign(&other.value);
+
+        t
+    }
+    #[inline(always)]
+    fn mul_by_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        ctx: &Self::CollapseContext,
+    ) -> E {
+        if ASSUME_NO_PRODUCTS_BEFORE == false {
+            panic!();
+        }
+        let mut t = ctx.0;
+        t.mul_assign_by_base(&self.c1);
+        t.add_assign_base(&self.c0);
+        t.mul_assign(&other.value);
+
+        t
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -199,6 +281,28 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
     #[inline(always)]
     fn repr_mul_assign<const ASSUME_NO_PRODUCTS_BEFORE: bool>(&mut self, other: &Self) {
         self.value.mul_assign(&other.value);
+    }
+    #[inline(always)]
+    fn add_with_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        let mut t = self.value;
+        t.mul_assign(&other.value);
+
+        t
+    }
+    #[inline(always)]
+    fn mul_by_ext_repr<const ASSUME_NO_PRODUCTS_BEFORE: bool>(
+        &self,
+        other: &ExtensionFieldRepresentation<F, E>,
+        _ctx: &Self::CollapseContext,
+    ) -> E {
+        let mut t = self.value;
+        t.mul_assign(&other.value);
+
+        t
     }
 }
 

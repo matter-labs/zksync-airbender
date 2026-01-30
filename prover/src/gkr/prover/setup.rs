@@ -1,6 +1,8 @@
 use super::*;
+use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::prover_stages::compute_aggregated_key_value_dyn;
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use cs::definitions::GKRAddress;
 use cs::machine::ops::unrolled::{
     materialize_flattened_decoder_table_with_bitmask, DecoderTableEntry,
 };
@@ -205,8 +207,24 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         lookup_alpha: E,
         lookup_gamma: E,
         trace_len: usize,
+        gkr_storage: &mut GKRStorage<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Box<[E]>, Box<[E]>) {
+        // fill storage
+        {
+            let mut range_check_16_poly = vec![F::ZERO; trace_len].into_boxed_slice();
+            for (i, el) in range_check_16_poly[..(1 << 16)].iter_mut().enumerate() {
+                *el = F::from_u32_unchecked(i as u32);
+            }
+            let mut timestamp_range_check_poly = vec![F::ZERO; trace_len].into_boxed_slice();
+            for (i, el) in timestamp_range_check_poly[..(1 << TIMESTAMP_COLUMNS_NUM_BITS)].iter_mut().enumerate() {
+                *el = F::from_u32_unchecked(i as u32);
+            }
+
+            gkr_storage.insert_base_field_at_layer(0, GKRAddress::Setup(0), BaseFieldPoly::new(range_check_16_poly));
+            gkr_storage.insert_base_field_at_layer(0, GKRAddress::Setup(1), BaseFieldPoly::new(timestamp_range_check_poly));
+        }
+
         (
             Self::preprocess_range_check_16_table::<E, Global>(trace_len, lookup_gamma, worker),
             Self::preprocess_timestamp_range_check_table::<E, Global>(

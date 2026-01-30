@@ -6,39 +6,50 @@ use crate::gkr::{
 use super::*;
 use std::mem::MaybeUninit;
 
-pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
+// Trait for kernels that can take both base field and extension field as inputs,
+// but always output values in extension
+
+pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    const IN: usize,
+    const IN_BASE: usize,
+    const IN_EXT: usize,
     const OUT: usize,
 >: Send + Sync
 {
-    fn evaluate_forward<S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>>(
+    fn evaluate_forward<
+        SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>,
+        SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+    >(
         &self,
         index: usize,
-        sources: &[S; IN],
+        sources: &[SB; IN_BASE],
+        ext_sources: &[SE; IN_EXT],
     ) -> [E; OUT] {
-        assert!(IN > 0);
+        assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         unsafe {
-            let p0s = std::array::from_fn(|i| sources[i].get_at_index(index));
-            let eval = self.pointwise_eval_forward(&p0s);
+            let sources = sources.each_ref().map(|el| el.get_at_index(index));
+            let ext_sources = ext_sources.each_ref().map(|el| el.get_at_index(index));
+            let eval = self.pointwise_eval_forward(&sources, &ext_sources);
 
             eval
         }
     }
 
     fn evaluate_first_round<
-        S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>,
+        SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
         SOUT: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
     >(
         &self,
         index: usize,
-        sources: &[S; IN],
+        sources: &[SB; IN_BASE],
+        ext_sources: &[SE; IN_EXT],
         output_sources: &[SOUT; OUT],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
-        assert!(IN > 0);
+        assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         unsafe {
             let mut result = [const { MaybeUninit::uninit() }; 2];
@@ -55,8 +66,13 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
                 result[0].write(eval);
             }
             {
+                let ctx = sources.get_unchecked(0).get_collapse_context();
+
                 let sources = sources.each_ref().map(|el| el.get_f1_minus_f0_only(index));
-                let evals = self.pointwise_eval(&sources);
+                let ext_sources = ext_sources
+                    .each_ref()
+                    .map(|el| el.get_f1_minus_f0_only(index));
+                let evals = self.pointwise_eval(&sources, &ext_sources, ctx);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -72,21 +88,26 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
     }
 
     fn evaluate<
-        S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+        RB: EvaluationRepresentation<F, E>,
+        SB: EvaluationFormStorage<F, E, RB>,
+        SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
         const EXPLICIT_FORM: bool,
     >(
         &self,
         index: usize,
-        sources: &[S; IN],
+        sources: &[SB; IN_BASE],
+        ext_sources: &[SE; IN_EXT],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
-        assert!(IN > 0);
+        assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         unsafe {
+            let ctx = sources.get_unchecked(0).get_collapse_context();
+
             let mut result = [const { MaybeUninit::uninit() }; 2];
-            let mut p0s = [const { MaybeUninit::uninit() }; IN];
-            let mut p1s = [const { MaybeUninit::uninit() }; IN];
-            for i in 0..IN {
+            let mut p0s = [const { MaybeUninit::uninit() }; IN_BASE];
+            let mut p1s = [const { MaybeUninit::uninit() }; IN_BASE];
+            for i in 0..IN_BASE {
                 let [f0, f1] = sources[i].get_two_points::<EXPLICIT_FORM>(index);
                 p0s[i].write(f0);
                 p1s[i].write(f1);
@@ -94,8 +115,18 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
             let p0s = p0s.map(|el| el.assume_init());
             let p1s = p1s.map(|el| el.assume_init());
 
-            for (j, p) in [&p0s, &p1s].into_iter().enumerate() {
-                let evals = self.pointwise_eval(p);
+            let mut ext_p0s = [const { MaybeUninit::uninit() }; IN_EXT];
+            let mut ext_p1s = [const { MaybeUninit::uninit() }; IN_EXT];
+            for i in 0..IN_EXT {
+                let [f0, f1] = ext_sources[i].get_two_points::<EXPLICIT_FORM>(index);
+                ext_p0s[i].write(f0);
+                ext_p1s[i].write(f1);
+            }
+            let ext_p0s = ext_p0s.map(|el| el.assume_init());
+            let ext_p1s = ext_p1s.map(|el| el.assume_init());
+
+            for (j, (p_b, p_ext)) in [(&p0s, &ext_p0s), (&p1s, &ext_p1s)].into_iter().enumerate() {
+                let evals = self.pointwise_eval(p_b, p_ext, ctx);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -110,69 +141,92 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         }
     }
 
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT];
+    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; IN_BASE],
+        ext_input: &[ExtensionFieldRepresentation<F, E>; IN_EXT],
+        ctx: &RB::CollapseContext,
+    ) -> [E; OUT];
 
     #[inline(always)]
-    fn pointwise_eval_forward(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT] {
-        self.pointwise_eval(input)
+    fn pointwise_eval_forward(
+        &self,
+        input: &[BaseFieldRepresentation<F>; IN_BASE],
+        ext_input: &[ExtensionFieldRepresentation<F, E>; IN_EXT],
+    ) -> [E; OUT] {
+        self.pointwise_eval(input, ext_input, &())
     }
 }
 
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel<
+fn evaluate_mixed_field_in_out_fixed_sizes_evaluation_kernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    const IN: usize,
+    const IN_BASE: usize,
+    const IN_EXT: usize,
     const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+    K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
+    RB: EvaluationRepresentation<F, E>,
+    SB: EvaluationFormStorage<F, E, RB>,
+    SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
     const EXPLICIT_FORM: bool,
 >(
     kernel: &K,
     index: usize,
-    sources: &[S],
+    sources: &[SB],
+    ext_sources: &[SE],
     batch_challenges: &[E],
 ) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
+    debug_assert_eq!(sources.len(), IN_BASE);
+    debug_assert_eq!(ext_sources.len(), IN_EXT);
     debug_assert_eq!(batch_challenges.len(), OUT);
     unsafe {
         let inputs = sources.as_array().unwrap_unchecked();
+        let inputs_ext = ext_sources.as_array().unwrap_unchecked();
         let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate::<S, EXPLICIT_FORM>(kernel, index, inputs, challenges)
+        K::evaluate::<RB, SB, SE, EXPLICIT_FORM>(kernel, index, inputs, inputs_ext, challenges)
     }
 }
 
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel_first_round<
+fn evaluate_mixed_field_in_out_fixed_sizes_evaluation_kernel_first_round<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    const IN: usize,
+    const IN_BASE: usize,
+    const IN_EXT: usize,
     const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
+    K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
+    SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>,
+    SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
     SOUT: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
 >(
     kernel: &K,
     index: usize,
-    sources: &[S],
+    sources: &[SB],
+    ext_sources: &[SE],
     outputs: &[SOUT],
     batch_challenges: &[E],
 ) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
+    debug_assert_eq!(sources.len(), IN_BASE);
+    debug_assert_eq!(ext_sources.len(), IN_EXT);
     debug_assert_eq!(outputs.len(), OUT);
     debug_assert_eq!(batch_challenges.len(), OUT);
     unsafe {
         let inputs = sources.as_array().unwrap_unchecked();
+        let inputs_ext = ext_sources.as_array().unwrap_unchecked();
         let outputs = outputs.as_array().unwrap_unchecked();
         let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate_first_round::<S, SOUT>(kernel, index, inputs, outputs, challenges)
+        K::evaluate_first_round::<SB, SE, SOUT>(
+            kernel, index, inputs, inputs_ext, outputs, challenges,
+        )
     }
 }
 
-pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
+pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    const IN: usize,
+    const IN_BASE: usize,
+    const IN_EXT: usize,
     const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
+    K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -199,7 +253,9 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
             destinations_refs.push(&mut el[..]);
         }
 
-        let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
+        let inputs = sources.base_field_inputs.as_array().unwrap_unchecked();
+
+        let ext_inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
 
         apply_row_wise::<F, _>(
             vec![],
@@ -211,7 +267,7 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
                 let mut destinations: [&mut [MaybeUninit<E>]; OUT] = ext_dest.try_into().unwrap();
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
-                    let value = kernel.evaluate_forward(absolute_index, inputs);
+                    let value = kernel.evaluate_forward(absolute_index, inputs, ext_inputs);
                     for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
                         dst[index].write(val);
                     }
@@ -230,7 +286,7 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
     }
 }
 
-pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
+pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     const IN: usize,

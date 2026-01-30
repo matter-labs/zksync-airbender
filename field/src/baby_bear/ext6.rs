@@ -267,7 +267,7 @@ impl Field for BabyBearExt6 {
     fn double(&mut self) -> &mut Self {
         self.c0.double();
         self.c1.double();
-        self.c1.double();
+        self.c2.double();
 
         self
     }

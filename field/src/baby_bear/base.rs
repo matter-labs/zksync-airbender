@@ -259,7 +259,9 @@ impl BabyBearField {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
-        *self = Self(Self::ORDER - self.0);
+        if self.0 != 0 {
+            *self = Self(Self::ORDER - self.0);
+        }
         self
     }
 
