@@ -324,6 +324,8 @@ mod tests {
     use crate::ops_simple::set_to_zero;
     use crate::utils::GetChunksCount;
 
+    const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
+
     fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
         let count = results.len();
         let values_len = values.len();
@@ -351,9 +353,13 @@ mod tests {
                     .collect_vec();
                 block.copy_from_slice(&chunk);
                 if i == blocks_count - 1 {
-                    state.absorb_final_block::<false>(&block, block_len, &mut expected);
+                    state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
+                        &block,
+                        block_len,
+                        &mut expected,
+                    );
                 } else {
-                    state.absorb::<false>(&block);
+                    state.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
                 }
             }
             let actual = results[i];
@@ -376,7 +382,10 @@ mod tests {
                     .try_into()
                     .unwrap();
                 let mut expected = Digest::default();
-                Blake2sState::compress_two_to_one::<false>(&state, &mut expected);
+                Blake2sState::compress_two_to_one::<USE_REDUCED_BLAKE2_ROUNDS>(
+                    &state,
+                    &mut expected,
+                );
                 assert_eq!(expected, actual);
             });
     }
@@ -613,7 +622,7 @@ mod tests {
         block[STATE_SIZE] = h_result[0] as u32;
         block[STATE_SIZE + 1] = (h_result[0] >> 32) as u32;
         let mut digest = Digest::default();
-        state.absorb_final_block::<true>(&block, STATE_SIZE + 2, &mut digest);
+        state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, STATE_SIZE + 2, &mut digest);
         assert!(digest[0].leading_zeros() >= BITS_COUNT);
     }
 }
