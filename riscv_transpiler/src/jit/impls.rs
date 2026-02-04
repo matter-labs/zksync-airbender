@@ -1199,20 +1199,21 @@ impl<I: ContextImpl> JittedCode<I> {
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Instruction::Mulh(parts) => {
+                        emit_runtime_error!(ops);
                         // unimplemented!("unsupported by default");
-                        touch_register_and_increment_timestamp!(ops, parts.rs1());
-                        touch_register_and_increment_timestamp!(ops, parts.rs2());
-                        load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
-                        let other = load(&mut ops, parts.rs2());
-                        dynasm!(ops
-                            ; imul Rd(other)
-                        );
-                        if out != x64::Rq::RDX as u8 {
-                            dynasm!(ops
-                                ; mov Rd(out), edx
-                            );
-                        }
-                        record_circuit_type(&mut ops, CounterType::MulDiv, 1);
+                        // touch_register_and_increment_timestamp!(ops, parts.rs1());
+                        // touch_register_and_increment_timestamp!(ops, parts.rs2());
+                        // load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
+                        // let other = load(&mut ops, parts.rs2());
+                        // dynasm!(ops
+                        //     ; imul Rd(other)
+                        // );
+                        // if out != x64::Rq::RDX as u8 {
+                        //     dynasm!(ops
+                        //         ; mov Rd(out), edx
+                        //     );
+                        // }
+                        // record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Instruction::Mulhu(parts) => {
                         touch_register_and_increment_timestamp!(ops, parts.rs1());
