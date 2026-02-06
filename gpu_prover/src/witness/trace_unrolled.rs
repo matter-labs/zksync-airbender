@@ -176,7 +176,8 @@ pub(crate) fn get_aux_arguments_boundary_values(
             address: lazy_init_address_first_row,
             teardown_value: lazy_teardown_value_first_row,
             teardown_timestamp: lazy_teardown_timestamp_first_row,
-        } = get_data((rows_count - 1) * i);
+        // Lazy init data is laid out in contiguous columns of `rows_count` elements.
+        } = get_data(rows_count * i);
 
         let LazyInitAndTeardown {
             address: lazy_init_address_one_before_last_row,

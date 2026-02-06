@@ -135,7 +135,8 @@ pub fn get_aux_boundary_data(
             address: lazy_init_address_first_row,
             teardown_value: lazy_teardown_value_first_row,
             teardown_timestamp: lazy_teardown_timestamp_first_row,
-        } = lazy_init_data[(cycles - 1) * i];
+        // Lazy init data is laid out in contiguous columns of `cycles` elements.
+        } = lazy_init_data[cycles * i];
 
         let LazyInitAndTeardown {
             address: lazy_init_address_one_before_last_row,
