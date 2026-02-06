@@ -1,5 +1,5 @@
 use crate::gkr::sumcheck::{
-    access_and_fold::{ExtensionFieldPoly, GKRLayerSource, GKRStorage},
+    access_and_fold::{BaseFieldPoly, ExtensionFieldPoly, GKRLayerSource, GKRStorage},
     eq_poly::*,
     evaluate_eq_poly, evaluate_eq_poly_at_line, evaluate_small_univariate_poly,
     evaluation_kernels::BatchedGKRKernel,
@@ -53,6 +53,41 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
         layer_1
             .extension_field_inputs
             .insert(addr, ExtensionFieldPoly::new(poly.into_boxed_slice()));
+    }
+    storage.layers.push(layer_1);
+
+    storage
+}
+
+pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_inputs: Vec<(GKRAddress, Vec<F>)>,
+    ext_inputs: Vec<(GKRAddress, Vec<E>)>,
+    outputs: Vec<(GKRAddress, Vec<E>)>,
+) -> GKRStorage<F, E> {
+    let mut storage = GKRStorage::<F, E>::default();
+
+    let mut layer_0 = GKRLayerSource::default();
+    layer_0.layer_idx = 0;
+    for (addr, poly) in base_inputs {
+        layer_0
+            .base_field_inputs
+            .insert(addr, Arc::new(BaseFieldPoly::new(poly.into_boxed_slice())));
+    }
+    for (addr, poly) in ext_inputs {
+        layer_0.extension_field_inputs.insert(
+            addr,
+            Arc::new(ExtensionFieldPoly::new(poly.into_boxed_slice())),
+        );
+    }
+    storage.layers.push(layer_0);
+
+    let mut layer_1 = GKRLayerSource::default();
+    layer_1.layer_idx = 1;
+    for (addr, poly) in outputs {
+        layer_1.extension_field_inputs.insert(
+            addr,
+            Arc::new(ExtensionFieldPoly::new(poly.into_boxed_slice())),
+        );
     }
     storage.layers.push(layer_1);
 
@@ -189,12 +224,42 @@ pub(super) fn compute_lookup_add<F: PrimeField, E: FieldExtension<F> + Field>(
     (num, den)
 }
 
-pub(super) fn create_alternating_mask<F: PrimeField, E: FieldExtension<F> + Field>(
-    size: usize,
-) -> Vec<E> {
+pub(super) fn create_alternating_mask_base<F: PrimeField>(size: usize) -> Vec<F> {
     (0..size)
-        .map(|el| E::from_base(F::from_u64_with_reduction((el % 2) as u64)))
+        .map(|el| F::from_u64_with_reduction((el % 2) as u64))
         .collect()
+}
+
+pub(super) fn compute_mask_identity_mixed<F: PrimeField, E: FieldExtension<F> + Field>(
+    input: &[E],
+    mask: &[F],
+) -> Vec<E> {
+    input
+        .iter()
+        .zip(mask.iter())
+        .map(|(a, m)| {
+            let mut result = *a;
+            result.mul_assign_by_base(m);
+            let mut one_minus_m = F::ONE;
+            one_minus_m.sub_assign(m);
+            result.add_assign(&E::from_base(one_minus_m));
+            result
+        })
+        .collect()
+}
+
+pub(super) fn evaluate_base_with_precomputed_eq<F: PrimeField, E: FieldExtension<F> + Field>(
+    poly: &[F],
+    eq: &[E],
+) -> E {
+    assert_eq!(poly.len(), eq.len());
+    let mut result = E::ZERO;
+    for (p, e) in poly.iter().zip(eq.iter()) {
+        let mut t = *e;
+        t.mul_assign_by_base(p);
+        result.add_assign(&t);
+    }
+    result
 }
 
 pub(super) fn run_sumcheck_test<
