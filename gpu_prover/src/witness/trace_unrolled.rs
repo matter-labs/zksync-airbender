@@ -171,6 +171,10 @@ pub(crate) fn get_aux_arguments_boundary_values(
         }
     };
     let mut values = Vec::with_capacity(layouts_len);
+    assert!(
+        (rows_count + 1).is_power_of_two(),
+        "rows_count must power of two minus one, but got {rows_count}"
+    );
     for i in 0..layouts_len {
         // Lazy init data is laid out in contiguous columns of `rows_count` elements.
         let LazyInitAndTeardown {

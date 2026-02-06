@@ -130,6 +130,10 @@ pub fn get_aux_boundary_data(
         .shuffle_ram_inits_and_teardowns
         .len();
 
+    assert!(
+        (cycles + 1).is_power_of_two(),
+        "cycles must power of two minus one, but got {cycles}"
+    );
     for i in 0..len {
         // Lazy init data is laid out in contiguous columns of `cycles` elements.
         let LazyInitAndTeardown {
