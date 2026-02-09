@@ -62,31 +62,31 @@ impl MersenneWrapper for DefaultMersenne31Field {
     }
 
     fn add_assign(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.add_assign(& #b) }
+        quote! { field_ops::add_assign(&mut #a, & #b) }
     }
 
     fn sub_assign(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.sub_assign(& #b) }
+        quote! { field_ops::sub_assign(&mut #a, & #b) }
     }
 
     fn mul_assign(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.mul_assign(& #b) }
+        quote! { field_ops::mul_assign(&mut #a, & #b) }
     }
 
     fn add_assign_base(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.add_assign_base(& #b) }
+        quote! { field_ops::add_assign_base(&mut #a, & #b) }
     }
 
     fn sub_assign_base(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.sub_assign_base(& #b) }
+        quote! { field_ops::sub_assign_base(&mut #a, & #b) }
     }
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
-        quote! { #a.mul_assign_by_base(& #b) }
+        quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
     }
 
     fn negate(a: TokenStream) -> TokenStream {
-        quote! { #a.negate() }
+        quote! { field_ops::negate(&mut #a) }
     }
 
     fn generic_function_parameters() -> TokenStream {

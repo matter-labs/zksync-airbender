@@ -777,7 +777,16 @@ pub fn generate_inlined_configured<MW: MersenneWrapper>(
     let quotient_add_assign_last_row_and_zero_contribution =
         MW::add_assign(quote! {quotient}, quote! {last_row_and_zero_contribution});
 
+    let field_ops_shim = quote! {
+        #[cfg(not(target_arch = "riscv32"))]
+        use ::verifier_common::no_inline_ops as field_ops;
+
+        #[cfg(target_arch = "riscv32")]
+        use ::verifier_common::inline_ops as field_ops;
+    };
+
     quote! {
+        #field_ops_shim
 
         #[allow(unused_braces, unused_mut, unused_variables)]
         unsafe fn evaluate_every_row_except_last #generic_function_parameters (

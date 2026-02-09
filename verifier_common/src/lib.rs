@@ -41,6 +41,8 @@ pub use non_determinism_source;
 pub use prover;
 pub use transcript;
 pub mod fri_folding;
+pub mod inline_ops;
+pub mod no_inline_ops;
 #[cfg(any(test, feature = "proof_utils"))]
 pub mod proof_flattener;
 
