@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 unroll.workspace = true
+common_constants.workspace = true
 
 [dev-dependencies]
 blake2 = "*"
