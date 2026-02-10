@@ -54,7 +54,7 @@ pub mod no_inline_ops;
 /// too much benefits, so on host platform we disable inlining.
 pub mod field_ops {
     #[cfg(target_arch = "riscv32")]
-    pub use crate::inline::ops::*;
+    pub use crate::inline_ops::*;
 
     #[cfg(not(target_arch = "riscv32"))]
     pub use crate::no_inline_ops::*;

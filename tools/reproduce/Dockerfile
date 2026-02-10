@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     pkg-config
 
-# version MUST be the same as in /tools/verifier/rust-toolchain.toml    
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2025-07-25
+# version MUST be the same as in /tools/verifier/rust-toolchain.toml
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2026-01-19
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN rustup target add riscv32i-unknown-none-elf
