@@ -21,7 +21,7 @@ reduced_keccak = { path = "../../reduced_keccak", optional = true }
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
+panic = "immediate-abort"
 debug = false
 strip = true
 
