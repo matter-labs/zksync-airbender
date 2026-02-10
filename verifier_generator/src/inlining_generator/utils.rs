@@ -1,3 +1,4 @@
+use super::mersenne_wrapper::MersenneWrapper;
 use super::*;
 
 pub(crate) fn read_value_expr(
@@ -58,7 +59,7 @@ pub(crate) fn read_stage_2_value_expr(
     }
 }
 
-pub(crate) fn accumulate_contributions(
+pub(crate) fn accumulate_contributions<MW: MersenneWrapper>(
     into: &mut TokenStream,
     common_stream_for_terms: Option<TokenStream>,
     individual_term_streams: Vec<TokenStream>,
@@ -72,16 +73,17 @@ pub(crate) fn accumulate_contributions(
     if let Some(common_stream_for_terms) = common_stream_for_terms {
         if into.is_empty() {
             let terms_accumulator_ident = &idents.terms_accumulator_ident;
+            let quartic_zero = MW::quartic_zero();
             // a little inefficient, but simplifies leaking of common expressions
             let t = quote! {
-                let mut #terms_accumulator_ident = Mersenne31Quartic::ZERO;
+                let mut #terms_accumulator_ident = #quartic_zero;
             };
             into.extend(t);
         }
 
         let mut inner_stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
-            accumulate_contribution(&mut inner_stream, false, el, idents);
+            accumulate_contribution::<MW>(&mut inner_stream, false, el, idents);
         }
         let t = quote! {
             {
@@ -94,12 +96,12 @@ pub(crate) fn accumulate_contributions(
     } else {
         for el in individual_term_streams.into_iter() {
             let is_first = into.is_empty();
-            accumulate_contribution(into, is_first, el, idents);
+            accumulate_contribution::<MW>(into, is_first, el, idents);
         }
     }
 }
 
-fn accumulate_contribution(
+fn accumulate_contribution<MW: MersenneWrapper>(
     into: &mut TokenStream,
     is_first: bool,
     individual_term_stream: TokenStream,
@@ -121,15 +123,21 @@ fn accumulate_contribution(
             };
         }
     } else {
+        let terms_accumulator_mul_assign_alpha = MW::mul_assign(
+            quote! { #terms_accumulator_ident },
+            quote! { #quotient_alpha_ident },
+        );
+        let terms_accumulator_add_assign_contribution =
+            MW::add_assign(quote! { #terms_accumulator_ident }, quote! { contribution });
         quote! {
             {
-                #terms_accumulator_ident.mul_assign(& #quotient_alpha_ident);
+                #terms_accumulator_mul_assign_alpha;
                 let contribution = {
                     #individual_term_stream
 
                     #individual_term_ident
                 };
-                #terms_accumulator_ident.add_assign(&contribution);
+                #terms_accumulator_add_assign_contribution;
             }
         }
     };
