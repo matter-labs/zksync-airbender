@@ -1,9 +1,4 @@
-#[cfg(not(target_arch = "riscv32"))]
-use ::verifier_common::no_inline_ops as field_ops;
-
-#[cfg(target_arch = "riscv32")]
-use ::verifier_common::inline_ops as field_ops;
-
+use verifier_common::field_ops;
 #[allow(unused_braces, unused_mut, unused_variables)]
 unsafe fn evaluate_every_row_except_last(
     random_point: Mersenne31Quartic,
@@ -1557,7 +1552,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(0usize));
                         let aux_low = *(witness.get_unchecked(1usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1574,7 +1572,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(1usize));
                         let aux_high = *(witness.get_unchecked(2usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);
@@ -1600,7 +1601,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(6usize));
                         let aux_low = *(witness.get_unchecked(3usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1617,7 +1621,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(7usize));
                         let aux_high = *(witness.get_unchecked(4usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);
@@ -1643,7 +1650,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(12usize));
                         let aux_low = *(witness.get_unchecked(5usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1660,7 +1670,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(13usize));
                         let aux_high = *(witness.get_unchecked(6usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);
@@ -1686,7 +1699,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(18usize));
                         let aux_low = *(witness.get_unchecked(7usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1703,7 +1719,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(19usize));
                         let aux_high = *(witness.get_unchecked(8usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);
@@ -1729,7 +1748,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(24usize));
                         let aux_low = *(witness.get_unchecked(9usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1746,7 +1768,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(25usize));
                         let aux_high = *(witness.get_unchecked(10usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);
@@ -1772,7 +1797,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_low = *(memory_next_row.get_unchecked(30usize));
                         let aux_low = *(witness.get_unchecked(11usize));
                         let mut individual_term = intermedaite_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_low);
                         field_ops::sub_assign(&mut individual_term, &next_low);
                         field_ops::sub_assign(&mut individual_term, &aux_low);
@@ -1789,7 +1817,10 @@ unsafe fn evaluate_every_row_except_two(
                         let next_high = *(memory_next_row.get_unchecked(31usize));
                         let aux_high = *(witness.get_unchecked(12usize));
                         let mut individual_term = final_borrow_value;
-                        field_ops::mul_assign_by_base(&mut individual_term, &Mersenne31Field(1 << 16));
+                        field_ops::mul_assign_by_base(
+                            &mut individual_term,
+                            &Mersenne31Field(1 << 16),
+                        );
                         field_ops::add_assign(&mut individual_term, &this_high);
                         field_ops::sub_assign(&mut individual_term, &intermedaite_borrow_value);
                         field_ops::sub_assign(&mut individual_term, &next_high);

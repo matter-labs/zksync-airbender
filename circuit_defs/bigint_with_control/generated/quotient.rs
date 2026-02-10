@@ -1,9 +1,4 @@
-#[cfg(not(target_arch = "riscv32"))]
-use ::verifier_common::no_inline_ops as field_ops;
-
-#[cfg(target_arch = "riscv32")]
-use ::verifier_common::inline_ops as field_ops;
-
+use verifier_common::field_ops;
 #[allow(unused_braces, unused_mut, unused_variables)]
 unsafe fn evaluate_every_row_except_last(
     random_point: Mersenne31Quartic,
@@ -12128,7 +12123,10 @@ unsafe fn evaluate_every_row_except_last(
                         let a = *(witness.get_unchecked(221usize));
                         field_ops::add_assign(&mut individual_term, &a);
                     }
-                    field_ops::add_assign_base(&mut individual_term, &Mersenne31Field(2147483646u32));
+                    field_ops::add_assign_base(
+                        &mut individual_term,
+                        &Mersenne31Field(2147483646u32),
+                    );
                     individual_term
                 };
                 individual_term
@@ -12249,7 +12247,10 @@ unsafe fn evaluate_every_row_except_last(
                         let a = *(witness.get_unchecked(223usize));
                         field_ops::add_assign(&mut individual_term, &a);
                     }
-                    field_ops::add_assign_base(&mut individual_term, &Mersenne31Field(2147483646u32));
+                    field_ops::add_assign_base(
+                        &mut individual_term,
+                        &Mersenne31Field(2147483646u32),
+                    );
                     individual_term
                 };
                 individual_term
@@ -17169,7 +17170,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(100usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(100usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17205,7 +17209,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(101usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(101usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17241,7 +17248,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(102usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(102usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17277,7 +17287,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(103usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(103usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17293,7 +17306,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(142usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17309,7 +17325,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(17usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17337,7 +17356,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(104usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(104usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17353,7 +17375,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(145usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17369,7 +17394,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(16usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17397,7 +17425,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(105usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(105usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17413,7 +17444,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(148usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17445,7 +17479,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(106usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(106usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17461,7 +17498,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(150usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17493,7 +17533,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(107usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(107usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17509,7 +17552,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(14usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17541,7 +17587,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(108usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(108usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17557,7 +17606,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(15usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17589,7 +17641,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(109usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(109usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17605,7 +17660,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(154usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17637,7 +17695,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(110usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(110usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17653,7 +17714,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(156usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17685,7 +17749,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(111usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(111usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17701,7 +17768,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(158usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17733,7 +17803,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(112usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(112usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17749,7 +17822,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(160usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17781,7 +17857,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(113usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(113usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17797,7 +17876,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(10usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17829,7 +17911,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(114usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(114usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17845,7 +17930,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(11usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17877,7 +17965,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(115usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(115usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17893,7 +17984,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(12usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17925,7 +18019,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(116usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(116usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17941,7 +18038,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(13usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -17973,7 +18073,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(117usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(117usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -17989,7 +18092,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(166usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18021,7 +18127,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(118usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(118usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18037,7 +18146,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(168usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18069,7 +18181,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(119usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(119usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18085,7 +18200,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(170usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18117,7 +18235,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(120usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(120usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18133,7 +18254,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(172usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18165,7 +18289,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(121usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(121usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18181,7 +18308,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(174usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18213,7 +18343,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(122usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(122usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18229,7 +18362,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(176usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18261,7 +18397,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(123usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(123usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18277,7 +18416,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(178usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18309,7 +18451,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(124usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(124usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18325,7 +18470,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(180usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18357,7 +18505,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(125usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(125usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18373,7 +18524,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(3usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18405,7 +18559,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(126usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(126usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18421,7 +18578,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(4usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18453,7 +18613,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(127usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(127usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18469,7 +18632,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(5usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18501,7 +18667,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(128usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(128usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18517,7 +18686,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(6usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18549,7 +18721,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(129usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(129usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18565,7 +18740,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(7usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18597,7 +18775,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(130usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(130usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18613,7 +18794,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(8usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18645,7 +18829,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(131usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(131usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18661,7 +18848,10 @@ unsafe fn evaluate_every_row_except_last(
                         let individual_term = {
                             let mut individual_term = {
                                 let mut a = *(witness.get_unchecked(9usize));
-                                field_ops::mul_assign_by_base(&mut a, &Mersenne31Field(2147450879u32));
+                                field_ops::mul_assign_by_base(
+                                    &mut a,
+                                    &Mersenne31Field(2147450879u32),
+                                );
                                 a
                             };
                             {
@@ -18693,7 +18883,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &src0);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(132usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(132usize)),
+                    );
                     field_ops::sub_assign_base(&mut individual_term, &Mersenne31Field::ONE);
                     individual_term
                 };
@@ -18710,7 +18903,10 @@ unsafe fn evaluate_every_row_except_last(
                     let mut denom = lookup_argument_gamma;
                     field_ops::add_assign(&mut denom, &t);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(133usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(133usize)),
+                    );
                     field_ops::sub_assign(&mut individual_term, &m);
                     individual_term
                 };
@@ -18727,7 +18923,10 @@ unsafe fn evaluate_every_row_except_last(
                     let mut denom = lookup_argument_gamma;
                     field_ops::add_assign(&mut denom, &t);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(134usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(134usize)),
+                    );
                     field_ops::sub_assign(&mut individual_term, &m);
                     individual_term
                 };
@@ -18753,7 +18952,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign(&mut denom, &t);
                     field_ops::add_assign(&mut denom, &lookup_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(135usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(135usize)),
+                    );
                     field_ops::sub_assign(&mut individual_term, &m);
                     individual_term
                 };
@@ -18781,7 +18983,10 @@ unsafe fn evaluate_every_row_except_last(
                     field_ops::add_assign_base(&mut denom, &t);
                     field_ops::add_assign(&mut denom, &delegation_argument_gamma);
                     let mut individual_term = denom;
-                    field_ops::mul_assign(&mut individual_term, &*(stage_2.get_unchecked(136usize)));
+                    field_ops::mul_assign(
+                        &mut individual_term,
+                        &*(stage_2.get_unchecked(136usize)),
+                    );
                     field_ops::sub_assign(&mut individual_term, &m);
                     individual_term
                 };
@@ -18797,7 +19002,10 @@ unsafe fn evaluate_every_row_except_last(
             let mut delegation_address_high_common_contribution =
                 memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-            field_ops::mul_assign(&mut delegation_address_high_common_contribution, &address_high);
+            field_ops::mul_assign(
+                &mut delegation_address_high_common_contribution,
+                &address_high,
+            );
             let mut t = memory_argument_linearization_challenges
                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
             field_ops::mul_assign(&mut t, &write_timestamp_low);
@@ -18812,8 +19020,14 @@ unsafe fn evaluate_every_row_except_last(
                     let individual_term = {
                         let mut address_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut address_contribution, &Mersenne31Field(10u32));
-                        field_ops::add_assign_base(&mut address_contribution, &Mersenne31Field::ONE);
+                        field_ops::mul_assign_by_base(
+                            &mut address_contribution,
+                            &Mersenne31Field(10u32),
+                        );
+                        field_ops::add_assign_base(
+                            &mut address_contribution,
+                            &Mersenne31Field::ONE,
+                        );
                         let read_value_low = *(memory.get_unchecked(6usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -18827,7 +19041,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(5usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -18865,7 +19082,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(10usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -18879,7 +19099,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(9usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -18927,7 +19150,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(16usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -18941,7 +19167,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(15usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -18989,7 +19218,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(22usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19003,7 +19235,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(21usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19051,7 +19286,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(28usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19065,7 +19303,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(27usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19113,7 +19354,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(34usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19127,7 +19371,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(33usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19175,7 +19422,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(40usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19189,7 +19439,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(39usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19237,7 +19490,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(46usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19251,7 +19507,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(45usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19299,7 +19558,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(52usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19313,7 +19575,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(51usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19353,8 +19618,14 @@ unsafe fn evaluate_every_row_except_last(
                     let individual_term = {
                         let mut address_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut address_contribution, &Mersenne31Field(11u32));
-                        field_ops::add_assign_base(&mut address_contribution, &Mersenne31Field::ONE);
+                        field_ops::mul_assign_by_base(
+                            &mut address_contribution,
+                            &Mersenne31Field(11u32),
+                        );
+                        field_ops::add_assign_base(
+                            &mut address_contribution,
+                            &Mersenne31Field::ONE,
+                        );
                         let read_value_low = *(memory.get_unchecked(58usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19368,7 +19639,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(57usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19406,7 +19680,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(62usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19420,7 +19697,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(61usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19458,7 +19738,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(66usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19472,7 +19755,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(65usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19510,7 +19796,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(70usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19524,7 +19813,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(69usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19562,7 +19854,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(74usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19576,7 +19871,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(73usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19614,7 +19912,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(78usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19628,7 +19929,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(77usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19666,7 +19970,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(82usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19680,7 +19987,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(81usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19718,7 +20028,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(86usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19732,7 +20045,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(85usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19770,7 +20086,10 @@ unsafe fn evaluate_every_row_except_last(
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
-                        field_ops::add_assign(&mut address_contribution, &address_high_contribution);
+                        field_ops::add_assign(
+                            &mut address_contribution,
+                            &address_high_contribution,
+                        );
                         let read_value_low = *(memory.get_unchecked(90usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19784,7 +20103,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(89usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
@@ -19814,8 +20136,14 @@ unsafe fn evaluate_every_row_except_last(
                     let individual_term = {
                         let mut address_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut address_contribution, &Mersenne31Field(12u32));
-                        field_ops::add_assign_base(&mut address_contribution, &Mersenne31Field::ONE);
+                        field_ops::mul_assign_by_base(
+                            &mut address_contribution,
+                            &Mersenne31Field(12u32),
+                        );
+                        field_ops::add_assign_base(
+                            &mut address_contribution,
+                            &Mersenne31Field::ONE,
+                        );
                         let read_value_low = *(memory.get_unchecked(94usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
@@ -19829,7 +20157,10 @@ unsafe fn evaluate_every_row_except_last(
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
                                 [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign(&mut read_timestamp_contribution, &read_timestamp_low);
+                        field_ops::mul_assign(
+                            &mut read_timestamp_contribution,
+                            &read_timestamp_low,
+                        );
                         let read_timestamp_high = *(memory.get_unchecked(93usize));
                         let mut t = memory_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
