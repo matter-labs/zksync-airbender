@@ -114,9 +114,16 @@ impl<
 {
     fn define_used_tables() -> Vec<TableType> {
         if SUPPORT_SRA {
-            vec![TableType::ShiftImplementation, TableType::SRASignFiller]
+            vec![
+                TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
+                TableType::SRASignFiller,
+            ]
         } else {
-            vec![TableType::ShiftImplementation]
+            vec![
+                TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
+            ]
         }
     }
 
@@ -147,22 +154,16 @@ impl<
             .unwrap()
             .sign_bit;
         // This will be constrained by lookup
-        let shift_amount_low_byte = src2
-            .get_register_with_decomposition_and_sign()
-            .unwrap()
-            .low_word_unconstrained_decomposition
-            .0;
+        let shift_amount_low_word = src2.get_register().0[0];
 
         // This will truncate the shift
-        let [shift_amount_to_use] = opt_ctx.append_lookup_relation_from_linear_terms::<2, 1>(
-            cs,
-            &[
-                Constraint::from(shift_amount_low_byte),
-                Constraint::from(0b1_1111), // truncate to 5 bits
-            ],
-            TableType::And.to_num(),
-            exec_flag,
-        );
+        let [shift_amount_to_use, _unused] = opt_ctx
+            .append_lookup_relation_from_linear_terms::<1, 2>(
+                cs,
+                &[Constraint::from(shift_amount_low_word)],
+                TableType::TruncateShiftAmount.to_num(),
+                exec_flag,
+            );
 
         // we will do a little of brute force and ask a table for contributions
 
@@ -170,7 +171,7 @@ impl<
             println!("SHIFT OPCODE");
             dbg!(src1.get_register().get_value_unsigned(cs));
             dbg!(src2.get_register().get_value_unsigned(cs));
-            dbg!(cs.get_value(shift_amount_low_byte));
+            dbg!(cs.get_value(shift_amount_low_word.get_variable()));
             dbg!(cs.get_value(shift_amount_to_use));
             if is_right_shift.get_value(cs).unwrap() {
                 if SUPPORT_SRA {

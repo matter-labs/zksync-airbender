@@ -39,7 +39,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use itertools::Itertools;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::cmp::{max, min};
 use std::sync::Arc;
 

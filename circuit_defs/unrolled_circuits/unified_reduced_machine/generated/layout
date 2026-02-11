@@ -393,9 +393,9 @@
     },
     "scratch_space_columns_range": {
       "start": 71,
-      "num_elements": 35
+      "num_elements": 36
     },
-    "total_width": 106
+    "total_width": 107
   },
   "memory_layout": {
     "shuffle_ram_inits_and_teardowns": [
@@ -1771,7 +1771,7 @@
             "WitnessSubtree": 35
           },
           {
-            "WitnessSubtree": 85
+            "WitnessSubtree": 86
           }
         ]
       ],
@@ -1779,13 +1779,13 @@
         [
           1,
           {
-            "WitnessSubtree": 79
+            "WitnessSubtree": 80
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 86
+            "WitnessSubtree": 87
           }
         ]
       ],
@@ -1799,7 +1799,7 @@
             "WitnessSubtree": 35
           },
           {
-            "WitnessSubtree": 80
+            "WitnessSubtree": 81
           }
         ]
       ],
@@ -1807,19 +1807,19 @@
         [
           1,
           {
-            "WitnessSubtree": 80
+            "WitnessSubtree": 81
           }
         ],
         [
           1,
           {
-            "WitnessSubtree": 81
+            "WitnessSubtree": 85
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 87
+            "WitnessSubtree": 88
           }
         ]
       ],
@@ -1850,7 +1850,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 90
+            "WitnessSubtree": 91
           }
         ],
         [
@@ -1887,7 +1887,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 91
+            "WitnessSubtree": 92
           }
         ],
         [
@@ -1957,7 +1957,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 92
+            "WitnessSubtree": 93
           }
         ]
       ],
@@ -2007,7 +2007,7 @@
             "WitnessSubtree": 35
           },
           {
-            "WitnessSubtree": 92
+            "WitnessSubtree": 93
           }
         ],
         [
@@ -2051,13 +2051,13 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 93
+            "WitnessSubtree": 94
           }
         ],
         [
           2147418111,
           {
-            "WitnessSubtree": 94
+            "WitnessSubtree": 95
           }
         ]
       ],
@@ -2080,7 +2080,7 @@
             "WitnessSubtree": 30
           },
           {
-            "WitnessSubtree": 93
+            "WitnessSubtree": 94
           }
         ]
       ],
@@ -2104,7 +2104,7 @@
             "WitnessSubtree": 30
           },
           {
-            "WitnessSubtree": 94
+            "WitnessSubtree": 95
           }
         ]
       ],
@@ -2155,7 +2155,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           }
         ]
       ],
@@ -2177,7 +2177,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           }
         ]
       ],
@@ -2191,13 +2191,13 @@
             "WitnessSubtree": 11
           },
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           },
           {
             "MemorySubtree": 16
@@ -2215,13 +2215,13 @@
             "WitnessSubtree": 12
           },
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           },
           {
             "MemorySubtree": 17
@@ -2239,13 +2239,13 @@
             "WitnessSubtree": 11
           },
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           },
           {
             "MemorySubtree": 16
@@ -2263,13 +2263,13 @@
             "WitnessSubtree": 12
           },
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           }
         ],
         [
           2147483646,
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           },
           {
             "MemorySubtree": 17
@@ -2768,7 +2768,7 @@
             "WitnessSubtree": 27
           },
           {
-            "WitnessSubtree": 90
+            "WitnessSubtree": 91
           }
         ],
         [
@@ -2994,7 +2994,7 @@
             "WitnessSubtree": 27
           },
           {
-            "WitnessSubtree": 91
+            "WitnessSubtree": 92
           }
         ],
         [
@@ -3158,7 +3158,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 97
+            "WitnessSubtree": 98
           }
         ]
       ],
@@ -3180,7 +3180,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 98
+            "WitnessSubtree": 99
           }
         ]
       ],
@@ -3191,19 +3191,19 @@
         [
           1,
           {
-            "WitnessSubtree": 97
+            "WitnessSubtree": 98
           },
           {
-            "WitnessSubtree": 99
+            "WitnessSubtree": 100
           }
         ],
         [
           1,
           {
-            "WitnessSubtree": 98
+            "WitnessSubtree": 99
           },
           {
-            "WitnessSubtree": 99
+            "WitnessSubtree": 100
           }
         ]
       ],
@@ -3225,7 +3225,7 @@
             "WitnessSubtree": 40
           },
           {
-            "WitnessSubtree": 97
+            "WitnessSubtree": 98
           }
         ],
         [
@@ -3234,7 +3234,7 @@
             "WitnessSubtree": 40
           },
           {
-            "WitnessSubtree": 98
+            "WitnessSubtree": 99
           }
         ]
       ],
@@ -3303,7 +3303,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 77
+            "WitnessSubtree": 71
           }
         ]
       ],
@@ -3367,6 +3367,15 @@
         [
           1,
           {
+            "WitnessSubtree": 31
+          },
+          {
+            "WitnessSubtree": 78
+          }
+        ],
+        [
+          1,
+          {
             "WitnessSubtree": 33
           },
           {
@@ -3375,12 +3384,6 @@
         ]
       ],
       "linear_terms": [
-        [
-          31,
-          {
-            "WitnessSubtree": 31
-          }
-        ],
         [
           2147483646,
           {
@@ -3443,7 +3446,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 78
+            "WitnessSubtree": 79
           }
         ],
         [
@@ -3504,7 +3507,7 @@
           }
         ],
         [
-          7,
+          47,
           {
             "WitnessSubtree": 31
           }
@@ -3698,7 +3701,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 79
+            "WitnessSubtree": 80
           }
         ],
         [
@@ -3756,7 +3759,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 80
+            "WitnessSubtree": 81
           }
         ],
         [
@@ -3909,7 +3912,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 81
+            "WitnessSubtree": 85
           }
         ]
       ],
@@ -3940,7 +3943,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 85
+            "WitnessSubtree": 86
           }
         ]
       ],
@@ -4048,7 +4051,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 88
+            "WitnessSubtree": 89
           }
         ]
       ],
@@ -4079,7 +4082,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 89
+            "WitnessSubtree": 90
           }
         ]
       ],
@@ -4219,7 +4222,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 86
+            "WitnessSubtree": 87
           }
         ],
         [
@@ -4228,7 +4231,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 88
+            "WitnessSubtree": 89
           }
         ],
         [
@@ -4237,13 +4240,13 @@
             "WitnessSubtree": 80
           },
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           }
         ],
         [
           1,
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           },
           {
             "MemorySubtree": 13
@@ -4254,7 +4257,7 @@
         [
           2147483646,
           {
-            "WitnessSubtree": 100
+            "WitnessSubtree": 101
           }
         ]
       ],
@@ -4349,7 +4352,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 87
+            "WitnessSubtree": 88
           }
         ],
         [
@@ -4358,7 +4361,7 @@
             "WitnessSubtree": 31
           },
           {
-            "WitnessSubtree": 89
+            "WitnessSubtree": 90
           }
         ],
         [
@@ -4367,13 +4370,13 @@
             "WitnessSubtree": 81
           },
           {
-            "WitnessSubtree": 95
+            "WitnessSubtree": 96
           }
         ],
         [
           1,
           {
-            "WitnessSubtree": 96
+            "WitnessSubtree": 97
           },
           {
             "MemorySubtree": 14
@@ -4381,34 +4384,6 @@
         ]
       ],
       "linear_terms": [
-        [
-          2147483646,
-          {
-            "WitnessSubtree": 101
-          }
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          2147483646,
-          {
-            "WitnessSubtree": 2
-          },
-          {
-            "WitnessSubtree": 100
-          }
-        ]
-      ],
-      "linear_terms": [
-        [
-          1,
-          {
-            "WitnessSubtree": 100
-          }
-        ],
         [
           2147483646,
           {
@@ -4441,6 +4416,34 @@
           2147483646,
           {
             "WitnessSubtree": 103
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 2
+          },
+          {
+            "WitnessSubtree": 102
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          1,
+          {
+            "WitnessSubtree": 102
+          }
+        ],
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 104
           }
         ]
       ],
@@ -4523,7 +4526,7 @@
             "WitnessSubtree": 19
           },
           {
-            "WitnessSubtree": 102
+            "WitnessSubtree": 103
           }
         ],
         [
@@ -4547,7 +4550,7 @@
             "WitnessSubtree": 19
           },
           {
-            "WitnessSubtree": 103
+            "WitnessSubtree": 104
           }
         ],
         [
@@ -5302,34 +5305,34 @@
       "WitnessSubtree": 96
     },
     "87": {
-      "MemorySubtree": 15
+      "WitnessSubtree": 97
     },
     "88": {
-      "MemorySubtree": 22
+      "MemorySubtree": 15
     },
     "89": {
-      "WitnessSubtree": 15
+      "MemorySubtree": 22
     },
     "90": {
-      "WitnessSubtree": 16
+      "WitnessSubtree": 15
     },
     "91": {
-      "MemorySubtree": 27
+      "WitnessSubtree": 16
     },
     "92": {
-      "MemorySubtree": 29
+      "MemorySubtree": 27
     },
     "93": {
-      "MemorySubtree": 28
+      "MemorySubtree": 29
     },
     "94": {
-      "WitnessSubtree": 42
+      "MemorySubtree": 28
     },
     "95": {
-      "WitnessSubtree": 43
+      "WitnessSubtree": 42
     },
     "96": {
-      "WitnessSubtree": 97
+      "WitnessSubtree": 43
     },
     "97": {
       "WitnessSubtree": 98
@@ -5338,55 +5341,55 @@
       "WitnessSubtree": 99
     },
     "99": {
-      "WitnessSubtree": 55
+      "WitnessSubtree": 100
     },
     "100": {
-      "WitnessSubtree": 56
+      "WitnessSubtree": 55
     },
     "101": {
-      "WitnessSubtree": 57
+      "WitnessSubtree": 56
     },
     "102": {
-      "WitnessSubtree": 58
+      "WitnessSubtree": 57
     },
     "103": {
-      "WitnessSubtree": 59
+      "WitnessSubtree": 58
     },
     "104": {
-      "WitnessSubtree": 60
+      "WitnessSubtree": 59
     },
     "105": {
-      "WitnessSubtree": 61
+      "WitnessSubtree": 60
     },
     "106": {
-      "WitnessSubtree": 62
+      "WitnessSubtree": 61
     },
     "107": {
-      "WitnessSubtree": 63
+      "WitnessSubtree": 62
     },
     "108": {
-      "WitnessSubtree": 64
+      "WitnessSubtree": 63
     },
     "109": {
-      "WitnessSubtree": 65
+      "WitnessSubtree": 64
     },
     "110": {
-      "WitnessSubtree": 66
+      "WitnessSubtree": 65
     },
     "111": {
-      "WitnessSubtree": 67
+      "WitnessSubtree": 66
     },
     "112": {
-      "WitnessSubtree": 68
+      "WitnessSubtree": 67
     },
     "113": {
-      "WitnessSubtree": 69
+      "WitnessSubtree": 68
     },
     "114": {
-      "WitnessSubtree": 70
+      "WitnessSubtree": 69
     },
     "115": {
-      "WitnessSubtree": 100
+      "WitnessSubtree": 70
     },
     "116": {
       "WitnessSubtree": 101
@@ -5404,63 +5407,66 @@
       "WitnessSubtree": 105
     },
     "121": {
-      "WitnessSubtree": 17
+      "WitnessSubtree": 106
     },
     "122": {
-      "WitnessSubtree": 18
+      "WitnessSubtree": 17
     },
     "123": {
-      "WitnessSubtree": 44
+      "WitnessSubtree": 18
     },
     "124": {
-      "WitnessSubtree": 45
+      "WitnessSubtree": 44
     },
     "125": {
-      "MemorySubtree": 0
+      "WitnessSubtree": 45
     },
     "126": {
-      "MemorySubtree": 1
+      "MemorySubtree": 0
     },
     "127": {
-      "MemorySubtree": 2
+      "MemorySubtree": 1
     },
     "128": {
-      "MemorySubtree": 3
+      "MemorySubtree": 2
     },
     "129": {
-      "MemorySubtree": 4
+      "MemorySubtree": 3
     },
     "130": {
-      "MemorySubtree": 5
+      "MemorySubtree": 4
     },
     "131": {
-      "MemorySubtree": 6
+      "MemorySubtree": 5
     },
     "132": {
-      "MemorySubtree": 7
+      "MemorySubtree": 6
     },
     "133": {
-      "WitnessSubtree": 46
+      "MemorySubtree": 7
     },
     "134": {
-      "MemorySubtree": 11
+      "WitnessSubtree": 46
     },
     "135": {
-      "MemorySubtree": 12
+      "MemorySubtree": 11
     },
     "136": {
-      "WitnessSubtree": 47
+      "MemorySubtree": 12
     },
     "137": {
-      "MemorySubtree": 18
+      "WitnessSubtree": 47
     },
     "138": {
-      "MemorySubtree": 19
+      "MemorySubtree": 18
     },
     "139": {
-      "WitnessSubtree": 48
+      "MemorySubtree": 19
     },
     "140": {
+      "WitnessSubtree": 48
+    },
+    "141": {
       "WitnessSubtree": 49
     }
   },
@@ -5584,20 +5590,20 @@
     5705985,
     5705985,
     5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985,
-    5705985
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521,
+    5771521
   ],
-  "total_tables_size": 5705985
+  "total_tables_size": 5771521
 }
