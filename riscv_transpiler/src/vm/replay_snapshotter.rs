@@ -280,6 +280,7 @@ impl<T: Sized, const I: usize, const O: usize> SpecBiVec<T, I, O> {
     fn new() -> Self {
         assert!(O > 0);
         assert!(I > 0);
+        #[cfg(not(target_arch = "wasm32"))]
         assert!(O * I <= 1 << 36);
         let mut buffers: [Vec<T>; O] = std::array::from_fn(|_| Vec::new());
         buffers[0] = Vec::with_capacity(I);

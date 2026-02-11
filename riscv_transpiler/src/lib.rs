@@ -3,7 +3,7 @@
 #![feature(generic_const_exprs)]
 #![feature(vec_push_within_capacity)]
 #![feature(allocator_api)]
-#![feature(bigint_helper_methods)]
+#![feature(widening_mul)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(likely_unlikely)]

@@ -70,7 +70,13 @@ mod tests {
             >(&padded_binary_u32);
         serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
             .unwrap();
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let configuration = ExecutionProverConfiguration {
+            replay_worker_threads_count: 4,
+            host_allocators_per_job_count: 64,
+            host_allocators_per_device_count: 128,
+            ..Default::default()
+        };
+        let mut prover = ExecutionProver::with_configuration(configuration);
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -116,9 +122,15 @@ mod tests {
             .map(|el| u32::from_be_bytes(*el))
             .collect();
         let app_path = "../riscv_transpiler/examples/zksync_os/app";
+        let configuration = ExecutionProverConfiguration {
+            replay_worker_threads_count: 4,
+            host_allocators_per_job_count: 64,
+            host_allocators_per_device_count: 128,
+            ..Default::default()
+        };
         let prover = UnrolledProver::new(
             &app_path.to_string(),
-            8,
+            configuration,
             UnrolledProverLevel::RecursionUnified,
         );
         let source = QuasiUARTSource::new_with_reads(witness);

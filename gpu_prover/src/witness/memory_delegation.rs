@@ -49,7 +49,7 @@ impl<T: Deref<Target = [cs::definitions::RegisterAndIndirectAccessDescription]>>
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-struct DelegationMemorySubtree {
+pub(crate) struct DelegationMemorySubtree {
     delegation_processor_layout: DelegationProcessingLayout,
     register_and_indirect_access_descriptions: RegisterAndIndirectAccessDescriptions,
 }

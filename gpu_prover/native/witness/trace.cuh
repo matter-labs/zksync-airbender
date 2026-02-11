@@ -16,8 +16,8 @@ struct TimestampData {
   static constexpr unsigned TIMESTAMP_COLUMNS_NUM_BITS_MASK = (1u << TIMESTAMP_COLUMNS_NUM_BITS) - 1;
   static constexpr unsigned NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP = 2;
   static constexpr u32 TOTAL_TIMESTAMP_BITS = TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM;
-  static constexpr TimestampScalar TIMESTAMP_STEP = 1ul << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
-  static constexpr TimestampScalar MAX_INITIAL_TIMESTAMP = (1ul << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
+  static constexpr TimestampScalar TIMESTAMP_STEP = 1ull << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+  static constexpr TimestampScalar MAX_INITIAL_TIMESTAMP = (1ull << TOTAL_TIMESTAMP_BITS) - TIMESTAMP_STEP * 2;
 
   u16 limbs[NUM_TIMESTAMP_DATA_LIMBS];
 

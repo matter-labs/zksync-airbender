@@ -28,12 +28,8 @@ risc_v_simulator = { workspace = true, features = ["delegation"], optional = tru
 riscv_transpiler = { workspace = true, optional = true }
 itertools = { workspace = true, optional = true }
 
-rayon = { version = "1", optional = true }
 proc-macro2 = { version = "1", optional = true }
-syn = { version = "2", optional = true }
 quote = { version = "1", optional = true }
-bit-set = { version = "0.8", optional = true }
-lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git", optional = true }
 serde_json = { version = "*", optional = true }
 bincode = { version = "1.3", optional = true }
 
@@ -43,7 +39,7 @@ bincode = { version = "1.3" }
 hex = "*"
 
 [features]
-prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "rayon", "risc_v_simulator", "riscv_transpiler", "proc-macro2", "syn", "quote", "bit-set", "lib-rv32-asm", "serde_json", "itertools"]
+prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow",  "risc_v_simulator", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "itertools"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.
 timing_logs = []

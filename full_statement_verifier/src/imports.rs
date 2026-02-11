@@ -2,6 +2,7 @@ use crate::constants::*;
 use crate::MerkleTreeCap;
 use crate::VerifierFunctionPointer;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub const BLAKE_WITH_COMPRESSION_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -10,6 +11,7 @@ pub const BLAKE_WITH_COMPRESSION_VERIFIER_PTR: VerifierFunctionPointer<
     0,
 > = blake2_with_compression_verifier::verify;
 
+#[cfg(feature = "verifiers")]
 pub const BIGINT_WITH_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -18,6 +20,7 @@ pub const BIGINT_WITH_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
     0,
 > = bigint_with_control_verifier::verify;
 
+#[cfg(feature = "verifiers")]
 pub const KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -26,8 +29,10 @@ pub const KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
     0,
 > = keccak_special5_verifier::verify;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use crate::constants::ALL_DELEGATION_CIRCUITS_PARAMS;
 
+#[cfg(feature = "verifiers")]
 pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32, // delegation type
     u32, // delegation capacity
@@ -54,6 +59,7 @@ pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
 ];
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32,
     u32,
@@ -66,6 +72,7 @@ pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     BLAKE_WITH_COMPRESSION_VERIFIER_PTR,
 )];
 
+#[cfg(feature = "verifiers")]
 pub const FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32,
     u32,
@@ -73,6 +80,7 @@ pub const FINAL_RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0>,
 )] = &[];
 
+#[cfg(feature = "verifiers")]
 const _: () = {
     let mut t = BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS[0].0;
     let mut i = 1;

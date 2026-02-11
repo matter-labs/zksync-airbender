@@ -96,13 +96,11 @@ pub const RECURSION_UNIFIED_TXT: &[u8] =
 impl UnrolledProver {
     pub fn new(
         path_without_bin: &String,
-        replay_worker_threads_count: usize,
+        prover_configuration: ExecutionProverConfiguration,
         max_level: UnrolledProverLevel,
     ) -> Self {
+        let mut prover = ExecutionProver::with_configuration(prover_configuration);
         let mut level_data = BTreeMap::new();
-        let mut configuration = ExecutionProverConfiguration::default();
-        configuration.replay_worker_threads_count = replay_worker_threads_count;
-        let mut prover = ExecutionProver::with_configuration(configuration);
 
         {
             let bin_path = format!("{}.bin", path_without_bin);

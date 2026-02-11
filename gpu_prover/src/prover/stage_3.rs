@@ -184,34 +184,24 @@ impl StageThreeOutput {
             slice::from_ref(unsafe { h_constants_times_challenges_accessor.get() }),
             stream,
         )?;
-        let d_setup_cols = DeviceMatrix::new(
-            setup
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_witness_cols = DeviceMatrix::new(
-            stage_1_output
-                .witness_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_memory_cols = DeviceMatrix::new(
-            stage_1_output
-                .memory_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_stage_2_cols = DeviceMatrix::new(
-            stage_2_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let mut d_quotient = DeviceMatrixMut::new(
-            trace_holder.get_uninit_coset_evaluations_mut(COSET_INDEX),
-            trace_len,
-        );
+        let setup_evaluations = setup
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
+        let witness_evaluations = stage_1_output
+            .witness_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
+        let memory_evaluations = stage_1_output
+            .memory_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
+        let stage_2_evaluations = stage_2_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_stage_2_cols = DeviceMatrix::new(&stage_2_evaluations, trace_len);
+        let mut evaluations = trace_holder.get_uninit_coset_evaluations_mut(COSET_INDEX);
+        let mut d_quotient = DeviceMatrixMut::new(&mut evaluations, trace_len);
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
             &circuit,
@@ -228,6 +218,7 @@ impl StageThreeOutput {
             log_domain_size,
             stream,
         )?;
+        drop(evaluations);
         trace_holder.extend_and_commit(COSET_INDEX, context)?;
         let update_seed_fn = trace_holder.get_update_seed_fn(seed);
         callbacks.schedule(update_seed_fn, stream)?;

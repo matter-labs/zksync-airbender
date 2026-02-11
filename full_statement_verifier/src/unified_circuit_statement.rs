@@ -1,6 +1,9 @@
 use super::*;
 use crate::imports::*;
-use crate::unrolled_proof_statement::read_setups;
+use crate::statement_common::{
+    read_setups, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+};
+
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
 
@@ -56,8 +59,6 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     assert_eq!(registers_buffer[0], 0);
 
     transcript.absorb(&registers_buffer);
-
-    use crate::unrolled_proof_statement::*;
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
@@ -404,7 +405,14 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
     use crate::definitions::*;
     match op_type {
         OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
-            crate::unrolled_proof_statement::verify_unrolled_recursion_layer()
+            #[cfg(feature = "verifiers")]
+            {
+                crate::unrolled_proof_statement::verify_unrolled_recursion_layer()
+            }
+            #[cfg(not(feature = "verifiers"))]
+            {
+                panic!("Unrolled recursion layer verification is not available. Enable `verifiers` feature.");
+            }
         }
         OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
             verify_unified_circuit_recursion_layer()

@@ -117,11 +117,10 @@ macro_rules! receive_trace {
 }
 
 macro_rules! quit {
-    ($ops:ident, $recv:expr, $final_pc:expr) => {
+    ($ops:ident, $recv:expr) => {
         dynasm!($ops
-            ; ->quit:
-            ;; machine_state_store_pc!($ops, rsp, $final_pc)
             // handler for final trace chunk. In r9 we have a counter of snapshotted data in the last chunk
+            ; ->quit:
             ; ->quit_impl:
             // we only call this function after executing the opcode in full,
             // so we do not care about rax (for stores), rdx (for loads) or rcx (scratch)
@@ -585,7 +584,7 @@ impl<I: ContextImpl> JittedCode<I> {
         // Records the position of each RISC-V instruction relative to the start
         let mut jump_offsets = vec![0; program.len()];
         let mut initialized_jump_offsets = HashSet::new();
-        let mut final_pc = None;
+        // We don't enforce a single "final PC" sentinel; each exit path stores its own PC.
 
         // println!("Will preprocess {} opcodes", program.len());
 
@@ -1199,7 +1198,8 @@ impl<I: ContextImpl> JittedCode<I> {
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Instruction::Mulh(parts) => {
-                        unimplemented!("unsupported by default");
+                        emit_runtime_error!(ops);
+                        // unimplemented!("unsupported by default");
                         // touch_register_and_increment_timestamp!(ops, parts.rs1());
                         // touch_register_and_increment_timestamp!(ops, parts.rs2());
                         // load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
@@ -1329,11 +1329,11 @@ impl<I: ContextImpl> JittedCode<I> {
                     let offset = sign_extend::<21>(parts.imm());
                     let jump_target = pc as i32 + offset;
                     if offset == 0 {
-                        assert!(final_pc.is_none());
-                        final_pc = Some(pc);
-                        // An infinite loop is used to signal end of execution
+                        // An infinite loop is used to signal end of execution.
+                        // Store the actual PC we're exiting from so multiple exit points are allowed.
                         dynasm!(ops
-                            ; jmp ->quit
+                            ;; machine_state_store_pc!(ops, rsp, pc)
+                            ; jmp ->quit_impl
                         );
                     } else if jump_target % 4 != 0 {
                         panic!("Unaligned jump destination");
@@ -1792,10 +1792,8 @@ impl<I: ContextImpl> JittedCode<I> {
         let receive_trace_fn = Context::<I>::receive_trace;
         receive_trace!(ops, receive_trace_fn);
 
-        let final_pc = final_pc.expect("Must find exit PC");
-
         let quit_trace_fn = Context::<I>::receive_final_trace_piece;
-        quit!(ops, quit_trace_fn, final_pc);
+        quit!(ops, quit_trace_fn);
 
         let code = ops.finalize().unwrap();
 

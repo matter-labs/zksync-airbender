@@ -68,7 +68,7 @@ impl<'a> ProofJob<'a> {
     }
 }
 
-pub fn prove<'a, A: GoodAllocator>(
+pub(crate) fn prove<'a, A: GoodAllocator>(
     circuit_type: CircuitType,
     circuit: Arc<CompiledCircuitArtifact<BF>>,
     external_challenges: ExternalChallenges,

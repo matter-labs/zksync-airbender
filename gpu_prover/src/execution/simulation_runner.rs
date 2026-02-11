@@ -251,7 +251,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             return;
         }
         let trace = self.trace.take().unwrap();
-        let result = WorkerResult::SnapshotProduced(snapshot_index);
+        let result = WorkerResult::SnapshotProduced;
         self.results.as_ref().unwrap().send(result).unwrap();
         let counters_diff = machine_state
             .counters

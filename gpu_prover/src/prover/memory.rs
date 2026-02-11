@@ -20,7 +20,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 
 pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
@@ -196,6 +196,7 @@ pub(crate) fn commit_memory<'a, A: GoodAllocator>(
             }
         },
     }
+    drop(evaluations);
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
     let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();
     let mut tree_caps = Box::new(None);

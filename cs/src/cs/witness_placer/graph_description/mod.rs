@@ -3,7 +3,7 @@ mod field;
 mod integer;
 
 use core::hash::Hash;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;

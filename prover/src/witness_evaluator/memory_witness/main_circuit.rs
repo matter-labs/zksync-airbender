@@ -130,12 +130,17 @@ pub fn get_aux_boundary_data(
         .shuffle_ram_inits_and_teardowns
         .len();
 
+    assert!(
+        (cycles + 1).is_power_of_two(),
+        "cycles must power of two minus one, but got {cycles}"
+    );
     for i in 0..len {
+        // Lazy init data is laid out in contiguous columns of `cycles` elements.
         let LazyInitAndTeardown {
             address: lazy_init_address_first_row,
             teardown_value: lazy_teardown_value_first_row,
             teardown_timestamp: lazy_teardown_timestamp_first_row,
-        } = lazy_init_data[(cycles - 1) * i];
+        } = lazy_init_data[cycles * i];
 
         let LazyInitAndTeardown {
             address: lazy_init_address_one_before_last_row,
@@ -552,4 +557,70 @@ pub(crate) unsafe fn evaluate_memory_witness_inner<O: Oracle<Mersenne31Field>>(
     );
 
     // we can skip producing any other witness values, because none of them are placed into memory trace
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_aux_boundary_data;
+    use crate::cs::definitions::TimestampData;
+    use crate::definitions::LazyInitAndTeardown;
+    use crate::field::Mersenne31Field;
+    use crate::field::PrimeField;
+
+    fn decode_u32_from_u16_limbs(src: [Mersenne31Field; 2]) -> u32 {
+        let low = u16::try_from(src[0].as_u64_reduced()).unwrap() as u32;
+        let high = u16::try_from(src[1].as_u64_reduced()).unwrap() as u32;
+
+        low + (high << 16)
+    }
+
+    fn make_address(set_idx: usize, row_idx: usize) -> u32 {
+        0x1000_0000 + ((set_idx as u32) << 16) + (row_idx as u32) * 4
+    }
+
+    #[test]
+    fn aux_boundary_data_uses_full_column_stride_for_first_row_values() {
+        const TRACE_LEN_LOG2: usize =
+            (crate::cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS as usize) + 1;
+        const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
+        let cycles = (1usize << TRACE_LEN_LOG2) - 1;
+
+        let compiler = crate::cs::one_row_compiler::OneRowCompiler::<Mersenne31Field>::default();
+        let compiled_circuit =
+            compiler.compile_init_and_teardown_circuit(NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2);
+
+        let mut lazy_init_data = Vec::with_capacity(cycles * NUM_INIT_AND_TEARDOWN_SETS);
+        for set_idx in 0..NUM_INIT_AND_TEARDOWN_SETS {
+            for row_idx in 0..cycles {
+                lazy_init_data.push(LazyInitAndTeardown {
+                    address: make_address(set_idx, row_idx),
+                    teardown_value: ((set_idx as u32) << 20) | (row_idx as u32),
+                    teardown_timestamp: TimestampData::from_scalar(
+                        ((set_idx as u64) << 32) | (row_idx as u64),
+                    ),
+                });
+            }
+        }
+
+        let aux_boundary_data = get_aux_boundary_data(&compiled_circuit, cycles, &lazy_init_data);
+        assert_eq!(aux_boundary_data.len(), NUM_INIT_AND_TEARDOWN_SETS);
+
+        for (set_idx, aux) in aux_boundary_data.iter().enumerate() {
+            let expected_first_row_address = make_address(set_idx, 0);
+            let expected_last_row_address = make_address(set_idx, cycles - 1);
+
+            let actual_first_row_address = decode_u32_from_u16_limbs(aux.lazy_init_first_row);
+            let actual_last_row_address =
+                decode_u32_from_u16_limbs(aux.lazy_init_one_before_last_row);
+
+            assert_eq!(
+                actual_first_row_address, expected_first_row_address,
+                "first-row address mismatch for init/teardown set {set_idx}"
+            );
+            assert_eq!(
+                actual_last_row_address, expected_last_row_address,
+                "one-before-last-row address mismatch for init/teardown set {set_idx}"
+            );
+        }
+    }
 }

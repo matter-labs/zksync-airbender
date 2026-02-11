@@ -709,7 +709,7 @@ impl ExecutionProver {
         for work_result in work_results_receiver {
             let mut gpu_work_requests = VecDeque::new();
             match work_result {
-                WorkerResult::SnapshotProduced(_) => {
+                WorkerResult::SnapshotProduced => {
                     if !proving {
                         if let Some(cache) = cache.as_mut() {
                             self.trim_cache(cache)
@@ -1405,7 +1405,7 @@ mod tests {
             None,
         );
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![3 << 25, 0]);
-        let base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
+        let _base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
         let (_, binary_image) =
             read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
         let (_, text_section) =
