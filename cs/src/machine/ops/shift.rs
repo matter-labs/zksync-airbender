@@ -114,9 +114,16 @@ impl<
 {
     fn define_used_tables() -> Vec<TableType> {
         if SUPPORT_SRA {
-            vec![TableType::ShiftImplementation, TableType::TruncateShiftAmount, TableType::SRASignFiller]
+            vec![
+                TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
+                TableType::SRASignFiller,
+            ]
         } else {
-            vec![TableType::ShiftImplementation, TableType::TruncateShiftAmount]
+            vec![
+                TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
+            ]
         }
     }
 
@@ -147,19 +154,16 @@ impl<
             .unwrap()
             .sign_bit;
         // This will be constrained by lookup
-        let shift_amount_low_word = src2
-            .get_register()
-            .0[0];
+        let shift_amount_low_word = src2.get_register().0[0];
 
         // This will truncate the shift
-        let [shift_amount_to_use, _unused] = opt_ctx.append_lookup_relation_from_linear_terms::<1, 2>(
-            cs,
-            &[
-                Constraint::from(shift_amount_low_word),
-            ],
-            TableType::TruncateShiftAmount.to_num(),
-            exec_flag,
-        );
+        let [shift_amount_to_use, _unused] = opt_ctx
+            .append_lookup_relation_from_linear_terms::<1, 2>(
+                cs,
+                &[Constraint::from(shift_amount_low_word)],
+                TableType::TruncateShiftAmount.to_num(),
+                exec_flag,
+            );
 
         // we will do a little of brute force and ask a table for contributions
 
