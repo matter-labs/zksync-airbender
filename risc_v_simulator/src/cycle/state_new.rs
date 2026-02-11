@@ -203,6 +203,10 @@ where
             cycle,
         )
     }
+
+    fn collect_stacktrace_raw(&mut self, cycle: usize) -> (u32, Vec<u32>) {
+        todo!();
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

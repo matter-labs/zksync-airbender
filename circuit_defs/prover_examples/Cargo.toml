@@ -45,6 +45,6 @@ debug_satisfiable = ["prover/debug_satisfiable"]
 timing_logs = []
 verifiers = ["full_statement_verifier/verifiers"]
 
-default = ["timing_logs", "security_80"]
+default = ["timing_logs", "security_80", "verifier_common/proof_utils"]
 
 gpu = ["gpu_prover", "nvtx", "cs"]

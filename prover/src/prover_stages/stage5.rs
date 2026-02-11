@@ -23,6 +23,7 @@ pub struct FifthStageOutput<A: GoodAllocator, T: MerkleTreeConstructor> {
     pub final_monomials: Vec<Mersenne31Quartic>,
     pub expose_all_leafs_at_last_step_instead: bool,
     pub last_fri_step_plain_leaf_values: Vec<Vec<Mersenne31Quartic>>,
+    pub foldings_pow_challenges: Vec<u64>,
 }
 
 pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor>(
@@ -31,7 +32,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     twiddles: &Twiddles<Mersenne31Complex, A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
-    num_queries: usize,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> FifthStageOutput<A, T> {
     // we have our FRI initial oracles in the bitreversed form, so we can can just commit and start folding
@@ -125,6 +126,12 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let mut intermediate_oracles: Vec<FRIStep<A, T>> = vec![];
     let mut last_fri_step_plain_leaf_values = vec![];
     let folding_with_merkle_tree_formations = folding_description.folding_sequence.len() - 1;
+    assert_eq!(
+        security_config.foldings_pow_bits.len(),
+        folding_description.folding_sequence.len()
+    );
+
+    let mut foldings_pow_challenges = vec![];
 
     // now we take our transcript, get challenge and fold
     for (i, folding_factor_log2) in folding_description
@@ -135,9 +142,15 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     {
         let last_oraclization = i == folding_with_merkle_tree_formations - 1;
         let challenge = {
-            let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed, &mut transcript_challenges);
+            let num_transcript_challenges = 1usize * 4;
+            let (pow_challenge, transcript_challenges) =
+                get_pow_challenge_and_transcript_challenges(
+                    seed,
+                    security_config.foldings_pow_bits[i],
+                    num_transcript_challenges,
+                    worker,
+                );
+            foldings_pow_challenges.push(pow_challenge);
 
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let challenge = Mersenne31Quartic::from_coeffs_in_base(
@@ -215,10 +228,10 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
             let combine_by = 1 << folding_description.folding_sequence[i + 1]; // account for next folding
 
-            let bound = if num_queries.is_power_of_two() {
-                num_queries
+            let bound = if security_config.num_queries.is_power_of_two() {
+                security_config.num_queries
             } else {
-                num_queries.next_power_of_two()
+                security_config.num_queries.next_power_of_two()
             };
             let domain_size = folded_cosets[0].trace.len();
             assert!(domain_size.is_power_of_two());
@@ -315,9 +328,16 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let monomial_coefficients = {
         let final_folding_degree_log_2 = *folding_description.folding_sequence.last().unwrap();
         let final_folding_challenge = {
-            let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed, &mut transcript_challenges);
+            let num_transcript_challenges = 1usize * 4;
+            let pow_bits = security_config.foldings_pow_bits.last().copied().unwrap();
+            let (pow_challenge, transcript_challenges) =
+                get_pow_challenge_and_transcript_challenges(
+                    seed,
+                    pow_bits,
+                    num_transcript_challenges,
+                    worker,
+                );
+            foldings_pow_challenges.push(pow_challenge);
 
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let challenge = Mersenne31Quartic::from_coeffs_in_base(
@@ -418,6 +438,7 @@ pub fn prover_stage_5<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         final_monomials: monomial_coefficients,
         expose_all_leafs_at_last_step_instead,
         last_fri_step_plain_leaf_values,
+        foldings_pow_challenges,
     };
 
     output

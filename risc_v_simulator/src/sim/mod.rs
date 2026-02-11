@@ -72,27 +72,12 @@ where
 
         for cycle in 0..self.cycles as usize {
             if let Some(profiler) = self.profiler.as_mut() {
-                profiler.pre_cycle::<S, C>(
-                    &mut self.machine,
-                    // &mut self.state,
-                    // &mut self.memory_source,
-                    // &mut self.memory_tracer,
-                    // &mut self.mmu,
-                    cycle,
-                );
+                profiler.pre_cycle::<S, C>(&mut self.machine, cycle);
             }
 
             fn_pre(self, cycle);
 
             self.machine.cycle();
-
-            // RiscV32Machine::<C>::cycle(
-            //     &mut self.state,
-            //     &mut self.memory_source,
-            //     &mut self.memory_tracer,
-            //     &mut self.mmu,
-            //     &mut self.non_determinism_source,
-            // );
 
             fn_post(self, cycle);
 
@@ -115,19 +100,43 @@ where
 
         let exec_time = now.elapsed();
 
-        if let Some(profiler) = self.profiler.as_mut() {
-            println!("Profiler begins execution");
-            profiler.print_stats();
-            profiler.write_stacktrace();
-        }
+        // if let Some(profiler) = self.profiler.as_mut() {
+        //     println!("Profiler begins execution");
+        //     profiler.print_stats();
+        //     profiler.write_stacktrace();
+        // }
 
-        // let (state, memory_source, non_determinism_source, memory_tracer) = self.machine.deconstruct();
+        // if let Some(profiler) = self.profiler.as_mut() {
+        //     println!("Profiler begins execution");
+        //     let binary = profiler.symbol_info.buffer.clone();
+        //     let cache = crate::profiler::produce_cache_for_binary(&binary);
+
+        //     let (traces, cache) = profiler.trace_frames(&binary);
+        //     println!(
+        //         "Writing stacktrace, in total {} frames visited",
+        //         traces.len()
+        //     );
+        //     profiler.write_stacktrace_impl(&traces, &cache);
+        // }
+
+        if let Some(profiler) = self.profiler.as_mut() {
+            println!("Beging stack tracing");
+
+            println!("Computing caches");
+            let binary = profiler.symbol_info.buffer.clone();
+            let cache = crate::profiler::produce_cache_for_binary(&binary);
+            let aggregated_cache = crate::profiler::produce_aggregated_cache_for_binary(&binary);
+            let raw_frames =
+                core::mem::replace(&mut profiler.stacktraces.raw_frames, Default::default());
+            println!(
+                "Writing stacktrace, in total {} frames collected",
+                raw_frames.len()
+            );
+            profiler.write_stacktrace_impl_cached(raw_frames, &cache, &aggregated_cache);
+        }
 
         RunResult {
             state: self.machine.state().clone(),
-            // memory_source,
-            // memory_tracer,
-            // non_determinism_source,
             reached_end: self.reached_end,
             measurements: RunResultMeasurements {
                 time: RunResultTimes {
@@ -168,7 +177,6 @@ where
     MMU: MMUImplementation<MS, TR, C>,
     C: MachineConfig,
 {
-    // fn initial(entry_addr: u32) -> Self;
     fn cycle(&mut self);
 
     fn state(&self) -> &RiscV32ObservableState;
@@ -179,6 +187,8 @@ where
         dwarf_cache: &mut diag::DwarfCache,
         cycle: usize,
     ) -> diag::StacktraceCollectionResult;
+
+    fn collect_stacktrace_raw(&mut self, cycle: usize) -> (u32, Vec<u32>);
 }
 
 pub enum BinarySource<'a> {

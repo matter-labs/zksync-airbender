@@ -10,8 +10,8 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [dependencies]
-riscv_common = { path = "../../riscv_common"}
 common_constants = { path = "../../common_constants"}
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 
 [profile.release]
 lto = true

@@ -38,6 +38,7 @@ impl From<ProveResult> for UnrolledProgramProof {
             register_final_values: value.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: value.pow_challenge,
         }
     }
 }

@@ -13,6 +13,7 @@ pub struct ThirdStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeConst
     pub quotient_beta: Mersenne31Quartic,
     pub ldes: Vec<CosetBoundTracePart<N, A>>,
     pub trees: Vec<T>,
+    pub pow_challenge: u64,
 }
 
 #[derive(Clone)]
@@ -108,13 +109,18 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> ThirdStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
 
-    let mut transcript_challenges =
-        [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
+    let num_transcript_challenges = 2usize * 4;
+    let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
+        seed,
+        security_config.quotient_alpha_pow_bits,
+        num_transcript_challenges,
+        worker,
+    );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let quotient_alpha = Mersenne31Quartic::from_coeffs_in_base(
@@ -1277,6 +1283,7 @@ pub fn prover_stage_3<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         quotient_beta,
         ldes,
         trees,
+        pow_challenge,
     };
 
     output

@@ -43,40 +43,37 @@ pub mod full_machine_with_gpu_tracer {
     }
 }
 
-// pub(crate) mod reduced_machine {
-//     use crate::witness_evaluator::SimpleWitnessProxy;
-//     use crate::witness_proxy::WitnessProxy;
-//     use crate::JointProcCycleOracle;
-//     use ::cs::cs::placeholder::Placeholder;
-//     use ::cs::cs::witness_placer::WitnessTypeSet;
-//     use ::cs::cs::witness_placer::{
-//         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-//         WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
-//     };
-//     use ::field::Mersenne31Field;
-//     use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-//     use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+pub(crate) mod reduced_machine {
+    use crate::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
+    use crate::witness_evaluator::SimpleWitnessProxy;
+    use crate::witness_proxy::WitnessProxy;
+    use ::cs::cs::placeholder::Placeholder;
+    use ::cs::cs::witness_placer::WitnessTypeSet;
+    use ::cs::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+    };
+    use ::field::Mersenne31Field;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 
-//     // include!("../../../circuit_defs/reduced_risc_v_machine/generated/witness_generation_fn.rs");
-//     // include!("../../../witness_eval_generator/src/generated.rs");
-//     include!("../../minimal_machine_with_delegation_generated.rs");
+    // include!("../../../circuit_defs/reduced_risc_v_machine/generated/witness_generation_fn.rs");
+    // include!("../../../witness_eval_generator/src/generated.rs");
+    include!("../../minimal_machine_with_delegation_generated.rs");
 
-//     pub(crate) fn witness_eval_fn<'a, 'b>(
-//         proxy: &'_ mut SimpleWitnessProxy<
-//             'a,
-//             JointProcCycleOracle<'b, IWithoutByteAccessIsaConfigWithDelegation, 3>,
-//         >,
-//     ) {
-//         let fn_ptr = evaluate_witness_fn::<
-//             ScalarWitnessTypeSet<Mersenne31Field, true>,
-//             SimpleWitnessProxy<
-//                 'a,
-//                 JointProcCycleOracle<'b, IWithoutByteAccessIsaConfigWithDelegation, 3>,
-//             >,
-//         >;
-//         (fn_ptr)(proxy);
-//     }
-// }
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut SimpleWitnessProxy<
+            'a,
+            MainRiscVOracle<'b, IWithoutByteAccessIsaConfigWithDelegation>,
+        >,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<Mersenne31Field, true>,
+            SimpleWitnessProxy<'a, MainRiscVOracle<'b, IWithoutByteAccessIsaConfigWithDelegation>>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
 
 pub mod blake2s_delegation_with_gpu_tracer {
     use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;

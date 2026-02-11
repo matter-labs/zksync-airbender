@@ -44,6 +44,7 @@ members = [
     "tools/cli",
     "tools/generator",
     "tools/zksmith",
+    "tools/pow_config_generator",
 
 
     "circuit_defs/blake2_with_compression",
@@ -169,8 +170,8 @@ risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
-gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator" }
-gpu_prover = { path = "./gpu_prover" }
+gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator", default-features = false }
+gpu_prover = { path = "./gpu_prover", default-features = false }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }

@@ -10,6 +10,8 @@ pub struct FourthStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeCons
     // gpu comparison test needs z and alpha
     pub z: Mersenne31Quartic,
     pub alpha: Mersenne31Quartic,
+    pub quotient_z_pow_challenge: u64,
+    pub deep_poly_alpha_pow_challenge: u64,
 }
 
 fn comptute_barycentric_eval_coefficients_and_z_minus_x<A: GoodAllocator>(
@@ -148,15 +150,21 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> FourthStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
 
     let ProverCachedData { trace_len, .. } = cached_data.clone();
 
-    let mut transcript_challenges =
-        [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
+    let num_transcript_challenges = 1usize * 4;
+    let (quotient_z_pow_challenge, transcript_challenges) =
+        get_pow_challenge_and_transcript_challenges(
+            seed,
+            security_config.quotient_z_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let z = Mersenne31Quartic::from_coeffs_in_base(
@@ -484,9 +492,14 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
 
     // now we can compute \sum alpha^i f_i(z)
 
-    let mut transcript_challenges =
-        [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
+    let num_transcript_challenges = 1usize * 4;
+    let (deep_poly_alpha_pow_challenge, transcript_challenges) =
+        get_pow_challenge_and_transcript_challenges(
+            seed,
+            security_config.deep_poly_alpha_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let deep_poly_alpha = Mersenne31Quartic::from_coeffs_in_base(
@@ -897,6 +910,8 @@ pub fn prover_stage_4<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         trees,
         z,
         alpha: deep_poly_alpha,
+        quotient_z_pow_challenge,
+        deep_poly_alpha_pow_challenge,
     };
 
     output

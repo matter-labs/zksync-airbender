@@ -21,7 +21,7 @@ use itertools::Itertools;
 use prover::definitions::{
     produce_pc_into_permutation_accumulator_raw, AuxArgumentsBoundaryValues, ExternalChallenges,
     ExternalDelegationArgumentChallenges, ExternalMachineStateArgumentChallenges,
-    ExternalMemoryArgumentChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
+    ExternalMemoryArgumentChallenges, ExternalValues, Transcript, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
@@ -92,9 +92,9 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use trace_holder::RowMajorTrace;
+use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
-pub const NUM_QUERIES: usize = 53;
 const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = false;
 const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CachePatrial;
 // const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
@@ -2624,7 +2624,30 @@ fn compare_proofs(left: &UnrolledModeProof, right: &UnrolledModeProof) {
             assert_query(cpu, gpu, &format!("fri_query {i}"));
         }
     }
-    assert_eq!(left.pow_nonce, right.pow_nonce);
+    assert_eq!(
+        left.pow_challenges.lookup_pow_challenge,
+        right.pow_challenges.lookup_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.quotient_alpha_pow_challenge,
+        right.pow_challenges.quotient_alpha_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.quotient_z_pow_challenge,
+        right.pow_challenges.quotient_z_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.deep_poly_alpha_pow_challenge,
+        right.pow_challenges.deep_poly_alpha_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.foldings_pow_challenges,
+        right.pow_challenges.foldings_pow_challenges
+    );
+    assert_eq!(
+        left.pow_challenges.fri_queries_pow_challenge,
+        right.pow_challenges.fri_queries_pow_challenge
+    );
 }
 //
 // fn find_binary_exit_point(binary: &[u8]) -> u32 {
@@ -3074,6 +3097,8 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     //     None
     // };
 
+    let security_config = CIRCUIT_TYPE.get_security_config();
+
     println!("Trying to prove");
 
     let now = std::time::Instant::now();
@@ -3093,8 +3118,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
         None,
         lde_factor,
         tree_cap_size,
-        53,
-        28,
+        &security_config,
         &worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -3156,9 +3180,8 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
             &lde_precomputations,
             None,
             lde_factor,
-            53,
-            28,
-            Some(proof.pow_nonce),
+            &security_config,
+            Some(proof.pow_challenges.clone()),
             RECOMPUTE_COSETS_FOR_CORRECTNESS,
             TREES_CACHE_MODE_FOR_CORRECTNESS,
             &prover_context,
@@ -3847,8 +3870,22 @@ pub fn prove_unrolled_execution_with_replayer<
             &delegation_memory_trees,
         );
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
+        0
+    } else {
+        Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     let mut aux_memory_trees = vec![];
 
@@ -3880,6 +3917,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -3927,8 +3965,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &security_config,
                 &worker,
             );
             println!(
@@ -3990,9 +4027,8 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
-                    Some(proof.pow_nonce),
+                    &security_config,
+                    Some(proof.pow_challenges.clone()),
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
                     TREES_CACHE_MODE_FOR_CORRECTNESS,
                     &prover_context,
@@ -4033,6 +4069,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -4078,8 +4115,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &security_config,
                 &worker,
             );
             println!(
@@ -4141,9 +4177,8 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
-                    Some(proof.pow_nonce),
+                    &security_config,
+                    Some(proof.pow_challenges.clone()),
                     RECOMPUTE_COSETS_FOR_CORRECTNESS,
                     TREES_CACHE_MODE_FOR_CORRECTNESS,
                     &prover_context,
@@ -4183,7 +4218,7 @@ pub fn prove_unrolled_execution_with_replayer<
             num_witness_columns,
             lookup_mapping,
         };
-
+        let security_config = UnrolledCircuitType::InitsAndTeardowns.get_security_config();
         let now = std::time::Instant::now();
         let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
@@ -4201,8 +4236,7 @@ pub fn prove_unrolled_execution_with_replayer<
             None,
             inits_and_teardowns_precomputation.lde_factor,
             inits_and_teardowns_precomputation.tree_cap_size,
-            NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &security_config,
             &worker,
         );
         println!(
@@ -4264,9 +4298,8 @@ pub fn prove_unrolled_execution_with_replayer<
                 &inits_and_teardowns_precomputation.lde_precomputations,
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
-                Some(proof.pow_nonce),
+                &security_config,
+                Some(proof.pow_challenges.clone()),
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
                 TREES_CACHE_MODE_FOR_CORRECTNESS,
                 &prover_context,
@@ -4466,6 +4499,8 @@ where
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
 
+        let security_config = circuit_type.get_security_config();
+
         assert!(delegation_type < 1 << 12);
         let (_, proof) = prover::prover_stages::prove(
             &prec.compiled_circuit.compiled_circuit,
@@ -4479,8 +4514,7 @@ where
             Some(delegation_type),
             prec.lde_factor,
             prec.tree_cap_size,
-            NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &security_config,
             worker,
         );
 
@@ -4543,9 +4577,8 @@ where
                 &prec.lde_precomputations,
                 Some(delegation_type),
                 prec.lde_factor,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
-                Some(proof.pow_nonce),
+                &security_config,
+                Some(proof.pow_challenges.clone()),
                 RECOMPUTE_COSETS_FOR_CORRECTNESS,
                 TREES_CACHE_MODE_FOR_CORRECTNESS,
                 &prover_context,
@@ -4579,7 +4612,7 @@ fn proof_as_unrolled_mode_proof(proof: &Proof) -> UnrolledModeProof {
         last_fri_step_plain_leaf_values: proof.last_fri_step_plain_leaf_values.clone(),
         final_monomial_form: proof.final_monomial_form.clone(),
         queries: proof.queries.clone(),
-        pow_nonce: proof.pow_nonce,
+        pow_challenges: proof.pow_challenges.clone(),
         delegation_type: proof.delegation_type,
         aux_boundary_values: vec![proof.external_values.aux_boundary_values.clone()],
     }

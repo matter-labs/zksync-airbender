@@ -23,6 +23,7 @@ use crate::prover_stages::stage2_utils::*;
 use cached_data::ProverCachedData;
 use cs::one_row_compiler::ColumnAddress;
 use fft::field_utils::batch_inverse_with_buffer;
+use transcript::pow;
 
 pub struct SecondStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
     pub ldes: Vec<CosetBoundTracePart<N, A>>,
@@ -37,6 +38,7 @@ pub struct SecondStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeCons
 
     pub grand_product_accumulator: Mersenne31Quartic,
     pub sum_over_delegation_poly: Mersenne31Quartic,
+    pub pow_challenge: u64,
 }
 
 pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor>(
@@ -50,6 +52,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> SecondStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
@@ -62,10 +65,13 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
     let exec_trace = &stage_1_output.ldes[0].trace;
     let setup_trace = &setup_precomputations.ldes[0].trace;
 
-    let mut transcript_challenges = [0u32;
-        ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
-            .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
+    let num_transcript_challenges = (NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
+    let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
+        seed,
+        security_config.lookup_pow_bits,
+        num_transcript_challenges,
+        worker,
+    );
 
     let mut it = transcript_challenges.as_chunks::<4>().0.iter();
     let lookup_argument_linearization_challenges: [Mersenne31Quartic;
@@ -1209,6 +1215,7 @@ pub fn prover_stage_2<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor
         decoder_table_gamma: Mersenne31Quartic::ZERO,
         grand_product_accumulator,
         sum_over_delegation_poly,
+        pow_challenge,
     };
 
     output

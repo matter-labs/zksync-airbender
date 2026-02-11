@@ -5,6 +5,7 @@ use crate::prover_stages::unrolled_prover::stage_2_shared::*;
 use crate::prover_stages::SetupPrecomputations;
 use cs::one_row_compiler::ColumnAddress;
 use fft::field_utils::batch_inverse_with_buffer;
+use transcript::pow;
 
 pub fn prover_stage_2_for_unrolled_circuit<
     const N: usize,
@@ -21,6 +22,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
     lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
     folding_description: &FoldingDescription,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> SecondStageOutput<N, A, T> {
     assert!(lde_factor.is_power_of_two());
@@ -38,20 +40,24 @@ pub fn prover_stage_2_for_unrolled_circuit<
         lookup_argument_gamma,
         decoder_table_linearization_challenges,
         decoder_table_gamma,
+        pow_challenge,
     ) = if compiled_circuit
         .setup_layout
         .preprocessed_decoder_setup_columns
         .num_elements()
         > 0
     {
-        let mut transcript_challenges = [0u32;
-            ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES
-                + 1
-                + EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES
-                + 1)
-                * 4)
-            .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-        Transcript::draw_randomness(seed, &mut transcript_challenges);
+        let num_transcript_challenges = (NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES
+            + 1
+            + EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES
+            + 1)
+            * 4;
+        let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
+            seed,
+            security_config.lookup_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
         let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
         let lookup_argument_linearization_challenges: [Mersenne31Quartic;
@@ -88,12 +94,16 @@ pub fn prover_stage_2_for_unrolled_circuit<
             lookup_argument_gamma,
             decoder_lookup_linearization_challenges,
             decoder_lookup_gamma,
+            pow_challenge,
         )
     } else {
-        let mut transcript_challenges = [0u32;
-            ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
-                .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-        Transcript::draw_randomness(seed, &mut transcript_challenges);
+        let num_transcript_challenges = (NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
+        let (pow_challenge, transcript_challenges) = get_pow_challenge_and_transcript_challenges(
+            seed,
+            security_config.lookup_pow_bits,
+            num_transcript_challenges,
+            worker,
+        );
 
         let mut it = transcript_challenges.as_chunks::<4>().0.into_iter();
         let lookup_argument_linearization_challenges: [Mersenne31Quartic;
@@ -116,6 +126,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
             [Mersenne31Quartic::ZERO;
                 EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
             Mersenne31Quartic::ZERO,
+            pow_challenge,
         )
     };
 
@@ -1365,6 +1376,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
         decoder_table_gamma,
         grand_product_accumulator,
         sum_over_delegation_poly,
+        pow_challenge,
     };
 
     output
