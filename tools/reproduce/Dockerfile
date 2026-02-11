@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config
 
 # The version of compiler must pinned and in sync with the one specified in `../verifier/rust-toolchain.toml`.
-ENV RUST_VERSION=nightly-2026-01-19
+ENV RUST_VERSION=nightly-2026-02-10
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VERSION"
 ENV PATH="/root/.cargo/bin:${PATH}"
