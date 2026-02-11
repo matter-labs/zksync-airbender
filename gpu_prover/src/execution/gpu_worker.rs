@@ -23,7 +23,6 @@ use std::ffi::CStr;
 use std::ops::Deref;
 use std::process::exit;
 use std::{env, mem};
-use verifier_common::num_queries_for_security_params;
 
 pub fn get_gpu_worker_func(
     device_id: i32,
@@ -239,12 +238,7 @@ fn gpu_worker(
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
                         CircuitType::Unrolled(_) => None,
                     };
-                    let num_queries = num_queries_for_security_params(
-                        verifier_common::SECURITY_BITS,
-                        verifier_common::POW_BITS,
-                        log_lde_factor as usize,
-                    );
-                    let pow_bits = verifier_common::POW_BITS as u32;
+                    let security_config = circuit_type.get_security_config();
                     trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]");
                     let job = prove(
                         circuit_type,
@@ -258,8 +252,7 @@ fn gpu_worker(
                         &precomputations.lde_precomputations,
                         delegation_processing_type,
                         precomputations.lde_precomputations.lde_factor,
-                        num_queries,
-                        pow_bits,
+                        &security_config,
                         None,
                         recompute_cosets,
                         TreesCacheMode::CachePatrial,

@@ -1,6 +1,6 @@
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext, UnsafeMutAccessor};
-use super::pow::PowOutput;
+use super::pow::search_pow_challenge;
 use super::queries::QueriesOutput;
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
@@ -26,6 +26,7 @@ use prover::definitions::{
 };
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::sync::Arc;
 
@@ -59,8 +60,8 @@ impl<'a> ProofJob<'a> {
             log::debug!("GPU stage 3 time: {:.3} ms", ranges[3].elapsed()?);
             log::debug!("GPU stage 4 time: {:.3} ms", ranges[4].elapsed()?);
             log::debug!("GPU stage 5 time: {:.3} ms", ranges[5].elapsed()?);
-            log::debug!("GPU pow time: {:.3} ms", ranges[6].elapsed()?);
-            log::debug!("GPU queries time: {:.3} ms", ranges[7].elapsed()?);
+            log::debug!("GPU fri queries pow time: {:.3} ms", ranges[6].elapsed()?);
+            log::debug!("GPU fri queries time: {:.3} ms", ranges[7].elapsed()?);
         }
         let proof_time_ms = ranges[8].elapsed()?;
 
@@ -80,9 +81,8 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
-    num_queries: usize,
-    pow_bits: u32,
-    external_pow_nonce: Option<u64>,
+    security_config: &ProofSecurityConfig,
+    external_pow_challenges: Option<ProofPowChallenges>,
     recompute_cosets: bool,
     trees_cache_mode: TreesCacheMode,
     context: &ProverContext,
@@ -191,6 +191,8 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_2_range.start(stream)?;
     stage_2_output.generate(
         &mut seed,
+        security_config,
+        &external_pow_challenges,
         &circuit,
         is_unrolled,
         &cached_data_values,
@@ -208,6 +210,8 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_3_range.start(stream)?;
     let mut stage_3_output = StageThreeOutput::new(
         &mut seed,
+        security_config,
+        &external_pow_challenges,
         &circuit,
         is_unrolled,
         &cached_data_values,
@@ -231,6 +235,8 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_4_range.start(stream)?;
     let mut stage_4_output = StageFourOutput::new(
         &mut seed,
+        security_config,
+        &external_pow_challenges,
         &circuit,
         is_unrolled,
         &cached_data_values,
@@ -253,11 +259,12 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     stage_5_range.start(stream)?;
     let stage_5_output = StageFiveOutput::new(
         &mut seed,
+        security_config,
+        &external_pow_challenges,
         &mut stage_4_output,
         log_domain_size,
         log_lde_factor,
         &optimal_folding,
-        num_queries,
         &lde_precomputations,
         &mut callbacks,
         context,
@@ -266,23 +273,29 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     #[cfg(feature = "log_gpu_mem_usage")]
     context.log_gpu_mem_usage("after stage_5 ");
 
-    // pow
-    let pow_range = device_tracing::Range::new("pow")?;
-    pow_range.start(stream)?;
-    let pow_output = PowOutput::new(
+    // fri queries pow
+    let fri_queries_pow_range = device_tracing::Range::new("fri_queries_pow")?;
+    fri_queries_pow_range.start(stream)?;
+    let mut fri_queries_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+    let fri_queries_pow_bits = security_config.fri_queries_pow_bits;
+    assert_ne!(fri_queries_pow_bits, 0);
+    search_pow_challenge(
         &mut seed,
-        pow_bits,
-        external_pow_nonce,
+        &mut fri_queries_pow_challenge,
+        fri_queries_pow_bits,
+        external_pow_challenges
+            .as_ref()
+            .map(|c| c.fri_queries_pow_challenge),
         &mut callbacks,
         context,
     )?;
-    pow_range.end(stream)?;
+    fri_queries_pow_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_gpu_mem_usage("after pow ");
+    context.log_gpu_mem_usage("after fri queries pow ");
 
-    // pow
-    let queries_range = device_tracing::Range::new("queries")?;
-    queries_range.start(stream)?;
+    // fri queries
+    let fri_queries_range = device_tracing::Range::new("fri_queries")?;
+    fri_queries_range.start(stream)?;
     let queries_output = QueriesOutput::new(
         seed,
         setup,
@@ -293,14 +306,14 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         &stage_5_output,
         log_domain_size,
         log_lde_factor,
-        num_queries,
+        security_config.num_queries,
         &optimal_folding,
         &mut callbacks,
         context,
     )?;
-    queries_range.end(stream)?;
+    fri_queries_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_gpu_mem_usage("after queries");
+    context.log_gpu_mem_usage("after fri queries ");
 
     let proof = create_proof(
         external_challenges,
@@ -312,7 +325,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         stage_3_output,
         stage_4_output,
         stage_5_output,
-        pow_output,
+        fri_queries_pow_challenge,
         queries_output,
         &mut callbacks,
         context,
@@ -336,8 +349,8 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         stage_3_range,
         stage_4_range,
         stage_5_range,
-        pow_range,
-        queries_range,
+        fri_queries_pow_range,
+        fri_queries_range,
         proof_range,
     ];
 
@@ -455,7 +468,7 @@ fn create_proof(
     stage_3_output: StageThreeOutput,
     stage_4_output: StageFourOutput,
     stage_5_output: StageFiveOutput,
-    pow_output: PowOutput,
+    fri_queries_pow_challenge: HostAllocation<u64>,
     queries_output: QueriesOutput,
     callbacks: &mut Callbacks,
     context: &ProverContext,
@@ -469,9 +482,13 @@ fn create_proof(
     let stage_2_offset_for_memory_grand_product_poly = stage_2_output.offset_for_grand_product_poly;
     let stage_2_offset_for_delegation_argument_poly =
         stage_2_output.offset_for_sum_over_delegation_poly;
+    let lookup_pow_challenge = stage_2_output.pow_challenge.unwrap().get_accessor();
     let quotient_tree_caps = stage_3_output.trace_holder.get_tree_caps_accessors();
+    let quotient_alpha_pow_challenge = stage_3_output.pow_challenge.get_accessor();
     let evaluations_at_random_points = stage_4_output.values_at_z.get_accessor();
     let deep_poly_caps = stage_4_output.trace_holder.get_tree_caps_accessors();
+    let quotient_z_pow_challenge = stage_4_output.quotient_z_pow_challenge.get_accessor();
+    let deep_poly_alpha_pow_challenge = stage_4_output.deep_poly_alpha_pow_challenge.get_accessor();
     let intermediate_fri_oracle_caps = stage_5_output
         .fri_oracles
         .into_iter()
@@ -484,8 +501,13 @@ fn create_proof(
         .map(HostAllocation::get_accessor)
         .collect_vec();
     let final_monomial_form = stage_5_output.final_monomials.get_accessor();
+    let foldings_pow_challenges = stage_5_output
+        .pow_challenges
+        .iter()
+        .map(HostAllocation::get_accessor)
+        .collect_vec();
     let queries = queries_output.get_accessors();
-    let pow_nonce = pow_output.nonce.get_accessor();
+    let fri_queries_pow_challenge = fri_queries_pow_challenge.get_accessor();
     let mut proof = Box::new(Option::<UnrolledModeProof>::None);
     let proof_accessor = UnsafeMutAccessor::new(proof.as_mut());
     let create_proof_fn = move || unsafe {
@@ -516,7 +538,14 @@ fn create_proof(
             .collect_vec();
         let final_monomial_form = final_monomial_form.get().to_vec();
         let queries = queries.produce_query_sets();
-        let pow_nonce = *pow_nonce.get();
+        let pow_challenges = ProofPowChallenges {
+            lookup_pow_challenge: *lookup_pow_challenge.get(),
+            quotient_alpha_pow_challenge: *quotient_alpha_pow_challenge.get(),
+            quotient_z_pow_challenge: *quotient_z_pow_challenge.get(),
+            deep_poly_alpha_pow_challenge: *deep_poly_alpha_pow_challenge.get(),
+            foldings_pow_challenges: foldings_pow_challenges.iter().map(|c| *c.get()).collect(),
+            fri_queries_pow_challenge: *fri_queries_pow_challenge.get(),
+        };
         let delegation_type = delegation_processing_type;
         let proof = UnrolledModeProof {
             external_challenges,
@@ -534,7 +563,7 @@ fn create_proof(
             last_fri_step_plain_leaf_values,
             final_monomial_form,
             queries,
-            pow_nonce,
+            pow_challenges,
             delegation_type,
             aux_boundary_values: aux_boundary_values.clone(),
         };

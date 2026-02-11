@@ -513,8 +513,16 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
 
-    let expected_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(memory_seed);
+    let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
+
+    let expected_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        memory_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
+
     assert_eq!(
         expected_challenges.memory_argument,
         proof_output_0.memory_challenges

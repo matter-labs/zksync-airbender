@@ -36,7 +36,12 @@ bincode = { version = "1.3", optional = true }
 [dev-dependencies]
 rand = { workspace = true, features = ["std", "std_rng"]}
 bincode = { version = "1.3" }
+criterion = "0.5"
 hex = "*"
+
+[[bench]]
+name = "pow_bench"
+harness = false
 
 [features]
 prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow",  "risc_v_simulator", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "itertools"]

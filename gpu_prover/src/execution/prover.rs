@@ -22,7 +22,9 @@ use crossbeam_utils::sync::WaitGroup;
 use cs::definitions::TimestampScalar;
 use itertools::Itertools;
 use log::{debug, info, trace, warn};
-use prover::definitions::{AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues};
+use prover::definitions::{
+    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, Transcript,
+};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
@@ -44,6 +46,7 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use type_map::concurrent::TypeMap;
+use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
 /// Specifies the execution mode for the prover.
@@ -122,6 +125,7 @@ pub struct ProveResult {
     pub circuit_families_proofs: BTreeMap<u8, Vec<UnrolledModeProof>>,
     pub inits_and_teardowns_proofs: Vec<UnrolledModeProof>,
     pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
+    pub pow_challenge: u64,
 }
 
 enum ExecutionProverResult {
@@ -386,6 +390,7 @@ impl ExecutionProver {
         batch_id: u64,
         binary_key: usize,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        pow_challenge: u64,
         external_challenges: Option<ExternalChallenges>,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
@@ -1039,6 +1044,7 @@ impl ExecutionProver {
                 circuit_families_proofs,
                 inits_and_teardowns_proofs,
                 delegation_proofs: delegation_circuits_proofs,
+                pow_challenge,
             };
             ExecutionProverResult::Prove(result)
         } else {
@@ -1122,6 +1128,7 @@ impl ExecutionProver {
                 batch_id,
                 binary_key,
                 non_determinism_source,
+                0,
                 None,
             )
             .into_memory_commitment_result();
@@ -1156,6 +1163,7 @@ impl ExecutionProver {
         batch_id: u64,
         binary_key: usize,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        pow_challenge: u64,
         external_challenges: ExternalChallenges,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -1167,6 +1175,7 @@ impl ExecutionProver {
                 batch_id,
                 binary_key,
                 non_determinism_source,
+                pow_challenge,
                 Some(external_challenges),
             )
             .into_proof_result();
@@ -1191,6 +1200,7 @@ impl ExecutionProver {
         batch_id: u64,
         binary_key: usize,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        pow_challenge: u64,
         external_challenges: ExternalChallenges,
     ) -> ProveResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
@@ -1199,6 +1209,7 @@ impl ExecutionProver {
             batch_id,
             binary_key,
             non_determinism_source,
+            pow_challenge,
             external_challenges,
         )
     }
@@ -1260,15 +1271,28 @@ impl ExecutionProver {
                     .map(|(i, v)| (*i, v.clone()))
                     .collect_vec(),
             );
+        let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
+            0
+        } else {
+            Transcript::search_pow(
+                &all_challenges_seed,
+                MEMORY_DELEGATION_POW_BITS as u32,
+                &self.worker,
+            )
+            .1
+        };
         let external_challenges =
             ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
                 all_challenges_seed,
+                MEMORY_DELEGATION_POW_BITS,
+                pow_challenge,
             );
         let prove_result = self.prove_inner(
             &mut cache,
             batch_id,
             binary_key,
             non_determinism_source,
+            pow_challenge,
             external_challenges,
         );
         assert_eq!(prove_result.register_final_values, final_register_values);
@@ -1339,7 +1363,7 @@ fn unrolled_proof_into_proof(proof: UnrolledModeProof) -> Proof {
         last_fri_step_plain_leaf_values: proof.last_fri_step_plain_leaf_values,
         final_monomial_form: proof.final_monomial_form,
         queries: proof.queries,
-        pow_nonce: proof.pow_nonce,
+        pow_challenges: proof.pow_challenges,
         circuit_sequence: 0,
         delegation_type: proof.delegation_type,
     }

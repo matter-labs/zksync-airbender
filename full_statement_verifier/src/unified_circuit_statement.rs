@@ -252,8 +252,17 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
 
-    let expected_challenges =
-        ExternalChallenges::draw_from_transcript_seed(memory_seed, NUM_DELEGATION_CHALLENGES > 0);
+    let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
+
+    let expected_challenges = ExternalChallenges::draw_from_transcript_seed(
+        memory_seed,
+        NUM_DELEGATION_CHALLENGES > 0,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
+
     assert_eq!(
         expected_challenges.memory_argument,
         proof_output_0.memory_challenges

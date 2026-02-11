@@ -109,8 +109,22 @@ pub fn flatten_proof_for_skeleton(proof: &Proof, lazy_inits_and_teardowns_len: u
             })
             .flatten(),
     );
-    result.push(proof.pow_nonce as u32);
-    result.push((proof.pow_nonce >> 32) as u32);
+
+    // PoW challenges
+    result.push(proof.pow_challenges.lookup_pow_challenge as u32);
+    result.push((proof.pow_challenges.lookup_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_alpha_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_z_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_z_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.deep_poly_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.deep_poly_alpha_pow_challenge >> 32) as u32);
+    for el in proof.pow_challenges.foldings_pow_challenges.iter() {
+        result.push(*el as u32);
+        result.push((*el >> 32) as u32);
+    }
+    result.push(proof.pow_challenges.fri_queries_pow_challenge as u32);
+    result.push((proof.pow_challenges.fri_queries_pow_challenge >> 32) as u32);
 
     result
 }
@@ -222,8 +236,22 @@ pub fn flatten_unrolled_circuits_proof_for_skeleton(
             })
             .flatten(),
     );
-    result.push(proof.pow_nonce as u32);
-    result.push((proof.pow_nonce >> 32) as u32);
+
+    // PoW challenges
+    result.push(proof.pow_challenges.lookup_pow_challenge as u32);
+    result.push((proof.pow_challenges.lookup_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_alpha_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.quotient_z_pow_challenge as u32);
+    result.push((proof.pow_challenges.quotient_z_pow_challenge >> 32) as u32);
+    result.push(proof.pow_challenges.deep_poly_alpha_pow_challenge as u32);
+    result.push((proof.pow_challenges.deep_poly_alpha_pow_challenge >> 32) as u32);
+    for el in proof.pow_challenges.foldings_pow_challenges.iter() {
+        result.push(*el as u32);
+        result.push((*el >> 32) as u32);
+    }
+    result.push(proof.pow_challenges.fri_queries_pow_challenge as u32);
+    result.push((proof.pow_challenges.fri_queries_pow_challenge >> 32) as u32);
 
     result
 }

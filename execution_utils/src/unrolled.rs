@@ -129,6 +129,7 @@ pub struct UnrolledProgramProof {
     pub register_final_values: [FinalRegisterValue; 32],
     pub recursion_chain_preimage: Option<[u32; 16]>,
     pub recursion_chain_hash: Option<[u32; 8]>,
+    pub pow_challenge: u64,
 }
 
 impl UnrolledProgramProof {
@@ -219,6 +220,11 @@ impl UnrolledProgramProof {
                 responses.push(0);
             }
         }
+
+        let pow_challenge_low = self.pow_challenge as u32;
+        let pow_challenge_high = (self.pow_challenge >> 32) as u32;
+        responses.push(pow_challenge_low);
+        responses.push(pow_challenge_high);
 
         if let Some(preimage) = self.recursion_chain_preimage {
             responses.extend(preimage);
@@ -388,6 +394,7 @@ pub fn prove_unrolled_for_machine_configuration_into_program_proof<C: MachineCon
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     ) = proofs;
 
     let program_proofs = UnrolledProgramProof {
@@ -399,6 +406,7 @@ pub fn prove_unrolled_for_machine_configuration_into_program_proof<C: MachineCon
         register_final_values: register_final_state,
         recursion_chain_hash: None,
         recursion_chain_preimage: None,
+        pow_challenge,
     };
 
     program_proofs
@@ -418,6 +426,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     use std::alloc::Global;
     println!("Performing precomputations for circuit families");
@@ -444,6 +453,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     ) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
         C,
         Global,
@@ -466,6 +476,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -489,7 +500,7 @@ mod test {
         let (_, text_section) =
             setups::read_and_pad_binary(&Path::new("../examples/basic_fibonacci/app.text"));
 
-        let worker = prover::worker::Worker::new_with_num_threads(8);
+        let worker = prover::worker::Worker::new_with_num_threads(32);
 
         let cycles_bound = 1 << 24;
         let rom_bound = 1 << 32;
@@ -560,6 +571,7 @@ mod test {
         Vec<(u32, Vec<Proof>)>,
         [FinalRegisterValue; 32],
         (u32, TimestampScalar),
+        u64,
     ) {
         println!("Performing precomputations for circuit families");
         let families_precomps =
@@ -586,6 +598,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
+            pow_challenge,
         ) = prover_examples::unrolled::prove_unrolled_execution::<_, C, Global, 5>(
             cycles_bound,
             &binary_image,
@@ -604,6 +617,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
+            pow_challenge,
         )
     }
 
@@ -616,6 +630,7 @@ mod test {
             Vec<(u32, Vec<Proof>)>,
             [FinalRegisterValue; 32],
             (u32, TimestampScalar),
+            u64,
         ),
     ) -> bool {
         let (
@@ -624,6 +639,7 @@ mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
+            pow_challenge,
         ) = proofs;
         let compiled_circuits_set =
             setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<C>(
@@ -641,6 +657,7 @@ mod test {
             register_final_values: register_final_state,
             recursion_chain_hash: None,
             recursion_chain_preimage: None,
+            pow_challenge,
         };
 
         for (k, v) in program_proofs.circuit_families_proofs.iter() {

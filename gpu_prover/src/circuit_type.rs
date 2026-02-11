@@ -1,5 +1,6 @@
 use crate::machine_type::MachineType;
 use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
+use prover::prover_stages::ProofSecurityConfig;
 use setups::{
     add_sub_lui_auipc_mop, bigint_with_control, blake2_with_compression, inits_and_teardowns,
     jump_branch_slt, keccak_special5, load_store_subword_only, load_store_word_only, mul_div,
@@ -74,6 +75,13 @@ impl CircuitType {
         //     Self::Delegation(delegation_type) => delegation_type.get_tree_cap_size(),
         //     Self::Unrolled(unrolled_type) => unrolled_type.get_tree_cap_size(),
         // }
+    }
+
+    pub fn get_security_config(&self) -> ProofSecurityConfig {
+        match self {
+            Self::Delegation(delegation_type) => delegation_type.get_security_config(),
+            Self::Unrolled(unrolled_type) => unrolled_type.get_security_config(),
+        }
     }
 }
 
@@ -153,6 +161,18 @@ impl DelegationCircuitType {
             MachineType::Full => Self::get_all_delegation_types(),
             MachineType::FullUnsigned => Self::get_all_delegation_types(),
             MachineType::Reduced => &[DelegationCircuitType::Blake2WithCompression],
+        }
+    }
+
+    pub fn get_security_config(&self) -> ProofSecurityConfig {
+        match self {
+            Self::BigIntWithControl => {
+                get_security_config::<{ bigint_with_control::DOMAIN_SIZE }>()
+            }
+            Self::Blake2WithCompression => {
+                get_security_config::<{ blake2_with_compression::DOMAIN_SIZE }>()
+            }
+            Self::KeccakSpecial5 => get_security_config::<{ keccak_special5::DOMAIN_SIZE }>(),
         }
     }
 }
@@ -272,6 +292,17 @@ impl UnrolledCircuitType {
             .iter()
             .map(|id| DelegationCircuitType::from(*id as u16))
     }
+
+    pub fn get_security_config(&self) -> ProofSecurityConfig {
+        match self {
+            Self::InitsAndTeardowns => {
+                get_security_config::<{ inits_and_teardowns::DOMAIN_SIZE }>()
+            }
+            Self::Memory(circuit_type) => circuit_type.get_security_config(),
+            Self::NonMemory(circuit_type) => circuit_type.get_security_config(),
+            Self::Unified => get_security_config::<{ unified_reduced_machine::DOMAIN_SIZE }>(),
+        }
+    }
 }
 
 #[repr(u32)]
@@ -359,6 +390,17 @@ impl UnrolledMemoryCircuitType {
                 load_store_word_only::FAMILY_IDX => Self::LoadStoreWordOnly,
                 _ => panic(),
             },
+        }
+    }
+
+    pub fn get_security_config(&self) -> ProofSecurityConfig {
+        match self {
+            Self::LoadStoreSubwordOnly => {
+                get_security_config::<{ load_store_subword_only::DOMAIN_SIZE }>()
+            }
+            Self::LoadStoreWordOnly => {
+                get_security_config::<{ load_store_word_only::DOMAIN_SIZE }>()
+            }
         }
     }
 }
@@ -516,6 +558,18 @@ impl UnrolledNonMemoryCircuitType {
             Self::ShiftBinaryCsr => 4,
         }
     }
+
+    pub fn get_security_config(&self) -> ProofSecurityConfig {
+        match self {
+            Self::AddSubLuiAuipcMop => {
+                get_security_config::<{ add_sub_lui_auipc_mop::DOMAIN_SIZE }>()
+            }
+            Self::JumpBranchSlt => get_security_config::<{ jump_branch_slt::DOMAIN_SIZE }>(),
+            Self::MulDiv => get_security_config::<{ mul_div::DOMAIN_SIZE }>(),
+            Self::MulDivUnsigned => get_security_config::<{ mul_div_unsigned::DOMAIN_SIZE }>(),
+            Self::ShiftBinaryCsr => get_security_config::<{ shift_binary_csr::DOMAIN_SIZE }>(),
+        }
+    }
 }
 
 #[inline(always)]
@@ -533,4 +587,22 @@ pub const fn get_tree_cap_size_for_log_domain_size(log_domain_size: u32) -> usiz
 #[inline(always)]
 pub const fn get_log_tree_cap_size_for_log_domain_size(log_domain_size: u32) -> usize {
     OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2
+}
+
+const fn get_num_foldings<const DOMAIN_SIZE: usize>() -> usize {
+    assert!(DOMAIN_SIZE.is_power_of_two());
+    OPTIMAL_FOLDING_PROPERTIES[DOMAIN_SIZE.trailing_zeros() as usize]
+        .folding_sequence
+        .len()
+}
+
+fn get_security_config<const DOMAIN_SIZE: usize>() -> ProofSecurityConfig
+where
+    [(); get_num_foldings::<DOMAIN_SIZE>()]:,
+{
+    assert!(DOMAIN_SIZE.is_power_of_two());
+    let config = verifier_common::SizedProofSecurityConfig::<{
+        get_num_foldings::<DOMAIN_SIZE>()
+    }>::worst_case_config();
+    config.for_prover()
 }

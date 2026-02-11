@@ -9,6 +9,7 @@ use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::prover::pow::search_pow_challenge;
 use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -19,7 +20,7 @@ use field::FieldExtension;
 use prover::definitions::AuxArgumentsBoundaryValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
-use prover::prover_stages::Transcript;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::alloc::Global;
 use std::slice;
@@ -27,11 +28,14 @@ use std::sync::Arc;
 
 pub(crate) struct StageThreeOutput {
     pub(crate) trace_holder: TraceHolder<BF>,
+    pub(crate) pow_challenge: HostAllocation<u64>,
 }
 
 impl StageThreeOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         is_unrolled: bool,
         cached_data: &ProverCachedData,
@@ -64,6 +68,18 @@ impl StageThreeOutput {
         )?;
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
+        let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let pow_bits = security_config.quotient_alpha_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut pow_challenge,
+            pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.quotient_alpha_pow_challenge),
+            callbacks,
+            context,
+        )?;
         let alpha_powers_layout =
             AlphaPowersLayout::new(&circuit, cached_data.num_stage_3_quotient_terms);
         let alpha_powers_count = alpha_powers_layout.precomputation_size;
@@ -114,9 +130,17 @@ impl StageThreeOutput {
         );
         let static_metadata_clone = static_metadata.clone();
         let get_challenges_and_helpers_fn = move || unsafe {
-            let mut transcript_challenges =
-                [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            let num_entries = (if pow_bits == 0 { 0usize } else { 1 } + 2 * 4)
+                .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            prover::definitions::Transcript::draw_randomness(
+                seed_accessor.get_mut(),
+                &mut transcript_challenges,
+            );
+            if pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
@@ -222,6 +246,9 @@ impl StageThreeOutput {
         trace_holder.extend_and_commit(COSET_INDEX, context)?;
         let update_seed_fn = trace_holder.get_update_seed_fn(seed);
         callbacks.schedule(update_seed_fn, stream)?;
-        Ok(Self { trace_holder })
+        Ok(Self {
+            trace_holder,
+            pow_challenge,
+        })
     }
 }

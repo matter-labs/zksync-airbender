@@ -33,6 +33,7 @@ pub type ProofSkeletonInstance = ProofSkeleton<
     NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
     NUM_OPENINGS_AT_Z,
     NUM_OPENINGS_AT_Z_OMEGA,
+    NUM_FRI_STEPS,
     NUM_FRI_STEPS_WITH_ORACLES,
     LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET,
     FRI_FINAL_DEGREE,
@@ -110,9 +111,9 @@ pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usiz
     assert!(offset_of!(ProofSkeletonInstance, monomial_coeffs) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::monomial_coeffs);
-    assert!(offset_of!(ProofSkeletonInstance, pow_nonce) == total_size,);
+    assert!(offset_of!(ProofSkeletonInstance, pow_challenges) == total_size,);
 
-    total_size += field_size!(ProofSkeletonInstance::pow_nonce);
+    total_size += field_size!(ProofSkeletonInstance::pow_challenges);
 
     assert!(total_size <= core::mem::size_of::<ProofSkeletonInstance>());
 
@@ -300,7 +301,7 @@ impl ProofSkeletonInstance {
             i += 1;
         }
         // monomial coeffs
-        while i < offset_of!(ProofSkeletonInstance, pow_nonce) / core::mem::size_of::<u32>() {
+        while i < offset_of!(ProofSkeletonInstance, pow_challenges) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;

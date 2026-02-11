@@ -22,7 +22,7 @@ serde = { workspace = true }
 sha3 = { workspace = true }
 serde_json = "*"
 full_statement_verifier = { path = "../full_statement_verifier", default-features = false }
-prover_examples = { path = "../circuit_defs/prover_examples", optional = true }
+prover_examples = { path = "../circuit_defs/prover_examples", default-features = false, optional = true }
 
 prover = { workspace = true, optional = true, features = ["prover"] }
 gpu_prover = { workspace = true, optional = true }
@@ -32,6 +32,8 @@ bincode = { version = "1.3" }
 prover_examples = { path = "../circuit_defs/prover_examples" }
 
 [features]
+security_80 = ["gpu_prover?/security_80"]
+security_100 = ["gpu_prover?/security_100"]
 verifier_80 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr", "prover_examples/verifiers"]
 verifier_100 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_100", "full_statement_verifier/replace_csr", "prover_examples/verifiers"]
 prover = ["prover_examples"]

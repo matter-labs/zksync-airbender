@@ -20,6 +20,7 @@ use crate::barycentric::{
 use crate::blake2s::build_merkle_tree;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::ops_complex::{bit_reverse_in_place, transpose};
+use crate::prover::pow::search_pow_challenge;
 use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -29,7 +30,7 @@ use field::{Field, FieldExtension};
 use itertools::Itertools;
 use prover::definitions::FoldingDescription;
 use prover::prover_stages::cached_data::ProverCachedData;
-use prover::prover_stages::Transcript;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig, Transcript};
 use prover::transcript::Seed;
 use std::ops::DerefMut;
 use std::slice;
@@ -37,12 +38,16 @@ use std::sync::Arc;
 
 pub(crate) struct StageFourOutput {
     pub(crate) trace_holder: TraceHolder<E4>,
+    pub quotient_z_pow_challenge: HostAllocation<u64>,
     pub(crate) values_at_z: HostAllocation<[E4]>,
+    pub deep_poly_alpha_pow_challenge: HostAllocation<u64>,
 }
 
 impl StageFourOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
         is_unrolled: bool,
         cached_data: &ProverCachedData,
@@ -83,14 +88,34 @@ impl StageFourOutput {
             vectorized_ldes.push(context.alloc(4 * trace_len, AllocationPlacement::BestFit)?);
         }
         let stream = context.get_exec_stream();
+        let mut quotient_z_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let quotient_z_pow_bits = security_config.quotient_z_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut quotient_z_pow_challenge,
+            quotient_z_pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.quotient_z_pow_challenge),
+            callbacks,
+            context,
+        )?;
         let mut values_at_z = unsafe { context.alloc_host_uninit_slice(num_evals) };
         let values_at_z_accessor = values_at_z.get_mut_accessor();
         let mut h_z = unsafe { context.alloc_host_uninit::<E4>() };
         let h_z_accessor = h_z.get_mut_accessor();
         let get_z = move || unsafe {
-            let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            let num_entries = (if quotient_z_pow_bits == 0 { 0usize } else { 1 } + 1 * 4)
+                .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            prover::definitions::Transcript::draw_randomness(
+                seed_accessor.get_mut(),
+                &mut transcript_challenges,
+            );
+            if quotient_z_pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let coeffs = transcript_challenges
                 .as_chunks::<4>()
                 .0
@@ -175,9 +200,7 @@ impl StageFourOutput {
             &d_alloc_evals,
             &stream,
         )?;
-        let mut alpha = unsafe { context.alloc_host_uninit::<E4>() };
-        let alpha_accessor = alpha.get_mut_accessor();
-        let get_alpha = move || unsafe {
+        let commit_values_at_z = move || unsafe {
             let transcript_input = values_at_z_accessor
                 .get()
                 .iter()
@@ -185,11 +208,37 @@ impl StageFourOutput {
                 .flatten()
                 .map(|el: BF| el.to_reduced_u32())
                 .collect_vec();
-            let seed = seed_accessor.get_mut();
-            Transcript::commit_with_seed(seed, &transcript_input);
-            let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed, &mut transcript_challenges);
+            Transcript::commit_with_seed(seed_accessor.get_mut(), &transcript_input);
+        };
+        callbacks.schedule(commit_values_at_z, stream)?;
+        let mut deep_poly_alpha_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let deep_poly_alpha_pow_bits = security_config.deep_poly_alpha_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut deep_poly_alpha_pow_challenge,
+            deep_poly_alpha_pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.deep_poly_alpha_pow_challenge),
+            callbacks,
+            context,
+        )?;
+        let mut alpha = unsafe { context.alloc_host_uninit::<E4>() };
+        let alpha_accessor = alpha.get_mut_accessor();
+        let get_alpha = move || unsafe {
+            let num_entries_from_pow = if deep_poly_alpha_pow_bits == 0 {
+                0usize
+            } else {
+                1
+            };
+            let num_entries =
+                (num_entries_from_pow + 1 * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            if deep_poly_alpha_pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let alpha_coeffs = transcript_challenges
                 .as_chunks::<4>()
                 .0
@@ -309,7 +358,9 @@ impl StageFourOutput {
         callbacks.schedule(update_seed_fn, stream)?;
         let result = Self {
             trace_holder,
+            quotient_z_pow_challenge,
             values_at_z,
+            deep_poly_alpha_pow_challenge,
         };
         Ok(result)
     }

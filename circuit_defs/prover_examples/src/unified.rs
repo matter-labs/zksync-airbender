@@ -4,6 +4,7 @@ use crate::cs::machine::ops::unrolled::*;
 use crate::u32_from_field_elems;
 use crate::NonDeterminismCSRSource;
 use crate::DUMP_WITNESS_VAR;
+use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -58,6 +59,7 @@ use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
+use verifier_common::SECURITY_BITS;
 
 pub fn prove_unified_execution_with_replayer<
     C: MachineConfig,
@@ -77,6 +79,7 @@ pub fn prove_unified_execution_with_replayer<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     use prover::unrolled::run_unified_machine;
 
@@ -354,8 +357,33 @@ pub fn prove_unified_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -490,8 +518,7 @@ pub fn prove_unified_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
@@ -658,6 +685,7 @@ pub fn prove_unified_execution_with_replayer<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -782,8 +810,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            crate::NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]

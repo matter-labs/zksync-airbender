@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::prover_stages::ProofSecurityConfig;
 use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use cs::cs::{circuit::Circuit, cs_reference::BasicAssembly};
 use full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
@@ -319,6 +320,8 @@ pub fn run_keccak_test_impl(
         None
     };
 
+    let default_security_config = ProofSecurityConfig::for_queries_only(5, 28, 63);
+
     let now = std::time::Instant::now();
     let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
         &compiled_machine,
@@ -332,8 +335,7 @@ pub fn run_keccak_test_impl(
         None,
         lde_factor,
         tree_cap_size,
-        53,
-        28,
+        &default_security_config,
         &worker,
     );
     println!("Full machine proving time is {:?}", now.elapsed());
@@ -436,8 +438,7 @@ pub fn run_keccak_test_impl(
                 Some(delegation_type),
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!(

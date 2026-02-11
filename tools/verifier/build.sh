@@ -91,14 +91,14 @@ rm recursion_in_unified_layer.text
 # CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features unrolled_recursion_layer,security_80 --no-default-features -- -O binary --only-section=.text unrolled_recursion_layer.text) &
 
 #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_in_unrolled_layer,security_80
-(CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary recursion_in_unrolled_layer.bin;
-CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unrolled_layer,security_80 --no-default-features -- -R .text recursion_in_unrolled_layer.elf;
-CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unrolled_layer.text) &
+(CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary recursion_in_unrolled_layer.bin;
+CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -R .text recursion_in_unrolled_layer.elf;
+CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unrolled_layer.text) &
 
 #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_in_unified_layer,security_80
-(CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary recursion_in_unified_layer.bin;
-CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unified_layer,security_80 --no-default-features -- -R .text recursion_in_unified_layer.elf;
-CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unified_layer.text) &
+(CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary recursion_in_unified_layer.bin;
+CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -R .text recursion_in_unified_layer.elf;
+CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unified_layer.text) &
 
 wait
 

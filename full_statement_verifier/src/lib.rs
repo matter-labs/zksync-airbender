@@ -45,6 +45,8 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
+pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct InitAndTeardownTuple {
     pub address: u32,

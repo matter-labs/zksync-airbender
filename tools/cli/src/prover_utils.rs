@@ -319,7 +319,7 @@ pub fn create_proofs_internal(
             if prev_end_params_output.is_some() {
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
             }
-            let (basic_proofs, delegation_proofs, register_values) =
+            let (basic_proofs, delegation_proofs, register_values, pow_challenge) =
                 if let Some(gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
@@ -375,7 +375,7 @@ pub fn create_proofs_internal(
             )
         }
         Machine::Reduced => {
-            let (reduced_proofs, delegation_proofs, register_values) =
+            let (reduced_proofs, delegation_proofs, register_values, pow_challenge) =
                 if let Some(gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
@@ -431,7 +431,7 @@ pub fn create_proofs_internal(
             )
         }
         Machine::ReducedLog23 => {
-            let (reduced_log_23_proofs, delegation_proofs, register_values) =
+            let (reduced_log_23_proofs, delegation_proofs, register_values, pow_challenge) =
                 if let Some(gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
@@ -529,6 +529,7 @@ pub fn create_proofs_internal(
         end_params,
         prev_end_params_output_hash,
         prev_end_params_output,
+        pow_challenge: todo!(),
     };
 
     (proof_list, proof_metadata)
