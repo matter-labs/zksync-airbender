@@ -1,104 +1,80 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-# rm base_layer.bin
-# rm recursion_layer.bin
-# rm final_recursion_layer.bin
-# rm base_layer_with_output.bin
-# rm recursion_layer_with_output.bin
-# rm final_recursion_layer_with_output.bin
-# rm universal.bin
-# rm universal_no_delegation.bin
-# rm verifier_test.bin
+# The first optional argument is the expected version of rust compiler. If it's provided,
+# check that `rustc --version` matches the expected version.
+if [[ $# -gt 0 ]]; then
+  expected_version="$1"
+  # Note: `rustc` version might not match the version name in `rustup`
+  actual_version="$(rustup show active-toolchain)"
+  if [[ "$actual_version" != *"$expected_version"* ]]; then
+    echo "Error: Expected rustc version to contain '$expected_version', but got '$actual_version'"
+    exit 1
+  fi
+fi
 
-# rm unrolled_base_layer.bin
-# rm unrolled_base_layer.elf
-# rm unrolled_base_layer.text
-# rm unrolled_recursion_layer.bin
-# rm unrolled_recursion_layer.elf
-# rm unrolled_recursion_layer.text
-# rm unified_recursion_layer.bin
-# rm unified_recursion_layer.elf
-# rm unified_recursion_layer.text
+artifact_names=(
+  "recursion_in_unrolled_layer"
+  "recursion_in_unified_layer"
+  "recursion_in_unrolled_layer_security_100_bits"
+  "recursion_in_unified_layer_security_100_bits"
+)
 
-rm recursion_in_unrolled_layer.bin
-rm recursion_in_unrolled_layer.elf
-rm recursion_in_unrolled_layer.text
-rm recursion_in_unified_layer.bin
-rm recursion_in_unified_layer.elf
-rm recursion_in_unified_layer.text
+# Determine feature set based on artifact name
+detect_features() {
+  local name="$1"
 
-# Build something simple to check for errors
-# cargo build --release -Z build-std=core,panic_abort,alloc --features unrolled_base_layer,security_80 --no-default-features
+  case "$name" in
+    recursion_in_unrolled_layer)
+      echo "recursion_in_unrolled_layer,security_80"
+      ;;
+    recursion_in_unified_layer)
+      echo "recursion_in_unified_layer,security_80"
+      ;;
+    recursion_in_unrolled_layer_security_100_bits)
+      echo "recursion_in_unrolled_layer,security_100"
+      ;;
+    recursion_in_unified_layer_security_100_bits)
+      echo "recursion_in_unified_layer,security_100"
+      ;;
+    *)
+      echo "Unknown artifact name: $name" >&2
+      exit 1
+      ;;
+  esac
+}
 
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=base_layer
-# CARGO_TARGET_DIR=target/one cargo objcopy --release -Z build-std=core,panic_abort,alloc --features base_layer --no-default-features -- -O binary base_layer.bin &
+# Function to remove bin/elf/text files for a provided argument
+remove_build_artifacts() {
+  local prefix="$1"
+  rm -f "${prefix}.bin" "${prefix}.elf" "${prefix}.text"
+}
 
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_step
-# CARGO_TARGET_DIR=target/two cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_step --no-default-features -- -O binary recursion_layer.bin &
+# Build artifacts with the provided set of features and save with provided name
+build_artifacts() {
+  local features="$1"
+  local name="$2"
 
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_step
-# CARGO_TARGET_DIR=target/three cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_log_23_step --no-default-features -- -O binary recursion_log_23_layer.bin &
+  # Each artifact has its own target directory to not collide with each other, allowing parallel building & reproducible builds.
+  local artifact_target_dir="target/${name}"
+  local objcopy_args=(-Z build-std=core,panic_abort,alloc --features "${features}" --no-default-features)
 
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_step
-# CARGO_TARGET_DIR=target/four cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_step_no_delegation --no-default-features -- -O binary recursion_layer_no_delegation.bin &
+  CARGO_TARGET_DIR="$artifact_target_dir" cargo objcopy --release "${objcopy_args[@]}" -- -O binary "${name}.bin"
+  CARGO_TARGET_DIR="$artifact_target_dir" cargo objcopy --release "${objcopy_args[@]}" -- -R .text "${name}.elf"
+  CARGO_TARGET_DIR="$artifact_target_dir" cargo objcopy --release "${objcopy_args[@]}" -- -O binary --only-section=.text "${name}.text"
+}
 
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_step
-# CARGO_TARGET_DIR=target/five cargo objcopy --release -Z build-std=core,panic_abort,alloc --features final_recursion_step --no-default-features -- -O binary final_recursion_layer.bin &
+# 1) Clean old artifacts
+for artifact in "${artifact_names[@]}"; do
+  remove_build_artifacts "${artifact}"
+done
 
-# #cargo build --release --no-default-features --features=base_layer,panic_output
-# CARGO_TARGET_DIR=target/six cargo objcopy --release --features base_layer,panic_output --no-default-features -- -O binary base_layer_with_output.bin &
-
-# #cargo build --release --no-default-features --features=recursion_step,panic_output
-# CARGO_TARGET_DIR=target/seven cargo objcopy --release --features recursion_step,panic_output --no-default-features -- -O binary recursion_layer_with_output.bin &
-
-# #cargo build --release --no-default-features --features=recursion_step,panic_output
-# CARGO_TARGET_DIR=target/eight cargo objcopy --release --features recursion_log_23_step,panic_output --no-default-features -- -O binary recursion_log_23_layer_with_output.bin &
-
-# #cargo build --release --no-default-features --features=recursion_step,panic_output
-# CARGO_TARGET_DIR=target/nine cargo objcopy --release --features recursion_step_no_delegation,panic_output --no-default-features -- -O binary recursion_layer_no_delegation_with_output.bin &
-
-# #cargo build --release --no-default-features --features=final_recursion_step,panic_output
-# CARGO_TARGET_DIR=target/ten cargo objcopy --release --features final_recursion_step,panic_output --no-default-features -- -O binary final_recursion_layer_with_output.bin &
-
-# # cargo biild --release -Z build-std=core,panic_abort,alloc --features universal_circuit,panic_output --no-default-features
-# CARGO_TARGET_DIR=target/eleven cargo objcopy --release -Z build-std=core,panic_abort,alloc --features universal_circuit,panic_output --no-default-features -- -O binary universal.bin &
-
-# # cargo build --release -Z build-std=core,panic_abort,alloc --features universal_circuit_no_delegation,panic_output --no-default-features
-# CARGO_TARGET_DIR=target/twelve cargo objcopy --release -Z build-std=core,panic_abort,alloc --features universal_circuit_no_delegation,panic_output --no-default-features -- -O binary universal_no_delegation.bin &
-
-# (CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,alloc  --features unrolled_base_layer,security_80,panic_output --no-default-features -- -O binary unrolled_base_layer.bin;
-# CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,alloc --features unrolled_base_layer,security_80,panic_output --no-default-features -- -R .text unrolled_base_layer.elf;
-# CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,alloc --features unrolled_base_layer,security_80,panic_output --no-default-features -- -O binary --only-section=.text unrolled_base_layer.text) &
-
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=unrolled_base_layer,security_80
-# (CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_base_layer,security_80 --no-default-features -- -O binary unrolled_base_layer.bin;
-# CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_base_layer,security_80 --no-default-features -- -R .text unrolled_base_layer.elf;
-# CARGO_TARGET_DIR=target/thirteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_base_layer,security_80 --no-default-features -- -O binary --only-section=.text unrolled_base_layer.text) &
-
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=unrolled_recursion_layer,security_80
-# (CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -O binary unrolled_recursion_layer.bin;
-# CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -R .text unrolled_recursion_layer.elf;
-# CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -O binary --only-section=.text unrolled_recursion_layer.text) &
-
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=unrolled_recursion_layer,security_80
-# (CARGO_TARGET_DIR=target/fifteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unified_reduced_machine,security_80 --no-default-features -- -O binary unified_recursion_layer.bin;
-# CARGO_TARGET_DIR=target/fifteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unified_reduced_machine,security_80 --no-default-features -- -R .text unified_recursion_layer.elf;
-# CARGO_TARGET_DIR=target/fifteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unified_reduced_machine,security_80 --no-default-features -- -O binary --only-section=.text unified_recursion_layer.text) &
-
-# #cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=unrolled_recursion_layer,security_80
-# (CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -O binary unrolled_recursion_layer.bin;
-# CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -R .text unrolled_recursion_layer.elf;
-# CARGO_TARGET_DIR=target/fourteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features unrolled_recursion_layer,security_80 --no-default-features -- -O binary --only-section=.text unrolled_recursion_layer.text) &
-
-#cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_in_unrolled_layer,security_80
-(CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary recursion_in_unrolled_layer.bin;
-CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -R .text recursion_in_unrolled_layer.elf;
-CARGO_TARGET_DIR=target/sixteen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unrolled_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unrolled_layer.text) &
-
-#cargo build -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --release --no-default-features --features=recursion_in_unified_layer,security_80
-(CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary recursion_in_unified_layer.bin;
-CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -R .text recursion_in_unified_layer.elf;
-CARGO_TARGET_DIR=target/seventeen cargo objcopy --release -Z build-std=core,panic_abort,alloc --features recursion_in_unified_layer,security_80 --no-default-features -- -O binary --only-section=.text recursion_in_unified_layer.text) &
+# 2) Build artifacts
+for artifact in "${artifact_names[@]}"; do
+  features="$(detect_features "$artifact")"
+  # Build in parallel.
+  ( build_artifacts "$features" "$artifact" ) &
+done
 
 wait
 
