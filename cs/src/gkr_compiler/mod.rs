@@ -44,6 +44,16 @@ pub enum LookupType {
     Generic,
 }
 
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum OutputType {
+    PermutationProduct,
+    Lookup16Bits,
+    LookupTimestamps,
+    GenericLookup,
+}
+
 #[derive(Default)]
 pub struct GKRCompiler<F: PrimeField> {
     _marker: std::marker::PhantomData<F>,
@@ -57,6 +67,7 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     pub offset_for_decoder_table: usize,
     pub has_decoder_lookup: bool,
     pub layers: Vec<GKRLayerDescription>,
+    pub global_output_map: BTreeMap<OutputType, Vec<GKRAddress>>,
 
     pub memory_layout: GKRMemoryLayout,
     pub witness_layout: GKRWitnessLayout,

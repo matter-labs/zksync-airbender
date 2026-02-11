@@ -45,19 +45,11 @@ impl GKRGraph {
         &mut self,
         mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation); 2],
         mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput)>,
-    ) -> Vec<GKRLayerDescription> {
+    ) -> (Vec<GKRLayerDescription>, BTreeMap<OutputType, Vec<GKRAddress>>) {
         assert!(self.enforced_relations.len() > 0);
         assert!(self.enforced_relations.get(&0).is_none());
 
         // We put all external outputs to the same layer
-
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-        enum OutputType {
-            PermutationProduct,
-            Lookup16Bits,
-            LookupTimestamps,
-            GenericLookup,
-        }
 
         let total_layers = self.enforced_relations.len();
 
@@ -147,6 +139,21 @@ impl GKRGraph {
                     }
                 }
             }
+        }
+
+        // Capture the output map after addresses have been aligned to the max output layer
+        let mut global_output_map = BTreeMap::new();
+        global_output_map.insert(
+            OutputType::PermutationProduct,
+            grand_product_outputs.iter().map(|(addr, _)| *addr).collect(),
+        );
+        for (lookup_type, (addrs, _)) in lookup_outputs.iter() {
+            let output_type = match lookup_type {
+                LookupType::RangeCheck16 => OutputType::Lookup16Bits,
+                LookupType::TimestampRangeCheck => OutputType::LookupTimestamps,
+                LookupType::Generic => OutputType::GenericLookup,
+            };
+            global_output_map.insert(output_type, addrs.to_vec());
         }
 
         let mut result = vec![];
@@ -323,6 +330,6 @@ impl GKRGraph {
         // enumerate naturally
         result.reverse();
 
-        result
+        (result, global_output_map)
     }
 }

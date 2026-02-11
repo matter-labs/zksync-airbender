@@ -1,7 +1,7 @@
 use std::alloc::Global;
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::GKRCircuitArtifact;
+use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
 use worker::WorkerGeometry;
@@ -20,7 +20,7 @@ use crate::merkle_trees::MerkleTreeCapVarLength;
 use crate::prover_stages::flatten_merkle_caps_iter_into;
 use crate::worker::Worker;
 
-use cs::definitions::NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
 
 pub mod forward_loop;
 pub mod setup;
@@ -263,33 +263,72 @@ where
         );
     }
 
-    // we will eventually output results of accumulations of grand product and lookups, and should commit to them here
-
-    // then we go "backward", by taking random point evaluation claims from the previous layer, and producing claims for the next layer
-    let mut claims_for_layers = BTreeMap::new();
-    let mut points_for_claims_at_layer = BTreeMap::new();
-    {
-        let layer_idx = compiled_circuit.layers.len();
-        let mut claims = BTreeMap::new();
-        for gate_with_external_connection in compiled_circuit
-            .layers
-            .last()
-            .unwrap()
-            .gates_with_external_connections
-            .iter()
-        {
-            for input_claim in gate_with_external_connection
-                .enforced_relation
-                .expected_input_claims()
-            {
-                claims.insert(input_claim, E::ZERO);
+    // LogUp sanity check: verify sum N(x)/D(x) = 0 for each lookup type
+    if cfg!(debug_assertions) {
+        for output_type in [
+            OutputType::Lookup16Bits,
+            OutputType::LookupTimestamps,
+            OutputType::GenericLookup,
+        ] {
+            if let Some(addrs) = compiled_circuit.global_output_map.get(&output_type) {
+                let num_addr = addrs[0];
+                let den_addr = addrs[1];
+                // Extract layer index from InnerLayer address
+                let layer_idx = match num_addr {
+                    GKRAddress::InnerLayer { layer, .. } => layer,
+                    _ => panic!("expected InnerLayer address for lookup output"),
+                };
+                let layer_source = &gkr_storage.layers[layer_idx];
+                let num_poly = &layer_source.extension_field_inputs[&num_addr].values;
+                let den_poly = &layer_source.extension_field_inputs[&den_addr].values;
+                let mut sum = E::ZERO;
+                for (n, d) in num_poly.iter().zip(den_poly.iter()) {
+                    let den_inv = d.inverse().expect("denominator must be nonzero");
+                    let mut term = *n;
+                    term.mul_assign(&den_inv);
+                    sum.add_assign(&term);
+                }
+                debug_assert!(
+                    sum.is_zero(),
+                    "LogUp sanity check failed for {:?}: sum N(x)/D(x) != 0",
+                    output_type,
+                );
             }
         }
-        claims_for_layers.insert(layer_idx, claims);
-        points_for_claims_at_layer
-            .insert(layer_idx, vec![E::ONE; trace_len.trailing_zeros() as usize]);
     }
 
+    let (
+        claim_readset,
+        claim_writeset,
+        claim_rangechecknum,
+        claim_rangecheckden,
+        claim_timechecknum,
+        claim_timecheckden,
+        claim_lookupnum,
+        claim_lookupden,
+        z
+    ) = todo!();
+    
+    let output_map = &compiled_circuit.global_output_map;
+    let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
+
+    top_layer_claims.insert(output_map[OutputType::PermutationProduct][0], claim_readset);
+    top_layer_claims.insert(output_map[OutputType::PermutationProduct][1], claim_writeset);
+    top_layer_claims.insert(output_map[OutputType::Lookup16Bits][0], claim_rangechecknum);
+    top_layer_claims.insert(output_map[OutputType::Lookup16Bits][1], claim_rangecheckden);
+    top_layer_claims.insert(output_map[OutputType::LookupTimestamps][0], claim_timechecknum);
+    top_layer_claims.insert(output_map[OutputType::LookupTimestamps][1], claim_timecheckden);
+    top_layer_claims.insert(output_map[OutputType::GenericLookup][0], claim_lookupnum);
+    top_layer_claims.insert(output_map[OutputType::GenericLookup][1], claim_lookupden);
+
+    // then we go "backward", by taking random point evaluation claims from the previous layer, and producing claims for the next layer
+    let mut claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E>> = BTreeMap::new();
+    let mut points_for_claims_at_layer = BTreeMap::new();
+
+    claims_for_layers.insert(compiled_circuit.layers.len(), top_layer_claims);
+    points_for_claims_at_layer.insert(compiled_circuit.layers.len(), vec![z]);
+
+    // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
         sumcheck_loop::evaluate_sumcheck_for_layer(
             layer_idx,

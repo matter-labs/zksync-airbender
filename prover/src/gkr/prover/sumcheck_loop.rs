@@ -275,55 +275,19 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 }
 
-pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
-    layer_idx: usize,
-    layer: &GKRLayerDescription,
-    claim_points: &mut BTreeMap<usize, Vec<E>>,
-    claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
+fn run_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field>(
+    collector: &KernelCollector<F, E>,
+    initial_claim: E,
+    prev_challenges: &[E],
+    eq_poly: &[Vec<E>],
     gkr_storage: &mut GKRStorage<F, E>,
-    _compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
-    _external_challenges: &crate::gkr::prover::GKRExternalChallenges<F, E>,
-    trace_len: usize,
-    lookup_challenges_additive_part: E,
-    _constraints_batch_challenge: E,
+    folding_steps: usize,
     worker: &Worker,
-) {
-    println!("Evaluating layer {} in sumcheck direction", layer_idx);
-
-    let output_layer_idx = layer_idx + 1;
-
-    let output_claims = claims_storage
-        .get(&output_layer_idx)
-        .expect("claims for output layer must exist");
-    let prev_challenges = claim_points
-        .get(&output_layer_idx)
-        .expect("claim points for output layer must exist");
-
-    debug_assert!(trace_len.is_power_of_two());
-    let folding_steps = trace_len.trailing_zeros() as usize;
-    assert!(folding_steps > 1, "need at least 2 folding steps");
-
-    // Precompute eq polynomial evaluations over the boolean hypercube
-    // eq_poly[i] has size 2^i, with eq_poly[0] = [1]
-    let eq_poly = make_eq_poly_in_full::<F, E>(prev_challenges);
-
-    // TODO: get from transcript
-    let batch_challenge_base = E::from_base(F::from_u32_unchecked(0xff));
-
-    let collector = KernelCollector::from_gates(
-        layer,
-        layer_idx,
-        batch_challenge_base,
-        gkr_storage,
-        lookup_challenges_additive_part,
-    );
-    debug_assert!(!collector.is_empty());
-
-    let mut claim = collector.compute_combined_claim(output_claims);
+) -> (Vec<E>, BTreeMap<GKRAddress, [E; 2]>){
+    let mut claim = initial_claim;
     let mut folding_challenges = Vec::with_capacity(folding_steps);
     let mut last_evaluations: BTreeMap<GKRAddress, [E; 2]> = BTreeMap::new();
 
-    // eq_prefactor tracks eq(r_i, u_i) from the previous step
     let mut eq_prefactor = E::ONE;
 
     let max_acc_size = 1 << (folding_steps - 1);
@@ -418,6 +382,67 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         folding_challenges.push(folding_challenge);
     }
+
+    (
+        folding_challenges,
+        last_evaluations,
+    )
+}
+
+pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+    layer_idx: usize,
+    layer: &GKRLayerDescription,
+    claim_points: &mut BTreeMap<usize, Vec<E>>,
+    claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
+    gkr_storage: &mut GKRStorage<F, E>,
+    _compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
+    _external_challenges: &crate::gkr::prover::GKRExternalChallenges<F, E>,
+    trace_len: usize,
+    lookup_challenges_additive_part: E,
+    _constraints_batch_challenge: E,
+    worker: &Worker,
+) {
+    println!("Evaluating layer {} in sumcheck direction", layer_idx);
+
+    let output_layer_idx = layer_idx + 1;
+
+    let output_claims = claims_storage
+        .get(&output_layer_idx)
+        .expect("claims for output layer must exist");
+    let prev_challenges = claim_points
+        .get(&output_layer_idx)
+        .expect("claim points for output layer must exist");
+
+    debug_assert!(trace_len.is_power_of_two());
+    let folding_steps = trace_len.trailing_zeros() as usize;
+    assert!(folding_steps > 1, "need at least 2 folding steps");
+
+    // Precompute eq polynomial evaluations over the boolean hypercube
+    let eq_poly = make_eq_poly_in_full::<F, E>(prev_challenges);
+
+    // TODO: get from transcript
+    let batch_challenge_base = E::from_base(F::from_u32_unchecked(0xff));
+
+    let collector = KernelCollector::from_gates(
+        layer,
+        layer_idx,
+        batch_challenge_base,
+        gkr_storage,
+        lookup_challenges_additive_part,
+    );
+    debug_assert!(!collector.is_empty());
+
+    let claim = collector.compute_combined_claim(output_claims);
+
+    let (folding_challenges, last_evaluations) = run_sumcheck_loop(
+        &collector,
+        claim,
+        prev_challenges,
+        &eq_poly,
+        gkr_storage,
+        folding_steps,
+        worker,
+    );
 
     // After sumcheck completes, extract claims for the input layer
     let last_r = folding_challenges

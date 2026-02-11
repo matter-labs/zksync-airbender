@@ -750,7 +750,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 .map(|(k, v)| (k, (v.0, LookupOutput::Direct(v.1)))),
         );
 
-        let layers = graph.layout_layers([final_read_node, final_write_node], lookup_outputs);
+        let (layers, global_output_map) = graph.layout_layers([final_read_node, final_write_node], lookup_outputs);
 
         let table_offsets = table_driver
             .table_starts_offsets()
@@ -938,6 +938,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_tables_size,
             offset_for_decoder_table,
             layers,
+            global_output_map,
             memory_layout,
             witness_layout,
             scratch_space_size,
