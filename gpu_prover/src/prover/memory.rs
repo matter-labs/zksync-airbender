@@ -20,7 +20,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 
 pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,

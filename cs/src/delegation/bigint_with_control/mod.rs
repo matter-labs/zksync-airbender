@@ -640,7 +640,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             constraint = constraint + Term::from(perform_sub) * Term::from(a);
             constraint = constraint + Term::from(perform_sub_negate) * Term::from(a);
             constraint = constraint + Term::from(perform_eq) * Term::from(a);
-
+            constraint = constraint + Term::from(perform_memcopy) * Term::from(a);
             constraint = constraint + Term::from(perform_mul_low) * Term::from(b);
             constraint = constraint + Term::from(perform_mul_high) * Term::from(b);
 

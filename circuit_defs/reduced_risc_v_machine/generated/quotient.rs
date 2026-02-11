@@ -1323,16 +1323,16 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(36usize));
-                        let b = *(witness.get_unchecked(94usize));
+                        let b = *(witness.get_unchecked(95usize));
                         a.mul_assign(&b);
                         a
                     };
                     {
-                        let a = *(witness.get_unchecked(88usize));
+                        let a = *(witness.get_unchecked(89usize));
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(95usize));
+                        let a = *(witness.get_unchecked(96usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -1347,21 +1347,21 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(36usize));
-                        let b = *(witness.get_unchecked(89usize));
+                        let b = *(witness.get_unchecked(90usize));
                         a.mul_assign(&b);
                         a.negate();
                         a
                     };
                     {
-                        let a = *(witness.get_unchecked(89usize));
-                        individual_term.add_assign(&a);
-                    }
-                    {
                         let a = *(witness.get_unchecked(90usize));
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(96usize));
+                        let a = *(witness.get_unchecked(94usize));
+                        individual_term.add_assign(&a);
+                    }
+                    {
+                        let a = *(witness.get_unchecked(97usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -1387,7 +1387,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.sub_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(99usize));
+                        let a = *(witness.get_unchecked(100usize));
                         individual_term.sub_assign(&a);
                     }
                     {
@@ -1417,7 +1417,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.sub_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(100usize));
+                        let a = *(witness.get_unchecked(101usize));
                         individual_term.sub_assign(&a);
                     }
                     {
@@ -1478,7 +1478,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(101usize));
+                        let a = *(witness.get_unchecked(102usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -1519,7 +1519,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(36usize));
-                        let b = *(witness.get_unchecked(101usize));
+                        let b = *(witness.get_unchecked(102usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -1550,11 +1550,11 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(102usize));
+                        let a = *(witness.get_unchecked(103usize));
                         individual_term.sub_assign(&a);
                     }
                     {
-                        let mut a = *(witness.get_unchecked(103usize));
+                        let mut a = *(witness.get_unchecked(104usize));
                         a.mul_assign_by_base(&Mersenne31Field(2147418111u32));
                         individual_term.add_assign(&a);
                     }
@@ -1577,7 +1577,7 @@ unsafe fn evaluate_every_row_except_last(
                     };
                     {
                         let mut a = *(witness.get_unchecked(31usize));
-                        let b = *(witness.get_unchecked(102usize));
+                        let b = *(witness.get_unchecked(103usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -1600,7 +1600,7 @@ unsafe fn evaluate_every_row_except_last(
                     };
                     {
                         let mut a = *(witness.get_unchecked(31usize));
-                        let b = *(witness.get_unchecked(103usize));
+                        let b = *(witness.get_unchecked(104usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -1647,7 +1647,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(104usize));
+                        let a = *(witness.get_unchecked(105usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -1667,7 +1667,7 @@ unsafe fn evaluate_every_row_except_last(
                         a
                     };
                     {
-                        let a = *(witness.get_unchecked(105usize));
+                        let a = *(witness.get_unchecked(106usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -1681,7 +1681,7 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(104usize));
+                        let mut a = *(witness.get_unchecked(105usize));
                         let b = *(memory.get_unchecked(16usize));
                         a.mul_assign(&b);
                         a
@@ -1697,7 +1697,7 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(104usize));
+                        let mut a = *(witness.get_unchecked(105usize));
                         let b = *(memory.get_unchecked(17usize));
                         a.mul_assign(&b);
                         a
@@ -1713,7 +1713,7 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(104usize));
+                        let mut a = *(witness.get_unchecked(105usize));
                         let b = *(memory.get_unchecked(13usize));
                         a.mul_assign(&b);
                         a
@@ -1729,7 +1729,7 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(104usize));
+                        let mut a = *(witness.get_unchecked(105usize));
                         let b = *(memory.get_unchecked(14usize));
                         a.mul_assign(&b);
                         a
@@ -1746,12 +1746,12 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(6usize));
-                        let b = *(witness.get_unchecked(105usize));
+                        let b = *(witness.get_unchecked(106usize));
                         a.mul_assign(&b);
                         a
                     };
                     {
-                        let mut a = *(witness.get_unchecked(105usize));
+                        let mut a = *(witness.get_unchecked(106usize));
                         let b = *(memory.get_unchecked(16usize));
                         a.mul_assign(&b);
                         individual_term.sub_assign(&a);
@@ -1768,12 +1768,12 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(7usize));
-                        let b = *(witness.get_unchecked(105usize));
+                        let b = *(witness.get_unchecked(106usize));
                         a.mul_assign(&b);
                         a
                     };
                     {
-                        let mut a = *(witness.get_unchecked(105usize));
+                        let mut a = *(witness.get_unchecked(106usize));
                         let b = *(memory.get_unchecked(17usize));
                         a.mul_assign(&b);
                         individual_term.sub_assign(&a);
@@ -2227,7 +2227,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(28usize));
-                        let b = *(witness.get_unchecked(99usize));
+                        let b = *(witness.get_unchecked(100usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2386,7 +2386,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(28usize));
-                        let b = *(witness.get_unchecked(100usize));
+                        let b = *(witness.get_unchecked(101usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2528,7 +2528,7 @@ unsafe fn evaluate_every_row_except_last(
                         a
                     };
                     {
-                        let a = *(witness.get_unchecked(106usize));
+                        let a = *(witness.get_unchecked(107usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -2548,7 +2548,7 @@ unsafe fn evaluate_every_row_except_last(
                         a
                     };
                     {
-                        let a = *(witness.get_unchecked(107usize));
+                        let a = *(witness.get_unchecked(108usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -2562,14 +2562,14 @@ unsafe fn evaluate_every_row_except_last(
             let contribution = {
                 let individual_term = {
                     let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(106usize));
-                        let b = *(witness.get_unchecked(108usize));
+                        let mut a = *(witness.get_unchecked(107usize));
+                        let b = *(witness.get_unchecked(109usize));
                         a.mul_assign(&b);
                         a
                     };
                     {
-                        let mut a = *(witness.get_unchecked(107usize));
-                        let b = *(witness.get_unchecked(108usize));
+                        let mut a = *(witness.get_unchecked(108usize));
+                        let b = *(witness.get_unchecked(109usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2590,13 +2590,13 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(39usize));
-                        let b = *(witness.get_unchecked(106usize));
+                        let b = *(witness.get_unchecked(107usize));
                         a.mul_assign(&b);
                         a
                     };
                     {
                         let mut a = *(witness.get_unchecked(39usize));
-                        let b = *(witness.get_unchecked(107usize));
+                        let b = *(witness.get_unchecked(108usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2656,7 +2656,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(86usize));
+                        let b = *(witness.get_unchecked(83usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2705,14 +2705,15 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let mut a = *(witness.get_unchecked(34usize));
+                        let mut a = *(witness.get_unchecked(32usize));
                         let b = *(witness.get_unchecked(87usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
-                        let mut a = *(witness.get_unchecked(32usize));
-                        a.mul_assign_by_base(&Mersenne31Field(31u32));
+                        let mut a = *(witness.get_unchecked(34usize));
+                        let b = *(witness.get_unchecked(87usize));
+                        a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
@@ -2761,7 +2762,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(87usize));
+                        let b = *(witness.get_unchecked(88usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -2813,7 +2814,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        a.mul_assign_by_base(&Mersenne31Field(7u32));
+                        a.mul_assign_by_base(&Mersenne31Field(47u32));
                         individual_term.add_assign(&a);
                     }
                     {
@@ -2964,7 +2965,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(88usize));
+                        let b = *(witness.get_unchecked(89usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3008,7 +3009,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(89usize));
+                        let b = *(witness.get_unchecked(90usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3134,7 +3135,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(90usize));
+                        let b = *(witness.get_unchecked(94usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3160,7 +3161,7 @@ unsafe fn evaluate_every_row_except_last(
                     };
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(94usize));
+                        let b = *(witness.get_unchecked(95usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3251,7 +3252,7 @@ unsafe fn evaluate_every_row_except_last(
                     };
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(97usize));
+                        let b = *(witness.get_unchecked(98usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3277,7 +3278,7 @@ unsafe fn evaluate_every_row_except_last(
                     };
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(98usize));
+                        let b = *(witness.get_unchecked(99usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3383,30 +3384,30 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(95usize));
+                        let b = *(witness.get_unchecked(96usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(97usize));
+                        let b = *(witness.get_unchecked(98usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(89usize));
-                        let b = *(witness.get_unchecked(104usize));
+                        let b = *(witness.get_unchecked(105usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
-                        let mut a = *(witness.get_unchecked(105usize));
+                        let mut a = *(witness.get_unchecked(106usize));
                         let b = *(memory.get_unchecked(13usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(109usize));
+                        let a = *(witness.get_unchecked(110usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -3490,24 +3491,24 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(96usize));
+                        let b = *(witness.get_unchecked(97usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(32usize));
-                        let b = *(witness.get_unchecked(98usize));
+                        let b = *(witness.get_unchecked(99usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(90usize));
-                        let b = *(witness.get_unchecked(104usize));
+                        let b = *(witness.get_unchecked(105usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
                     {
-                        let mut a = *(witness.get_unchecked(105usize));
+                        let mut a = *(witness.get_unchecked(106usize));
                         let b = *(memory.get_unchecked(14usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
@@ -3518,7 +3519,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(110usize));
+                        let a = *(witness.get_unchecked(111usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -3571,28 +3572,28 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(14usize));
-                        let b = *(witness.get_unchecked(111usize));
+                        let b = *(witness.get_unchecked(112usize));
                         a.mul_assign(&b);
                         a.mul_assign_by_base(&Mersenne31Field(2147483391u32));
                         a
                     };
                     {
                         let mut a = *(witness.get_unchecked(52usize));
-                        let b = *(witness.get_unchecked(111usize));
+                        let b = *(witness.get_unchecked(112usize));
                         a.mul_assign(&b);
                         a.mul_assign_by_base(&Mersenne31Field(16777216u32));
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(57usize));
-                        let b = *(witness.get_unchecked(111usize));
+                        let b = *(witness.get_unchecked(112usize));
                         a.mul_assign(&b);
                         a.mul_assign_by_base(&Mersenne31Field(2130706431u32));
                         individual_term.add_assign(&a);
                     }
                     {
                         let mut a = *(witness.get_unchecked(58usize));
-                        let b = *(witness.get_unchecked(111usize));
+                        let b = *(witness.get_unchecked(112usize));
                         a.mul_assign(&b);
                         a.mul_assign_by_base(&Mersenne31Field(2147483615u32));
                         individual_term.add_assign(&a);
@@ -3602,31 +3603,6 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     individual_term.add_assign_base(&Mersenne31Field(2147483646u32));
-                    individual_term
-                };
-                individual_term
-            };
-            accumulated_contribution.add_assign(&contribution);
-        }
-        {
-            accumulated_contribution.mul_assign(&quotient_alpha);
-            let contribution = {
-                let individual_term = {
-                    let mut individual_term = {
-                        let mut a = *(witness.get_unchecked(43usize));
-                        let b = *(witness.get_unchecked(109usize));
-                        a.mul_assign(&b);
-                        a.negate();
-                        a
-                    };
-                    {
-                        let a = *(witness.get_unchecked(109usize));
-                        individual_term.add_assign(&a);
-                    }
-                    {
-                        let a = *(witness.get_unchecked(112usize));
-                        individual_term.sub_assign(&a);
-                    }
                     individual_term
                 };
                 individual_term
@@ -3650,6 +3626,31 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let a = *(witness.get_unchecked(113usize));
+                        individual_term.sub_assign(&a);
+                    }
+                    individual_term
+                };
+                individual_term
+            };
+            accumulated_contribution.add_assign(&contribution);
+        }
+        {
+            accumulated_contribution.mul_assign(&quotient_alpha);
+            let contribution = {
+                let individual_term = {
+                    let mut individual_term = {
+                        let mut a = *(witness.get_unchecked(43usize));
+                        let b = *(witness.get_unchecked(111usize));
+                        a.mul_assign(&b);
+                        a.negate();
+                        a
+                    };
+                    {
+                        let a = *(witness.get_unchecked(111usize));
+                        individual_term.add_assign(&a);
+                    }
+                    {
+                        let a = *(witness.get_unchecked(114usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -3876,7 +3877,7 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(17usize));
-                        let b = *(witness.get_unchecked(112usize));
+                        let b = *(witness.get_unchecked(113usize));
                         a.mul_assign(&b);
                         a
                     };
@@ -3888,7 +3889,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(18usize));
-                        let b = *(witness.get_unchecked(112usize));
+                        let b = *(witness.get_unchecked(113usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3900,7 +3901,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(21usize));
-                        let b = *(witness.get_unchecked(112usize));
+                        let b = *(witness.get_unchecked(113usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3912,7 +3913,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(22usize));
-                        let b = *(witness.get_unchecked(112usize));
+                        let b = *(witness.get_unchecked(113usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3934,7 +3935,7 @@ unsafe fn evaluate_every_row_except_last(
                 let individual_term = {
                     let mut individual_term = {
                         let mut a = *(witness.get_unchecked(17usize));
-                        let b = *(witness.get_unchecked(113usize));
+                        let b = *(witness.get_unchecked(114usize));
                         a.mul_assign(&b);
                         a
                     };
@@ -3946,7 +3947,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(18usize));
-                        let b = *(witness.get_unchecked(113usize));
+                        let b = *(witness.get_unchecked(114usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3958,7 +3959,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(21usize));
-                        let b = *(witness.get_unchecked(113usize));
+                        let b = *(witness.get_unchecked(114usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -3970,7 +3971,7 @@ unsafe fn evaluate_every_row_except_last(
                     }
                     {
                         let mut a = *(witness.get_unchecked(22usize));
-                        let b = *(witness.get_unchecked(113usize));
+                        let b = *(witness.get_unchecked(114usize));
                         a.mul_assign(&b);
                         individual_term.add_assign(&a);
                     }
@@ -4095,7 +4096,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(114usize));
+                        let a = *(witness.get_unchecked(115usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -4371,7 +4372,7 @@ unsafe fn evaluate_every_row_except_last(
                         individual_term.add_assign(&a);
                     }
                     {
-                        let a = *(witness.get_unchecked(115usize));
+                        let a = *(witness.get_unchecked(116usize));
                         individual_term.sub_assign(&a);
                     }
                     individual_term
@@ -5996,7 +5997,7 @@ unsafe fn evaluate_every_row_except_two(
     let every_row_except_two_last_contribution = {
         let mut accumulated_contribution = {
             let individual_term = {
-                let mut individual_term = *(witness.get_unchecked(114usize));
+                let mut individual_term = *(witness.get_unchecked(115usize));
                 let t = *(witness_next_row.get_unchecked(4usize));
                 individual_term.sub_assign(&t);
                 individual_term
@@ -6007,7 +6008,7 @@ unsafe fn evaluate_every_row_except_two(
             accumulated_contribution.mul_assign(&quotient_alpha);
             let contribution = {
                 let individual_term = {
-                    let mut individual_term = *(witness.get_unchecked(115usize));
+                    let mut individual_term = *(witness.get_unchecked(116usize));
                     let t = *(witness_next_row.get_unchecked(49usize));
                     individual_term.sub_assign(&t);
                     individual_term
@@ -6509,7 +6510,7 @@ pub unsafe fn evaluate_quotient(
             accumulated_contribution.mul_assign(&quotient_alpha);
             let contribution = {
                 let individual_term = {
-                    let mut individual_term = *(witness.get_unchecked(114usize));
+                    let mut individual_term = *(witness.get_unchecked(115usize));
                     let t = public_inputs[2usize];
                     individual_term.sub_assign_base(&t);
                     individual_term
@@ -6522,7 +6523,7 @@ pub unsafe fn evaluate_quotient(
             accumulated_contribution.mul_assign(&quotient_alpha);
             let contribution = {
                 let individual_term = {
-                    let mut individual_term = *(witness.get_unchecked(115usize));
+                    let mut individual_term = *(witness.get_unchecked(116usize));
                     let t = public_inputs[3usize];
                     individual_term.sub_assign_base(&t);
                     individual_term
