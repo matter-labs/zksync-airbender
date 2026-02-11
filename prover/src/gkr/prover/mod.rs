@@ -23,6 +23,7 @@ use crate::worker::Worker;
 
 use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
 
+mod debug_utils;
 pub mod forward_loop;
 pub mod setup;
 pub mod stages;

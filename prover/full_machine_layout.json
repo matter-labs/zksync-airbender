@@ -476,7 +476,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       },
       {
@@ -499,7 +499,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       },
       {
@@ -522,7 +522,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       },
       {
@@ -545,7 +545,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       },
       {
@@ -568,7 +568,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       },
       {
@@ -591,7 +591,7 @@
           }
         ],
         "table_index": {
-          "Constant": "RangeCheckSmall"
+          "Constant": "RangeCheck8x8"
         }
       }
     ],
@@ -6325,25 +6325,25 @@
       ],
       "linear_terms": [
         [
-          17,
+          16,
           {
             "WitnessSubtree": 45
           }
         ],
         [
-          25,
+          24,
           {
             "WitnessSubtree": 46
           }
         ],
         [
-          17,
+          16,
           {
             "WitnessSubtree": 48
           }
         ],
         [
-          18,
+          17,
           {
             "WitnessSubtree": 50
           }
@@ -6355,7 +6355,7 @@
           }
         ],
         [
-          18,
+          17,
           {
             "WitnessSubtree": 54
           }
@@ -6629,25 +6629,25 @@
       ],
       "linear_terms": [
         [
-          22,
+          21,
           {
             "WitnessSubtree": 45
           }
         ],
         [
-          23,
+          22,
           {
             "WitnessSubtree": 50
           }
         ],
         [
-          37,
+          36,
           {
             "WitnessSubtree": 52
           }
         ],
         [
-          23,
+          22,
           {
             "WitnessSubtree": 54
           }
@@ -6930,13 +6930,13 @@
       ],
       "linear_terms": [
         [
-          37,
+          36,
           {
             "WitnessSubtree": 52
           }
         ],
         [
-          40,
+          39,
           {
             "WitnessSubtree": 54
           }
@@ -6948,13 +6948,13 @@
           }
         ],
         [
-          24,
+          23,
           {
             "WitnessSubtree": 157
           }
         ],
         [
-          39,
+          38,
           {
             "WitnessSubtree": 158
           }
@@ -7159,13 +7159,13 @@
       ],
       "linear_terms": [
         [
-          20,
+          19,
           {
             "WitnessSubtree": 52
           }
         ],
         [
-          41,
+          40,
           {
             "WitnessSubtree": 54
           }
@@ -7177,7 +7177,7 @@
           }
         ],
         [
-          39,
+          38,
           {
             "WitnessSubtree": 157
           }
@@ -10355,7 +10355,6 @@
     327681,
     393217,
     393217,
-    393217,
     397313,
     462849,
     462849,
@@ -10386,6 +10385,7 @@
     5185793,
     6234369,
     6365441,
+    6496513,
     6496513,
     6496513,
     6496513,
