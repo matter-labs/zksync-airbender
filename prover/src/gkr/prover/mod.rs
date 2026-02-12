@@ -13,7 +13,7 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
 use crate::gkr::prover::transcript_utils::draw_random_field_els;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
-use crate::gkr::whir::{ColumnMajorBaseOracleForLDE, whir_fold};
+use crate::gkr::whir::{whir_fold, ColumnMajorBaseOracleForLDE};
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use crate::merkle_trees::MerkleTreeCapVarLength;

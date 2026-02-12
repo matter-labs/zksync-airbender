@@ -64,11 +64,17 @@ fn test_simple_product() {
     let mut layer_0 = GKRLayerSource::default();
     layer_0.layer_idx = 0;
     layer_0.extension_field_inputs.insert(
-        GKRAddress::InnerLayer { layer: 0, offset: 0 },
+        GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        },
         ExtensionFieldPoly::new(a.into_boxed_slice()),
     );
     layer_0.extension_field_inputs.insert(
-        GKRAddress::InnerLayer { layer: 0, offset: 1 },
+        GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 1,
+        },
         ExtensionFieldPoly::new(b.into_boxed_slice()),
     );
 
@@ -87,8 +93,14 @@ fn test_simple_product() {
 
     let kernel = SameSizeProductGKRRelation {
         inputs: [
-            GKRAddress::InnerLayer { layer: 0, offset: 0 },
-            GKRAddress::InnerLayer { layer: 0, offset: 1 },
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            },
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            },
         ],
         output: GKRAddress::InnerLayer {
             layer: 1,
@@ -125,20 +137,38 @@ fn test_simple_product() {
         let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges);
         let a = &storage.layers[0]
             .extension_field_inputs
-            .get(&GKRAddress::InnerLayer { layer: 0, offset: 0 })
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
             .unwrap()
             .values[..];
         let a_expected =
             evaluate_with_precomputed_eq_ext::<E>(a, &eq_precomputed.last().unwrap()[..]);
-        expected_random_evals.insert(GKRAddress::InnerLayer { layer: 0, offset: 0 }, a_expected);
+        expected_random_evals.insert(
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            },
+            a_expected,
+        );
         let b = &storage.layers[0]
             .extension_field_inputs
-            .get(&GKRAddress::InnerLayer { layer: 0, offset: 1 })
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            })
             .unwrap()
             .values[..];
         let b_expected =
             evaluate_with_precomputed_eq_ext::<E>(b, &eq_precomputed.last().unwrap()[..]);
-        expected_random_evals.insert(GKRAddress::InnerLayer { layer: 0, offset: 1 }, b_expected);
+        expected_random_evals.insert(
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            },
+            b_expected,
+        );
     }
 
     let batch_challenge = E::from_base(F::ONE);
@@ -153,12 +183,18 @@ fn test_simple_product() {
     {
         let a = &storage.layers[0]
             .extension_field_inputs
-            .get(&GKRAddress::InnerLayer { layer: 0, offset: 0 })
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
             .unwrap()
             .values[..];
         let b = &storage.layers[0]
             .extension_field_inputs
-            .get(&GKRAddress::InnerLayer { layer: 0, offset: 1 })
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            })
             .unwrap()
             .values[..];
 
@@ -312,8 +348,14 @@ fn test_simple_product() {
             folding_challenges.push(folding_challenge);
             // derive new claims
             for poly in [
-                GKRAddress::InnerLayer { layer: 0, offset: 0 },
-                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 1,
+                },
             ] {
                 let [f0, f1] = last_evaluations.remove(&poly).expect("must be present");
                 let mut random_value = f1;
