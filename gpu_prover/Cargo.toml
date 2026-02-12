@@ -10,10 +10,6 @@ keywords.workspace = true
 categories.workspace = true
 build = "build/main.rs"
 
-[build-dependencies]
-cmake = "0.1"
-era_cudart_sys = "0.154"
-
 [dependencies]
 blake2s_u32 = { workspace = true }
 cs = { workspace = true }
@@ -25,18 +21,13 @@ setups = { workspace = true }
 trace_and_split = { workspace = true }
 verifier_common = { workspace = true, features = ["proof_utils"] }
 worker = { workspace = true }
-itertools = { workspace = true }
-log = { workspace = true }
 
 era_cudart = "0.154"
 era_cudart_sys = "0.154"
 
-crossbeam-channel = "0.5"
-crossbeam-utils = "0.8"
-nvtx = "1"
-rayon = "1"
-transpose = "0.2"
-type-map = "0.5"
+itertools = "*"
+log = "0.4.29"
+rayon = "*"
 
 [features]
 default = ["security_80"]
@@ -46,26 +37,19 @@ log_gpu_stages_timings = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 
+[build-dependencies]
+cmake = "0.1"
+era_cudart_sys = "0.154"
+
 [dev-dependencies]
-# execution_utils = { workspace = true }
-prover = { workspace = true, features = ["test"] }
-rand = { workspace = true }
-riscv_common = { workspace = true }
-setups = { workspace = true, features = ["witness_eval_fn"] }
-trace_holder = { workspace = true }
 env_logger = "0.11"
 era_criterion_cuda = "0.2"
 criterion = "0.5"
+itertools = "0.14"
+rand = "0.9"
 serial_test = "3"
-
-[[bench]]
-name = "blake2s"
-harness = false
+blake2s_u32 = { workspace = true }
 
 [[bench]]
 name = "field"
-harness = false
-
-[[bench]]
-name = "other"
 harness = false
