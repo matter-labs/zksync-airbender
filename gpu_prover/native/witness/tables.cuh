@@ -15,8 +15,7 @@ enum TableType : u16 {
   CsrBitmask,
   Or = 6,
   And = 7,
-  RangeCheckSmall,
-  RangeCheckLarge,
+  RangeCheck8x8,
   AndNot,
   QuickDecodeDecompositionCheck4x4x4,
   QuickDecodeDecompositionCheck7x3x6,
@@ -69,6 +68,7 @@ enum TableType : u16 {
   XorSpecialIota,
   AndN,
   RotL,
+  Decoder,
   DynamicPlaceholder,
 };
 
@@ -98,7 +98,6 @@ template <unsigned... SHIFTS> DEVICE_FORCEINLINE u32 index_for_keys(const bf key
 template <> DEVICE_FORCEINLINE u32 index_for_keys<0>(const bf keys[1]) { return bf::into_canonical_u32(keys[0]); }
 
 template <unsigned K, unsigned V> struct TableDriver {
-  static_assert(K + V == 3);
   const bf *tables;
   const unsigned stride;
   const u32 *offsets;
@@ -122,7 +121,6 @@ template <unsigned K, unsigned V> struct TableDriver {
       return 0;
     case OpTypeBitmask:
     case PowersOf2:
-    case RangeCheckLarge:
     case U16GetSignAndHighByte:
     case JumpCleanupOffset:
     case MemoryOffsetGetBits:
@@ -154,6 +152,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     case KeccakPermutationIndices34:
     case KeccakPermutationIndices56:
     case RotL:
+    case Decoder:
       return index_for_keys<0>(keys);
     case XorSpecialIota:
     case AndN:
@@ -172,7 +171,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     case Xor:
     case Or:
     case And:
-    case RangeCheckSmall:
+    case RangeCheck8x8:
     case AndNot:
       return index_for_keys<8, 0>(keys);
     case Xor9:

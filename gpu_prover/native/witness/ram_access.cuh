@@ -1,110 +1,92 @@
 #pragma once
 
-#include "column.cuh"
+#include "common.cuh"
 #include "option.cuh"
 
-using namespace ::airbender::witness::column;
+using namespace ::airbender::witness;
 using namespace ::airbender::witness::option;
 
 namespace airbender::witness::ram_access {
 
 struct RegisterOnlyAccessAddress {
-  ColumnSet<1> register_index;
+  u32 register_index;
+};
+
+enum IsRegisterAddressTag: u32 {
+  Is,
+  Not,
+};
+
+struct IsRegisterAddress {
+  IsRegisterAddressTag tag;
+  u32 value;
 };
 
 struct RegisterOrRamAccessAddress {
-  ColumnSet<1> is_register;
-  ColumnSet<REGISTER_SIZE> address;
+  IsRegisterAddress is_register;
+  u32 address[REGISTER_SIZE];
 };
 
-enum ShuffleRamAddressTag : u32 {
+enum RamAddressTag : u32 {
   RegisterOnly,
   RegisterOrRam,
 };
 
-union ShuffleRamAddressPayload {
+union RamAddressPayload {
   RegisterOnlyAccessAddress register_only_access_address;
   RegisterOrRamAccessAddress register_or_ram_access_address;
 };
 
-struct ShuffleRamAddressEnum {
-  ShuffleRamAddressTag tag;
-  ShuffleRamAddressPayload payload;
+struct RamAddress {
+  RamAddressTag tag;
+  RamAddressPayload payload;
 };
 
-struct ShuffleRamQueryReadColumns {
+struct RamReadQuery {
   u32 in_cycle_write_index;
-  ShuffleRamAddressEnum address;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
+  RamAddress address;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
 };
 
-struct ShuffleRamQueryWriteColumns {
+struct RamWriteQuery {
   u32 in_cycle_write_index;
-  ShuffleRamAddressEnum address;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-  ColumnSet<REGISTER_SIZE> write_value;
+  RamAddress address;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 write_value[REGISTER_SIZE];
 };
 
-enum ShuffleRamQueryColumnsTag : u32 {
+enum RamQueryTag : u32 {
   Readonly,
   Write,
 };
 
-union ShuffleRamQueryColumnsPayload {
-  ShuffleRamQueryReadColumns shuffle_ram_query_read_columns;
-  ShuffleRamQueryWriteColumns shuffle_ram_query_write_columns;
+union RamQueryPayload {
+  RamReadQuery ram_read_query;
+  RamWriteQuery ram_write_query;
 };
 
-struct ShuffleRamQueryColumns {
-  ShuffleRamQueryColumnsTag tag;
-  ShuffleRamQueryColumnsPayload payload;
+struct RamQuery {
+  RamQueryTag tag;
+  RamQueryPayload payload;
 };
 
-struct ShuffleRamAuxComparisonSet {
-  ColumnAddress aux_low_high[2];
-  ColumnAddress intermediate_borrow;
-  ColumnAddress final_borrow;
-};
-
-struct BatchedRamAccessColumnsReadAccess {
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-};
-
-struct BatchedRamAccessColumnsWriteAccess {
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-  ColumnSet<REGISTER_SIZE> write_value;
-};
-
-enum BatchedRamAccessColumnsTag : u32 {
-  BatchedRamReadAccess,
-  BatchedRamWriteAccess,
-};
-
-union BatchedRamAccessColumnsPayload {
-  BatchedRamAccessColumnsReadAccess batched_ram_access_columns_read_access;
-  BatchedRamAccessColumnsWriteAccess batched_ram_access_columns_write_access;
-};
-
-struct BatchedRamAccessColumns {
-  BatchedRamAccessColumnsTag tag;
-  BatchedRamAccessColumnsPayload payload;
+struct RamAuxComparisonSet {
+  Address intermediate_borrow;
 };
 
 struct RegisterAccessColumnsReadAccess {
   u32 register_index;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
 };
 
 struct RegisterAccessColumnsWriteAccess {
   u32 register_index;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-  ColumnSet<REGISTER_SIZE> write_value;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 write_value[REGISTER_SIZE];
 };
 
 enum RegisterAccessColumnsTag : u32 {
@@ -124,64 +106,64 @@ struct RegisterAccessColumns {
 
 struct IndirectAccessVariableDependency {
   u32 offset;
-  ColumnSet<1> variable;
+  u32 variable;
   u32 index;
 };
 
-struct IndirectAccessColumnsReadAccess {
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-  ColumnSet<1> address_derivation_carry_bit;
+struct IndirectAccessReadAccess {
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 address_derivation_carry_bit;
   OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
   u32 offset_constant;
 };
 
-struct IndirectAccessColumnsWriteAccess {
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> read_timestamp;
-  ColumnSet<REGISTER_SIZE> read_value;
-  ColumnSet<REGISTER_SIZE> write_value;
-  ColumnSet<1> address_derivation_carry_bit;
+struct IndirectAccessWriteAccess {
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 write_value[REGISTER_SIZE];
+  u32 address_derivation_carry_bit;
   OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
   u32 offset_constant;
 };
 
-enum IndirectAccessColumnsTag : u32 {
+enum IndirectAccessTag : u32 {
   IndirectReadAccess,
   IndirectWriteAccess,
 };
 
-union IndirectAccessColumnsPayload {
-  IndirectAccessColumnsReadAccess indirect_access_columns_read_access;
-  IndirectAccessColumnsWriteAccess indirect_access_columns_write_access;
+union IndirectAccessPayload {
+  IndirectAccessReadAccess indirect_access_read_access;
+  IndirectAccessWriteAccess indirect_access_write_access;
 };
 
-struct IndirectAccessColumns {
-  IndirectAccessColumnsTag tag;
-  IndirectAccessColumnsPayload payload;
+struct IndirectAccess {
+  IndirectAccessTag tag;
+  IndirectAccessPayload payload;
 };
 
-#define MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT 32
+#define MAX_INDIRECT_ACCESSES_COUNT 32
 
 struct RegisterAndIndirectAccessDescription {
   RegisterAccessColumns register_access;
   u32 indirect_accesses_count;
-  IndirectAccessColumns indirect_accesses[MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT];
+  IndirectAccess indirect_accesses[MAX_INDIRECT_ACCESSES_COUNT];
 };
 
 #define MAX_AUX_BORROW_SET_INDIRECTS_COUNT 24
 
 struct AuxBorrowSet {
-  ColumnAddress borrow;
+  Address borrow;
   u32 indirects_count;
-  ColumnAddress indirects[MAX_AUX_BORROW_SET_INDIRECTS_COUNT];
+  Address indirects[MAX_AUX_BORROW_SET_INDIRECTS_COUNT];
 };
 
 #define MAX_AUX_BORROW_SETS_COUNT 4
 
 struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
-  ColumnAddress predicate;
-  ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM> write_timestamp_columns;
-  ColumnAddress write_timestamp[2];
+  Address predicate;
+  Address write_timestamp_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  Address write_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
   u32 aux_borrow_sets_count;
   AuxBorrowSet aux_borrow_sets[MAX_AUX_BORROW_SETS_COUNT];
 };

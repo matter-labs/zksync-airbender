@@ -89,6 +89,9 @@ pub enum Placeholder {
     DelegationIndirectAccessVariableOffset {
         variable_index: u32,
     },
+    ExecutorFamilyMaskBit {
+        bit: u32,
+    },
 }
 
 impl Default for Placeholder {
@@ -227,8 +230,10 @@ impl From<CSPlaceholder> for Placeholder {
                 Placeholder::DelegationIndirectAccessVariableOffset {
                     variable_index: variable_index as u32,
                 }
-            },
-            cs::cs::placeholder::Placeholder::ExecutorFamilyMaskBit { .. } => todo!()
+            }
+            CSPlaceholder::ExecutorFamilyMaskBit { bit } => {
+                Placeholder::ExecutorFamilyMaskBit { bit: bit as u32 }
+            }
         }
     }
 }

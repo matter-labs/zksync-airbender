@@ -1,8 +1,6 @@
-#include "layout.cuh"
 #include "memory.cuh"
 #include "trace_delegation.cuh"
 
-using namespace ::airbender::witness::layout;
 using namespace ::airbender::witness::memory;
 using namespace ::airbender::witness::trace::delegation;
 

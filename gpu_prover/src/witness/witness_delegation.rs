@@ -1,7 +1,7 @@
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
-use super::BF;
 use crate::circuit_type::DelegationCircuitType;
 use crate::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
+use crate::field::BF;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;

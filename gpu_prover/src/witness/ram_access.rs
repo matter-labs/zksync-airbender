@@ -1,16 +1,44 @@
-use super::column::*;
 use super::option::u32::*;
+use crate::witness::Address;
+use cs::definitions::{GKRAddress, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
+
+type CSRegisterOnlyAccessAddress = cs::definitions::gkr::RegisterOnlyAccessAddress;
+type CSIsRegisterAddress = cs::definitions::gkr::IsRegisterAddress;
+type CSRamAddress = cs::definitions::gkr::RamAddress;
+type CSRegisterOrRamAccessAddress = cs::definitions::gkr::RegisterOrRamAccessAddress;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RegisterOnlyAccessAddress {
-    pub register_index: ColumnSet<1>,
+    pub register_index: u32,
 }
 
-impl From<cs::definitions::RegisterOnlyAccessAddress> for RegisterOnlyAccessAddress {
-    fn from(value: cs::definitions::RegisterOnlyAccessAddress) -> Self {
+impl From<CSRegisterOnlyAccessAddress> for RegisterOnlyAccessAddress {
+    fn from(value: CSRegisterOnlyAccessAddress) -> Self {
         Self {
-            register_index: value.register_index.into(),
+            register_index: value.register_index as u32,
+        }
+    }
+}
+
+#[repr(C, u32)]
+#[derive(Clone, Copy, Debug)]
+pub enum IsRegisterAddress {
+    Is(u32),
+    Not(u32),
+}
+
+impl Default for IsRegisterAddress {
+    fn default() -> Self {
+        Self::Is(0)
+    }
+}
+
+impl From<CSIsRegisterAddress> for IsRegisterAddress {
+    fn from(value: CSIsRegisterAddress) -> Self {
+        match value {
+            CSIsRegisterAddress::Is(x) => Self::Is(x as u32),
+            CSIsRegisterAddress::Not(x) => Self::Not(x as u32),
         }
     }
 }
@@ -18,186 +46,141 @@ impl From<cs::definitions::RegisterOnlyAccessAddress> for RegisterOnlyAccessAddr
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RegisterOrRamAccessAddress {
-    pub is_register: ColumnSet<1>,
-    pub address: ColumnSet<REGISTER_SIZE>,
+    pub is_register: IsRegisterAddress,
+    pub address: [u32; REGISTER_SIZE],
 }
 
-impl From<cs::definitions::RegisterOrRamAccessAddress> for RegisterOrRamAccessAddress {
-    fn from(value: cs::definitions::RegisterOrRamAccessAddress) -> Self {
+impl From<CSRegisterOrRamAccessAddress> for RegisterOrRamAccessAddress {
+    fn from(value: CSRegisterOrRamAccessAddress) -> Self {
         Self {
             is_register: value.is_register.into(),
-            address: value.address.into(),
+            address: value.address.map(|x| x as u32),
         }
     }
 }
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum ShuffleRamAddress {
+pub enum RamAddress {
     RegisterOnly(RegisterOnlyAccessAddress),
     RegisterOrRam(RegisterOrRamAccessAddress),
 }
 
-impl Default for ShuffleRamAddress {
+impl Default for RamAddress {
     fn default() -> Self {
         Self::RegisterOnly(RegisterOnlyAccessAddress::default())
     }
 }
 
-impl From<cs::definitions::ShuffleRamAddress> for ShuffleRamAddress {
-    fn from(value: cs::definitions::ShuffleRamAddress) -> Self {
+impl From<CSRamAddress> for RamAddress {
+    fn from(value: CSRamAddress) -> Self {
         match value {
-            cs::definitions::ShuffleRamAddress::RegisterOnly(x) => Self::RegisterOnly(x.into()),
-            cs::definitions::ShuffleRamAddress::RegisterOrRam(x) => Self::RegisterOrRam(x.into()),
+            CSRamAddress::RegisterOnly(addr) => Self::RegisterOnly(addr.into()),
+            CSRamAddress::RegisterOrRam(addr) => Self::RegisterOrRam(addr.into()),
+        }
+    }
+}
+
+impl From<CSRegisterOrRamAccessAddress> for RamAddress {
+    fn from(value: CSRegisterOrRamAccessAddress) -> Self {
+        Self::RegisterOrRam(RegisterOrRamAccessAddress {
+            is_register: value.is_register.into(),
+            address: value.address.map(|x| x as u32),
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct RamReadQuery {
+    pub in_cycle_write_index: u32,
+    pub address: RamAddress,
+    pub read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_value: [u32; REGISTER_SIZE],
+}
+
+impl From<cs::definitions::gkr::RamReadQuery> for RamReadQuery {
+    fn from(value: cs::definitions::gkr::RamReadQuery) -> Self {
+        Self {
+            in_cycle_write_index: value.in_cycle_write_index as u32,
+            address: value.address.into(),
+            read_timestamp: value.read_timestamp.map(|x| x as u32),
+            read_value: value.read_value.map(|x| x as u32),
         }
     }
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct ShuffleRamQueryReadColumns {
+pub struct RamWriteQuery {
     pub in_cycle_write_index: u32,
-    pub address: ShuffleRamAddress,
-    pub read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-    pub read_value: ColumnSet<REGISTER_SIZE>,
+    pub address: RamAddress,
+    pub read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_value: [u32; REGISTER_SIZE],
+    pub write_value: [u32; REGISTER_SIZE],
 }
 
-impl From<cs::definitions::ShuffleRamQueryReadColumns> for ShuffleRamQueryReadColumns {
-    fn from(value: cs::definitions::ShuffleRamQueryReadColumns) -> Self {
+impl From<cs::definitions::gkr::RamWriteQuery> for RamWriteQuery {
+    fn from(value: cs::definitions::gkr::RamWriteQuery) -> Self {
         Self {
-            in_cycle_write_index: value.in_cycle_write_index,
+            in_cycle_write_index: value.in_cycle_write_index as u32,
             address: value.address.into(),
-            read_timestamp: value.read_timestamp.into(),
-            read_value: value.read_value.into(),
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
-pub struct ShuffleRamQueryWriteColumns {
-    pub in_cycle_write_index: u32,
-    pub address: ShuffleRamAddress,
-    pub read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-    pub read_value: ColumnSet<REGISTER_SIZE>,
-    pub write_value: ColumnSet<REGISTER_SIZE>,
-}
-
-impl From<cs::definitions::ShuffleRamQueryWriteColumns> for ShuffleRamQueryWriteColumns {
-    fn from(value: cs::definitions::ShuffleRamQueryWriteColumns) -> Self {
-        Self {
-            in_cycle_write_index: value.in_cycle_write_index,
-            address: value.address.into(),
-            read_timestamp: value.read_timestamp.into(),
-            read_value: value.read_value.into(),
-            write_value: value.write_value.into(),
+            read_timestamp: value.read_timestamp.map(|x| x as u32),
+            read_value: value.read_value.map(|x| x as u32),
+            write_value: value.write_value.map(|x| x as u32),
         }
     }
 }
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum ShuffleRamQueryColumns {
-    Readonly(ShuffleRamQueryReadColumns),
-    Write(ShuffleRamQueryWriteColumns),
+pub enum RamQuery {
+    Readonly(RamReadQuery),
+    Write(RamWriteQuery),
 }
 
-impl Default for ShuffleRamQueryColumns {
+impl Default for RamQuery {
     fn default() -> Self {
-        Self::Readonly(ShuffleRamQueryReadColumns::default())
+        RamQuery::Readonly(RamReadQuery::default())
     }
 }
 
-impl From<cs::definitions::ShuffleRamQueryColumns> for ShuffleRamQueryColumns {
-    fn from(value: cs::definitions::ShuffleRamQueryColumns) -> Self {
+impl From<cs::definitions::gkr::RamQuery> for RamQuery {
+    fn from(value: cs::definitions::gkr::RamQuery) -> Self {
         match value {
-            cs::definitions::ShuffleRamQueryColumns::Readonly(x) => Self::Readonly(x.into()),
-            cs::definitions::ShuffleRamQueryColumns::Write(x) => Self::Write(x.into()),
+            cs::definitions::gkr::RamQuery::Readonly(query) => Self::Readonly(query.into()),
+            cs::definitions::gkr::RamQuery::Write(query) => Self::Write(query.into()),
         }
     }
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct ShuffleRamAuxComparisonSet {
-    pub aux_low_high: [ColumnAddress; 2],
-    pub intermediate_borrow: ColumnAddress,
-    pub final_borrow: ColumnAddress,
+pub struct RamAuxComparisonSet {
+    pub intermediate_borrow: Address,
 }
 
-impl From<cs::definitions::ShuffleRamAuxComparisonSet> for ShuffleRamAuxComparisonSet {
-    fn from(value: cs::definitions::ShuffleRamAuxComparisonSet) -> Self {
+impl From<cs::definitions::gkr::RamAuxComparisonSet> for RamAuxComparisonSet {
+    fn from(value: cs::definitions::gkr::RamAuxComparisonSet) -> Self {
         Self {
-            aux_low_high: [value.aux_low_high[0].into(), value.aux_low_high[1].into()],
             intermediate_borrow: value.intermediate_borrow.into(),
-            final_borrow: value.final_borrow.into(),
         }
     }
 }
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum BatchedRamAccessColumns {
-    ReadAccess {
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
-    },
-    WriteAccess {
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
-        write_value: ColumnSet<REGISTER_SIZE>,
-    },
-}
-
-impl Default for BatchedRamAccessColumns {
-    fn default() -> Self {
-        Self::ReadAccess {
-            read_timestamp: ColumnSet::default(),
-            read_value: ColumnSet::default(),
-        }
-    }
-}
-
-impl From<cs::definitions::BatchedRamAccessColumns> for BatchedRamAccessColumns {
-    fn from(value: cs::definitions::BatchedRamAccessColumns) -> Self {
-        match value {
-            cs::definitions::BatchedRamAccessColumns::ReadAccess {
-                read_timestamp,
-                read_value,
-            } => Self::ReadAccess {
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-            },
-            cs::definitions::BatchedRamAccessColumns::WriteAccess {
-                read_timestamp,
-                read_value,
-                write_value,
-            } => Self::WriteAccess {
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-                write_value: write_value.into(),
-            },
-        }
-    }
-}
-
-#[repr(C, u32)]
-#[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub enum RegisterAccessColumns {
     ReadAccess {
         register_index: u32,
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
+        read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        read_value: [u32; REGISTER_SIZE],
     },
     WriteAccess {
         register_index: u32,
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
-        write_value: ColumnSet<REGISTER_SIZE>,
+        read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        read_value: [u32; REGISTER_SIZE],
+        write_value: [u32; REGISTER_SIZE],
     },
 }
 
@@ -205,163 +188,60 @@ impl Default for RegisterAccessColumns {
     fn default() -> Self {
         Self::ReadAccess {
             register_index: 0,
-            read_timestamp: ColumnSet::default(),
-            read_value: ColumnSet::default(),
-        }
-    }
-}
-
-impl From<cs::definitions::RegisterAccessColumns> for RegisterAccessColumns {
-    fn from(value: cs::definitions::RegisterAccessColumns) -> Self {
-        match value {
-            cs::definitions::RegisterAccessColumns::ReadAccess {
-                register_index,
-                read_timestamp,
-                read_value,
-            } => Self::ReadAccess {
-                register_index,
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-            },
-            cs::definitions::RegisterAccessColumns::WriteAccess {
-                register_index,
-                read_timestamp,
-                read_value,
-                write_value,
-            } => Self::WriteAccess {
-                register_index,
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-                write_value: write_value.into(),
-            },
+            read_timestamp: [0; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+            read_value: [0; REGISTER_SIZE],
         }
     }
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct IndirectAccessVariableDependency {
     pub offset: u32,
-    pub variable: ColumnSet<1>,
+    pub variable: u32,
     pub index: u32,
 }
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum IndirectAccessColumns {
+pub enum IndirectAccess {
     ReadAccess {
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
-        address_derivation_carry_bit: ColumnSet<1>,
+        read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        read_value: [u32; REGISTER_SIZE],
+        address_derivation_carry_bit: Option<u32>,
         variable_dependent: Option<IndirectAccessVariableDependency>,
         offset_constant: u32,
     },
     WriteAccess {
-        read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-        read_value: ColumnSet<REGISTER_SIZE>,
-        write_value: ColumnSet<REGISTER_SIZE>,
-        address_derivation_carry_bit: ColumnSet<1>,
+        read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        read_value: [u32; REGISTER_SIZE],
+        write_value: [u32; REGISTER_SIZE],
+        address_derivation_carry_bit: Option<u32>,
         variable_dependent: Option<IndirectAccessVariableDependency>,
         offset_constant: u32,
     },
 }
 
-impl Default for IndirectAccessColumns {
+impl Default for IndirectAccess {
     fn default() -> Self {
         Self::ReadAccess {
-            read_timestamp: ColumnSet::default(),
-            read_value: ColumnSet::default(),
-            address_derivation_carry_bit: ColumnSet::default(),
+            read_timestamp: [0; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+            read_value: [0; REGISTER_SIZE],
+            address_derivation_carry_bit: Option::None,
             variable_dependent: Option::None,
             offset_constant: 0,
         }
     }
 }
 
-impl From<cs::definitions::IndirectAccessColumns> for IndirectAccessColumns {
-    fn from(value: cs::definitions::IndirectAccessColumns) -> Self {
-        match value {
-            cs::definitions::IndirectAccessColumns::ReadAccess {
-                read_timestamp,
-                read_value,
-                address_derivation_carry_bit,
-                variable_dependent,
-                offset_constant,
-            } => Self::ReadAccess {
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-                address_derivation_carry_bit: address_derivation_carry_bit.into(),
-                variable_dependent: variable_dependent
-                    .map(
-                        |(offset, variable, index)| IndirectAccessVariableDependency {
-                            offset,
-                            variable: variable.into(),
-                            index: index as u32,
-                        },
-                    )
-                    .into(),
-                offset_constant,
-            },
-            cs::definitions::IndirectAccessColumns::WriteAccess {
-                read_timestamp,
-                read_value,
-                write_value,
-                address_derivation_carry_bit,
-                variable_dependent,
-                offset_constant,
-            } => Self::WriteAccess {
-                read_timestamp: read_timestamp.into(),
-                read_value: read_value.into(),
-                write_value: write_value.into(),
-                address_derivation_carry_bit: address_derivation_carry_bit.into(),
-                variable_dependent: variable_dependent
-                    .map(
-                        |(offset, variable, index)| IndirectAccessVariableDependency {
-                            offset,
-                            variable: variable.into(),
-                            index: index as u32,
-                        },
-                    )
-                    .into(),
-                offset_constant,
-            },
-        }
-    }
-}
-
-pub const MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT: usize = 32;
+pub const MAX_INDIRECT_ACCESSES_COUNT: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RegisterAndIndirectAccessDescription {
     pub register_access: RegisterAccessColumns,
     pub indirect_accesses_count: u32,
-    pub indirect_accesses:
-        [IndirectAccessColumns; MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT],
-}
-
-impl From<cs::definitions::RegisterAndIndirectAccessDescription>
-    for RegisterAndIndirectAccessDescription
-{
-    fn from(value: cs::definitions::RegisterAndIndirectAccessDescription) -> Self {
-        let indirect_accesses_count = value.indirect_accesses.len() as u32;
-        assert!(
-            indirect_accesses_count
-                <= MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT as u32
-        );
-        let mut indirect_accesses = [IndirectAccessColumns::default();
-            MAX_INDIRECT_ACCESS_DESCRIPTION_INDIRECT_ACCESSES_COUNT];
-        for (i, value) in value.indirect_accesses.into_iter().enumerate() {
-            indirect_accesses[i] = value.into();
-        }
-        Self {
-            register_access: value.register_access.into(),
-            indirect_accesses_count,
-            indirect_accesses,
-        }
-    }
+    pub indirect_accesses: [IndirectAccess; MAX_INDIRECT_ACCESSES_COUNT],
 }
 
 pub const MAX_AUX_BORROW_SET_INDIRECTS_COUNT: usize = 24;
@@ -369,36 +249,9 @@ pub const MAX_AUX_BORROW_SET_INDIRECTS_COUNT: usize = 24;
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct AuxBorrowSet {
-    pub borrow: ColumnAddress,
+    pub borrow: Address,
     pub indirects_count: u32,
-    pub indirects: [ColumnAddress; MAX_AUX_BORROW_SET_INDIRECTS_COUNT],
-}
-
-impl
-    From<(
-        cs::definitions::ColumnAddress,
-        Vec<cs::definitions::ColumnAddress>,
-    )> for AuxBorrowSet
-{
-    fn from(
-        value: (
-            cs::definitions::ColumnAddress,
-            Vec<cs::definitions::ColumnAddress>,
-        ),
-    ) -> Self {
-        let (value_borrow, value_indirects) = value;
-        let indirects_count = value_indirects.len() as u32;
-        assert!(indirects_count <= MAX_AUX_BORROW_SET_INDIRECTS_COUNT as u32);
-        let mut indirects = [ColumnAddress::default(); MAX_AUX_BORROW_SET_INDIRECTS_COUNT];
-        for (i, value) in value_indirects.into_iter().enumerate() {
-            indirects[i] = value.into();
-        }
-        Self {
-            borrow: value_borrow.into(),
-            indirects_count,
-            indirects,
-        }
-    }
+    pub indirects: [Address; MAX_AUX_BORROW_SET_INDIRECTS_COUNT],
 }
 
 pub const MAX_AUX_BORROW_SETS_COUNT: usize = 4;
@@ -406,32 +259,8 @@ pub const MAX_AUX_BORROW_SETS_COUNT: usize = 4;
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
-    pub predicate: ColumnAddress,
-    pub write_timestamp_columns: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-    pub write_timestamp: [ColumnAddress; 2],
-    pub aux_borrow_sets_count: u32,
+    pub predicate: Address,
+    pub write_timestamp_columns: [Address; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub write_timestamp: [Address; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     pub aux_borrow_sets: [AuxBorrowSet; MAX_AUX_BORROW_SETS_COUNT],
-}
-
-impl From<cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars>
-    for RegisterAndIndirectAccessTimestampComparisonAuxVars
-{
-    fn from(value: cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
-        let aux_borrow_sets_count = value.aux_borrow_sets.len() as u32;
-        assert!(aux_borrow_sets_count <= MAX_AUX_BORROW_SETS_COUNT as u32);
-        let mut aux_borrow_sets = [AuxBorrowSet::default(); MAX_AUX_BORROW_SETS_COUNT];
-        for (i, value) in value.aux_borrow_sets.into_iter().enumerate() {
-            aux_borrow_sets[i] = value.into();
-        }
-        Self {
-            predicate: value.predicate.into(),
-            write_timestamp_columns: value.write_timestamp_columns.into(),
-            write_timestamp: [
-                value.write_timestamp[0].into(),
-                value.write_timestamp[1].into(),
-            ],
-            aux_borrow_sets_count,
-            aux_borrow_sets,
-        }
-    }
 }

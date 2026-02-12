@@ -1,19 +1,29 @@
 #pragma once
 
-#include <cstdint>
-
-#include "../common.cuh"
 #include "../field.cuh"
 
 using namespace ::airbender::field;
 
 namespace airbender::witness {
 
-typedef base_field bf;
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
+#define REGISTER_SIZE 2
+#define NUM_TIMESTAMP_COLUMNS_FOR_RAM 2
+
+enum AddressTag : u32 {
+  BaseLayerWitness,
+  BaseLayerMemory,
+  InnerLayer,
+  Setup,
+  OptimizedOut,
+  Cached,
+};
+
+struct Address {
+  AddressTag tag;
+  u32 offset;
+  u32 layer;
+};
+
 
 DEVICE_FORCEINLINE uchar2 u16_to_u8_tuple(const u16 value) { return *reinterpret_cast<const uchar2 *>(&value); }
 

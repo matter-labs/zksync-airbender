@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common.cuh"
+
 namespace airbender::memory {
 
 using namespace std;

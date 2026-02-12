@@ -3,11 +3,10 @@ use super::ram_access::{
     RegisterAndIndirectAccessDescription, RegisterAndIndirectAccessTimestampComparisonAuxVars,
 };
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
-use super::BF;
 use crate::circuit_type::DelegationCircuitType;
 use crate::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
+use crate::field::BF;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use cs::definitions::MemorySubtree;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
@@ -17,6 +16,11 @@ use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use std::ops::Deref;
+
+type CSMemorySubtree = cs::definitions::MemorySubtree;
+type CSRegisterAndIndirectAccessDescription = cs::definitions::RegisterAndIndirectAccessDescription;
+type CSRegisterAndIndirectAccessTimestampComparisonAuxVars =
+    cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars;
 
 const MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT: usize = 4;
 
@@ -28,7 +32,7 @@ pub struct RegisterAndIndirectAccessDescriptions {
         [RegisterAndIndirectAccessDescription; MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT],
 }
 
-impl<T: Deref<Target = [cs::definitions::RegisterAndIndirectAccessDescription]>> From<&T>
+impl<T: Deref<Target = [CSRegisterAndIndirectAccessDescription]>> From<&T>
     for RegisterAndIndirectAccessDescriptions
 {
     fn from(value: &T) -> Self {
@@ -54,8 +58,8 @@ pub(crate) struct DelegationMemorySubtree {
     register_and_indirect_access_descriptions: RegisterAndIndirectAccessDescriptions,
 }
 
-impl From<&MemorySubtree> for DelegationMemorySubtree {
-    fn from(value: &MemorySubtree) -> Self {
+impl From<&CSMemorySubtree> for DelegationMemorySubtree {
+    fn from(value: &CSMemorySubtree) -> Self {
         assert!(value.shuffle_ram_inits_and_teardowns.is_empty());
         assert!(value.shuffle_ram_access_sets.is_empty());
         assert!(value.delegation_request_layout.is_none());
@@ -162,7 +166,7 @@ generate_memory_values_impl!(
 );
 
 pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
-    subtree: &MemorySubtree,
+    subtree: &CSMemorySubtree,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     stream: &CudaStream,
@@ -182,8 +186,8 @@ pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
 }
 
 pub(crate) fn generate_memory_and_witness_values_delegation<T: GenerateMemoryDelegation>(
-    subtree: &MemorySubtree,
-    aux_vars: &cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars,
+    subtree: &CSMemorySubtree,
+    aux_vars: &CSRegisterAndIndirectAccessTimestampComparisonAuxVars,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,

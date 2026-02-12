@@ -10,35 +10,37 @@ namespace airbender::witness::generation {
 using namespace field;
 
 struct wrapped_f {
-  using innerType = bf;
   bf inner;
 
-  static constexpr DEVICE_FORCEINLINE wrapped_f new_(const bf value) { return {bf::into_canonical(value)}; }
+  static constexpr DEVICE_FORCEINLINE wrapped_f new_(const bf value) { return {value}; }
 
-  static constexpr DEVICE_FORCEINLINE wrapped_f new_(const u32 value) { return {bf::into_canonical(bf(value))}; }
+  static consteval DEVICE_FORCEINLINE wrapped_f new_const(const u32 value) { return {bf::const_into_mont(value)}; }
 
-  template <typename T> static DEVICE_FORCEINLINE wrapped_f from(const T &value) { return wrapped_f(bf::into_canonical(bf(value.inner))); }
+  template <typename T> static DEVICE_FORCEINLINE wrapped_f from(const T &value) { return wrapped_f(bf::from_canonical_u32(value.inner)); }
 
-  static DEVICE_FORCEINLINE wrapped_f add(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::into_canonical(bf::add(lhs.inner, rhs.inner))); }
+  static DEVICE_FORCEINLINE wrapped_f from(const wrapped_f &value) { return value; }
 
-  static DEVICE_FORCEINLINE wrapped_f sub(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::into_canonical(bf::sub(lhs.inner, rhs.inner))); }
+  static DEVICE_FORCEINLINE wrapped_f add(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::add(lhs.inner, rhs.inner)); }
 
-  static DEVICE_FORCEINLINE wrapped_f mul(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::into_canonical(bf::mul(lhs.inner, rhs.inner))); }
+  static DEVICE_FORCEINLINE wrapped_f sub(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::sub(lhs.inner, rhs.inner)); }
+
+  static DEVICE_FORCEINLINE wrapped_f mul(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::mul(lhs.inner, rhs.inner)); }
 
   static DEVICE_FORCEINLINE wrapped_f mul_add(const wrapped_f &mul_0, const wrapped_f &mul_1, const wrapped_f &add) {
-    return wrapped_f(bf::into_canonical(bf::add(bf::mul(mul_0.inner, mul_1.inner), add.inner)));
+    return wrapped_f(bf::add(bf::mul(mul_0.inner, mul_1.inner), add.inner));
   }
 
-  static DEVICE_FORCEINLINE wrapped_f inv(const wrapped_f &value) { return wrapped_f(bf::into_canonical(bf::inv(value.inner))); }
+  static DEVICE_FORCEINLINE wrapped_f inv(const wrapped_f &value) { return wrapped_f(bf::inv(value.inner)); }
 };
 
 struct wrapped_b {
-  using innerType = bool;
   bool inner;
 
-  static constexpr DEVICE_FORCEINLINE wrapped_b new_(const bool value) { return {value}; }
+  static consteval DEVICE_FORCEINLINE wrapped_b new_const(const bool value) { return {value}; }
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from(const T &value) { return wrapped_b(value.inner); }
+
+  static DEVICE_FORCEINLINE wrapped_b from(const wrapped_f &value) { return wrapped_b{static_cast<bool>(bf::into_canonical_u32(value.inner))}; }
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from_integer_equality(const T &lhs, const T &rhs) { return wrapped_b{lhs.inner == rhs.inner}; }
 
@@ -46,9 +48,7 @@ struct wrapped_b {
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from_integer_borrow(const T &lhs, const T &rhs) { return wrapped_b{T::sub_borrow(lhs, rhs)}; }
 
-  static DEVICE_FORCEINLINE wrapped_b from_field_equality(const wrapped_f &lhs, const wrapped_f &rhs) {
-    return wrapped_b{bf::into_canonical_u32(lhs.inner) == bf::into_canonical_u32(rhs.inner)};
-  }
+  static DEVICE_FORCEINLINE wrapped_b from_field_equality(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_b{lhs.inner.limb == rhs.inner.limb}; }
 
   static DEVICE_FORCEINLINE wrapped_b and_(const wrapped_b &lhs, const wrapped_b &rhs) { return wrapped_b{lhs.inner && rhs.inner}; }
 
@@ -61,13 +61,16 @@ struct wrapped_b {
   static DEVICE_FORCEINLINE wrapped_b negate(const wrapped_b &value) { return wrapped_b{!value.inner}; }
 };
 
-template <typename T> struct wrapped_integer {
-  using innerType = T;
+template <typename T, typename W> struct wrapped_integer {
+  typedef T inner_type;
+  typedef W widened_type;
   T inner;
 
-  static constexpr DEVICE_FORCEINLINE wrapped_integer new_(const T value) { return {value}; }
+  static consteval DEVICE_FORCEINLINE wrapped_integer new_const(const T value) { return {value}; }
 
   template <typename U> static DEVICE_FORCEINLINE wrapped_integer from(const U &value) { return wrapped_integer{static_cast<T>(value.inner)}; }
+
+  static DEVICE_FORCEINLINE wrapped_integer from(const wrapped_f &value) { return wrapped_integer{static_cast<T>(bf::into_canonical_u32(value.inner))}; }
 
   static DEVICE_FORCEINLINE wrapped_integer add(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner + rhs.inner); }
 
@@ -93,21 +96,39 @@ template <typename T> struct wrapped_integer {
     return wrapped_integer(value.inner & (1u << count) - 1);
   }
 
-  static DEVICE_FORCEINLINE wrapped_integer mul_low(const wrapped_integer &lhs, const wrapped_integer &rhs);
+  static DEVICE_FORCEINLINE wrapped_integer mul_low(const wrapped_integer &lhs, const wrapped_integer &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<T>(result)};
+  }
 
-  static DEVICE_FORCEINLINE wrapped_integer mul_high(const wrapped_integer &lhs, const wrapped_integer &rhs);
+  static DEVICE_FORCEINLINE wrapped_integer mul_high(const wrapped_integer &lhs, const wrapped_integer &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<T>(result >> ((sizeof(W) - sizeof(T)) * CHAR_BIT))};
+  }
 
   static DEVICE_FORCEINLINE wrapped_integer div(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner / rhs.inner); }
 
   static DEVICE_FORCEINLINE wrapped_integer rem(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner % rhs.inner); }
 
-  template <typename U> static DEVICE_FORCEINLINE U signed_mul_low(const wrapped_integer &lhs, const wrapped_integer &rhs);
+  template <typename U> static DEVICE_FORCEINLINE U signed_mul_low(const wrapped_integer &lhs, const wrapped_integer &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<U::inner_type>(static_cast<U::widened_type>(result))};
+  }
 
-  template <typename U> static DEVICE_FORCEINLINE U signed_mul_high(const wrapped_integer &lhs, const wrapped_integer &rhs);
+  template <typename U> static DEVICE_FORCEINLINE U signed_mul_high(const wrapped_integer &lhs, const wrapped_integer &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<U::inner_type>(static_cast<U::widened_type>(result) >> ((sizeof(U::widened_type) - sizeof(U::inner_type)) * CHAR_BIT))};
+  }
 
-  template <typename U> static DEVICE_FORCEINLINE U mixed_mul_low(const wrapped_integer &lhs, const U &rhs);
+  template <typename U> static DEVICE_FORCEINLINE U mixed_mul_low(const wrapped_integer &lhs, const U &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<U::inner_type>(static_cast<U::widened_type>(result))};
+  }
 
-  template <typename U> static DEVICE_FORCEINLINE U mixed_mul_high(const wrapped_integer &lhs, const U &rhs);
+  template <typename U> static DEVICE_FORCEINLINE U mixed_mul_high(const wrapped_integer &lhs, const U &rhs) {
+    const W result = static_cast<W>(lhs.inner) * static_cast<W>(rhs.inner);
+    return {static_cast<U::inner_type>(static_cast<U::widened_type>(result) >> ((sizeof(U::widened_type) - sizeof(U::inner_type)) * CHAR_BIT))};
+  }
 
   static DEVICE_FORCEINLINE wrapped_integer iand(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner & rhs.inner); }
 
@@ -116,97 +137,10 @@ template <typename T> struct wrapped_integer {
   static DEVICE_FORCEINLINE wrapped_integer ixor(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner ^ rhs.inner); }
 };
 
-typedef wrapped_integer<u8> wrapped_u8;
-typedef wrapped_integer<u16> wrapped_u16;
-typedef wrapped_integer<u32> wrapped_u32;
-typedef wrapped_integer<int32_t> wrapped_i32;
-
-template <> DEVICE_FORCEINLINE wrapped_f wrapped_f::from(const wrapped_u32 &value) { return wrapped_f{bf::into_canonical(bf::from_u32(value.inner))}; }
-
-template <> DEVICE_FORCEINLINE wrapped_b wrapped_b::from(const wrapped_f &value) {
-  const u32 canonical = bf::into_canonical_u32(value.inner);
-  return wrapped_b{static_cast<bool>(canonical)};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u8 wrapped_u8::from(const wrapped_f &value) {
-  const u32 canonical = bf::into_canonical_u32(value.inner);
-  return wrapped_u8{static_cast<u8>(canonical)};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u16 wrapped_u16::from(const wrapped_f &value) {
-  const u32 canonical = bf::into_canonical_u32(value.inner);
-  return wrapped_u16{static_cast<u16>(canonical)};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_u32::from(const wrapped_f &value) {
-  const u32 canonical = bf::into_canonical_u32(value.inner);
-  return wrapped_u32{canonical};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_i32 wrapped_i32::from(const wrapped_f &value) {
-  const u32 canonical = bf::into_canonical_u32(value.inner);
-  return wrapped_i32{static_cast<int32_t>(canonical)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u8 wrapped_u8::mul_low(const wrapped_u8 &lhs, const wrapped_u8 &rhs) {
-  const u16 result = static_cast<u16>(lhs.inner) * static_cast<u16>(rhs.inner);
-  return wrapped_u8{static_cast<u8>(result)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u16 wrapped_u16::mul_low(const wrapped_u16 &lhs, const wrapped_u16 &rhs) {
-  const u32 result = static_cast<u32>(lhs.inner) * static_cast<u32>(rhs.inner);
-  return wrapped_u16{static_cast<u8>(result)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_u32::mul_low(const wrapped_u32 &lhs, const wrapped_u32 &rhs) {
-  const u64 result = static_cast<u64>(lhs.inner) * static_cast<u64>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(result)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_i32 wrapped_i32::mul_low(const wrapped_i32 &lhs, const wrapped_i32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_i32{static_cast<int32_t>(result)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u8 wrapped_u8::mul_high(const wrapped_u8 &lhs, const wrapped_u8 &rhs) {
-  const u16 result = static_cast<u16>(lhs.inner) * static_cast<u16>(rhs.inner);
-  return wrapped_u8{static_cast<u8>(result >> 8)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u16 wrapped_u16::mul_high(const wrapped_u16 &lhs, const wrapped_u16 &rhs) {
-  const u32 result = static_cast<u32>(lhs.inner) * static_cast<u32>(rhs.inner);
-  return wrapped_u16{static_cast<u8>(result >> 16)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_u32::mul_high(const wrapped_u32 &lhs, const wrapped_u32 &rhs) {
-  const u64 result = static_cast<u64>(lhs.inner) * static_cast<u64>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(result >> 32)};
-}
-
-template <> DEVICE_FORCEINLINE wrapped_i32 wrapped_i32::mul_high(const wrapped_i32 &lhs, const wrapped_i32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_i32{static_cast<int32_t>(result >> 32)};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_i32::signed_mul_low(const wrapped_i32 &lhs, const wrapped_i32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(static_cast<u64>(result))};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_i32::signed_mul_high(const wrapped_i32 &lhs, const wrapped_i32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(static_cast<u64>(result) >> 32)};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_i32::mixed_mul_low(const wrapped_i32 &lhs, const wrapped_u32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(static_cast<u64>(result))};
-}
-
-template <> template <> DEVICE_FORCEINLINE wrapped_u32 wrapped_i32::mixed_mul_high(const wrapped_i32 &lhs, const wrapped_u32 &rhs) {
-  const int64_t result = static_cast<int64_t>(lhs.inner) * static_cast<int64_t>(rhs.inner);
-  return wrapped_u32{static_cast<u32>(static_cast<u64>(result) >> 32)};
-}
+typedef wrapped_integer<u8, u16> wrapped_u8;
+typedef wrapped_integer<u16, u32> wrapped_u16;
+typedef wrapped_integer<u32, u64> wrapped_u32;
+typedef wrapped_integer<i32, i64> wrapped_i32;
 
 template <class R> struct WitnessProxy {
   const R oracle;
@@ -310,14 +244,12 @@ template <class R> struct WitnessProxy {
   template <unsigned I, unsigned O>
   DEVICE_FORCEINLINE void lookup(const wrapped_f inputs[I], const wrapped_u16 table_id, wrapped_f outputs[O], const unsigned lookup_mapping_idx,
                                  const u32 *offsets) const {
-    static_assert(I + O == 3);
     const u32 index = get_lookup_index_and_value<I, O>(inputs, table_id, outputs, offsets);
     lookup_mapping[lookup_mapping_idx * stride + offset] = index;
   }
 
   template <unsigned N>
   DEVICE_FORCEINLINE void lookup_enforce(const wrapped_f values[N], const wrapped_u16 table_id, const unsigned lookup_mapping_idx, const u32 *offsets) const {
-    static_assert(N == 3);
     const u32 index = get_lookup_index_and_value<N, 0>(values, table_id, nullptr, offsets);
     lookup_mapping[lookup_mapping_idx * stride + offset] = index;
   }
@@ -325,7 +257,6 @@ template <class R> struct WitnessProxy {
   template <unsigned I, unsigned O>
   DEVICE_FORCEINLINE void maybe_lookup(const wrapped_f inputs[I], const wrapped_u16 table_id, const wrapped_b mask, wrapped_f outputs[O],
                                        const u32 *offsets) const {
-    static_assert(I + O == 3);
     if (!mask.inner)
       return;
     get_lookup_index_and_value<I, O>(inputs, table_id, outputs, offsets);
@@ -333,7 +264,7 @@ template <class R> struct WitnessProxy {
 };
 
 #define VAR(N) var_##N
-#define CONSTANT(T, N, VALUE) constexpr wrapped_##T VAR(N) = wrapped_##T::new_(VALUE);
+#define CONSTANT(T, N, VALUE) constexpr wrapped_##T VAR(N) = wrapped_##T::new_const(VALUE);
 #define GET_MEMORY_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_memory_place<wrapped_##T>(IDX);
 #define GET_WITNESS_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_witness_place<wrapped_##T>(IDX);
 #define GET_SCRATCH_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_scratch_place<wrapped_##T>(IDX);

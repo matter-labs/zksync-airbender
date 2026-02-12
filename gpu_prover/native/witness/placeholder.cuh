@@ -83,6 +83,7 @@ enum PlaceholderTag : u32 {
   LoadStoreRamValue,
   MemStoreAddress,
   DelegationIndirectAccessVariableOffset,
+  ExecutorFamilyMaskBit,
 };
 
 struct Placeholder {

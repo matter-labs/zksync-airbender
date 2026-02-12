@@ -35,13 +35,13 @@ impl CircuitType {
         }
     }
 
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        match self {
-            CircuitType::Delegation(delegation) => delegation.get_num_cycles(),
-            CircuitType::Unrolled(unrolled) => unrolled.get_num_cycles(),
-        }
-    }
+    // #[inline(always)]
+    // pub const fn get_num_cycles(&self) -> usize {
+    //     match self {
+    //         CircuitType::Delegation(delegation) => delegation.get_num_cycles(),
+    //         CircuitType::Unrolled(unrolled) => unrolled.get_num_cycles(),
+    //     }
+    // }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
@@ -99,14 +99,14 @@ impl DelegationCircuitType {
         *self as u16
     }
 
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        match self {
-            Self::BigIntWithControl => bigint_with_control::NUM_DELEGATION_CYCLES,
-            Self::Blake2WithCompression => blake2_with_compression::NUM_DELEGATION_CYCLES,
-            Self::KeccakSpecial5 => keccak_special5::NUM_DELEGATION_CYCLES,
-        }
-    }
+    // #[inline(always)]
+    // pub const fn get_num_cycles(&self) -> usize {
+    //     match self {
+    //         Self::BigIntWithControl => bigint_with_control::NUM_DELEGATION_CYCLES,
+    //         Self::Blake2WithCompression => blake2_with_compression::NUM_DELEGATION_CYCLES,
+    //         Self::KeccakSpecial5 => keccak_special5::NUM_DELEGATION_CYCLES,
+    //     }
+    // }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
@@ -214,15 +214,15 @@ impl UnrolledCircuitType {
         }
     }
 
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::NUM_CYCLES,
-            Self::Memory(circuit_type) => circuit_type.get_num_cycles(),
-            Self::NonMemory(circuit_type) => circuit_type.get_num_cycles(),
-            Self::Unified => unified_reduced_machine::NUM_CYCLES,
-        }
-    }
+    // #[inline(always)]
+    // pub const fn get_num_cycles(&self) -> usize {
+    //     match self {
+    //         Self::InitsAndTeardowns => inits_and_teardowns::NUM_CYCLES,
+    //         Self::Memory(circuit_type) => circuit_type.get_num_cycles(),
+    //         Self::NonMemory(circuit_type) => circuit_type.get_num_cycles(),
+    //         Self::Unified => unified_reduced_machine::NUM_CYCLES,
+    //     }
+    // }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
@@ -313,13 +313,13 @@ pub enum UnrolledMemoryCircuitType {
 }
 
 impl UnrolledMemoryCircuitType {
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::NUM_CYCLES,
-            Self::LoadStoreWordOnly => load_store_word_only::NUM_CYCLES,
-        }
-    }
+    // #[inline(always)]
+    // pub const fn get_num_cycles(&self) -> usize {
+    //     match self {
+    //         Self::LoadStoreSubwordOnly => load_store_subword_only::NUM_CYCLES,
+    //         Self::LoadStoreWordOnly => load_store_word_only::NUM_CYCLES,
+    //     }
+    // }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
@@ -416,16 +416,16 @@ pub enum UnrolledNonMemoryCircuitType {
 }
 
 impl UnrolledNonMemoryCircuitType {
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::NUM_CYCLES,
-            Self::JumpBranchSlt => jump_branch_slt::NUM_CYCLES,
-            Self::MulDiv => mul_div::NUM_CYCLES,
-            Self::MulDivUnsigned => mul_div_unsigned::NUM_CYCLES,
-            Self::ShiftBinaryCsr => shift_binary_csr::NUM_CYCLES,
-        }
-    }
+    // #[inline(always)]
+    // pub const fn get_num_cycles(&self) -> usize {
+    //     match self {
+    //         Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::NUM_CYCLES,
+    //         Self::JumpBranchSlt => jump_branch_slt::NUM_CYCLES,
+    //         Self::MulDiv => mul_div::NUM_CYCLES,
+    //         Self::MulDivUnsigned => mul_div_unsigned::NUM_CYCLES,
+    //         Self::ShiftBinaryCsr => shift_binary_csr::NUM_CYCLES,
+    //     }
+    // }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
