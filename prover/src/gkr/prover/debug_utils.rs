@@ -99,9 +99,6 @@ pub(crate) fn mock_output_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     )
 }
 
-/// Verify that cached MemoryTuple relations hold at the evaluation point.
-/// For each MemoryTuple cache relation, recomputes the expected value from its
-/// dependency evaluations and compares against the cached claim.
 pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_desc: &GKRLayerDescription,
     claims: &BTreeMap<GKRAddress, E>,
