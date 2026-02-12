@@ -15,6 +15,11 @@ impl<F: PrimeField> BaseFieldPoly<F> {
         }
     }
 
+    pub fn from_arc(values: Arc<Box<[F]>>) -> Self {
+        assert!(values.len().is_power_of_two());
+        Self { values }
+    }
+
     pub fn accessor(&self) -> BaseFieldPolySource<F> {
         BaseFieldPolySource {
             start: self.values.as_ptr(),

@@ -14,7 +14,7 @@ use field::batch_inverse_checked;
 use std::sync::Arc;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
-    pub hypercube_evals: Vec<Box<[F]>>,
+    pub hypercube_evals: Vec<Arc<Box<[F]>>>,
 }
 
 impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
@@ -112,7 +112,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         }
 
         Self {
-            hypercube_evals: result,
+            hypercube_evals: result.into_iter().map(Arc::new).collect(),
         }
     }
 
@@ -125,29 +125,12 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         gkr_storage: &mut GKRStorage<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Box<[E]>, Box<[E]>) {
-        // fill storage
-        {
-            let mut range_check_16_poly = vec![F::ZERO; trace_len].into_boxed_slice();
-            for (i, el) in range_check_16_poly[..(1 << 16)].iter_mut().enumerate() {
-                *el = F::from_u32_unchecked(i as u32);
-            }
-            let mut timestamp_range_check_poly = vec![F::ZERO; trace_len].into_boxed_slice();
-            for (i, el) in timestamp_range_check_poly[..(1 << TIMESTAMP_COLUMNS_NUM_BITS)]
-                .iter_mut()
-                .enumerate()
-            {
-                *el = F::from_u32_unchecked(i as u32);
-            }
-
+        // fill storage with all setup columns
+        for (i, eval) in self.hypercube_evals.iter().enumerate() {
             gkr_storage.insert_base_field_at_layer(
                 0,
-                GKRAddress::Setup(0),
-                BaseFieldPoly::new(range_check_16_poly),
-            );
-            gkr_storage.insert_base_field_at_layer(
-                0,
-                GKRAddress::Setup(1),
-                BaseFieldPoly::new(timestamp_range_check_poly),
+                GKRAddress::Setup(i),
+                BaseFieldPoly::from_arc(Arc::clone(eval)),
             );
         }
 
