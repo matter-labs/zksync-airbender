@@ -1,10 +1,8 @@
 #pragma once
 
-#include "column.cuh"
 #include "common.cuh"
 
 using namespace ::airbender::witness;
-using namespace ::airbender::witness::column;
 
 namespace airbender::witness::trace {
 

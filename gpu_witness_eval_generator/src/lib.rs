@@ -1,18 +1,17 @@
-use ::field::Mersenne31Field;
 use cs::cs::placeholder::Placeholder;
 use cs::cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
 };
-use cs::definitions::{ColumnAddress, Variable};
-use cs::one_row_compiler::CompiledCircuitArtifact;
+use cs::definitions::{ColumnAddress, GKRAddress, Variable};
+use cs::gkr_compiler::GKRCircuitArtifact;
 use std::collections::BTreeMap;
 
 mod boolean;
 mod field;
 mod integer;
 
-type F = Mersenne31Field;
+type F = ::field::baby_bear::base::BabyBearField;
 
 pub struct Generator {
     write_into_memory: bool,
@@ -310,15 +309,28 @@ impl Generator {
 
     pub fn generate(
         graph: &[Vec<RawExpression<F>>],
-        circuit: &CompiledCircuitArtifact<F>,
+        circuit: &GKRCircuitArtifact<F>,
         perform_assignments_to_memory: bool,
     ) -> String {
-        let num_lookup_mappings = circuit.witness_layout.width_3_lookups.len();
-        let layout = &circuit.variable_mapping;
+        let num_lookup_mappings = circuit.witness_layout.generic_lookups.len();
+        let mut layout = BTreeMap::new();
+        for (var, pos) in circuit.placement_data.iter() {
+            match pos {
+                GKRAddress::BaseLayerMemory(offset) => {
+                    layout.insert(*var, ColumnAddress::MemorySubtree(*offset));
+                }
+                GKRAddress::BaseLayerWitness(offset) => {
+                    layout.insert(*var, ColumnAddress::WitnessSubtree(*offset));
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
         let mut generator =
-            Generator::new(layout, num_lookup_mappings, perform_assignments_to_memory);
+            Generator::new(&layout, num_lookup_mappings, perform_assignments_to_memory);
         generator.generate_header(&circuit.table_offsets);
-        generator.generate_functions(graph, layout);
+        generator.generate_functions(graph, &layout);
         generator.generate_footer();
         generator.output
     }
@@ -330,7 +342,7 @@ mod tests {
 
     use crate::F;
     use cs::cs::witness_placer::graph_description::RawExpression;
-    use cs::one_row_compiler::CompiledCircuitArtifact;
+    use cs::gkr_compiler::GKRCircuitArtifact;
     use serde::de;
     use std::fs::File;
     use std::io::Write;
@@ -341,11 +353,11 @@ mod tests {
     }
 
     fn generate(id: &str) {
-        let layout_path = format!("../cs/{id}_layout.json");
-        let ssa_path = format!("../cs/{id}_ssa.json");
+        let layout_path = format!("../cs/{id}_layout_gkr.json");
+        let ssa_path = format!("../cs/{id}_ssa_gkr.json");
         let generated_cu_path = format!("{id}.cuh");
         // println!("{layout_path}");
-        let compiled_circuit: CompiledCircuitArtifact<F> = deserialize_from_file(&layout_path);
+        let compiled_circuit: GKRCircuitArtifact<F> = deserialize_from_file(&layout_path);
         // println!("{ssa_path}");
         let compiled_graph: Vec<Vec<RawExpression<F>>> = deserialize_from_file(&ssa_path);
         println!("{generated_cu_path}");
@@ -358,12 +370,25 @@ mod tests {
 
     #[cfg(test)]
     #[test]
-    fn launch() {
+    fn generate_all() {
         skip_if_ci!();
-        generate("bigint_delegation");
-        generate("blake_delegation");
-        generate("full_machine_with_delegation");
-        generate("keccak_delegation");
-        generate("minimal_machine_with_delegation");
+        const IDS: &[&str] = &[
+            // "bigint_delegation",
+            // "blake_delegation",
+            // "keccak_delegation",
+            "add_sub_lui_auipc_mop_preprocessed",
+            // "jump_branch_slt_preprocessed",
+            // "shift_binop_csrrw_preprocessed",
+            // "load_store_preprocessed",
+            // "word_only_load_store_preprocessed",
+            // "subword_only_load_store_preprocessed",
+            // "mul_div_preprocessed",
+            // "mul_div_unsigned_preprocessed",
+            // "inits_and_teardowns_preprocessed",
+            // "reduced_machine_preprocessed",
+        ];
+        for id in IDS {
+            generate(id);
+        }
     }
 }
