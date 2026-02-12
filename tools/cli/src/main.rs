@@ -14,7 +14,7 @@ use cli_lib::vk::generate_vk;
 use execution_utils::{Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers};
 use reqwest::blocking::Client;
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{fs, io::Write, iter};
 
 use prover::{
@@ -151,6 +151,22 @@ enum Commands {
 
         #[arg(long, value_enum, default_value = "standard")]
         machine: Machine,
+    },
+
+    /// Run a binary for RISCOF compliance testing (extracts begin_signature/end_signature).
+    RunForRiscof {
+        /// Binary file to execute
+        #[arg(short, long)]
+        bin: String,
+        /// ELF file for extracting signature symbols
+        #[arg(long)]
+        elf: String,
+        /// Output path for signature file
+        #[arg(long)]
+        signatures: PathBuf,
+        /// Number of riscV cycles to run.
+        #[arg(long)]
+        cycles: usize,
     },
 
     /// Generates verification key hash, for a given binary.
@@ -386,6 +402,14 @@ fn main() {
             let input_data = fetch_input_data(input).expect("Failed to fetch");
 
             run_binary(bin, cycles, input_data, expected_results, machine);
+        }
+        Commands::RunForRiscof {
+            bin,
+            elf,
+            signatures,
+            cycles,
+        } => {
+            run_for_riscof_binary(&bin, &elf, &signatures, *cycles);
         }
         Commands::GenerateVk {
             bin,
@@ -671,6 +695,27 @@ fn u32_to_file(output_file: &String, numbers: &[u32]) {
     }
 
     println!("Successfully wrote to file: {}", output_file);
+}
+
+fn run_for_riscof_binary(
+    bin_path: &String,
+    elf_path: &String,
+    signatures: &Path,
+    cycles: usize,
+) {
+    use riscv_transpiler::riscof;
+
+    let binary = fs::read(bin_path).expect("Failed to read binary file");
+    let elf_data = fs::read(elf_path).expect("Failed to read ELF file");
+
+    riscof::run_with_riscof_signature_extraction(
+        &binary,
+        &elf_data,
+        signatures,
+        cycles,
+        riscof::DEFAULT_ENTRY_POINT,
+    );
+    println!("Signature file written to: {}", signatures.display());
 }
 
 fn run_binary(

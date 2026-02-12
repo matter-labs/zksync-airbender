@@ -21,6 +21,8 @@ seq-macro = { workspace = true }
 serde-big-array = "*"
 keccak = "*"
 
+object = "*"
+
 dynasmrt = { version = "4", optional = true }
 riscv-decode = {version = "0.2", optional = true }
 capstone = {version = "0.13", optional = true }
