@@ -2,7 +2,6 @@ use std::alloc::Global;
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-use fft::batch_inverse_inplace_parallel;
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
 use worker::WorkerGeometry;
@@ -265,43 +264,11 @@ where
         );
     }
 
-    // LogUp sanity check: verify sum N(x)/D(x) = 0 for each lookup type
-    // if cfg!(debug_assertions) {
-    {
-        for output_type in [
-            OutputType::Lookup16Bits,
-            OutputType::LookupTimestamps,
-            OutputType::GenericLookup,
-        ] {
-            if let Some(addrs) = compiled_circuit.global_output_map.get(&output_type) {
-                let num_addr = addrs[0];
-                let den_addr = addrs[1];
-                // Extract layer index from InnerLayer address
-                let layer_idx = match num_addr {
-                    GKRAddress::InnerLayer { layer, .. } => layer,
-                    _ => panic!("expected InnerLayer address for lookup output"),
-                };
-                let layer_source = &gkr_storage.layers[layer_idx];
-                let num_poly = &layer_source.extension_field_inputs[&num_addr].values;
-                let mut den_poly =
-                    layer_source.extension_field_inputs[&den_addr].values[..].to_vec();
-                let mut buffer = vec![E::ZERO; den_poly.len()];
-                batch_inverse_inplace_parallel(&mut den_poly, &mut buffer, worker);
-                let mut sum = E::ZERO;
-                for (n, d) in num_poly.iter().zip(den_poly.iter()) {
-                    let den_inv = *d;
-                    let mut term = *n;
-                    term.mul_assign(&den_inv);
-                    sum.add_assign(&term);
-                }
-                debug_assert!(
-                    sum.is_zero(),
-                    "LogUp sanity check failed for {:?}: sum N(x)/D(x) != 0",
-                    output_type,
-                );
-            }
-        }
-    }
+    debug_assert!(debug_utils::check_logup_identity(
+        compiled_circuit,
+        &gkr_storage,
+        worker
+    ));
 
     let (
         claim_readset,
@@ -313,48 +280,7 @@ where
         claim_lookupnum,
         claim_lookupden,
         evaluation_point,
-    ) = {
-        // we will simulate it for now
-        let challenges =
-            vec![E::from_base(F::from_u32_unchecked(42)); trace_len.trailing_zeros() as usize];
-        use crate::gkr::sumcheck::eq_poly::*;
-
-        let eq_precomputed = make_eq_poly_in_full::<E>(&challenges);
-
-        let mut evals = vec![];
-
-        for key in [
-            OutputType::PermutationProduct,
-            OutputType::Lookup16Bits,
-            OutputType::LookupTimestamps,
-            OutputType::GenericLookup,
-        ] {
-            let addresses = &compiled_circuit.global_output_map[&key];
-            for address in addresses.iter() {
-                let poly = gkr_storage.get_ext_poly(*address);
-                let evaluation = evaluate_with_precomputed_eq_ext::<E>(
-                    poly,
-                    &eq_precomputed.last().unwrap()[..],
-                );
-                evals.push(evaluation);
-            }
-        }
-
-        let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-            evals.try_into().unwrap();
-
-        (
-            claim_readset,
-            claim_writeset,
-            claim_rangechecknum,
-            claim_rangecheckden,
-            claim_timechecknum,
-            claim_timecheckden,
-            claim_lookupnum,
-            claim_lookupden,
-            challenges,
-        )
-    };
+    ) = debug_utils::mock_output_claims(compiled_circuit, &gkr_storage, trace_len);
 
     let output_map = &compiled_circuit.global_output_map;
     let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
@@ -409,6 +335,52 @@ where
             worker,
         );
     }
+
+    let base_layer_z = points_for_claims_at_layer
+        .get(&0)
+        .expect("must have base layer point");
+
+    use crate::gkr::sumcheck::eq_poly::*;
+    let eq_precomputed = make_eq_poly_in_full::<E>(base_layer_z);
+    let eq_at_z = eq_precomputed.last().unwrap();
+
+    let layer_desc = &compiled_circuit.layers[0];
+    let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
+
+    for (cached_addr, relation) in layer_desc.cached_relations.iter() {
+        debug_assert!(
+            base_layer_claims.contains_key(cached_addr),
+            "Missing claim for cached address {:?}",
+            cached_addr
+        );
+
+        for dep in relation.dependencies() {
+            if base_layer_claims.contains_key(&dep) {
+                continue;
+            }
+            match dep {
+                GKRAddress::BaseLayerWitness(_)
+                | GKRAddress::BaseLayerMemory(_)
+                | GKRAddress::Setup(_) => {
+                    let values = gkr_storage.get_base_layer(dep);
+                    let evaluation = evaluate_with_precomputed_eq::<F, E>(values, &eq_at_z[..]);
+                    base_layer_claims.insert(dep, evaluation);
+                }
+                _ => {
+                    panic!(
+                        "Unexpected dependency address {:?} for cached relation {:?}",
+                        dep, cached_addr
+                    );
+                }
+            }
+        }
+    }
+
+    debug_assert!(debug_utils::verify_cache_relations(
+        layer_desc,
+        &base_layer_claims,
+        external_challenges,
+    ));
 
     drop(gkr_storage);
     drop(preprocessed_range_check_16);

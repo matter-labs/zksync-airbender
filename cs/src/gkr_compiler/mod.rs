@@ -661,7 +661,7 @@ pub enum NoFieldGKRCacheRelation {
 }
 
 impl NoFieldGKRCacheRelation {
-    pub(crate) fn dependencies(&self) -> Vec<GKRAddress> {
+    pub fn dependencies(&self) -> Vec<GKRAddress> {
         match self {
             Self::LongLinear => {
                 vec![]
