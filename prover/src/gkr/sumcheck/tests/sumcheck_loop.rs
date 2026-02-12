@@ -25,8 +25,14 @@ fn test_sumcheck_loop_product() {
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
     let output = compute_product::<F, E>(&a, &b);
 
-    let addr_a = GKRAddress::BaseLayerMemory(0);
-    let addr_b = GKRAddress::BaseLayerMemory(1);
+    let addr_a = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_b = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 1,
+    };
     let addr_out = GKRAddress::InnerLayer {
         layer: 1,
         offset: 0,
@@ -142,9 +148,18 @@ fn test_sumcheck_loop_multiple_gates() {
     let copy_out = copy_in.clone();
     let prod_out = compute_product::<F, E>(&prod_a, &prod_b);
 
-    let addr_copy_in = GKRAddress::BaseLayerMemory(0);
-    let addr_prod_a = GKRAddress::BaseLayerMemory(1);
-    let addr_prod_b = GKRAddress::BaseLayerMemory(2);
+    let addr_copy_in = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_prod_a = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 1,
+    };
+    let addr_prod_b = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 2,
+    };
     let addr_copy_out = GKRAddress::InnerLayer {
         layer: 1,
         offset: 0,
