@@ -21,7 +21,7 @@ jobs:
         run: |
           rustup set profile minimal
       - name: Compile 
-        run: cargo build --verbose
+        run: cargo build --release --verbose
       # - name: tests
       #   run: cargo test --profile cli -- --nocapture
 
