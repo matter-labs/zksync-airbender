@@ -13,7 +13,7 @@ jobs:
     name: tests
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -29,7 +29,7 @@ jobs:
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
@@ -44,7 +44,7 @@ jobs:
     name: ISA tests for simulator
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -62,7 +62,7 @@ jobs:
   #   name: ISA tests
   #   runs-on: [matterlabs-ci-runner-highmem]
   #   steps:
-  #     - uses: actions/checkout@v3
+  #     - uses: actions/checkout@v5
   #     - uses: actions-rust-lang/setup-rust-toolchain@v1
   #       with:
   #         rustflags: ""
@@ -81,7 +81,7 @@ jobs:
     name: full_recursion_fast
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -111,7 +111,7 @@ jobs:
     name: risc_v_tests_delegations
     runs-on: [matterlabs-ci-runner]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -129,7 +129,7 @@ jobs:
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -153,7 +153,7 @@ jobs:
   #   name: verifier_binaries_generated
   #   runs-on: [matterlabs-ci-runner-highmem]
   #   steps:
-  #     - uses: actions/checkout@v3
+  #     - uses: actions/checkout@v5
   #     - uses: actions-rust-lang/setup-rust-toolchain@v1
   #       with:
   #         rustflags: ""
@@ -182,7 +182,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-c3d]
     name: build_cli_with_verify
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -200,7 +200,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-highmem]
     name: build_cli_no_verifiers
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -219,7 +219,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-c3d]
     name: build_cli_no_verifiers_512
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -237,7 +237,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-c3d]
     name: build_verifier
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -265,7 +265,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify
@@ -286,7 +286,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify
@@ -309,7 +309,7 @@ jobs:
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify
@@ -332,7 +332,7 @@ jobs:
     needs: [build_cli_with_verify, build_verifier]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify
@@ -368,7 +368,7 @@ jobs:
     needs: [build_cli_no_verifiers_512, build_verifier]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_512
@@ -399,7 +399,7 @@ jobs:
     needs: [build_cli_no_verifiers_512, build_verifier]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: cli_512
