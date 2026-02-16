@@ -24,6 +24,58 @@ struct Address {
   u32 layer;
 };
 
+struct NoFieldLinearTerm {
+  u32 coefficient;
+  Address address;
+};
+
+#define MAX_LINEAR_TERMS_COUNT 4
+
+struct NoFieldLinearRelation {
+  u32 linear_terms_count;
+  NoFieldLinearTerm linear_terms[MAX_LINEAR_TERMS_COUNT];
+  u32 constant;
+};
+
+DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
+                                               const NoFieldLinearRelation relation) {
+  bf result = relation.constant == 0 ? bf::ZERO() : bf::from_canonical_u32(relation.constant);
+#pragma unroll
+  for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
+    if (i == relation.linear_terms_count)
+      break;
+    const auto [coefficient, address] = relation.linear_terms[i];
+    bf value;
+    switch (address.tag) {
+    case BaseLayerMemory:
+      value = memory.get_at_col(address.offset);
+      break;
+    case BaseLayerWitness:
+      value = witness.get_at_col(address.offset);
+      break;
+    default:
+      __trap();
+      break;
+    }
+    switch (coefficient) {
+    case 0:
+      __trap();
+      break;
+    case 1:
+      // no need to multiply by 1
+      break;
+    case bf::ORDER - 1:
+      // minus one, just negate
+      value = bf::neg(value);
+      break;
+    default:
+      value = bf::mul(value, bf::from_canonical_u32(coefficient));
+      break;
+    }
+    result = bf::add(result, value);
+  }
+  return result;
+}
 
 DEVICE_FORCEINLINE uchar2 u16_to_u8_tuple(const u16 value) { return *reinterpret_cast<const uchar2 *>(&value); }
 

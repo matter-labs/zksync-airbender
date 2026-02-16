@@ -1,5 +1,5 @@
 [package]
-name = "gpu_prover"
+name = "gpu_prover_old"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
