@@ -7,6 +7,7 @@ use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeFiel
 use worker::Worker;
 
 use super::utils::*;
+use crate::definitions::Transcript;
 use crate::gkr::prover::sumcheck_loop::evaluate_sumcheck_for_layer;
 use crate::gkr::sumcheck::eq_poly::*;
 
@@ -19,7 +20,7 @@ fn test_sumcheck_loop_product() {
     const FOLDING_STEPS: usize = 4;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
 
-    let worker = Worker::new_with_num_threads(1);
+    let worker = Worker::new_with_num_threads(8);
 
     let a = random_poly_in_ext::<F, E>(POLY_SIZE);
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -74,6 +75,8 @@ fn test_sumcheck_loop_product() {
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
+    let mut seed = Transcript::commit_initial(&[42]);
+
     evaluate_sumcheck_for_layer::<F, E>(
         0,
         &layer,
@@ -86,6 +89,7 @@ fn test_sumcheck_loop_product() {
         lookup_additive_part,
         constraints_batch_challenge,
         &worker,
+        &mut seed
     );
 
     assert!(
@@ -223,6 +227,8 @@ fn test_sumcheck_loop_multiple_gates() {
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
+    let mut seed = Transcript::commit_initial(&[42]);
+
     evaluate_sumcheck_for_layer::<F, E>(
         0,
         &layer,
@@ -235,6 +241,7 @@ fn test_sumcheck_loop_multiple_gates() {
         lookup_additive_part,
         constraints_batch_challenge,
         &worker,
+        &mut seed
     );
 
     assert!(claims_storage.contains_key(&0));

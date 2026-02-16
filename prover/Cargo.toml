@@ -49,12 +49,14 @@ definitions_only = ["cs/definitions_only"]
 timing_logs = []
 # Will evaluate quotient on main domain for satisfiability checks
 debug_satisfiable = []
+# self-checks (logup identity, cache verification, claim verification, whir consistency)
+gkr_self_checks = []
 # Will perform witness evaluation in synthesis functions
 cs_debug = ["cs/debug_evaluate_witness"]
 # Print detailed debug logs
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]
-default = ["prover", "cs_debug", "bincode"]
+default = ["prover", "cs_debug", "gkr_self_checks", "bincode"]
 
 # Include test code for test in dependent crates
 test = []

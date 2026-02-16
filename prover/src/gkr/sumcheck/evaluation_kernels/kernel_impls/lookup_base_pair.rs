@@ -130,8 +130,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         let [mut eval_0_term_0, mut eval_0_term_1] = output_sources
             .each_ref()
             .map(|el| el.get_f0_only(index).into_value());
-        let [mut eval_1_term_0, mut eval_1_term_1] =
-            pointwise_eval_quadratic_only_impl(&[b1, d1], &(), &self.lookup_additive_challenge);
+        let [mut eval_1_term_0, mut eval_1_term_1]: [E; 2] =
+            pointwise_eval_quadratic_only_impl(&[b1, d1], &());
 
         eval_0_term_0.mul_assign(&batch_challenges[0]);
         eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -184,7 +184,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             let [mut eval_0_term_0, mut eval_0_term_1] =
                 pointwise_eval_impl(&[b0, d0], ctx, &self.lookup_additive_challenge);
             let [mut eval_1_term_0, mut eval_1_term_1] =
-                pointwise_eval_quadratic_only_impl(&[b1, d1], ctx, &self.lookup_additive_challenge);
+                pointwise_eval_quadratic_only_impl(&[b1, d1], ctx);
 
             eval_0_term_0.mul_assign(&batch_challenges[0]);
             eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -250,15 +250,11 @@ fn pointwise_eval_quadratic_only_impl<
 >(
     input: &[RB; 2],
     ctx: &RB::CollapseContext,
-    lookup_additive_challenge: &E,
 ) -> [E; 2] {
     // 1/b + 1/d -> zero, bd
     let [b, d] = input;
-    let b = b.add_with_ext::<true>(lookup_additive_challenge, ctx);
-    let d = d.add_with_ext::<true>(lookup_additive_challenge, ctx);
-
-    let mut den = b;
-    den.mul_assign(&d);
+    let d_ext = d.mul_by_ext::<true>(&E::ONE, ctx);
+    let den = b.mul_by_ext::<true>(&d_ext, ctx);
 
     [E::ZERO, den]
 }

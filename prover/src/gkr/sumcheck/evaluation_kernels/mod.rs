@@ -220,7 +220,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
             panic!();
         }
         self.computed_r2_coeff = self.c1;
-        self.computed_r2_coeff.mul_assign(&other.c0);
+        self.computed_r2_coeff.mul_assign(&other.c1);
         self.c1.mul_assign(&other.c0);
         let mut tt = self.c0;
         tt.mul_assign(&other.c1);
@@ -331,7 +331,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentation<F, E>
         _ctx: &Self::CollapseContext,
     ) -> E {
         let mut t = self.value;
-        t.mul_assign(other);
+        t.add_assign(other);
 
         t
     }

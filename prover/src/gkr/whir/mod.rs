@@ -498,9 +498,8 @@ where
 
     let mut claim = batched_claim;
 
-    // self-check
+    #[cfg(feature = "gkr_self_checks")]
     {
-        // claim is correct
         let recomputed_claim = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
         assert_eq!(recomputed_claim, claim);
     }
@@ -546,8 +545,8 @@ where
             proof.sumcheck_polys.push(univariate_coeffs);
             commit_field_els(&mut transcript_seed, &univariate_coeffs);
 
+            #[cfg(feature = "gkr_self_checks")]
             {
-                // self-check
                 let s0 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ZERO);
                 assert_eq!(s0, f0);
                 let s1 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ONE);
@@ -586,7 +585,7 @@ where
                 sumchecked_poly_evaluation_form.len()
             );
 
-            // self-check
+            #[cfg(feature = "gkr_self_checks")]
             {
                 let mut source = sumchecked_poly_monomial_form.clone();
                 multivariate_coeffs_into_hypercube_evals(
@@ -607,9 +606,8 @@ where
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_poly.len(), 1 << poly_size_log2);
 
-        // Self-check
+        #[cfg(feature = "gkr_self_checks")]
         {
-            // sumcheck itself
             let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
@@ -657,6 +655,7 @@ where
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
         commit_field_els(&mut transcript_seed, &[ood_value]);
+        #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
                 ood_point,
@@ -785,35 +784,34 @@ where
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
         }
 
+        #[cfg(feature = "gkr_self_checks")]
         {
-            // self-check that our domain evaluations from monomial form match pows (so, RS code) definition
-            {
-                let omega = domain_generator_for_size::<F>(query_domain_size);
-                for (i, &query_index) in query_indexes.iter().enumerate() {
-                    // for query_index in 0..query_domain_size {
-                    let root = omega.pow(query_index as u32);
-                    let eval_from_monomial = evaluate_monomial_form(
-                        &sumchecked_poly_monomial_form,
-                        &E::from_base(root),
-                        worker,
-                    );
-                    assert_eq!(
-                        (query_index, root, eval_from_monomial),
-                        query_references[i],
-                        "diverged at query {}",
-                        i
-                    );
-                    let pows = make_pows(
-                        root,
-                        sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                    );
-                    let eval_from_multivariate =
-                        evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
-                    assert_eq!(eval_from_monomial, eval_from_multivariate);
-                }
-                query_references.clear();
+            let omega = domain_generator_for_size::<F>(query_domain_size);
+            for (i, &query_index) in query_indexes.iter().enumerate() {
+                let root = omega.pow(query_index as u32);
+                let eval_from_monomial = evaluate_monomial_form(
+                    &sumchecked_poly_monomial_form,
+                    &E::from_base(root),
+                    worker,
+                );
+                assert_eq!(
+                    (query_index, root, eval_from_monomial),
+                    query_references[i],
+                    "diverged at query {}",
+                    i
+                );
+                let pows = make_pows(
+                    root,
+                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
+                );
+                let eval_from_multivariate =
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
+            query_references.clear();
         }
+        #[cfg(not(feature = "gkr_self_checks"))]
+        query_references.clear();
 
         drop(mem_oracle);
         drop(wit_oracle);
@@ -879,8 +877,8 @@ where
             proof.sumcheck_polys.push(univariate_coeffs);
             commit_field_els(&mut transcript_seed, &univariate_coeffs);
 
+            #[cfg(feature = "gkr_self_checks")]
             {
-                // self-check
                 let s0 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ZERO);
                 assert_eq!(s0, f0);
                 let s1 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ONE);
@@ -927,9 +925,8 @@ where
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_poly.len(), 1 << poly_size_log2);
 
-        // Self-check
+        #[cfg(feature = "gkr_self_checks")]
         {
-            // sumcheck itself
             let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
@@ -972,6 +969,7 @@ where
         // compute OOD value
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
+        #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
                 ood_point,
@@ -1073,34 +1071,34 @@ where
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
         }
 
+        #[cfg(feature = "gkr_self_checks")]
         {
-            // self-check that our domain evaluations from monomial form match pows (so, RS code) definition
-            {
-                let omega = domain_generator_for_size::<F>(query_domain_size);
-                for (i, &query_index) in query_indexes.iter().enumerate() {
-                    let root = omega.pow(query_index as u32);
-                    let eval_from_monomial = evaluate_monomial_form(
-                        &sumchecked_poly_monomial_form,
-                        &E::from_base(root),
-                        worker,
-                    );
-                    assert_eq!(
-                        (query_index, root, eval_from_monomial),
-                        query_references[i],
-                        "diverged at query {}",
-                        i
-                    );
-                    let pows = make_pows(
-                        root,
-                        sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                    );
-                    let eval_from_multivariate =
-                        evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
-                    assert_eq!(eval_from_monomial, eval_from_multivariate);
-                }
-                query_references.clear();
+            let omega = domain_generator_for_size::<F>(query_domain_size);
+            for (i, &query_index) in query_indexes.iter().enumerate() {
+                let root = omega.pow(query_index as u32);
+                let eval_from_monomial = evaluate_monomial_form(
+                    &sumchecked_poly_monomial_form,
+                    &E::from_base(root),
+                    worker,
+                );
+                assert_eq!(
+                    (query_index, root, eval_from_monomial),
+                    query_references[i],
+                    "diverged at query {}",
+                    i
+                );
+                let pows = make_pows(
+                    root,
+                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
+                );
+                let eval_from_multivariate =
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
+            query_references.clear();
         }
+        #[cfg(not(feature = "gkr_self_checks"))]
+        query_references.clear();
 
         // we now update the equality poly - initially we had eq(X, original_evalution_point), from which we folded few coordinates.
         // Now we should add more terms there to reflect OOD and in-domain samples
@@ -1143,8 +1141,8 @@ where
             proof.sumcheck_polys.push(univariate_coeffs);
             commit_field_els(&mut transcript_seed, &univariate_coeffs);
 
+            #[cfg(feature = "gkr_self_checks")]
             {
-                // self-check
                 let s0 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ZERO);
                 assert_eq!(s0, f0);
                 let s1 = evaluate_small_univariate_poly(&univariate_coeffs, &E::ONE);
@@ -1192,9 +1190,8 @@ where
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_poly.len(), 1 << poly_size_log2);
 
-        // Self-check
+        #[cfg(feature = "gkr_self_checks")]
         {
-            // sumcheck itself
             let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
@@ -1260,45 +1257,34 @@ where
         }
         drop(rs_oracle_to_query);
 
-        {
-            // self-check that our domain evaluations from monomial form match pows (so, RS code) definition
-            if sumchecked_poly_evaluation_form.len() > 1 {
-                let omega = domain_generator_for_size::<F>(query_domain_size);
-                for (i, &query_index) in query_indexes.iter().enumerate() {
-                    let root = omega.pow(query_index as u32);
-                    let eval_from_monomial = evaluate_monomial_form(
-                        &sumchecked_poly_monomial_form,
-                        &E::from_base(root),
-                        worker,
-                    );
-                    assert_eq!(
-                        (query_index, root, eval_from_monomial),
-                        query_references[i],
-                        "diverged at query {}",
-                        i
-                    );
-                    let pows = make_pows(
-                        root,
-                        sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
-                    );
-                    let eval_from_multivariate =
-                        evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
-                    assert_eq!(eval_from_monomial, eval_from_multivariate);
-                }
-                query_references.clear();
+        #[cfg(feature = "gkr_self_checks")]
+        if sumchecked_poly_evaluation_form.len() > 1 {
+            let omega = domain_generator_for_size::<F>(query_domain_size);
+            for (i, &query_index) in query_indexes.iter().enumerate() {
+                let root = omega.pow(query_index as u32);
+                let eval_from_monomial = evaluate_monomial_form(
+                    &sumchecked_poly_monomial_form,
+                    &E::from_base(root),
+                    worker,
+                );
+                assert_eq!(
+                    (query_index, root, eval_from_monomial),
+                    query_references[i],
+                    "diverged at query {}",
+                    i
+                );
+                let pows = make_pows(
+                    root,
+                    sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
+                );
+                let eval_from_multivariate =
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
+            query_references.clear();
         }
 
-        // conclude the sumcheck - we self-check as would the verifier do
-
-        // It is quite tricky part, as we have to take the values, and
-        // form the following sumcheck kernel
-
-        // \sum_{X} [ eq(original_eval_point_remaining, X) + delin_challenge_1^{1} eq(pows(ood_sample_1, pows_size_1).remaining, X) +
-        // + \sum delin_challenge_1^{i+1} eq(pows(query_roots_1_{i}, pows_size_1).remaining, X) +
-        // + delin_challenge_2^{1} eq(pows(ood_sample_2, pows_size_2).remaining, X) + ...]
-
-        // but at the prover we have eq poly, so we just sum it
+        #[cfg(feature = "gkr_self_checks")]
         {
             let value = dot_product(&sumchecked_poly_evaluation_form[..], &eq_poly[..], worker);
             assert_eq!(value, claim);

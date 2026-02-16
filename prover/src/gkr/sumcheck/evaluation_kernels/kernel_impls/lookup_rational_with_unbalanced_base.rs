@@ -139,12 +139,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         let [mut eval_0_term_0, mut eval_0_term_1] = output_sources
             .each_ref()
             .map(|el| el.get_f0_only(index).into_value());
-        let [mut eval_1_term_0, mut eval_1_term_1] = pointwise_eval_quadratic_only_impl(
-            &[d1],
-            &[a1, b1],
-            &(),
-            &self.lookup_additive_challenge,
-        );
+        let [mut eval_1_term_0, mut eval_1_term_1] =
+            pointwise_eval_quadratic_only_impl(&[d1], &[a1, b1], &());
 
         eval_0_term_0.mul_assign(&batch_challenges[0]);
         eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -198,12 +194,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             let [d0, d1] = sources[0].get_two_points::<false>(index);
             let [mut eval_0_term_0, mut eval_0_term_1] =
                 pointwise_eval_impl(&[d0], &[a0, b0], ctx, &self.lookup_additive_challenge);
-            let [mut eval_1_term_0, mut eval_1_term_1] = pointwise_eval_quadratic_only_impl(
-                &[d1],
-                &[a1, b1],
-                ctx,
-                &self.lookup_additive_challenge,
-            );
+            let [mut eval_1_term_0, mut eval_1_term_1] =
+                pointwise_eval_quadratic_only_impl(&[d1], &[a1, b1], ctx);
 
             eval_0_term_0.mul_assign(&batch_challenges[0]);
             eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -272,17 +264,12 @@ fn pointwise_eval_quadratic_only_impl<
     input: &[RB; 1],
     ext_input: &[ExtensionFieldRepresentation<F, E>; 2],
     ctx: &RB::CollapseContext,
-    lookup_additive_challenge: &E,
 ) -> [E; 2] {
-    // a/b + 1/d -> (ad), bd
+    // X^2 coefficient of: a/b + 1/d -> (a_delta * d_delta), (b_delta * d_delta)
     let [d] = input;
     let [a, b] = ext_input;
-    let d = d.add_with_ext::<true>(lookup_additive_challenge, ctx);
-    let mut num = a.value;
-    num.mul_assign(&d);
-
-    let mut den = b.into_value();
-    den.mul_assign(&d);
+    let num = d.mul_by_ext::<true>(&a.value, ctx);
+    let den = d.mul_by_ext::<true>(&b.value, ctx);
 
     [num, den]
 }
