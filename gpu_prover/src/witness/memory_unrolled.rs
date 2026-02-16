@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use crate::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
 use crate::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::field::BF;
@@ -165,6 +166,42 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
         }
     }
 }
+
+// pub const SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH: usize =
+//     REGISTER_SIZE * 2 + NUM_TIMESTAMP_COLUMNS_FOR_RAM;
+// 
+// #[repr(C)]
+// #[derive(Clone, Copy, Default, Debug)]
+// pub struct ShuffleRamInitAndTeardownLayout {
+//     pub lazy_init_addresses_columns: [u32; REGISTER_SIZE],
+//     pub lazy_teardown_values_columns: [u32; REGISTER_SIZE],
+//     pub lazy_teardown_timestamps_columns: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+// }
+// 
+// pub const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
+//
+// #[repr(C)]
+// #[derive(Clone, Copy, Default, Debug)]
+// pub struct ShuffleRamInitAndTeardownLayouts {
+//     pub count: u32,
+//     pub layouts: [ShuffleRamInitAndTeardownLayout; MAX_INITS_AND_TEARDOWNS_SETS_COUNT],
+// }
+//
+// impl<T: Deref<Target = [cs::definitions::ShuffleRamInitAndTeardownLayout]>> From<&T>
+//     for ShuffleRamInitAndTeardownLayouts
+// {
+//     fn from(value: &T) -> Self {
+//         let len = value.len();
+//         assert!(len <= MAX_INITS_AND_TEARDOWNS_SETS_COUNT);
+//         let count = len as u32;
+//         let mut layouts =
+//             [ShuffleRamInitAndTeardownLayout::default(); MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
+//         for (&src, dst) in value.iter().zip(layouts.iter_mut()) {
+//             *dst = src.into();
+//         }
+//         Self { count, layouts }
+//     }
+// }
 
 cuda_kernel!(GenerateMemoryValuesUnrolledMemory,
     ab_generate_memory_values_unrolled_memory_kernel(
