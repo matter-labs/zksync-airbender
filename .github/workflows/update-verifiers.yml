@@ -1,8 +1,9 @@
 name: Update verifiers
 
 on:
-  pull_request:
-    types: [ synchronize, opened ]
+  #  pull_request:
+  #    types: [ synchronize, opened ]
+  workflow_dispatch
 
 
 permissions:
