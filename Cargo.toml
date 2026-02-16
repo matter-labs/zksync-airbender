@@ -28,6 +28,7 @@ members = [
     "execution_utils",
 
     "gpu_prover",
+    "gpu_prover_old",
     "gpu_prover_test",
 
     "reduced_keccak",
