@@ -7,9 +7,9 @@ use era_cudart::memory::DeviceAllocation;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_prover::blake2s::*;
-use gpu_prover::field::BaseField;
-use gpu_prover::ops_simple::set_by_val;
+use gpu_prover_old::blake2s::*;
+use gpu_prover_old::field::BaseField;
+use gpu_prover_old::ops_simple::set_by_val;
 use std::cell::RefCell;
 use std::mem::size_of;
 

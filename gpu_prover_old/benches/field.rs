@@ -7,7 +7,7 @@ use era_cudart::device::device_get_attribute;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaDeviceAttr::MultiProcessorCount;
 
-use gpu_prover::field_bench::*;
+use gpu_prover_old::field_bench::*;
 
 fn field(c: &mut Criterion<CudaMeasurement>) {
     let mpc = device_get_attribute(MultiProcessorCount, 0).unwrap() as u64;

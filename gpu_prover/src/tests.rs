@@ -7,6 +7,9 @@ use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_non_memory,
     generate_memory_values_unrolled_non_memory,
 };
+use crate::witness::multiplicities::{
+    generate_generic_lookup_multiplicities, generate_range_check_multiplicities, LookupExpressions,
+};
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
 use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memory;
 use cs::definitions::*;
@@ -513,6 +516,24 @@ fn run_basic_unrolled_test() {
             &CudaStream::DEFAULT,
         )
         .unwrap();
+        let range = witness_layout
+            .multiplicities_columns_for_generic_lookup
+            .clone();
+        let generic_lookup_multiplicities =
+            &mut d_witness[range.start * NUM_CYCLES_PER_CHUNK..range.end * NUM_CYCLES_PER_CHUNK];
+        generate_generic_lookup_multiplicities(
+            &mut DeviceMatrixMut::new(&mut d_generic_lookup_mapping, NUM_CYCLES_PER_CHUNK),
+            &mut DeviceMatrixMut::new(generic_lookup_multiplicities, NUM_CYCLES_PER_CHUNK),
+            &context,
+        )
+        .unwrap();
+        generate_range_check_multiplicities(
+            &add_sub_circuit,
+            &mut DeviceMatrixMut::new(&mut d_memory, NUM_CYCLES_PER_CHUNK),
+            &mut DeviceMatrixMut::new(&mut d_witness, NUM_CYCLES_PER_CHUNK),
+            &context,
+        )
+        .unwrap();
         let mut h_memory = vec![BF::ZERO; memory_layout.total_width * NUM_CYCLES_PER_CHUNK];
         memory_copy(&mut h_memory, &d_memory).unwrap();
         for row in 0..NUM_CYCLES_PER_CHUNK {
@@ -528,11 +549,15 @@ fn run_basic_unrolled_test() {
         }
         let mut h_witness = vec![BF::ZERO; witness_layout.total_width * NUM_CYCLES_PER_CHUNK];
         memory_copy(&mut h_witness, &d_witness).unwrap();
-        dbg!(witness_layout);
         for row in 0..NUM_CYCLES_PER_CHUNK {
             let mut cpu_row = vec![];
             let mut gpu_row = vec![];
-            for col in 0..witness_layout.total_width - 3 {
+            for col in 0..witness_layout.total_width {
+                if col == witness_layout.multiplicities_columns_for_range_check_16
+                    || col == witness_layout.multiplicities_columns_for_timestamp_range_check
+                {
+                    continue;
+                }
                 let cpu_col = &full_trace.column_major_witness_trace[col];
                 let gpu_col = &h_witness[col * NUM_CYCLES_PER_CHUNK..][..NUM_CYCLES_PER_CHUNK];
                 cpu_row.push(cpu_col[row]);
@@ -540,6 +565,10 @@ fn run_basic_unrolled_test() {
             }
             assert_eq!(cpu_row, gpu_row, "row {} is not equal", row);
         }
+        let col = witness_layout.multiplicities_columns_for_range_check_16;
+        let cpu_col = &full_trace.column_major_witness_trace[col][..128];
+        let gpu_col = &h_witness[col * NUM_CYCLES_PER_CHUNK..][..128];
+        assert_eq!(cpu_col, gpu_col, "col {} is not equal", col);
     }
 
     println!("Trying to prove");
