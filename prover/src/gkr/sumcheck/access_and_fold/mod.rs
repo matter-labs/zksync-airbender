@@ -678,10 +678,10 @@ pub struct SumcheckRound3AndBeyondSelectedStorage<F: PrimeField, E: FieldExtensi
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelectedStorage<F, E> {
-    pub fn collect_last_values(
+    pub fn collect_last_values<const N: usize>(
         &self,
         inputs: &GKRInputs,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     ) {
         {
             let mut idx = 0;
@@ -691,14 +691,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                 } else {
                     if let Some(existing_evals) = last_evaluations.get(input).copied() {
                         let current_values = self.base_field_inputs[idx].current_values();
-                        assert_eq!(current_values.len(), 2);
+                        assert_eq!(current_values.len(), N);
                         assert_eq!(existing_evals, current_values);
                     } else {
                         let current_values = self.base_field_inputs[idx].current_values();
-                        assert_eq!(current_values.len(), 2);
+                        assert_eq!(current_values.len(), N);
                         // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
 
-                        last_evaluations.insert(*input, [current_values[0], current_values[1]]);
+                        last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
                 idx += 1;
@@ -712,14 +712,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                 } else {
                     if let Some(existing_evals) = last_evaluations.get(input).copied() {
                         let current_values = self.extension_field_inputs[idx].current_values();
-                        assert_eq!(current_values.len(), 2);
+                        assert_eq!(current_values.len(), N);
                         assert_eq!(existing_evals, current_values);
                     } else {
                         let current_values = self.extension_field_inputs[idx].current_values();
-                        assert_eq!(current_values.len(), 2);
+                        assert_eq!(current_values.len(), N);
                         // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
 
-                        last_evaluations.insert(*input, [current_values[0], current_values[1]]);
+                        last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
                 idx += 1;

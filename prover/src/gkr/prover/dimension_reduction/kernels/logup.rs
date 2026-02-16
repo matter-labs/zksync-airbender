@@ -1,17 +1,13 @@
-use cs::definitions::GKRAddress;
-use worker::Worker;
-
 use super::*;
 
 #[derive(Debug)]
-pub struct LookupBaseExtMinusBaseExtGKRRelation {
-    pub nums: [GKRAddress; 2],
-    pub dens: [GKRAddress; 2],
+pub struct LookupPairDimensionReducingGKRRelation {
+    pub inputs: [GKRAddress; 2], // [[a, b], [c, d]] -> a/b + c/d
     pub outputs: [GKRAddress; 2],
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for LookupBaseExtMinusBaseExtGKRRelation
+    for LookupPairDimensionReducingGKRRelation
 {
     fn num_challenges(&self) -> usize {
         2
@@ -19,8 +15,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
     fn get_inputs(&self) -> GKRInputs {
         GKRInputs {
-            inputs_in_base: self.nums.to_vec(),
-            inputs_in_extension: self.dens.to_vec(),
+            inputs_in_base: Vec::new(),
+            inputs_in_extension: self.inputs.to_vec(),
             outputs_in_base: Vec::new(),
             outputs_in_extension: self.outputs.to_vec(),
         }
@@ -30,19 +26,18 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         &self,
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
-        trace_len: usize,
+        input_trace_len: usize,
         worker: &Worker,
     ) {
-        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel {
-            _marker: core::marker::PhantomData,
-        };
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
-        forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs(
+
+        let kernel = LookupPairDimensionReducingGKRRelationKernel::default();
+        forward_evaluate_dimension_reducing_kernel(
             &kernel,
             &inputs,
             storage,
             expected_output_layer,
-            trace_len,
+            input_trace_len,
             worker,
         );
     }
@@ -62,9 +57,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             batch_challenges.len(),
             <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
         );
-        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel {
-            _marker: core::marker::PhantomData,
-        };
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
 
         // println!(
@@ -73,7 +65,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         //     &inputs
         // );
 
-        evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs(
+        let kernel = LookupPairDimensionReducingGKRRelationKernel::default();
+        evaluate_single_dimension_reducing_kernel(
             &kernel,
             &inputs,
             storage,
@@ -88,31 +81,31 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 }
 
-// Assumes reordering of access implementors, to have lhs at 0 and rhs at 1
-pub struct LookupBaseExtMinusBaseExtGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+#[derive(Default)]
+pub struct LookupPairDimensionReducingGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field>
+{
     _marker: core::marker::PhantomData<(F, E)>,
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field>
-    MixedFieldsInOutFixedSizesEvaluationKernel<F, E, 2, 2, 2>
-    for LookupBaseExtMinusBaseExtGKRRelationKernel<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> DimensionReducingEvaluationKernel<F, E, 2, 2>
+    for LookupPairDimensionReducingGKRRelationKernel<F, E>
 {
-    #[inline(always)]
-    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
+    fn pointwise_eval(
         &self,
-        input: &[RB; 2],
-        ext_input: &[ExtensionFieldRepresentation<F, E>; 2],
-        ctx: &RB::CollapseContext,
+        pair_0: &[ExtensionFieldRepresentation<F, E>; 2],
+        pair_1: &[ExtensionFieldRepresentation<F, E>; 2],
     ) -> [E; 2] {
-        // a/b - c/d -> (d*a - c*b), bd
-        let [a, c] = input;
-        let [b, d] = ext_input;
-        let mut ad = a.mul_by_ext::<true>(&d.value, ctx);
-        let cb = c.mul_by_ext::<true>(&b.value, ctx);
-        ad.sub_assign(&cb);
-        let mut den = *b;
-        den.repr_mul_assign::<true>(d);
+        let [a, b] = pair_0.map(|el| el.into_value());
+        let [c, d] = pair_1.map(|el| el.into_value());
+        // a/b + c/d = (a*d + c*b) / (b*d)
+        let mut num = a;
+        num.mul_assign(&d);
+        let mut cb = c;
+        cb.mul_assign(&b);
+        num.add_assign(&cb);
 
-        [ad, den.into_value()]
+        let mut den = b;
+        den.mul_assign(&d);
+        [num, den]
     }
 }

@@ -93,30 +93,24 @@ pub use self::queries::*;
 pub use self::whir_proof::*;
 
 #[derive(Debug)]
-pub struct ColumnMajorBaseOracleForCoset<
-    F: PrimeField + TwoAdicField,
-    T: ColumnMajorMerkleTreeConstructor<F>,
-> {
+pub struct ColumnMajorBaseOracleForCoset<F: PrimeField + TwoAdicField> {
     pub original_values_normal_order: Vec<ColumnMajorCosetBoundTracePart<F, F>>, // num_columns
-    pub tree: T,
-    pub values_per_leaf: usize,
+    pub offset: F,
     pub trace_len_log2: usize,
 }
 
-impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
-    ColumnMajorBaseOracleForCoset<F, T>
-{
-    pub fn query_for_folded_index(&self, index: usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
-        assert!(self.values_per_leaf.is_power_of_two());
-        assert!(index < (1 << self.trace_len_log2) / self.values_per_leaf);
+impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
+    pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<F>> {
+        assert!(values_per_leaf.is_power_of_two());
+        assert!(index < (1 << self.trace_len_log2) / values_per_leaf);
         let trace_len = 1 << self.trace_len_log2;
 
-        let mut result: Vec<Vec<F>> = (0..self.values_per_leaf)
+        let mut result: Vec<Vec<F>> = (0..values_per_leaf)
             .into_iter()
             .map(|_| Vec::with_capacity(self.original_values_normal_order.len()))
             .collect();
 
-        match self.values_per_leaf {
+        match values_per_leaf {
             2 => {
                 let offsets = [0, trace_len / 2];
                 for src_poly in self.original_values_normal_order.iter() {
@@ -131,14 +125,8 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
                 panic!("unsupported: {} values per leaf", a);
             }
         }
-        let (_leaf_hash, path) = self.tree.get_proof(index);
-        let query = BaseFieldQuery {
-            index,
-            leaf_values_concatenated: result.iter().flatten().copied().collect(),
-            path,
-        };
 
-        (result, query)
+        result
     }
 }
 
@@ -147,20 +135,35 @@ pub struct ColumnMajorBaseOracleForLDE<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
 > {
-    pub cosets: Vec<ColumnMajorBaseOracleForCoset<F, T>>,
+    pub cosets: Vec<ColumnMajorBaseOracleForCoset<F>>,
+    pub tree: T,
+    pub values_per_leaf: usize,
+    pub trace_len_log2: usize,
 }
 
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     ColumnMajorBaseOracleForLDE<F, T>
 {
+    pub fn num_columns(&self) -> usize {
+        self.cosets[0].original_values_normal_order.len()
+    }
+
     pub fn query_for_folded_index(
         &self,
         index: usize,
     ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
         let coset_index = index & (self.cosets.len() - 1);
         let internal_index = index / self.cosets.len();
-        let (values, mut query) = self.cosets[coset_index].query_for_folded_index(internal_index);
-        query.index = index; // remap index to outer
+        assert!(internal_index < (1 << self.trace_len_log2) / self.values_per_leaf);
+        let values =
+            self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
+
+        let (_, path) = self.tree.get_proof(index);
+        let query = BaseFieldQuery::<F, T> {
+            index,
+            leaf_values_concatenated: values.iter().flatten().copied().collect(),
+            path,
+        };
         (coset_index, values, query)
     }
 }
@@ -169,12 +172,8 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
 pub struct ColumnMajorExtensionOracleForCoset<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
-    T: ColumnMajorMerkleTreeConstructor<F>,
 > {
-    pub values_normal_order: ColumnMajorCosetBoundTracePart<F, E>, // single columns
-    pub tree: T,
-    pub values_per_leaf: usize,
-    pub trace_len_log2: usize,
+    pub values_normal_order: ColumnMajorCosetBoundTracePart<F, E>, // single column
 }
 
 fn offsets_for_leaf_construction<const N: usize>(trace_len: usize) -> [usize; N] {
@@ -203,20 +202,23 @@ pub(crate) fn offsets_vec_for_leaf_construction(trace_len: usize, combine_by: us
     result
 }
 
-impl<
-        F: PrimeField + TwoAdicField,
-        E: FieldExtension<F> + Field,
-        T: ColumnMajorMerkleTreeConstructor<F>,
-    > ColumnMajorExtensionOracleForCoset<F, E, T>
+impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
+    ColumnMajorExtensionOracleForCoset<F, E>
 {
-    pub fn query_for_folded_index(&self, index: usize) -> (Vec<E>, ExtensionFieldQuery<F, E, T>) {
-        assert!(self.values_per_leaf.is_power_of_two());
-        assert!(index < (1 << self.trace_len_log2) / self.values_per_leaf);
-        let trace_len = 1 << self.trace_len_log2;
+    pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<E> {
+        let trace_len = self.values_normal_order.column.len() as usize;
+        assert!(values_per_leaf.is_power_of_two());
+        assert!(
+            index < trace_len / values_per_leaf,
+            "folded index {} is too large for a coset of size 2^{} and {} values packed per leaf",
+            index,
+            trace_len.trailing_zeros(),
+            values_per_leaf
+        );
 
-        let mut result: Vec<E> = Vec::with_capacity(self.values_per_leaf);
+        let mut result: Vec<E> = Vec::with_capacity(values_per_leaf);
 
-        match self.values_per_leaf {
+        match values_per_leaf {
             2 => {
                 let offsets = offsets_for_leaf_construction::<2>(trace_len);
                 for offset in offsets.iter() {
@@ -254,14 +256,7 @@ impl<
             }
         }
 
-        let (_leaf_hash, path) = self.tree.get_proof(index);
-        let query = ExtensionFieldQuery {
-            index,
-            leaf_values_concatenated: result.clone(),
-            path,
-        };
-
-        (result, query)
+        result
     }
 }
 
@@ -271,7 +266,10 @@ pub struct ColumnMajorExtensionOracleForLDE<
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
 > {
-    pub cosets: Vec<ColumnMajorExtensionOracleForCoset<F, E, T>>,
+    pub cosets: Vec<ColumnMajorExtensionOracleForCoset<F, E>>,
+    pub tree: T,
+    pub values_per_leaf: usize,
+    pub trace_len_log2: usize,
 }
 
 impl<
@@ -284,12 +282,16 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
-        // let coset_index = index >> self.cosets[0].trace_len_log2;
-        // let internal_index = index & ((1 << self.cosets[0].trace_len_log2) - 1);
         let coset_index = index & (self.cosets.len() - 1);
         let internal_index = index / self.cosets.len();
-        let (values, mut query) = self.cosets[coset_index].query_for_folded_index(internal_index);
-        query.index = index; // remap index to outer
+        let values =
+            self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
+        let (_leaf_hash, path) = self.tree.get_proof(index);
+        let query = ExtensionFieldQuery {
+            index,
+            leaf_values_concatenated: values.clone(),
+            path,
+        };
         (coset_index, values, query)
     }
 }
@@ -330,14 +332,10 @@ where
     for i in 0..3 {
         let t = WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
-                coset_caps: oracle_refs[i]
-                    .cosets
-                    .iter()
-                    .map(|el| el.tree.get_cap())
-                    .collect(),
+                cap: oracle_refs[i].tree.get_cap(),
                 _marker: core::marker::PhantomData,
             },
-            num_columns: oracle_refs[i].cosets[0].original_values_normal_order.len(),
+            num_columns: oracle_refs[i].num_columns(),
             evals: evals_refs[i].clone(),
             queries: vec![],
         };
@@ -374,10 +372,7 @@ where
     // first compute batched poly. We do compute it on main domain only, and then FFT,
     // especially if we are going to offload cosets from the original commitment to disk instead of keeping in RAM
 
-    let total_base_oracles = oracle_refs
-        .iter()
-        .map(|el| el.cosets[0].original_values_normal_order.len())
-        .sum();
+    let total_base_oracles = oracle_refs.iter().map(|el| el.num_columns()).sum();
     assert_eq!(
         total_base_oracles,
         evals_refs.iter().map(|el| el.len()).sum::<usize>()
@@ -527,9 +522,7 @@ where
         // instead we naively evaluate at 0 and 1, and use input claim to get the monomial form via Lagrange interpolation
 
         for el in oracle_refs.iter() {
-            for el in el.cosets.iter() {
-                assert_eq!(el.values_per_leaf, 1 << num_initial_folding_rounds);
-            }
+            assert_eq!(el.values_per_leaf, 1 << num_initial_folding_rounds);
         }
         let mut folding_challenges_in_round = vec![];
 
@@ -631,11 +624,7 @@ where
             );
             let c = WhirIntermediateCommitmentAndQueries {
                 commitment: WhirCommitment {
-                    coset_caps: next_oracle
-                        .cosets
-                        .iter()
-                        .map(|el| el.tree.get_cap())
-                        .collect(),
+                    cap: next_oracle.tree.get_cap(),
                     _marker: core::marker::PhantomData,
                 },
                 queries: vec![],
@@ -728,7 +717,7 @@ where
             // get original leaf, compute batched, and then folded value
             let base_root = extended_generator.pow(query_index as u32);
             let base_root_inv = base_root.inverse().unwrap();
-            let mut batched_evals = vec![E::ZERO; oracle_refs[0].cosets[0].values_per_leaf];
+            let mut batched_evals = vec![E::ZERO; oracle_refs[0].values_per_leaf];
             for (set_idx, (oracle, batching_challenges)) in
                 oracle_refs.iter().zip(batch_challenges.iter()).enumerate()
             {
@@ -952,11 +941,7 @@ where
                 .intermediate_whir_oracles
                 .push(WhirIntermediateCommitmentAndQueries {
                     commitment: WhirCommitment {
-                        coset_caps: next_oracle
-                            .cosets
-                            .iter()
-                            .map(|el| el.tree.get_cap())
-                            .collect(),
+                        cap: next_oracle.tree.get_cap(),
                         _marker: core::marker::PhantomData,
                     },
                     queries: vec![],
@@ -1306,36 +1291,47 @@ fn commit_single_ext_poly<
 >(
     cosets: Vec<(Box<[E]>, F)>,
     values_per_leaf: usize,
-    cap_size: usize,
+    tree_cap_size: usize,
     worker: &Worker,
 ) -> ColumnMajorExtensionOracleForLDE<F, E, T>
 where
     [(); E::DEGREE]: Sized,
 {
-    let mut result = ColumnMajorExtensionOracleForLDE { cosets: vec![] };
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
-        let trace_len_log2 = column.len().trailing_zeros() as usize;
-        let tree = T::construct_for_column_major_coset::<E, Global>(
-            &[&column[..]],
-            values_per_leaf,
-            cap_size,
-            true,
-            false,
-            worker,
-        );
+        assert!(column.len() > 0);
         let el = ColumnMajorExtensionOracleForCoset {
             values_normal_order: ColumnMajorCosetBoundTracePart {
                 column: Arc::new(column),
                 offset,
             },
-            tree,
-            values_per_leaf,
-            trace_len_log2,
         };
-        result.cosets.push(el);
+        t.push(el);
     }
 
-    result
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
 }
 
 fn fold_monomial_form<E: Field>(
@@ -1795,36 +1791,38 @@ mod test {
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
     ) {
-        let coeffs: Vec<F> = (1..=size)
-            .map(|el| F::from_u32_with_reduction((el + offset) as u32))
-            .collect();
-        let twiddles = Twiddles::<F, Global>::new(size, worker);
+        todo!();
 
-        let cosets = compute_column_major_lde_from_monomial_form(&coeffs, &twiddles, 2);
+        // let coeffs: Vec<F> = (1..=size)
+        //     .map(|el| F::from_u32_with_reduction((el + offset) as u32))
+        //     .collect();
+        // let twiddles = Twiddles::<F, Global>::new(size, worker);
 
-        let mut result = ColumnMajorBaseOracleForLDE { cosets: vec![] };
-        for (column, offset) in cosets.into_iter() {
-            let tree = <Blake2sU32MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<F>>::construct_for_column_major_coset::<F, Global>(
-                &[&column[..]],
-                2,
-                1,
-                true,
-                false,
-                worker
-            );
-            let el = ColumnMajorBaseOracleForCoset {
-                original_values_normal_order: vec![ColumnMajorCosetBoundTracePart {
-                    column: Arc::new(column),
-                    offset,
-                }],
-                tree,
-                values_per_leaf: 2,
-                trace_len_log2: size.trailing_zeros() as usize,
-            };
-            result.cosets.push(el);
-        }
+        // let cosets = compute_column_major_lde_from_monomial_form(&coeffs, &twiddles, 2);
 
-        (result, coeffs)
+        // let mut result = ColumnMajorBaseOracleForLDE { cosets: vec![] };
+        // for (column, offset) in cosets.into_iter() {
+        //     let tree = <Blake2sU32MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<F>>::construct_for_column_major_coset::<F, Global>(
+        //         &[&column[..]],
+        //         2,
+        //         1,
+        //         true,
+        //         false,
+        //         worker
+        //     );
+        //     let el = ColumnMajorBaseOracleForCoset {
+        //         original_values_normal_order: vec![ColumnMajorCosetBoundTracePart {
+        //             column: Arc::new(column),
+        //             offset,
+        //         }],
+        //         tree,
+        //         values_per_leaf: 2,
+        //         trace_len_log2: size.trailing_zeros() as usize,
+        //     };
+        //     result.cosets.push(el);
+        // }
+
+        // (result, coeffs)
     }
 
     #[test]

@@ -51,7 +51,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -59,7 +59,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
@@ -192,10 +192,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             let [d0, d1] = sources[2].get_two_points::<false>(index);
             let [mut eval_0_term_0, mut eval_0_term_1] =
                 pointwise_eval_impl(&[b0, c0, d0], ctx, &self.lookup_additive_challenge);
-            let [mut eval_1_term_0, mut eval_1_term_1] = pointwise_eval_quadratic_only_impl(
-                &[b1, c1, d1],
-                ctx,
-            );
+            let [mut eval_1_term_0, mut eval_1_term_1] =
+                pointwise_eval_quadratic_only_impl(&[b1, c1, d1], ctx);
 
             eval_0_term_0.mul_assign(&batch_challenges[0]);
             eval_0_term_1.mul_assign(&batch_challenges[1]);

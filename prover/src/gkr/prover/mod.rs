@@ -9,9 +9,10 @@ use worker::WorkerGeometry;
 use super::*;
 use crate::definitions::Transcript;
 use crate::fft::Twiddles;
+use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
-use crate::gkr::prover::transcript_utils::draw_random_field_els;
+use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::whir::{whir_fold, ColumnMajorBaseOracleForLDE, WhirPolyCommitProof};
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
@@ -22,6 +23,7 @@ use crate::worker::Worker;
 use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
 
 mod debug_utils;
+pub mod dimension_reduction;
 pub mod forward_loop;
 pub mod setup;
 pub mod stages;
@@ -67,7 +69,7 @@ pub struct GKRProof<
 #[derive(Clone, Debug)]
 pub struct WhirSchedule {
     pub base_lde_factor: usize,
-    pub commitment_per_coset_cap_size: usize,
+    pub cap_size: usize,
     pub whir_steps_schedule: Vec<usize>,
     pub whir_queries_schedule: Vec<usize>,
     pub whir_steps_lde_factors: Vec<usize>,
@@ -78,7 +80,7 @@ impl WhirSchedule {
     pub fn default_for_tests_80_bits() -> Self {
         let mut new = Self {
             base_lde_factor: 2,
-            commitment_per_coset_cap_size: 16,
+            cap_size: 16,
             whir_steps_schedule: vec![1, 4, 4, 4, 4, 4],
             whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
             whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
@@ -198,7 +200,7 @@ where
         twiddles,
         whir_schedule.base_lde_factor,
         whir_schedule.whir_steps_schedule[0],
-        whir_schedule.commitment_per_coset_cap_size,
+        whir_schedule.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -216,19 +218,19 @@ where
 
     // commit our setup
     flatten_merkle_caps_iter_into(
-        setup_commitment.cosets.iter().map(|el| el.tree.get_cap()),
+        Some(setup_commitment.tree.get_cap()).into_iter(),
         &mut transcript_input,
     );
 
     // memory
     flatten_merkle_caps_iter_into(
-        mem_oracle.cosets.iter().map(|el| el.tree.get_cap()),
+        Some(mem_oracle.tree.get_cap()).into_iter(),
         &mut transcript_input,
     );
 
     // and witness
     flatten_merkle_caps_iter_into(
-        wit_oracle.cosets.iter().map(|el| el.tree.get_cap()),
+        Some(wit_oracle.tree.get_cap()).into_iter(),
         &mut transcript_input,
     );
 
@@ -238,11 +240,6 @@ where
     let challenges: Vec<E> = draw_random_field_els(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
-    // let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] = [
-    //     E::from_base(F::from_u32_unchecked(42)),
-    //     E::from_base(F::from_u32_unchecked(127)),
-    //     E::from_base(F::from_u32_unchecked(0xff)),
-    // ];
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -288,6 +285,51 @@ where
         worker
     ));
 
+    let final_trace_size_log_2 = 4;
+
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
+        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+            &mut gkr_storage,
+            compiled_circuit,
+            trace_len.trailing_zeros() as usize,
+            final_trace_size_log_2,
+            worker,
+        );
+
+    assert!(debug_utils::check_logup_identity_after_dimension_reduction(
+        &dimension_reducing_inputs,
+        &gkr_storage,
+        worker
+    ));
+
+    println!("Forward sumcheck loop is done, outputing explicit small polynomials");
+
+    // get final evaluations
+    let mut evals_flattened = vec![];
+    for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
+        match *k {
+            OutputType::PermutationProduct => {
+                for addr in v.output.iter() {
+                    let poly = gkr_storage.get_ext_poly(*addr);
+                    evals_flattened.extend_from_slice(poly);
+                }
+            }
+            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
+                let [num, den] = v.output.clone().try_into().unwrap();
+                evals_flattened.extend_from_slice(gkr_storage.get_ext_poly(num));
+                evals_flattened.extend_from_slice(gkr_storage.get_ext_poly(den));
+            }
+        }
+    }
+    commit_field_els(&mut seed, &evals_flattened);
+
+    let num_challenges = final_trace_size_log_2 + 1;
+    let mut challenges = draw_random_field_els::<F, E>(&mut seed, num_challenges);
+    let batching_challenge = challenges.pop().unwrap();
+
+    println!("Evaluating initial claims for sumcheck loop");
+
+    let evaluation_point = challenges;
     let (
         claim_readset,
         claim_writeset,
@@ -297,45 +339,90 @@ where
         claim_timecheckden,
         claim_lookupnum,
         claim_lookupden,
-        evaluation_point,
-    ) = debug_utils::mock_output_claims(compiled_circuit, &gkr_storage, trace_len);
+    ) = compute_initial_sumcheck_claims(
+        &gkr_storage,
+        &evaluation_point,
+        &dimension_reducing_inputs[&initial_layer_for_sumcheck],
+    );
 
-    let output_map = &compiled_circuit.global_output_map;
+    // let (
+    //     claim_readset,
+    //     claim_writeset,
+    //     claim_rangechecknum,
+    //     claim_rangecheckden,
+    //     claim_timechecknum,
+    //     claim_timecheckden,
+    //     claim_lookupnum,
+    //     claim_lookupden,
+    //     evaluation_point,
+    // ) = debug_utils::mock_output_claims(compiled_circuit, &gkr_storage, trace_len);
+
+    // let output_map = &compiled_circuit.global_output_map;
     let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
-
+    let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
     top_layer_claims.insert(
-        output_map[&OutputType::PermutationProduct][0],
+        output_map[&OutputType::PermutationProduct].output[0],
         claim_readset,
     );
     top_layer_claims.insert(
-        output_map[&OutputType::PermutationProduct][1],
+        output_map[&OutputType::PermutationProduct].output[1],
         claim_writeset,
     );
     top_layer_claims.insert(
-        output_map[&OutputType::Lookup16Bits][0],
+        output_map[&OutputType::Lookup16Bits].output[0],
         claim_rangechecknum,
     );
     top_layer_claims.insert(
-        output_map[&OutputType::Lookup16Bits][1],
+        output_map[&OutputType::Lookup16Bits].output[1],
         claim_rangecheckden,
     );
     top_layer_claims.insert(
-        output_map[&OutputType::LookupTimestamps][0],
+        output_map[&OutputType::LookupTimestamps].output[0],
         claim_timechecknum,
     );
     top_layer_claims.insert(
-        output_map[&OutputType::LookupTimestamps][1],
+        output_map[&OutputType::LookupTimestamps].output[1],
         claim_timecheckden,
     );
-    top_layer_claims.insert(output_map[&OutputType::GenericLookup][0], claim_lookupnum);
-    top_layer_claims.insert(output_map[&OutputType::GenericLookup][1], claim_lookupden);
+    top_layer_claims.insert(
+        output_map[&OutputType::GenericLookup].output[0],
+        claim_lookupnum,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::GenericLookup].output[1],
+        claim_lookupden,
+    );
+
+    println!("Sumcheck loop is starting");
 
     // then we go "backward", by taking random point evaluation claims from the previous layer, and producing claims for the next layer
     let mut claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E>> = BTreeMap::new();
     let mut points_for_claims_at_layer = BTreeMap::new();
 
-    claims_for_layers.insert(compiled_circuit.layers.len(), top_layer_claims);
-    points_for_claims_at_layer.insert(compiled_circuit.layers.len(), evaluation_point);
+    claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
+    points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
+
+    dbg!(&claims_for_layers);
+    dbg!(&points_for_claims_at_layer);
+
+    let mut sumcheck_batching_challenge = batching_challenge;
+    let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
+        sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+            layer_idx,
+            &layer,
+            &mut points_for_claims_at_layer,
+            &mut claims_for_layers,
+            &mut gkr_storage,
+            &mut sumcheck_batching_challenge,
+            &mut seed,
+            1 << reduced_trace_size_log_2,
+            worker,
+        );
+        reduced_trace_size_log_2 += 1;
+    }
+
+    assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
@@ -345,13 +432,13 @@ where
             &mut points_for_claims_at_layer,
             &mut claims_for_layers,
             &mut gkr_storage,
+            &mut sumcheck_batching_challenge,
             compiled_circuit,
-            external_challenges,
             trace_len,
             lookup_additive_part,
             constraints_batch_challenge,
+            &mut seed,
             worker,
-            &mut seed
         );
     }
 
@@ -457,7 +544,7 @@ where
 
     let WhirSchedule {
         base_lde_factor,
-        commitment_per_coset_cap_size,
+        cap_size,
         whir_steps_schedule,
         whir_queries_schedule,
         whir_steps_lde_factors,
@@ -480,7 +567,7 @@ where
         whir_pow_schedule,
         twiddles,
         seed,
-        commitment_per_coset_cap_size,
+        cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );

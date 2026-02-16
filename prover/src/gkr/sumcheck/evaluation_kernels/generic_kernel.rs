@@ -18,10 +18,10 @@ pub trait BatchedGKRKernel<F: PrimeField, E: FieldExtension<F> + Field> {
         &self,
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
-        trace_len: usize,
+        input_trace_len: usize,
         worker: &Worker,
     );
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -29,7 +29,7 @@ pub trait BatchedGKRKernel<F: PrimeField, E: FieldExtension<F> + Field> {
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     );
 }
@@ -100,6 +100,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     K: SingleInputTypeBatchSumcheckEvaluationKernel<F, E>,
+    const N: usize,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -109,7 +110,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
     folding_challenges: &[E],
     accumulator: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
-    last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
     assert_eq!(challenges.len(), kernel.num_challenges());

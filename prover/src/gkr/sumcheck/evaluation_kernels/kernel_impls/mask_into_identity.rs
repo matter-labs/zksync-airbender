@@ -42,7 +42,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -50,7 +50,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(

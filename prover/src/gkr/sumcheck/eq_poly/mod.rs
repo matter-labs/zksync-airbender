@@ -159,6 +159,7 @@ pub(crate) fn evaluate_with_precomputed_eq<F: PrimeField, E: FieldExtension<F> +
     result
 }
 
+#[track_caller]
 pub(crate) fn evaluate_with_precomputed_eq_ext<E: Field>(ext_field_values: &[E], eq: &[E]) -> E {
     assert_eq!(ext_field_values.len(), eq.len());
     let mut result = E::ZERO;

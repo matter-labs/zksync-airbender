@@ -1,31 +1,22 @@
 use super::*;
 
 #[derive(Debug)]
-pub struct SameSizeProductGKRRelation {
-    pub inputs: [GKRAddress; 2],
+pub struct PairwiseProductDimensionReducingGKRRelation {
+    pub input: GKRAddress,
     pub output: GKRAddress,
 }
 
-// impl SameSizeProductGKRRelation {
-//     /// Validates that neither input is from a cache, output is not cached
-//     #[inline]
-//     fn validate(&self) -> bool {
-//         !self.inputs[0].is_cache() && !self.inputs[1].is_cache() && !self.output.is_cache()
-//     }
-// }
-
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for SameSizeProductGKRRelation
+    for PairwiseProductDimensionReducingGKRRelation
 {
     fn num_challenges(&self) -> usize {
         1
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        // debug_assert!(self.validate());
         GKRInputs {
             inputs_in_base: Vec::new(),
-            inputs_in_extension: self.inputs.to_vec(),
+            inputs_in_extension: vec![self.input],
             outputs_in_base: Vec::new(),
             outputs_in_extension: vec![self.output],
         }
@@ -35,17 +26,17 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         &self,
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
-        trace_len: usize,
+        input_trace_len: usize,
         worker: &Worker,
     ) {
-        let kernel = ProductGKRRelationKernel::default();
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
-        forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+        let kernel = PairwiseProductDimensionReducingGKRRelationKernel::default();
+        forward_evaluate_dimension_reducing_kernel(
             &kernel,
             &inputs,
             storage,
             expected_output_layer,
-            trace_len,
+            input_trace_len,
             worker,
         );
     }
@@ -65,7 +56,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             batch_challenges.len(),
             <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
         );
-        let kernel = ProductGKRRelationKernel::default();
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
 
         // println!(
@@ -74,7 +64,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         //     &inputs
         // );
 
-        evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs(
+        let kernel = PairwiseProductDimensionReducingGKRRelationKernel::default();
+        evaluate_single_dimension_reducing_kernel(
             &kernel,
             &inputs,
             storage,
@@ -91,18 +82,23 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
 // Shared product kernel (compute a * b)
 #[derive(Default)]
-pub struct ProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
+pub struct PairwiseProductDimensionReducingGKRRelationKernel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+> {
     _marker: core::marker::PhantomData<(F, E)>,
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1> for ProductGKRRelationKernel<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field> DimensionReducingEvaluationKernel<F, E, 1, 1>
+    for PairwiseProductDimensionReducingGKRRelationKernel<F, E>
 {
-    #[inline(always)]
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
-        let [a, b] = input;
-        let mut a = *a;
-        a.repr_mul_assign::<false>(b);
+    fn pointwise_eval(
+        &self,
+        a: &[ExtensionFieldRepresentation<F, E>; 1],
+        b: &[ExtensionFieldRepresentation<F, E>; 1],
+    ) -> [E; 1] {
+        let mut a = a[0];
+        a.repr_mul_assign::<false>(&b[0]);
         [a.into_value()]
     }
 }

@@ -296,6 +296,7 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     const IN_EXT: usize,
     const OUT: usize,
     K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
+    const N: usize,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -305,7 +306,7 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     folding_challenges: &[E],
     accumulator: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
-    last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
     assert!(total_sumcheck_rounds >= 4);

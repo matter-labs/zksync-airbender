@@ -431,7 +431,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // };
 
             let whir_schedule = WhirSchedule::default_for_tests_80_bits();
-            dbg!(&whir_schedule);
 
             println!("Trying to prove");
 

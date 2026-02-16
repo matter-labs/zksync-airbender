@@ -27,7 +27,7 @@ pub type DefaultTreeConstructor =
 //         std::alloc::Global,
 //     >;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct MerkleTreeCapVarLength {
     pub cap: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
 }
@@ -99,12 +99,24 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn dummy() -> Self;
 
-    fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
-        trace: &[&[E]],
+    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
+    //     trace: &[&[E]],
+    //     combine_by: usize,
+    //     cap_size: usize,
+    //     bitreverse_input: bool,
+    //     bitreverse_output: bool,
+    //     worker: &Worker,
+    // ) -> Self
+    // where
+    //     [(); E::DEGREE]: Sized;
+
+    fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
+        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
         combine_by: usize,
         cap_size: usize,
-        bitreverse_input: bool,
-        bitreverse_output: bool,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
         worker: &Worker,
     ) -> Self
     where

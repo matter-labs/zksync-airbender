@@ -53,7 +53,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -61,7 +61,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
@@ -265,7 +265,7 @@ fn pointwise_eval_quadratic_only_impl<
     ext_input: &[ExtensionFieldRepresentation<F, E>; 2],
     ctx: &RB::CollapseContext,
 ) -> [E; 2] {
-    // X^2 coefficient of: a/b + 1/d -> (a_delta * d_delta), (b_delta * d_delta)
+    // a/b + 1/(d+constant) -> (ad), bd
     let [d] = input;
     let [a, b] = ext_input;
     let num = d.mul_by_ext::<true>(&a.value, ctx);

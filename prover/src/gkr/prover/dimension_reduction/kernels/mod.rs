@@ -1,12 +1,14 @@
-use crate::gkr::{
-    prover::{apply_row_wise, split_destinations},
-    sumcheck::access_and_fold::ExtensionFieldPoly,
-};
-
 use super::*;
+use crate::gkr::sumcheck::access_and_fold::*;
 use std::mem::MaybeUninit;
 
-pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
+pub mod logup;
+pub mod pairwise_product;
+
+// Such kernels assume that for pairwise dimension reduction "fixed" index variable encodes LSB.
+// In their essence the access pattern is always as
+// p_next(X) = \sum eq(Y, X) max_quadratic_fn(p(Y, 0), p(Y, 1), q(Y, 0), q(Y, 1))
+pub trait DimensionReducingEvaluationKernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     const IN: usize,
@@ -19,10 +21,13 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         index: usize,
         sources: &[S; IN],
     ) -> [E; OUT] {
+        debug_assert_eq!(index % 2, 0);
         assert!(IN > 0);
         assert!(OUT > 0);
-        let p0s = std::array::from_fn(|i| sources[i].get_at_index(index));
-        let eval = self.pointwise_eval_forward(&p0s);
+        let pairwise_index = index + 1;
+        let a = std::array::from_fn(|i| sources[i].get_at_index(index));
+        let b = std::array::from_fn(|i| sources[i].get_at_index(pairwise_index));
+        let eval = self.pointwise_eval_forward(&a, &b);
 
         eval
     }
@@ -38,8 +43,10 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         output_sources: &[SOUT; OUT],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
+        debug_assert_eq!(index % 2, 0);
         assert!(IN > 0);
         assert!(OUT > 0);
+        let pairwise_index = index + 1;
         unsafe {
             let mut result = [const { MaybeUninit::uninit() }; 2];
             // we have access to output
@@ -55,8 +62,11 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
                 result[0].write(eval);
             }
             {
-                let sources = sources.each_ref().map(|el| el.get_f1_minus_f0_only(index));
-                let evals = self.pointwise_eval(&sources);
+                let a = sources.each_ref().map(|el| el.get_f1_minus_f0_only(index));
+                let b = sources
+                    .each_ref()
+                    .map(|el| el.get_f1_minus_f0_only(pairwise_index));
+                let evals = self.pointwise_eval(&a, &b);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -81,22 +91,34 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         sources: &[S; IN],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
+        debug_assert_eq!(index % 2, 0);
         assert!(IN > 0);
         assert!(OUT > 0);
+        let pairwise_index = index + 1;
         unsafe {
             let mut result = [const { MaybeUninit::uninit() }; 2];
-            let mut p0s = [const { MaybeUninit::uninit() }; IN];
-            let mut p1s = [const { MaybeUninit::uninit() }; IN];
+            let mut a0s = [const { MaybeUninit::uninit() }; IN];
+            let mut a1s = [const { MaybeUninit::uninit() }; IN];
             for i in 0..IN {
                 let [f0, f1] = sources[i].get_two_points::<EXPLICIT_FORM>(index);
-                p0s[i].write(f0);
-                p1s[i].write(f1);
+                a0s[i].write(f0);
+                a1s[i].write(f1);
             }
-            let p0s = p0s.map(|el| el.assume_init());
-            let p1s = p1s.map(|el| el.assume_init());
+            let a0s = a0s.map(|el| el.assume_init());
+            let a1s = a1s.map(|el| el.assume_init());
 
-            for (j, p) in [&p0s, &p1s].into_iter().enumerate() {
-                let evals = self.pointwise_eval(p);
+            let mut b0s = [const { MaybeUninit::uninit() }; IN];
+            let mut b1s = [const { MaybeUninit::uninit() }; IN];
+            for i in 0..IN {
+                let [f0, f1] = sources[i].get_two_points::<EXPLICIT_FORM>(pairwise_index);
+                b0s[i].write(f0);
+                b1s[i].write(f1);
+            }
+            let b0s = b0s.map(|el| el.assume_init());
+            let b1s = b1s.map(|el| el.assume_init());
+
+            for (j, (a, b)) in [(&a0s, &b0s), (&a1s, &b1s)].into_iter().enumerate() {
+                let evals = self.pointwise_eval(a, b);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -111,80 +133,38 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         }
     }
 
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT];
+    fn pointwise_eval(
+        &self,
+        a: &[ExtensionFieldRepresentation<F, E>; IN],
+        b: &[ExtensionFieldRepresentation<F, E>; IN],
+    ) -> [E; OUT];
 
     #[inline(always)]
-    fn pointwise_eval_forward(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT] {
-        self.pointwise_eval(input)
+    fn pointwise_eval_forward(
+        &self,
+        a: &[ExtensionFieldRepresentation<F, E>; IN],
+        b: &[ExtensionFieldRepresentation<F, E>; IN],
+    ) -> [E; OUT] {
+        self.pointwise_eval(a, b)
     }
 }
 
-#[inline(always)]
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel<
+pub fn forward_evaluate_dimension_reducing_kernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     const IN: usize,
     const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    const EXPLICIT_FORM: bool,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[S],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate::<S, EXPLICIT_FORM>(kernel, index, inputs, challenges)
-    }
-}
-
-#[inline(always)]
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel_first_round<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN: usize,
-    const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    SOUT: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[S],
-    outputs: &[SOUT],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
-    debug_assert_eq!(outputs.len(), OUT);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let outputs = outputs.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate_first_round::<S, SOUT>(kernel, index, inputs, outputs, challenges)
-    }
-}
-
-pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN: usize,
-    const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
+    K: DimensionReducingEvaluationKernel<F, E, IN, OUT>,
 >(
     kernel: &K,
     inputs: &GKRInputs,
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
-    trace_len: usize,
+    input_trace_len: usize,
     worker: &Worker,
 ) {
-    assert!(trace_len.is_power_of_two());
+    assert!(input_trace_len.is_power_of_two());
+    let output_trace_len = input_trace_len / 2;
     unsafe {
         let mut inputs = inputs.clone();
         let outputs = std::mem::replace(&mut inputs.outputs_in_extension, vec![]);
@@ -195,7 +175,7 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(Box::<[E]>::new_uninit_slice(trace_len));
+            destinations.push(Box::<[E]>::new_uninit_slice(output_trace_len));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {
@@ -207,14 +187,14 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
         apply_row_wise::<F, _>(
             vec![],
             destinations_refs,
-            trace_len,
+            output_trace_len,
             worker,
             |_, ext_dest, chunk_start, chunk_size| {
                 assert_eq!(ext_dest.len(), OUT);
                 let mut destinations: [&mut [MaybeUninit<E>]; OUT] = ext_dest.try_into().unwrap();
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
-                    let value = kernel.evaluate_forward(absolute_index, inputs);
+                    let value = kernel.evaluate_forward(absolute_index * 2, inputs);
                     for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
                         dst[index].write(val);
                     }
@@ -233,12 +213,12 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
     }
 }
 
-pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
+pub fn evaluate_single_dimension_reducing_kernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     const IN: usize,
     const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
+    K: DimensionReducingEvaluationKernel<F, E, IN, OUT>,
     const N: usize,
 >(
     kernel: &K,
@@ -272,6 +252,14 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                         .unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
 
+                    // self-check the sizes
+                    for el in inputs.iter() {
+                        assert_eq!(work_size * 2, el.next_layer_size);
+                    }
+                    for el in outputs.iter() {
+                        assert_eq!(work_size, el.next_layer_size);
+                    }
+
                     apply_row_wise::<F, _>(
                         vec![],
                         vec![accumulator],
@@ -283,7 +271,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate_first_round(
-                                    absolute_index,
+                                    absolute_index * 2,
                                     inputs,
                                     outputs,
                                     challenges,
@@ -300,6 +288,9 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
 
                     let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
+                    for el in inputs.iter() {
+                        assert_eq!(work_size * 2, el.next_layer_size);
+                    }
 
                     apply_row_wise::<F, _>(
                         vec![],
@@ -311,8 +302,11 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                             let accumulator = ext_dest.pop().unwrap();
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
-                                let value =
-                                    kernel.evaluate::<_, false>(absolute_index, inputs, challenges);
+                                let value = kernel.evaluate::<_, false>(
+                                    absolute_index * 2,
+                                    inputs,
+                                    challenges,
+                                );
                                 for i in 0..2 {
                                     accumulator[index][i].add_assign(&value[i]);
                                 }
@@ -322,7 +316,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                 }
             }
             i if i + 1 == total_sumcheck_rounds => {
-                assert!(i >= 3);
+                assert!(i >= 1);
 
                 let sources =
                     storage.get_for_sumcheck_round_3_and_beyond(inputs, folding_challenges);
@@ -333,6 +327,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
 
                     let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
+
+                    for el in inputs.iter() {
+                        assert_eq!(work_size * 2, el.next_layer_size);
+                    }
 
                     apply_row_wise::<F, _>(
                         vec![],
@@ -367,6 +365,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                     let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
 
+                    for el in inputs.iter() {
+                        assert_eq!(work_size * 2, el.next_layer_size);
+                    }
+
                     apply_row_wise::<F, _>(
                         vec![],
                         vec![accumulator],
@@ -377,8 +379,11 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                             let accumulator = ext_dest.pop().unwrap();
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
-                                let value =
-                                    kernel.evaluate::<_, false>(absolute_index, inputs, challenges);
+                                let value = kernel.evaluate::<_, false>(
+                                    absolute_index * 2,
+                                    inputs,
+                                    challenges,
+                                );
                                 for i in 0..2 {
                                     accumulator[index][i].add_assign(&value[i]);
                                 }

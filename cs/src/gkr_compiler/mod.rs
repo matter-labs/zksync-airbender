@@ -48,7 +48,7 @@ pub enum LookupType {
     Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 pub enum OutputType {
-    PermutationProduct,
+    PermutationProduct = 0,
     Lookup16Bits,
     LookupTimestamps,
     GenericLookup,

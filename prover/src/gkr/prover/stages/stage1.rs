@@ -359,6 +359,7 @@ pub fn commit_trace_part<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
 where
     [(); F::DEGREE]: Sized,
 {
+    let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     let evals = lde_multiple_polys_parallel_from_hypercubes(
         input_on_hypercube,
@@ -366,29 +367,50 @@ where
         lde_factor,
         worker,
     );
-    let mut oracle_for_lde = ColumnMajorBaseOracleForLDE {
-        cosets: Vec::with_capacity(lde_factor),
-    };
+    let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {
-        let trace: Vec<_> = coset.iter().map(|el| &el.column[..]).collect();
-        let tree = T::construct_for_column_major_coset::<F, Global>(
-            &trace,
-            1 << whir_first_fold_step_log2,
-            tree_cap_size,
-            true,
-            false,
-            worker,
-        );
+        assert!(coset.len() > 0);
+        for el in coset.iter() {
+            assert!(el.column.len() > 0);
+        }
+        let offset = coset[0].offset;
         let trace_part = ColumnMajorBaseOracleForCoset {
             original_values_normal_order: coset,
-            tree,
-            values_per_leaf: 1 << whir_first_fold_step_log2,
+            offset,
             trace_len_log2,
         };
-        oracle_for_lde.cosets.push(trace_part);
+        cosets.push(trace_part);
     }
+    let source: Vec<_> = cosets
+        .iter()
+        .map(|el| {
+            let columns: Vec<_> = el
+                .original_values_normal_order
+                .iter()
+                .map(|el| &el.column[..])
+                .collect();
 
-    oracle_for_lde
+            columns
+        })
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<F, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorBaseOracleForLDE {
+        cosets,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
 }
 
 pub fn stage1<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>(

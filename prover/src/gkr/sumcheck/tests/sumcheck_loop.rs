@@ -4,10 +4,10 @@ use std::mem::MaybeUninit;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
 use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use transcript::Seed;
 use worker::Worker;
 
 use super::utils::*;
-use crate::definitions::Transcript;
 use crate::gkr::prover::sumcheck_loop::evaluate_sumcheck_for_layer;
 use crate::gkr::sumcheck::eq_poly::*;
 
@@ -20,7 +20,7 @@ fn test_sumcheck_loop_product() {
     const FOLDING_STEPS: usize = 4;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
 
-    let worker = Worker::new_with_num_threads(8);
+    let worker = Worker::new_with_num_threads(1);
 
     let a = random_poly_in_ext::<F, E>(POLY_SIZE);
     let b = random_poly_in_ext::<F, E>(POLY_SIZE);
@@ -75,7 +75,8 @@ fn test_sumcheck_loop_product() {
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
-    let mut seed = Transcript::commit_initial(&[42]);
+    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E>(
         0,
@@ -83,13 +84,13 @@ fn test_sumcheck_loop_product() {
         &mut claim_points,
         &mut claims_storage,
         &mut storage,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
         lookup_additive_part,
         constraints_batch_challenge,
+        &mut seed,
         &worker,
-        &mut seed
     );
 
     assert!(
@@ -227,7 +228,8 @@ fn test_sumcheck_loop_multiple_gates() {
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
-    let mut seed = Transcript::commit_initial(&[42]);
+    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E>(
         0,
@@ -235,13 +237,13 @@ fn test_sumcheck_loop_multiple_gates() {
         &mut claim_points,
         &mut claims_storage,
         &mut storage,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
         lookup_additive_part,
         constraints_batch_challenge,
+        &mut seed,
         &worker,
-        &mut seed
     );
 
     assert!(claims_storage.contains_key(&0));

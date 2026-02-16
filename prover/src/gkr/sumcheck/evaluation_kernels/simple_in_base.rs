@@ -157,6 +157,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
     const IN: usize,
     const OUT: usize,
     K: BaseFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
+    const N: usize,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -166,7 +167,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
     folding_challenges: &[E],
     accumulator: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
-    last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
     assert!(total_sumcheck_rounds >= 4);

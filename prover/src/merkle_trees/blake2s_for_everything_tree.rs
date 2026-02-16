@@ -268,23 +268,48 @@ impl<F: PrimeField, B: GoodAllocator> ColumnMajorMerkleTreeConstructor<F>
         (this_el_leaf_hash, result)
     }
 
-    fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
-        trace: &[&[E]],
+    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
+    //     trace: &[&[E]],
+    //     combine_by: usize,
+    //     cap_size: usize,
+    //     bitreverse_input: bool,
+    //     bitreverse_output: bool,
+    //     worker: &Worker,
+    // ) -> Self
+    // where
+    //     [(); E::DEGREE]: Sized,
+    // {
+    //     use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_columns;
+    //     let leaf_hashes = blake2s_leaf_hashes_from_columns::<F, E, A, _>(
+    //         trace,
+    //         combine_by,
+    //         bitreverse_input,
+    //         bitreverse_output,
+    //         worker,
+    //     );
+
+    //     Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
+    // }
+
+    fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
+        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
         combine_by: usize,
         cap_size: usize,
-        bitreverse_input: bool,
-        bitreverse_output: bool,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
         worker: &Worker,
     ) -> Self
     where
         [(); E::DEGREE]: Sized,
     {
-        use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_columns;
-        let leaf_hashes = blake2s_leaf_hashes_from_columns::<F, E, A, _>(
+        use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
+        let leaf_hashes = blake2s_leaf_hashes_from_cosets::<F, E, A, _>(
             trace,
             combine_by,
-            bitreverse_input,
-            bitreverse_output,
+            bitreverse_evaluations,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
             worker,
         );
 

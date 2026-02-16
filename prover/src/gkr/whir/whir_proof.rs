@@ -4,14 +4,14 @@ use crate::merkle_trees::MerkleTreeCapVarLength;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WhirCommitment<F: PrimeField, T: ColumnMajorMerkleTreeConstructor<F>> {
-    pub coset_caps: Vec<MerkleTreeCapVarLength>,
+    pub cap: MerkleTreeCapVarLength,
     pub _marker: core::marker::PhantomData<(F, T)>,
 }
 
 impl<F: PrimeField, T: ColumnMajorMerkleTreeConstructor<F>> Default for WhirCommitment<F, T> {
     fn default() -> Self {
         Self {
-            coset_caps: vec![],
+            cap: MerkleTreeCapVarLength::default(),
             _marker: core::marker::PhantomData,
         }
     }

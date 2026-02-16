@@ -322,23 +322,12 @@ fn test_simple_product() {
             let [[f0, f1]] = accumulator;
             let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
 
-            let mut inner_candidate = f0;
-            inner_candidate.add_assign(&f1);
-
             let mut t0 = eq0;
             t0.mul_assign(&f0);
             let mut t1 = eq1;
             t1.mul_assign(&f1);
             let mut claim_inner = t0;
             claim_inner.add_assign(&t1);
-
-            dbg!(claim_inner);
-
-            {
-                let mut tt = claim;
-                tt.mul_assign(&claim_inner.inverse().unwrap());
-                dbg!(tt);
-            }
 
             let mut recomputed_claim = claim_inner;
             recomputed_claim.mul_assign(&last_eq_poly_prefactor_contribution);
