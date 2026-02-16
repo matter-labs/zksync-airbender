@@ -260,7 +260,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             .map(|(a, b)| a - b)
             .collect_array::<MAX_NUM_COUNTERS>()
             .unwrap();
-        let expected_cycles = counters_diff.iter().take(6).sum::<u32>() as usize;
+        let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
         assert_eq!(expected_cycles, cycles_count);
         let trace_ranges = self
             .tracing_data_producers

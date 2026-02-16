@@ -355,39 +355,39 @@ fn run_and_compare() {
         // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
 
         assert_eq!(
-            reference_state.counters.add_sub_family as u32,
+            reference_state.counters.add_sub_family as u64,
             jit_state.counters[CounterType::AddSubLui as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.slt_branch_family as u32,
+            reference_state.counters.slt_branch_family as u64,
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u32,
+            reference_state.counters.binary_shift_csr_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.mul_div_family as u32,
+            reference_state.counters.mul_div_family as u64,
             jit_state.counters[CounterType::MulDiv as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.word_size_mem_family as u32,
+            reference_state.counters.word_size_mem_family as u64,
             jit_state.counters[CounterType::MemWord as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.subword_size_mem_family as u32,
+            reference_state.counters.subword_size_mem_family as u64,
             jit_state.counters[CounterType::MemSubword as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.blake_calls as u32,
+            reference_state.counters.blake_calls as u64,
             jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.bigint_calls as u32,
+            reference_state.counters.bigint_calls as u64,
             jit_state.counters[CounterType::BigintDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.keccak_calls as u32,
+            reference_state.counters.keccak_calls as u64,
             jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
         );
 
@@ -566,39 +566,39 @@ fn run_recursion_and_compare() {
         // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
 
         assert_eq!(
-            reference_state.counters.add_sub_family as u32,
+            reference_state.counters.add_sub_family as u64,
             jit_state.counters[CounterType::AddSubLui as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.slt_branch_family as u32,
+            reference_state.counters.slt_branch_family as u64,
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u32,
+            reference_state.counters.binary_shift_csr_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.mul_div_family as u32,
+            reference_state.counters.mul_div_family as u64,
             jit_state.counters[CounterType::MulDiv as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.word_size_mem_family as u32,
+            reference_state.counters.word_size_mem_family as u64,
             jit_state.counters[CounterType::MemWord as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.subword_size_mem_family as u32,
+            reference_state.counters.subword_size_mem_family as u64,
             jit_state.counters[CounterType::MemSubword as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.blake_calls as u32,
+            reference_state.counters.blake_calls as u64,
             jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.bigint_calls as u32,
+            reference_state.counters.bigint_calls as u64,
             jit_state.counters[CounterType::BigintDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.keccak_calls as u32,
+            reference_state.counters.keccak_calls as u64,
             jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
         );
 
