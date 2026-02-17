@@ -7,18 +7,19 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     libssl-dev \
-    pkg-config
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 # The version of compiler must pinned and in sync with the one specified in `../verifier/rust-toolchain.toml`.
 ENV RUST_VERSION=nightly-2026-02-10
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VERSION"
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN rustup target add riscv32i-unknown-none-elf
-RUN rustup component add llvm-tools-preview
-RUN rustup component add rust-src
-RUN cargo install cargo-binutils
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VERSION" \
+    && rustup target add riscv32i-unknown-none-elf \
+    && rustup component add llvm-tools-preview \
+    && rustup component add rust-src \
+    && cargo install cargo-binutils
 
 COPY . zksync-airbender
 

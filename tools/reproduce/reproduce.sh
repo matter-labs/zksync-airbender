@@ -13,9 +13,17 @@ docker create --name verifiers airbender-verifiers
 
 FILES=(
     recursion_in_unified_layer.bin
-    recursion_in_unrolled_layer.bin
+    recursion_in_unified_layer.elf
+    recursion_in_unified_layer.text
     recursion_in_unified_layer_security_100_bits.bin
+    recursion_in_unified_layer_security_100_bits.elf
+    recursion_in_unified_layer_security_100_bits.text
+    recursion_in_unrolled_layer.bin
+    recursion_in_unrolled_layer.elf
+    recursion_in_unrolled_layer.text
     recursion_in_unrolled_layer_security_100_bits.bin
+    recursion_in_unrolled_layer_security_100_bits.elf
+    recursion_in_unrolled_layer_security_100_bits.text
 )
 
 for FILE in "${FILES[@]}"; do
