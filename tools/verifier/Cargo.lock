@@ -424,6 +424,7 @@ version = "0.1.0"
 dependencies = [
  "common_constants",
  "heapless",
+ "seq-macro",
 ]
 
 [[package]]
