@@ -437,11 +437,11 @@ fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: 
 
     if by == 1 {
         dynasm!(ops
-            ; inc DWORD [rsp + 4 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)]
+            ; inc QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)]
         );
     } else {
         dynasm!(ops
-            ; add DWORD [rsp + 4 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)], by as i32
+            ; add QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)], by as i32
         );
     }
 }

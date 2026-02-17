@@ -66,7 +66,7 @@ const _: () = const {
 pub struct MachineState {
     pub registers: [u32; 32], // aligned at 16, so we can write XMMs directly into the stack
     pub register_timestamps: [TimestampScalar; 32],
-    pub counters: [u32; MAX_NUM_COUNTERS],
+    pub counters: [u64; MAX_NUM_COUNTERS],
     pub pc: u32,
     pub timestamp: TimestampScalar,
     pub(crate) context_ptr: *mut (),

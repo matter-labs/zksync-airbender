@@ -119,8 +119,8 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
-impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
-    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
+    fn from(counters: [u64; MAX_NUM_COUNTERS]) -> Self {
         Self {
             add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
             slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
@@ -204,8 +204,8 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
 }
 
-impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
-    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
+    fn from(counters: [u64; MAX_NUM_COUNTERS]) -> Self {
         let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
         let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
         let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
