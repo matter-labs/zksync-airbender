@@ -29,12 +29,13 @@ use era_cudart::stream::CudaStream;
 use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
-use field::Field;
+use field::{Field, PrimeField};
 use itertools::Itertools;
 use prover::gkr::prover::setup::GKRSetup;
-use prover::gkr::prover::{prove_configured_with_gkr, GKRExternalChallenges};
+use prover::gkr::prover::{prove_configured_with_gkr, GKRExternalChallenges, WhirSchedule};
 use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
+    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
@@ -56,6 +57,23 @@ use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 use worker::Worker;
 
+fn ensure_memory_trace_consistency<F: PrimeField>(
+    memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl std::alloc::Allocator + Clone, impl std::alloc::Allocator + Clone>,
+    witness_trace: &GKRFullWitnessTrace<F, impl std::alloc::Allocator + Clone, impl std::alloc::Allocator + Clone>,
+) {
+    assert_eq!(
+        memory_trace.column_major_trace.len(),
+        witness_trace.column_major_memory_trace.len()
+    );
+    for (col, from_mem) in memory_trace.column_major_trace.iter().enumerate() {
+        let from_wit = &witness_trace.column_major_memory_trace[col];
+        assert_eq!(from_mem.len(), from_wit.len());
+        for (row, (a, b)) in from_mem.iter().zip(from_wit.iter()).enumerate() {
+            assert_eq!(*a, *b, "diverged for column {}, row {}", col, row);
+        }
+    }
+}
+
 #[test]
 #[serial]
 fn run_basic_unrolled_test() {
@@ -71,7 +89,7 @@ fn run_basic_unrolled_test() {
     let lde_factor = 2;
     let tree_cap_size = 32;
 
-    let worker = Worker::new();
+    let worker = Worker::new_with_num_threads(8);
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
@@ -317,7 +335,7 @@ fn run_basic_unrolled_test() {
     };
 
     println!("Computing memory trace");
-    let _memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &add_sub_circuit,
         NUM_CYCLES_PER_CHUNK,
         &oracle,
@@ -383,6 +401,7 @@ fn run_basic_unrolled_test() {
         Global,
         Global,
     );
+    ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     // parse_state_permutation_elements_from_full_trace(
     //     &add_sub_circuit,
@@ -403,6 +422,7 @@ fn run_basic_unrolled_test() {
 
     println!("Preparing twiddles");
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
     // let lde_precomputations =
     //     LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
     println!("Preparing setup");
@@ -415,7 +435,7 @@ fn run_basic_unrolled_test() {
 
     let setup_commitment = setup.commit(
         &twiddles,
-        2,
+        lde_factor,
         1,
         tree_cap_size,
         trace_len.trailing_zeros() as usize,
@@ -484,7 +504,7 @@ fn run_basic_unrolled_test() {
             )
             .unwrap();
         for (h, d) in h_setup.iter().zip(d_setup.chunks_mut(NUM_CYCLES_PER_CHUNK)) {
-            memory_copy(d, h).unwrap();
+            memory_copy(d, &h[..]).unwrap();
         }
         let d_generic_lookup_tables = &d_setup[2 * NUM_CYCLES_PER_CHUNK..];
         let mut d_witness = context
@@ -553,11 +573,6 @@ fn run_basic_unrolled_test() {
             let mut cpu_row = vec![];
             let mut gpu_row = vec![];
             for col in 0..witness_layout.total_width {
-                if col == witness_layout.multiplicities_columns_for_range_check_16
-                    || col == witness_layout.multiplicities_columns_for_timestamp_range_check
-                {
-                    continue;
-                }
                 let cpu_col = &full_trace.column_major_witness_trace[col];
                 let gpu_col = &h_witness[col * NUM_CYCLES_PER_CHUNK..][..NUM_CYCLES_PER_CHUNK];
                 cpu_row.push(cpu_col[row]);
@@ -565,30 +580,23 @@ fn run_basic_unrolled_test() {
             }
             assert_eq!(cpu_row, gpu_row, "row {} is not equal", row);
         }
-        let col = witness_layout.multiplicities_columns_for_range_check_16;
-        let cpu_col = &full_trace.column_major_witness_trace[col][..128];
-        let gpu_col = &h_witness[col * NUM_CYCLES_PER_CHUNK..][..128];
-        assert_eq!(cpu_col, gpu_col, "col {} is not equal", col);
     }
 
     println!("Trying to prove");
 
     let now = std::time::Instant::now();
-    let (_prover_data, _proof) =
-        prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-            &add_sub_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            lde_factor,
-            53,
-            28,
-            None,
-            trace_len,
-            &worker,
-        );
+    let _proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        &add_sub_circuit,
+        &external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &whir_schedule,
+        None,
+        trace_len,
+        &worker,
+    );
     println!("Proving time is {:?}", now.elapsed());
 }
 
