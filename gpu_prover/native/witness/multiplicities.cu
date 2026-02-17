@@ -13,10 +13,12 @@ EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __rest
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
     return;
-  if (gid >= num_runs[0] - 1)
+  if (gid >= num_runs[0])
     return;
-  const unsigned stride = multiplicities.stride - 1;
+  const unsigned stride = multiplicities.stride;
   const u32 index = unique_indexes[gid];
+  if (index == 0xffffffffu)
+    return;
   const unsigned row = index % stride;
   const unsigned col = index / stride;
   const bf value = bf::from_canonical_u32(counts[gid]);
