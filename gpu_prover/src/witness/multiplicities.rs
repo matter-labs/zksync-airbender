@@ -7,7 +7,7 @@ use crate::device_structures::{
 use crate::field::BF;
 use crate::ops::cub::device_radix_sort::{get_sort_keys_temp_storage_bytes, sort_keys};
 use crate::ops::cub::device_run_length_encode::{encode, get_encode_temp_storage_bytes};
-use crate::ops::simple::set_by_val;
+use crate::ops::simple::set_to_zero;
 use crate::prover::context::ProverContext;
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
@@ -36,17 +36,18 @@ pub fn generate_generic_lookup_multiplicities(
     assert!(stride.is_power_of_two());
     assert_eq!(stride, multiplicities.stride());
     let stream = context.get_exec_stream();
+    // Multiplicity generation only writes entries present in lookup mappings.
+    // Clear the whole destination first to avoid stale values in untouched rows.
+    set_to_zero(multiplicities.slice_mut(), stream)?;
     let lookup_mapping_slice = lookup_mapping.slice();
     let lookup_mapping_size = lookup_mapping_slice.len();
     let mut sorted_lookup_mapping =
         context.alloc(lookup_mapping_size, AllocationPlacement::BestFit)?;
     assert!(lookup_mapping_size <= u32::MAX as usize);
     let lookup_mapping_size = lookup_mapping_size as u32;
-    let lookup_mapping_bits_count = multiplicities
-        .slice()
-        .len()
-        .next_power_of_two()
-        .trailing_zeros() as i32;
+    // Sort by full key width so placeholder values (e.g. u32::MAX) never alias
+    // valid table indexes due to truncated radix bits.
+    let lookup_mapping_bits_count = u32::BITS as i32;
     let lookup_mapping_sort_temp_storage_size = get_sort_keys_temp_storage_bytes::<u32>(
         false,
         lookup_mapping_size,
@@ -159,8 +160,10 @@ pub fn generate_range_check_multiplicities(
         witness_layout.range_check_16_lookup_expressions.len() * trace_len,
         AllocationPlacement::BestFit,
     )?;
-    let range_check_16_lookup_mapping =
-        range_check_16_lookup_mapping_allocation.as_mut_ptr_and_stride();
+    let mut range_check_16_lookup_mapping = DeviceMatrixMut::new(
+        &mut range_check_16_lookup_mapping_allocation,
+        trace_len,
+    );
     let mut range_check_timestamp_lookup_mapping_allocation = context.alloc(
         witness_layout
             .timestamp_range_check_lookup_expressions
@@ -168,8 +171,10 @@ pub fn generate_range_check_multiplicities(
             * trace_len,
         AllocationPlacement::BestFit,
     )?;
-    let range_check_timestamp_lookup_mapping =
-        range_check_timestamp_lookup_mapping_allocation.as_mut_ptr_and_stride();
+    let mut range_check_timestamp_lookup_mapping = DeviceMatrixMut::new(
+        &mut range_check_timestamp_lookup_mapping_allocation,
+        trace_len,
+    );
     {
         let range_check_16_lookup_expressions =
             (&circuit.witness_layout.range_check_16_lookup_expressions).into();
@@ -187,9 +192,9 @@ pub fn generate_range_check_multiplicities(
             memory,
             witness,
             range_check_16_lookup_expressions,
-            range_check_16_lookup_mapping,
+            range_check_16_lookup_mapping.as_mut_ptr_and_stride(),
             range_check_timestamp_lookup_expressions,
-            range_check_timestamp_lookup_mapping,
+            range_check_timestamp_lookup_mapping.as_mut_ptr_and_stride(),
             trace_len as u32,
         );
         GenerateRangeCheckLookupMappingsFunction::default().launch(&config, &args)?;
