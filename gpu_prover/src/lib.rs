@@ -1,6 +1,8 @@
+#![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(pointer_is_aligned_to)]
 #![feature(btree_cursors)]
+#![feature(generic_const_exprs)]
+#![feature(pointer_is_aligned_to)]
 
 pub(crate) mod allocator;
 pub(crate) mod circuit_type;
