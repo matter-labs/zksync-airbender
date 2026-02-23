@@ -13,6 +13,7 @@ macro_rules! field_size {
 
 use super::size_constants::*;
 use crate::skeleton::*;
+use verifier_common::slice_from_ptr_range;
 use core::mem::offset_of;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;
@@ -33,6 +34,7 @@ pub type ProofSkeletonInstance = ProofSkeleton<
     NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
     NUM_OPENINGS_AT_Z,
     NUM_OPENINGS_AT_Z_OMEGA,
+    NUM_FRI_STEPS,
     NUM_FRI_STEPS_WITH_ORACLES,
     LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET,
     FRI_FINAL_DEGREE,
@@ -110,9 +112,9 @@ pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usiz
     assert!(offset_of!(ProofSkeletonInstance, monomial_coeffs) == total_size,);
 
     total_size += field_size!(ProofSkeletonInstance::monomial_coeffs);
-    assert!(offset_of!(ProofSkeletonInstance, pow_nonce) == total_size,);
+    assert!(offset_of!(ProofSkeletonInstance, pow_challenges) == total_size,);
 
-    total_size += field_size!(ProofSkeletonInstance::pow_nonce);
+    total_size += field_size!(ProofSkeletonInstance::pow_challenges);
 
     assert!(total_size <= core::mem::size_of::<ProofSkeletonInstance>());
 
@@ -300,7 +302,7 @@ impl ProofSkeletonInstance {
             i += 1;
         }
         // monomial coeffs
-        while i < offset_of!(ProofSkeletonInstance, pow_nonce) / core::mem::size_of::<u32>() {
+        while i < offset_of!(ProofSkeletonInstance, pow_challenges) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
@@ -329,7 +331,7 @@ impl ProofSkeletonInstance {
             let end = (self as *const Self)
                 .cast::<u32>()
                 .add(offset_of!(ProofSkeletonInstance, stage_2_caps) / core::mem::size_of::<u32>());
-            core::slice::from_ptr_range(start..end)
+            slice_from_ptr_range(start..end)
         }
     }
 
@@ -341,7 +343,7 @@ impl ProofSkeletonInstance {
             let end = (self as *const Self).cast::<u32>().add(
                 offset_of!(ProofSkeletonInstance, quotient_caps) / core::mem::size_of::<u32>(),
             );
-            core::slice::from_ptr_range(start..end)
+            slice_from_ptr_range(start..end)
         }
     }
 
@@ -353,7 +355,7 @@ impl ProofSkeletonInstance {
             let end = (self as *const Self).cast::<u32>().add(
                 offset_of!(ProofSkeletonInstance, openings_at_z) / core::mem::size_of::<u32>(),
             );
-            core::slice::from_ptr_range(start..end)
+            slice_from_ptr_range(start..end)
         }
     }
 
@@ -366,7 +368,7 @@ impl ProofSkeletonInstance {
                 offset_of!(ProofSkeletonInstance, fri_intermediate_oracles)
                     / core::mem::size_of::<u32>(),
             );
-            core::slice::from_ptr_range(start..end)
+            slice_from_ptr_range(start..end)
         }
     }
 
@@ -385,7 +387,7 @@ impl ProofSkeletonInstance {
             core::array::from_fn(|i| {
                 let start = start_of_oracles.add(i * cap_size_u32_words);
                 let end = start.add(cap_size_u32_words);
-                core::slice::from_ptr_range(start..end)
+                slice_from_ptr_range(start..end)
             })
         }
     }
@@ -403,7 +405,7 @@ impl ProofSkeletonInstance {
             let start = start_of_oracles;
             let end = start.add(set_size_u32_words);
             // those are reduced when we read them
-            core::slice::from_ptr_range(start..end)
+            slice_from_ptr_range(start..end)
         }
     }
 

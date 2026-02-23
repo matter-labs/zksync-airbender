@@ -56,7 +56,7 @@ fn eval_fn_3<
     W::I32: Copy,
 {
     let v_0 = witness_proxy.get_witness_place(11usize);
-    let v_1 = W::U16::constant(23u16);
+    let v_1 = W::U16::constant(22u16);
     let v_2 = witness_proxy.lookup::<1usize, 2usize>(&[v_0], v_1, 0usize);
     let v_3 = v_2[0usize];
     witness_proxy.set_witness_place(19usize, v_3);
@@ -145,7 +145,7 @@ fn eval_fn_6<
     let v_5 = W::Field::constant(Mersenne31Field(65536u32));
     let mut v_6 = v_4;
     W::Field::add_assign_product(&mut v_6, &v_5, &v_1);
-    let v_7 = W::U16::constant(24u16);
+    let v_7 = W::U16::constant(23u16);
     let v_8 = witness_proxy.lookup::<1usize, 2usize>(&[v_6], v_7, 1usize);
     let v_9 = v_8[0usize];
     witness_proxy.set_witness_place(21usize, v_9);

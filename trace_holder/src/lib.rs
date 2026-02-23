@@ -1,6 +1,5 @@
 #![feature(allocator_api)]
 
-use field::Mersenne31ComplexVectorizedInterleaved;
 use field::Mersenne31Field;
 use std::alloc::Allocator;
 use worker::Worker;

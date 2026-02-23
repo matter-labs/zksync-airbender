@@ -262,6 +262,7 @@ unsafe fn count_special_range_check_multiplicities(
                     );
                     dbg!(value,);
                 }
+                dbg!(constraint_low.constant_term);
             }
             assert!(
                 low_value.to_reduced_u32() < (1 << TIMESTAMP_COLUMNS_NUM_BITS),

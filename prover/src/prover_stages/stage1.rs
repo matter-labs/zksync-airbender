@@ -1,5 +1,4 @@
 use super::*;
-use fft::grinded_lde::perform_lde_inplace_vectorized2_recursive_full_trace_parallel;
 
 // this stage starts with public inputs, external challenges, witness and memory chunks of trace,
 // and results in initialization of transcript and commitment to witness and memory traces
@@ -19,7 +18,7 @@ pub fn compute_wide_ldes<const N: usize, A: GoodAllocator>(
     lde_factor: usize,
     worker: &Worker,
 ) -> Vec<CosetBoundTracePart<N, A>> {
-    compute_wide_ldes_grinded(
+    compute_wide_ldes_row_major(
         source_domain,
         twiddles,
         lde_precomputations,
@@ -27,95 +26,14 @@ pub fn compute_wide_ldes<const N: usize, A: GoodAllocator>(
         lde_factor,
         worker,
     )
-}
-
-pub fn compute_wide_ldes_grinded<const N: usize, A: GoodAllocator>(
-    source_domain: RowMajorTrace<Mersenne31Field, N, A>,
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
-    source_domain_index: usize,
-    lde_factor: usize,
-    worker: &Worker,
-) -> Vec<CosetBoundTracePart<N, A>> {
-    let mut ldes = Vec::with_capacity(lde_factor);
-
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
-
-    let mut source_domain_clone = Some(source_domain.clone_parallel(&worker));
-    let mut source_domain_some = Some(source_domain);
-
-    #[cfg(feature = "timing_logs")]
-    dbg!(now.elapsed());
-
-    let precomputations = lde_precomputations.domain_bound_precomputations[source_domain_index]
-        .as_ref()
-        .unwrap();
-
-    let mut num_other_cosets = lde_factor - 1;
-    for (coset_idx, ((scales_transposed, _scales), tau)) in precomputations
-        .bitreversed_powers_transposed
-        .iter()
-        .zip(precomputations.bitreversed_powers.iter())
-        .zip(precomputations.taus.iter())
-        .enumerate()
-    {
-        // println!("coset_idx: {}, source_domain_index: {}", coset_idx, source_domain_index);
-        if coset_idx == source_domain_index {
-            let source_domain = source_domain_clone.take().unwrap();
-            let coset_values = CosetBoundTracePart {
-                trace: source_domain,
-                tau: *tau,
-            };
-            ldes.push(coset_values);
-        } else {
-            // extrapolate
-            let mut trace = if num_other_cosets == 1 {
-                source_domain_some.take().unwrap()
-            } else {
-                source_domain_some.as_ref().unwrap().clone_parallel(&worker)
-            };
-            num_other_cosets -= 1;
-
-            #[cfg(feature = "debug_logs")]
-            println!(
-                "COMPUTE WIDE LDES: num_columns: {}, trace.padded_width: {}",
-                trace.width(),
-                trace.padded_width
-            );
-            #[cfg(feature = "debug_logs")]
-            if cfg!(target_feature = "avx512f") {
-                println!("avx512f is enabled");
-            }
-
-            assert!(trace.padded_width % 32 == 0);
-
-            #[cfg(feature = "timing_logs")]
-            let now = std::time::Instant::now();
-
-            perform_lde_inplace_vectorized2_recursive_full_trace_parallel(
-                &twiddles.grinded_fft_inverse_twiddles,
-                &twiddles.grinded_fft_forward_twiddles,
-                &mut trace,
-                &scales_transposed,
-                &worker,
-            );
-
-            #[cfg(feature = "timing_logs")]
-            dbg!(now.elapsed());
-
-            let coset_values = CosetBoundTracePart { trace, tau: *tau };
-
-            ldes.push(coset_values);
-        }
-    }
-    #[cfg(feature = "timing_logs")]
-    dbg!(now.elapsed());
-
-    assert!(source_domain_some.is_none());
-    assert_eq!(ldes.len(), lde_factor);
-
-    ldes
+    // compute_wide_ldes_grinded(
+    //     source_domain,
+    //     twiddles,
+    //     lde_precomputations,
+    //     source_domain_index,
+    //     lde_factor,
+    //     worker,
+    // )
 }
 
 pub fn compute_wide_ldes_row_major<const N: usize, A: GoodAllocator>(

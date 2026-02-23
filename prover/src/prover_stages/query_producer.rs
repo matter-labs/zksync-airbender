@@ -5,7 +5,8 @@ use super::{
 };
 use crate::prover_stages::stage5::Query;
 use fft::{bitreverse_index, GoodAllocator};
-use field::FieldExtension;
+use field::FixedArrayConvertible;
+use field::{FieldExtension, Mersenne31Field, Mersenne31Quartic};
 
 pub struct BitSource {
     u32_values: Vec<u32>,
@@ -153,7 +154,11 @@ pub fn produce_query_from_column_major_source<A: GoodAllocator, T: MerkleTreeCon
 
     let leaf_values = leaf_source.trace.as_slice()[leaf_source_index * combine_by..][..combine_by]
         .iter()
-        .map(|el| el.into_coeffs_in_base())
+        .map(|el| {
+            let coeffs = <Mersenne31Quartic as FieldExtension<Mersenne31Field>>::into_coeffs(*el);
+            coeffs
+                .into_array::<{ <Mersenne31Quartic as FieldExtension<Mersenne31Field>>::DEGREE }>()
+        })
         .flatten()
         .collect();
 

@@ -14,7 +14,9 @@ pub fn pack_reals_as_complex<F: Field, E: FieldExtension<F>>(
     left.iter()
         .zip(right.iter())
         .zip(res_buf.iter_mut())
-        .for_each(|((left, right), out)| *out = E::from_coeffs_in_base(&[*left, *right]))
+        .for_each(|((left, right), out)| {
+            *out = E::from_coeffs(E::Coeffs::from_array([*left, *right]))
+        })
 }
 
 pub fn unpack_complex_into_reals<F: Field, E: FieldExtension<F>>(
@@ -31,7 +33,7 @@ pub fn unpack_complex_into_reals<F: Field, E: FieldExtension<F>>(
         .zip(right_res.iter_mut())
         .zip(input.iter())
         .for_each(|((left, right), input)| {
-            let elems_in_base = input.coeffs_in_base();
+            let elems_in_base = input.into_coeffs().into_array::<2>();
             *left = elems_in_base[0];
             *right = elems_in_base[1];
         })

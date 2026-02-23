@@ -258,7 +258,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -271,7 +271,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -284,7 +284,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -297,7 +297,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -310,7 +310,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -323,7 +323,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
     ],
     range_check_16_lookup_expressions: &[
@@ -3798,19 +3798,19 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 )],
                 linear_terms: &[
                     (
-                        Mersenne31Field(17u32),
+                        Mersenne31Field(16u32),
                         ColumnAddress::WitnessSubtree(45usize),
                     ),
                     (
-                        Mersenne31Field(25u32),
+                        Mersenne31Field(24u32),
                         ColumnAddress::WitnessSubtree(46usize),
                     ),
                     (
-                        Mersenne31Field(17u32),
+                        Mersenne31Field(16u32),
                         ColumnAddress::WitnessSubtree(48usize),
                     ),
                     (
-                        Mersenne31Field(18u32),
+                        Mersenne31Field(17u32),
                         ColumnAddress::WitnessSubtree(50usize),
                     ),
                     (
@@ -3818,7 +3818,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(52usize),
                     ),
                     (
-                        Mersenne31Field(18u32),
+                        Mersenne31Field(17u32),
                         ColumnAddress::WitnessSubtree(54usize),
                     ),
                     (
@@ -3978,19 +3978,19 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 )],
                 linear_terms: &[
                     (
-                        Mersenne31Field(22u32),
+                        Mersenne31Field(21u32),
                         ColumnAddress::WitnessSubtree(45usize),
                     ),
                     (
-                        Mersenne31Field(23u32),
+                        Mersenne31Field(22u32),
                         ColumnAddress::WitnessSubtree(50usize),
                     ),
                     (
-                        Mersenne31Field(37u32),
+                        Mersenne31Field(36u32),
                         ColumnAddress::WitnessSubtree(52usize),
                     ),
                     (
-                        Mersenne31Field(23u32),
+                        Mersenne31Field(22u32),
                         ColumnAddress::WitnessSubtree(54usize),
                     ),
                     (
@@ -4155,11 +4155,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 )],
                 linear_terms: &[
                     (
-                        Mersenne31Field(37u32),
+                        Mersenne31Field(36u32),
                         ColumnAddress::WitnessSubtree(52usize),
                     ),
                     (
-                        Mersenne31Field(40u32),
+                        Mersenne31Field(39u32),
                         ColumnAddress::WitnessSubtree(54usize),
                     ),
                     (
@@ -4167,11 +4167,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(107usize),
                     ),
                     (
-                        Mersenne31Field(24u32),
+                        Mersenne31Field(23u32),
                         ColumnAddress::WitnessSubtree(157usize),
                     ),
                     (
-                        Mersenne31Field(39u32),
+                        Mersenne31Field(38u32),
                         ColumnAddress::WitnessSubtree(158usize),
                     ),
                 ],
@@ -4292,11 +4292,11 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                 )],
                 linear_terms: &[
                     (
-                        Mersenne31Field(20u32),
+                        Mersenne31Field(19u32),
                         ColumnAddress::WitnessSubtree(52usize),
                     ),
                     (
-                        Mersenne31Field(41u32),
+                        Mersenne31Field(40u32),
                         ColumnAddress::WitnessSubtree(54usize),
                     ),
                     (
@@ -4304,7 +4304,7 @@ pub const VERIFIER_COMPILED_LAYOUT: VerifierCompiledCircuitArtifact<'static, Mer
                         ColumnAddress::WitnessSubtree(111usize),
                     ),
                     (
-                        Mersenne31Field(39u32),
+                        Mersenne31Field(38u32),
                         ColumnAddress::WitnessSubtree(157usize),
                     ),
                 ],

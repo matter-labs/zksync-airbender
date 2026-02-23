@@ -1,4 +1,5 @@
 use super::*;
+use crate::witness_evaluator::utils::encoding_tuple_into_lookup_index;
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::cs::oracle::Oracle;
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -829,7 +830,6 @@ unsafe fn gkr_postprocess_multiplicities<
                         for i in 0..chunk_size {
                             let absolute_row_idx = chunk_start + i;
 
-                            use crate::utils::encoding_tuple_into_lookup_index;
                             let encoding_index = encoding_tuple_into_lookup_index(
                                 0 as u32,
                                 absolute_row_idx as u32,

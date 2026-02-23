@@ -4,6 +4,7 @@ use crate::cs::machine::ops::unrolled::*;
 use crate::u32_from_field_elems;
 use crate::NonDeterminismCSRSource;
 use crate::DUMP_WITNESS_VAR;
+use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::TIMESTAMP_STEP;
@@ -21,6 +22,7 @@ use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
+use prover::transcript::pow;
 use prover::unrolled::evaluate_init_and_teardown_witness;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::unrolled::NonMemoryCircuitOracle;
@@ -54,6 +56,7 @@ use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
+use verifier_common::SECURITY_BITS;
 
 pub fn preprocess_text_section_for_machine_config<
     C: MachineConfig,
@@ -232,6 +235,7 @@ pub fn prove_unrolled_execution<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     let (
         final_pc,
@@ -437,8 +441,33 @@ pub fn prove_unrolled_execution<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -570,8 +599,7 @@ pub fn prove_unrolled_execution<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -689,8 +717,7 @@ pub fn prove_unrolled_execution<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -774,8 +801,7 @@ pub fn prove_unrolled_execution<
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
-                crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &crate::SECURITY_CONFIG.for_prover(),
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -889,8 +915,7 @@ pub fn prove_unrolled_execution<
                 Some(delegation_type as u16),
                 prec.lde_factor,
                 prec.tree_cap_size,
-                crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &crate::SECURITY_CONFIG.for_prover(),
                 worker,
             );
             #[cfg(feature = "timing_logs")]
@@ -947,6 +972,7 @@ pub fn prove_unrolled_execution<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -970,6 +996,7 @@ pub fn prove_unrolled_execution_with_replayer<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     use prover::unrolled::run_unrolled_machine;
 
@@ -1361,8 +1388,33 @@ pub fn prove_unrolled_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -1496,8 +1548,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -1617,8 +1668,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!(
@@ -1692,8 +1742,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
                 inits_and_teardowns_precomputation.tree_cap_size,
-                crate::NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &crate::SECURITY_CONFIG.for_prover(),
                 &worker,
             );
         #[cfg(feature = "timing_logs")]
@@ -1855,6 +1904,7 @@ pub fn prove_unrolled_execution_with_replayer<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -1979,8 +2029,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            crate::NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]
@@ -2007,6 +2056,7 @@ pub(crate) mod test {
     use crate::bincode_deserialize_from_file;
     use crate::deserialize_from_file;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use prover::prover_stages::pow_bits;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
     use std::path::Path;
@@ -2135,6 +2185,7 @@ pub(crate) mod test {
             delegation_proofs,
             register_final_state,
             (final_pc, final_timestamp),
+            pow_challenge,
         ) = prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
             1 << 24,
             &binary_image,
@@ -2154,6 +2205,7 @@ pub(crate) mod test {
                 delegation_proofs,
                 register_final_state,
                 (final_pc, final_timestamp),
+                pow_challenge,
             ),
             "tmp_proof.bin",
         );

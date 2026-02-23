@@ -17,13 +17,12 @@ use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer
 use crate::witness::trace_unrolled::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::get_device_properties;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use prover::definitions::AuxArgumentsBoundaryValues;
 use std::ffi::CStr;
-use std::mem;
 use std::ops::Deref;
 use std::process::exit;
-use verifier_common::num_queries_for_security_params;
+use std::{env, mem};
 
 pub fn get_gpu_worker_func(
     device_id: i32,
@@ -52,19 +51,6 @@ enum JobType<'a> {
     Proof(ProofJob<'a>),
 }
 
-fn get_trees_cache_mode(_circuit_type: CircuitType, _context: &ProverContext) -> TreesCacheMode {
-    // match circuit_type {
-    //     CircuitType::Main(main) => match main {
-    //         MainCircuitType::ReducedRiscVLog23Machine if (context.get_mem_size() >> 30) < 28 => {
-    //             TreesCacheMode::CacheNone
-    //         } // less than 28GB
-    //         _ => TreesCacheMode::CacheFull,
-    //     },
-    //     _ => TreesCacheMode::CacheFull,
-    // }
-    TreesCacheMode::CacheNone
-}
-
 fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
@@ -73,6 +59,13 @@ fn gpu_worker(
     results: Sender<Option<GpuWorkResult<A>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
+    // Recompute cosets in low VRAM mode to reduce memory requirement.
+    let recompute_cosets = env::var("ZKSYNC_AIRBENDER_LOW_VRAM_MODE")
+        .map(|s| s == "1" || s.to_lowercase() == "true")
+        .unwrap_or_default();
+    if recompute_cosets {
+        warn!("GPU_WORKER[{device_id}] running in low VRAM mode, this will have negative performance impact");
+    }
     Precomputations::ensure_initialized();
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
@@ -245,13 +238,7 @@ fn gpu_worker(
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
                         CircuitType::Unrolled(_) => None,
                     };
-                    let num_queries = num_queries_for_security_params(
-                        verifier_common::SECURITY_BITS,
-                        verifier_common::POW_BITS,
-                        log_lde_factor as usize,
-                    );
-                    let pow_bits = verifier_common::POW_BITS as u32;
-                    let trees_cache_mode = get_trees_cache_mode(circuit_type, &context);
+                    let security_config = circuit_type.get_security_config();
                     trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]");
                     let job = prove(
                         circuit_type,
@@ -265,11 +252,10 @@ fn gpu_worker(
                         &precomputations.lde_precomputations,
                         delegation_processing_type,
                         precomputations.lde_precomputations.lde_factor,
-                        num_queries,
-                        pow_bits,
+                        &security_config,
                         None,
-                        false,
-                        trees_cache_mode,
+                        recompute_cosets,
+                        TreesCacheMode::CachePatrial,
                         &context,
                     )?;
                     JobType::Proof(job)

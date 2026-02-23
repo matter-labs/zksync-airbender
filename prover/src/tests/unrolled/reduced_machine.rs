@@ -456,6 +456,9 @@ pub fn run_unrolled_reduced_test_impl(
         //     None
         // };
 
+        let default_security_config =
+            prover_stages::ProofSecurityConfig::for_queries_only(5, 28, 63);
+
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
@@ -475,8 +478,7 @@ pub fn run_unrolled_reduced_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -486,6 +488,8 @@ pub fn run_unrolled_reduced_test_impl(
             Mersenne31Quartic::ZERO
         );
         permutation_argument_accumulator.mul_assign(&proof.permutation_grand_product_accumulator);
+
+        serialize_to_file(&proof, "unified_reduced_unrolled_proof.json");
     }
 
     // inits and teardowns

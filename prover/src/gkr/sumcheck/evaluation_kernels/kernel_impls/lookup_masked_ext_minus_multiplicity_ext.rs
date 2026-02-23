@@ -1,6 +1,8 @@
 use cs::definitions::GKRAddress;
 use worker::Worker;
 
+use crate::definitions::sumcheck_kernel::fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -94,7 +96,7 @@ pub struct LookupBaseExtMinusBaseExtGKRRelationKernel<F: PrimeField, E: FieldExt
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    MixedFieldsInOutFixedSizesEvaluationKernel<F, E, 2, 2, 2>
+    MixedFieldsInOutFixedSizesEvaluationKernelCore<F, E, 2, 2, 2>
     for LookupBaseExtMinusBaseExtGKRRelationKernel<F, E>
 {
     #[inline(always)]
@@ -115,4 +117,29 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
         [ad, den.into_value()]
     }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; 2],
+        ext_input: &[ExtensionFieldRepresentation<F, E>; 2],
+        ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        self.pointwise_eval(input, ext_input, ctx)
+    }
+
+    fn pointwise_eval_by_ref<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        _input: [&RB; 2],
+        _ext_input: [&ExtensionFieldRepresentation<F, E>; 2],
+        _ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        todo!()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    MixedFieldsInOutFixedSizesEvaluationKernel<F, E, 2, 2, 2>
+    for LookupBaseExtMinusBaseExtGKRRelationKernel<F, E>
+{
 }

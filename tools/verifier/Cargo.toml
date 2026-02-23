@@ -1,3 +1,5 @@
+cargo-features = ["panic-immediate-abort"]
+
 [package]
 name = "zksync_os_verifier"
 version = "0.1.0"
@@ -14,6 +16,7 @@ verifier = { path = "../../verifier", features = ["verifier_program", "blake2_wi
 full_statement_verifier = { path = "../../full_statement_verifier", optional = true, default-features= false, features = ["verifiers"] }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 reduced_keccak = { path = "../../reduced_keccak", optional = true }
+cargo-bloat = {version = "0.12.1", optional = true}
 
 [workspace]
 
@@ -21,7 +24,7 @@ reduced_keccak = { path = "../../reduced_keccak", optional = true }
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
+panic = "immediate-abort"
 debug = false
 strip = true
 
@@ -43,7 +46,7 @@ security_100 = ["full_statement_verifier/security_100"]
 
 recursion_in_unrolled_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 recursion_in_unified_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
-
+bloat_testing = ["cargo-bloat"]
 verifier_tests = ["verifier"]
 # default = ["universal_circuit"]
 default = ["verifier_tests"]

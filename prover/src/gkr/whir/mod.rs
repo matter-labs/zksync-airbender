@@ -68,11 +68,10 @@ use crate::gkr::prover::stages::stage1::{
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
-use crate::gkr::sumcheck::eq_poly::{
-    evaluate_with_precomputed_eq_ext, make_domain_eq_poly_in_full, make_eq_poly_in_full,
-};
-use crate::gkr::{PAR_THRESHOLD, sumcheck::*};
+use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
+use crate::gkr::sumcheck::*;
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+use crate::gkr::PAR_THRESHOLD;
 use crate::prover_stages::query_producer::assemble_query_index;
 use crate::{gkr::prover::apply_row_wise, merkle_trees::ColumnMajorMerkleTreeConstructor};
 use fft::{
@@ -163,6 +162,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             index,
             leaf_values_concatenated: values.iter().flatten().copied().collect(),
             path,
+            _marker: core::marker::PhantomData,
         };
         (coset_index, values, query)
     }
@@ -291,6 +291,7 @@ impl<
             index,
             leaf_values_concatenated: values.clone(),
             path,
+            _marker: core::marker::PhantomData,
         };
         (coset_index, values, query)
     }
@@ -1233,14 +1234,6 @@ where
             );
 
             query_references.push((query_index, query_point, folded));
-
-            // check against explicit form
-            let eval_from_monomial = evaluate_monomial_form(
-                &sumchecked_poly_monomial_form,
-                &E::from_base(query_point),
-                worker,
-            );
-            // assert_eq!(eval_from_monomial, folded);
         }
         drop(rs_oracle_to_query);
 
@@ -2007,7 +2000,8 @@ mod test {
     {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
-        E::from_coeffs_in_base(&coefs)
+        
+        <E as FieldExtension<F>>::from_coeffs(coefs)
     }
 
     #[test]

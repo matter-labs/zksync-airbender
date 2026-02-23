@@ -33,6 +33,7 @@ use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
 use setups::*;
 use trace_and_split::*;
+use verifier_common::SECURITY_BITS;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -41,12 +42,10 @@ pub mod unified;
 pub mod unrolled;
 
 pub const LDE_FACTOR_LOG2: usize = 1;
-pub const POW_BITS: usize = verifier_common::POW_BITS;
-pub const NUM_QUERIES: usize = verifier_common::num_queries_for_security_params(
-    verifier_common::SECURITY_BITS,
-    verifier_common::POW_BITS,
-    LDE_FACTOR_LOG2,
-);
+pub const NUM_FOLDINGS: usize = 5; // same for all circuits we use here
+pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FOLDINGS> =
+    verifier_common::SizedProofSecurityConfig::<NUM_FOLDINGS>::worst_case_config();
+pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
 
 #[cfg(not(feature = "precheck_satisfied"))]
 const PRECHECK_SATISFIED: bool = false;
@@ -115,7 +114,12 @@ pub fn prove_image_execution<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<IMStandardIsaConfig, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<ND, IMStandardIsaConfig, A>(
         num_instances_upper_bound,
         bytecode,
@@ -140,7 +144,12 @@ pub fn prove_image_execution_on_reduced_machine<
     >,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<
         ND,
         IWithoutByteAccessIsaConfigWithDelegation,
@@ -165,7 +174,12 @@ pub fn prove_image_execution_on_final_reduced_machine<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<IWithoutByteAccessIsaConfig, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     prove_image_execution_for_machine_with_gpu_tracers::<ND, IWithoutByteAccessIsaConfig, A>(
         num_instances_upper_bound,
         bytecode,
@@ -254,7 +268,12 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     risc_v_circuit_precomputations: &MainCircuitPrecomputations<C, A, A>,
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     worker: &worker::Worker,
-) -> (Vec<Proof>, Vec<(u32, Vec<Proof>)>, Vec<FinalRegisterValue>) {
+) -> (
+    Vec<Proof>,
+    Vec<(u32, Vec<Proof>)>,
+    Vec<FinalRegisterValue>,
+    u64,
+) {
     let trace_len = risc_v_circuit_precomputations.compiled_circuit.trace_len;
     let cycles_per_circuit = trace_len - 1;
 
@@ -409,8 +428,34 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
         memory_challenges_seed
     );
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed(memory_challenges_seed, true);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &memory_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed(
+        memory_challenges_seed,
+        true,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -511,7 +556,6 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
                     .teardown_timestamp_one_before_last_row,
             },
         };
-
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let (_, proof) = prove(
@@ -526,8 +570,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             None,
             lde_factor,
             risc_v_cycles::TREE_CAP_SIZE,
-            NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]
@@ -659,8 +702,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
                 Some(*delegation_type as u16),
                 prec.lde_factor,
                 prec.tree_cap_size,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &crate::SECURITY_CONFIG.for_prover(),
                 worker,
             );
             #[cfg(feature = "timing_logs")]
@@ -709,7 +751,12 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
 
     assert_eq!(aux_memory_challenges_seed, memory_challenges_seed);
 
-    (main_proofs, delegation_proofs, final_register_values)
+    (
+        main_proofs,
+        delegation_proofs,
+        final_register_values,
+        pow_challenge,
+    )
 }
 
 pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
@@ -766,13 +813,14 @@ mod test {
         let non_determinism_source = QuasiUARTSource::default();
         let main_circuit_precomputations =
             setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-        let (_main_proofs, _delegation_proofs, _register_values) = crate::prove_image_execution(
-            num_instances,
-            &binary,
-            non_determinism_source,
-            &main_circuit_precomputations,
-            &delegation_precomputations,
-            &worker,
-        );
+        let (_main_proofs, _delegation_proofs, _register_values, _pow_challenge) =
+            crate::prove_image_execution(
+                num_instances,
+                &binary,
+                non_determinism_source,
+                &main_circuit_precomputations,
+                &delegation_precomputations,
+                &worker,
+            );
     }
 }

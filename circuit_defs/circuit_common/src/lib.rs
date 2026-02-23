@@ -12,9 +12,9 @@ pub fn run_for_witness() -> () {
 pub fn u32_from_field_elems(src: &[Mersenne31Field; 2]) -> u32 {
     use field::PrimeField;
 
-    let low = u16::try_from(src[0].as_u64_reduced()).expect("read value is not 16 bit long") as u32;
+    let low = u16::try_from(src[0].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
     let high =
-        u16::try_from(src[1].as_u64_reduced()).expect("read value is not 16 bit long") as u32;
+        u16::try_from(src[1].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
     low + (high << 16)
 }
 

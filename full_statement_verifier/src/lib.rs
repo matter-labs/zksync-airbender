@@ -1,7 +1,4 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(slice_from_ptr_range)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 
 use core::mem::MaybeUninit;
 
@@ -10,14 +7,17 @@ pub use verifier_common;
 mod constants;
 pub mod definitions;
 
-#[cfg(feature = "verifiers")]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod imports;
 #[cfg(feature = "verifiers")]
 pub mod legacy_circuits;
-#[cfg(feature = "verifiers")]
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod unified_circuit_statement;
 #[cfg(feature = "verifiers")]
 pub mod unrolled_proof_statement;
+
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod statement_common;
 
 use self::constants::*;
 
@@ -41,6 +41,8 @@ pub const MAX_CYCLES: u64 = const {
 
     max_cycles
 };
+
+pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct InitAndTeardownTuple {

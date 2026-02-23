@@ -203969,7 +203969,20 @@
       ]
     }
   ],
-  "pow_nonce": 23415854,
+  "pow_challenges": {
+    "lookup_pow_challenge": 0,
+    "quotient_alpha_pow_challenge": 0,
+    "quotient_z_pow_challenge": 0,
+    "deep_poly_alpha_pow_challenge": 0,
+    "foldings_pow_challenges": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "fri_queries_pow_challenge": 23415854
+  },
   "circuit_sequence": 0,
   "delegation_type": 1991
 }

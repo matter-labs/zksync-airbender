@@ -82,10 +82,7 @@ impl LocalProver {
 
     fn new_internal(padded_binary: Vec<u32>) -> LocalProver {
         #[cfg(feature = "gpu")]
-        let gpu_state = GpuSharedState::new(
-            &padded_binary,
-            cli_lib::prover_utils::MainCircuitType::ReducedRiscVMachine,
-        );
+        let gpu_state = GpuSharedState::new(&padded_binary);
 
         #[cfg(not(feature = "gpu"))]
         let gpu_state = GpuSharedState::new(&padded_binary);

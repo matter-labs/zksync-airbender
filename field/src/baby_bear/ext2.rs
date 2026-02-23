@@ -394,54 +394,22 @@ impl core::fmt::Display for BabyBearExt2 {
 impl FieldExtension<BabyBearField> for BabyBearExt2 {
     const DEGREE: usize = 2;
 
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &BabyBearField) -> &mut Self {
-        self.c0.mul_assign(elem);
-        self.c1.mul_assign(elem);
-        self
-    }
+    type Coeffs = [BabyBearField; 2];
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn into_coeffs_in_base(self) -> [BabyBearField; 2] {
-        let Self { c0, c1 } = self;
-
-        [c0, c1]
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self.c0, self.c1]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[BabyBearField; 2]) -> Self {
-        Self {
-            c0: coefs[0],
-            c1: coefs[1],
-        }
-    }
-
-    fn from_coeffs_in_base(coeffs: &[BabyBearField]) -> Self {
-        Self {
-            c0: coeffs[0],
-            c1: coeffs[1],
-        }
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
+        let [c0, c1] = coeffs;
+        Self { c0, c1 }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(coeffs: &[&BabyBearField]) -> Self {
-        Self {
-            c0: *coeffs[0],
-            c1: *coeffs[1],
-        }
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = BabyBearField>>(mut coefs_iter: I) -> Self {
-        Self {
-            c0: coefs_iter.next().unwrap(),
-            c1: coefs_iter.next().unwrap(),
-        }
-    }
-
-    fn coeffs_in_base(&self) -> &[BabyBearField] {
-        // todo!();
-        unsafe { core::slice::from_raw_parts(self.c0.0 as *const BabyBearField, 2) }
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        <Self as FieldExtension<BabyBearField>>::from_coeffs(*coeffs)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -457,15 +425,17 @@ impl FieldExtension<BabyBearField> for BabyBearExt2 {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn mul_assign_by_base(&mut self, elem: &BabyBearField) -> &mut Self {
+        self.c0.mul_assign(elem);
+        self.c1.mul_assign(elem);
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: BabyBearField) -> Self {
         Self {
             c0: elem,
             c1: BabyBearField::ZERO,
         }
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn get_coef_mut(&mut self, _idx: usize) -> &mut BabyBearField {
-        todo!();
     }
 }

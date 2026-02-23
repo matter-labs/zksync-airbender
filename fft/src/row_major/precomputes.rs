@@ -5,9 +5,6 @@ use ::field::*;
 use worker::Worker;
 
 use crate::field_utils::*;
-use crate::grinded_fft::utils::bitreversed_transpose;
-use crate::radix_4_step::Radix4;
-use crate::twiddles::precompute_twiddles;
 use crate::utils::*;
 use crate::GoodAllocator;
 
@@ -93,9 +90,6 @@ pub struct Twiddles<E: TwoAdicField, A: GoodAllocator> {
     pub omega: E,
     pub omega_inv: E,
     pub domain_size: usize,
-    //for grinded fft
-    pub grinded_fft_forward_twiddles: Radix4,
-    pub grinded_fft_inverse_twiddles: Radix4,
 }
 
 impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
@@ -110,14 +104,6 @@ impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
         let mut forward_twiddles_not_bitreversed = forward_twiddles.clone();
         bitreverse_enumeration_inplace(&mut forward_twiddles_not_bitreversed);
 
-        // dummy worst case
-        let (grinded_fft_forward_twiddles, grinded_fft_inverse_twiddles) = if domain_size < 16 {
-            precompute_twiddles(16)
-        } else {
-            //precomputes for grinded fft
-            precompute_twiddles(domain_size)
-        };
-
         Twiddles {
             forward_twiddles,
             inverse_twiddles: precompute_inverse_twiddles_for_fft(domain_size, worker),
@@ -125,8 +111,6 @@ impl<E: TwoAdicField, A: GoodAllocator> Twiddles<E, A> {
             omega,
             omega_inv,
             domain_size,
-            grinded_fft_forward_twiddles,
-            grinded_fft_inverse_twiddles,
         }
     }
 }
@@ -157,8 +141,6 @@ pub struct DomainBoundLdePrecomputations<A: GoodAllocator> {
     pub domain_coset_index: usize,
     pub lde_factor: usize,
     pub coset_offset: Mersenne31Complex,
-    //for grinded fft
-    pub bitreversed_powers_transposed: Vec<Vec<Mersenne31Complex, A>>,
 }
 
 impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
@@ -194,7 +176,6 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
         let ifft_merged_scale = ifft_merged_scale.inverse().unwrap();
 
         let mut bitreversed_powers = Vec::with_capacity(lde_factor);
-        let mut bitreversed_powers_transposed = Vec::with_capacity(lde_factor);
 
         let coset_offset = coset_generators[source_domain_natural_index];
         let normalization_factor_from_source_domain = coset_offset.inverse().unwrap();
@@ -209,10 +190,8 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
                 let scale = ifft_merged_scale;
                 let mut powers = Vec::with_capacity_in(domain_size, A::default());
                 powers.resize(domain_size, scale);
-                bitreversed_powers.push(powers.clone());
-                bitreversed_powers_transposed.push(powers);
+                bitreversed_powers.push(powers);
 
-                // bitreversed_powers.push(Vec::new_in(A::default()));
                 continue;
             }
 
@@ -246,16 +225,6 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
 
             let mut powers = materialize_powers_parallel::<_, A>(scale, step, domain_size, &worker);
 
-            //for grinded fft
-            let mut powers_transposed = Vec::with_capacity_in(domain_size, A::default());
-            unsafe { powers_transposed.set_len(domain_size) }
-            if domain_size.trailing_zeros() % 2 == 0 {
-                bitreversed_transpose::<Mersenne31Complex, 4>(16, &powers, &mut powers_transposed);
-            } else {
-                bitreversed_transpose::<Mersenne31Complex, 4>(8, &powers, &mut powers_transposed);
-            }
-            bitreversed_powers_transposed.push(powers_transposed);
-
             bitreverse_enumeration_inplace(&mut powers);
             bitreversed_powers.push(powers);
         }
@@ -269,7 +238,6 @@ impl<A: GoodAllocator> DomainBoundLdePrecomputations<A> {
             domain_coset_index: source_domain_natural_index,
             lde_factor,
             coset_offset,
-            bitreversed_powers_transposed,
         }
     }
 }

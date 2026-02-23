@@ -353,19 +353,19 @@ pub fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E]>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use field::{Mersenne31Field, Mersenne31Quartic};
+    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
     use rand::{rngs::ThreadRng, RngCore};
 
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
-    fn random_in_ext<F: PrimeField, E: FieldExtension<F> + Field>(rng: &mut ThreadRng) -> E
+    fn random_in_ext(rng: &mut ThreadRng) -> E
     where
-        [(); E::DEGREE]: Sized,
+        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
     {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
-        E::from_coeffs_in_base(&coefs)
+        <E as FieldExtension<F>>::from_coeffs(coefs)
     }
 
     #[test]
@@ -373,12 +373,12 @@ mod tests {
         let mut rng = rand::rng();
 
         let size = 1 << 10;
-        let eq: Vec<E> = (0..size).map(|_| random_in_ext::<F, E>(&mut rng)).collect();
+        let eq: Vec<E> = (0..size).map(|_| random_in_ext(&mut rng)).collect();
         let values: Vec<[E; 2]> = (0..size)
             .map(|_| {
                 [
-                    random_in_ext::<F, E>(&mut rng),
-                    random_in_ext::<F, E>(&mut rng),
+                    random_in_ext(&mut rng),
+                    random_in_ext(&mut rng),
                 ]
             })
             .collect();
@@ -401,7 +401,7 @@ mod tests {
     fn test_make_eq_poly_impl() {
         let mut rng = rand::rng();
         let size = 16;
-        let challenges: Vec<E> = (0..size).map(|_| random_in_ext::<F, E>(&mut rng)).collect();
+        let challenges: Vec<E> = (0..size).map(|_| random_in_ext(&mut rng)).collect();
 
         let expected_full = make_eq_poly_in_full_serial(&challenges);
         let expected_reduced = make_eq_poly_reduced_serial(&challenges);

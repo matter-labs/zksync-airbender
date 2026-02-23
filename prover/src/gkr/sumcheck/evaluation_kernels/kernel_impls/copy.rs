@@ -1,3 +1,8 @@
+use crate::definitions::sumcheck_kernel::{
+    fixed_over_base::BaseFieldInOutFixedSizesEvaluationKernelCore,
+    fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore,
+};
+
 use super::*;
 
 #[derive(Debug)]
@@ -94,6 +99,33 @@ pub struct BaseFieldCopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + 
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
+    BaseFieldInOutFixedSizesEvaluationKernelCore<F, E, 1, 1>
+    for BaseFieldCopyGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval<R: EvaluationRepresentation<F, E>>(&self, input: &[R; 1]) -> [R; 1] {
+        *input
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only<R: EvaluationRepresentation<F, E>>(
+        &self,
+        _input: &[R; 1],
+    ) -> [R; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    fn pointwise_eval_forward(&self, _input: &[BaseFieldRepresentation<F>; 1]) -> [F; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_by_ref<R: EvaluationRepresentation<F, E>>(&self, input: [&R; 1]) -> [R; 1] {
+        input.map(|el| *el)
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
     BaseFieldInOutFixedSizesEvaluationKernel<F, E, 1, 1> for BaseFieldCopyGKRRelationKernel<F, E>
 {
     #[inline(always)]
@@ -149,11 +181,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 [f0, E::ZERO]
             }
         }
-    }
-
-    #[inline(always)]
-    fn pointwise_eval<R: EvaluationRepresentation<F, E>>(&self, _input: &[R; 1]) -> [R; 1] {
-        unreachable!("not used by this kernel")
     }
 }
 
@@ -251,6 +278,28 @@ pub struct ExtensionCopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + 
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, 1, 1>
+    for ExtensionCopyGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        [input[0].into_value()]
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only(
+        &self,
+        _input: &[ExtensionFieldRepresentation<F, E>; 1],
+    ) -> [E; 1] {
+        [E::ZERO]
+    }
+
+    fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        todo!()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
     ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 1, 1>
     for ExtensionCopyGKRRelationKernel<F, E>
 {
@@ -310,10 +359,5 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 [eval_c0, E::ZERO]
             }
         }
-    }
-
-    #[inline(always)]
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
-        [input[0].into_value()]
     }
 }

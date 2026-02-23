@@ -59,7 +59,7 @@ impl<C: Counters> State<C> {
     }
 }
 
-impl<C: Counters + From<[u32; MAX_NUM_COUNTERS]>> From<MachineState> for State<C> {
+impl<C: Counters + From<[u64; MAX_NUM_COUNTERS]>> From<MachineState> for State<C> {
     fn from(state: MachineState) -> Self {
         Self {
             registers: std::array::from_fn(|i| Register {

@@ -1,3 +1,5 @@
+use core::ops::{Index, IndexMut};
+
 use super::*;
 use rand::Rng;
 
@@ -119,8 +121,6 @@ pub trait PrimeField: Field {
         }
     }
 
-    fn to_le_bytes(self) -> [u8; Self::NUM_BYTES_IN_REPR];
-
     fn increment_unchecked(&'_ mut self);
 }
 
@@ -133,57 +133,124 @@ pub trait BaseField<const N: usize>: Field {
     }
 }
 
+pub trait FixedArrayConvertible<F: Field> {
+    fn from_array<const N: usize>(array: [F; N]) -> Self;
+    fn into_array<const N: usize>(self) -> [F; N];
+    fn as_array<const N: usize>(&self) -> &[F; N];
+    fn as_array_mut<const N: usize>(&mut self) -> &mut [F; N];
+}
+
+impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
+    #[inline(always)]
+    fn from_array<const N: usize>(array: [F; N]) -> Self {
+        if N == M {
+            unsafe {
+                // Safety: we checked same size, so it's a transmute
+                array.as_ptr().cast::<Self>().read()
+            }
+        } else {
+            panic!(
+                "invalid array size: internally it's [F; {}], requested [F; {}]",
+                N, M
+            );
+        }
+    }
+
+    #[inline(always)]
+    fn into_array<const N: usize>(self) -> [F; N] {
+        if N == M {
+            unsafe {
+                // Safety: we checked same size, so it's a transmute
+                self.as_ptr().cast::<[F; N]>().read()
+            }
+        } else {
+            panic!(
+                "invalid array size: internally it's [F; {}], requested [F; {}]",
+                N, M
+            );
+        }
+    }
+
+    #[inline(always)]
+    fn as_array<const N: usize>(&self) -> &[F; N] {
+        if N == M {
+            unsafe {
+                // Safety: we checked same size, so it's a transmute
+                self.as_ptr().cast::<[F; N]>().as_ref_unchecked()
+            }
+        } else {
+            panic!(
+                "invalid array size: internally it's [F; {}], requested [F; {}]",
+                N, M
+            );
+        }
+    }
+
+    #[inline(always)]
+    fn as_array_mut<const N: usize>(&mut self) -> &mut [F; N] {
+        if N == M {
+            unsafe {
+                // Safety: we checked same size, so it's a transmute
+                self.as_mut_ptr().cast::<[F; N]>().as_mut_unchecked()
+            }
+        } else {
+            panic!(
+                "invalid array size: internally it's [F; {}], requested [F; {}]",
+                N, M
+            );
+        }
+    }
+}
+
 pub trait FieldExtension<BaseField: Field>: 'static + Clone + Copy + Send + Sync {
     const DEGREE: usize;
-    fn mul_assign_by_base(&mut self, elem: &BaseField) -> &mut Self;
-    fn into_coeffs_in_base(self) -> [BaseField; Self::DEGREE];
-    fn from_base_coeffs_array(coefs: &[BaseField; Self::DEGREE]) -> Self;
-    fn from_coeffs_in_base(coefs: &[BaseField]) -> Self;
-    fn from_coeffs_in_base_ref(coefs: &[&BaseField]) -> Self;
-    fn from_coeffs_in_base_iter<I: Iterator<Item = BaseField>>(coefs_iter: I) -> Self;
-    fn coeffs_in_base(&self) -> &[BaseField];
+
+    type Coeffs: 'static
+        + Clone
+        + Copy
+        + core::fmt::Debug
+        + Send
+        + Sync
+        + AsRef<[BaseField]>
+        + AsMut<[BaseField]>
+        + Index<usize, Output = BaseField>
+        + IndexMut<usize, Output = BaseField>
+        + FixedArrayConvertible<BaseField>;
+
+    fn into_coeffs(self) -> Self::Coeffs;
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self;
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self;
+
+    fn from_base(elem: BaseField) -> Self;
+
     fn add_assign_base(&mut self, elem: &BaseField) -> &mut Self;
     fn sub_assign_base(&mut self, elem: &BaseField) -> &mut Self;
-    fn from_base(elem: BaseField) -> Self;
-    fn get_coef_mut(&mut self, idx: usize) -> &mut BaseField;
+    fn mul_assign_by_base(&mut self, elem: &BaseField) -> &mut Self;
 }
 
 impl<F: Field> FieldExtension<F> for F {
     const DEGREE: usize = 1;
+
+    type Coeffs = [F; 1];
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base(coefs: &[F]) -> Self {
-        coefs[0]
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[F; Self::DEGREE]) -> Self {
-        coefs[0]
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
+        coeffs[0]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(coefs: &[&F]) -> Self {
-        *coefs[0]
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        coeffs[0]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn into_coeffs_in_base(self) -> [Self; Self::DEGREE] {
-        // Rust compiler is bugging here, not relating Self::DEGREE and 1
-        unsafe { core::ptr::read((&self as *const F).cast()) }
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = F>>(mut coefs_iter: I) -> Self {
-        coefs_iter.next().unwrap()
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn coeffs_in_base(&self) -> &[F] {
-        core::slice::from_ref(self)
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &F) -> &mut Self {
-        self.mul_assign(elem)
+    fn from_base(elem: F) -> Self {
+        elem
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -197,14 +264,8 @@ impl<F: Field> FieldExtension<F> for F {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base(elem: F) -> Self {
-        elem
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn get_coef_mut(&mut self, idx: usize) -> &mut F {
-        assert_eq!(idx, 0);
-        self
+    fn mul_assign_by_base(&mut self, elem: &F) -> &mut Self {
+        self.mul_assign(elem)
     }
 }
 

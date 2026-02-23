@@ -627,6 +627,8 @@ pub fn run_basic_unrolled_test_impl(
     let lde_factor = 2;
     let tree_cap_size = 32;
 
+    let default_security_config = prover_stages::ProofSecurityConfig::for_queries_only(5, 28, 63);
+
     let worker = Worker::new_with_num_threads(1);
     // load binary
 
@@ -963,8 +965,7 @@ pub fn run_basic_unrolled_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1068,8 +1069,7 @@ pub fn run_basic_unrolled_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1189,8 +1189,7 @@ pub fn run_basic_unrolled_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1302,8 +1301,7 @@ pub fn run_basic_unrolled_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());
@@ -1416,8 +1414,7 @@ pub fn run_basic_unrolled_test_impl(
             None,
             lde_factor,
             tree_cap_size,
-            53,
-            28,
+            &default_security_config,
             &worker,
         );
         println!("Proving time is {:?}", now.elapsed());

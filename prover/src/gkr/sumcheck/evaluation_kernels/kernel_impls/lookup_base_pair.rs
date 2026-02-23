@@ -1,6 +1,8 @@
 use cs::definitions::GKRAddress;
 use worker::Worker;
 
+use crate::definitions::sumcheck_kernel::fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -95,6 +97,40 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 pub struct LookupBasePairGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     pub lookup_additive_challenge: E,
     _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    MixedFieldsInOutFixedSizesEvaluationKernelCore<F, E, 2, 0, 2>
+    for LookupBasePairGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; 2],
+        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
+        ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        pointwise_eval_impl(input, ctx, &self.lookup_additive_challenge)
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; 2],
+        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
+        ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        pointwise_eval_quadratic_only_impl(input, ctx)
+    }
+
+    fn pointwise_eval_by_ref<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        _input: [&RB; 2],
+        _ext_input: [&ExtensionFieldRepresentation<F, E>; 0],
+        _ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        todo!()
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
@@ -197,25 +233,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
             [eval_0_term_0, eval_1_term_0]
         }
-    }
-
-    #[inline(always)]
-    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
-        &self,
-        _input: &[RB; 2],
-        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
-        _ctx: &RB::CollapseContext,
-    ) -> [E; 2] {
-        unreachable!("unused by this kernel");
-    }
-
-    #[inline(always)]
-    fn pointwise_eval_forward(
-        &self,
-        input: &[BaseFieldRepresentation<F>; 2],
-        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
-    ) -> [E; 2] {
-        pointwise_eval_impl(input, &(), &self.lookup_additive_challenge)
     }
 }
 

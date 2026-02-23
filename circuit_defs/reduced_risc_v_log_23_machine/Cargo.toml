@@ -12,6 +12,5 @@ categories.workspace = true
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
 verifier_generator = { workspace = true }
-circuit_common = {workspace = true }
 serde = { workspace = true }
 serde_json = "*"

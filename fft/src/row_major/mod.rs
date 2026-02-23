@@ -408,7 +408,10 @@ pub fn parallel_row_major_full_line_partial_ifft<const N: usize, A: Allocator + 
     worker: &Worker,
 ) {
     if CACHE_LINE_MULTIPLE > N {
-        todo!();
+        panic!(
+            "Cache line multiple {} is smaller than padding multiple {}",
+            CACHE_LINE_MULTIPLE, N
+        );
     }
 
     assert!(N >= CACHE_LINE_MULTIPLE);

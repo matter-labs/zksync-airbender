@@ -13,29 +13,6 @@ unsafe extern "C" fn start_rust() -> ! {
     main()
 }
 
-#[export_name = "_setup_interrupts"]
-pub unsafe fn custom_setup_interrupts() {
-    extern "C" {
-        fn _machine_start_trap();
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct MachineTrapFrame {
-    pub registers: [u32; 32],
-}
-
-/// Exception (trap) handler in rust.
-/// Called from the asm/asm.S
-#[link_section = ".trap.rust"]
-#[export_name = "_machine_start_trap_rust"]
-pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) -> usize {
-    {
-        unsafe { core::hint::unreachable_unchecked() }
-    }
-}
-
 #[cfg(feature = "panic_output")]
 #[macro_export]
 macro_rules! print

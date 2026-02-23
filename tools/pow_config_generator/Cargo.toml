@@ -1,0 +1,32 @@
+[package]
+name = "pow_config_generator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quote = { version = "1" }
+proc-macro2 = "1"
+
+prover = { workspace = true, features = ["prover"] }
+verifier_common = { workspace = true, features = ["proof_utils", "worst_case_config_generation"] }
+
+risc_v_cycles_verifier = {path = "../../circuit_defs/risc_v_cycles/verifier", features = ["worst_case_config_generation"]}
+reduced_risc_v_machine_verifier = {path = "../../circuit_defs/reduced_risc_v_machine/verifier", features = ["worst_case_config_generation"]}
+reduced_risc_v_log_23_machine_verifier = {path = "../../circuit_defs/reduced_risc_v_log_23_machine/verifier", features = ["worst_case_config_generation"]}
+final_reduced_risc_v_machine_verifier = {path = "../../circuit_defs/final_reduced_risc_v_machine/verifier", features = ["worst_case_config_generation"]}
+
+blake2_with_compression_verifier = {path = "../../circuit_defs/blake2_with_compression/verifier", features = ["worst_case_config_generation"]}
+bigint_with_control_verifier = {path = "../../circuit_defs/bigint_with_control/verifier", features = ["worst_case_config_generation"]}
+keccak_special5_verifier = {path = "../../circuit_defs/keccak_special5/verifier", features = ["worst_case_config_generation"]}
+
+add_sub_lui_auipc_mop_verifier = {path = "../../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/verifier", features = ["worst_case_config_generation"]}
+jump_branch_slt_verifier = {path = "../../circuit_defs/unrolled_circuits/jump_branch_slt/verifier", features = ["worst_case_config_generation"]}
+load_store_subword_only_verifier = {path = "../../circuit_defs/unrolled_circuits/load_store_subword_only/verifier", features = ["worst_case_config_generation"]}
+load_store_word_only_verifier = {path = "../../circuit_defs/unrolled_circuits/load_store_word_only/verifier", features = ["worst_case_config_generation"]}
+mul_div_verifier = {path = "../../circuit_defs/unrolled_circuits/mul_div/verifier", features = ["worst_case_config_generation"]}
+mul_div_unsigned_verifier = {path = "../../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", features = ["worst_case_config_generation"]}
+shift_binary_csr_verifier = {path = "../../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", features = ["worst_case_config_generation"]}
+
+inits_and_teardowns_verifier = {path = "../../circuit_defs/unrolled_circuits/inits_and_teardowns/verifier", features = ["worst_case_config_generation"]}
+
+unified_reduced_machine_verifier = {path = "../../circuit_defs/unrolled_circuits/unified_reduced_machine/verifier", features = ["worst_case_config_generation"]}

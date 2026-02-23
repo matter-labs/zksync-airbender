@@ -285,48 +285,23 @@ impl core::fmt::Display for Mersenne31Quartic {
 impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     const DEGREE: usize = 2;
 
+    type Coeffs = [Mersenne31Complex; 2];
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
-        self.c0.mul_assign(elem);
-        self.c1.mul_assign(elem);
-        self
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self.c0, self.c1]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[Mersenne31Complex; 2]) -> Self {
-        Self {
-            c0: coefs[0],
-            c1: coefs[1],
-        }
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn into_coeffs_in_base(self) -> [Mersenne31Complex; 2] {
-        let Self { c0, c1 } = self;
-
-        [c0, c1]
-    }
-
-    fn from_coeffs_in_base(coeffs: &[Mersenne31Complex]) -> Self {
-        debug_assert_eq!(coeffs.len(), 2);
-        let c0 = coeffs[0];
-        let c1 = coeffs[1];
-
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
+        let [c0, c1] = coeffs;
         Self { c0, c1 }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Complex]) -> Self {
-        todo!();
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Complex>>(_coefs_iter: I) -> Self {
-        todo!();
-    }
-
-    fn coeffs_in_base(&self) -> &[Mersenne31Complex] {
-        todo!();
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        let [c0, c1] = *coeffs;
+        Self { c0, c1 }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -342,78 +317,57 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn mul_assign_by_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
+        self.c0.mul_assign(elem);
+        self.c1.mul_assign(elem);
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Complex) -> Self {
         Self {
             c0: elem,
             c1: Mersenne31Complex::ZERO,
         }
     }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Complex {
-        todo!();
-    }
 }
 
 impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
     const DEGREE: usize = 4;
 
+    type Coeffs = [Mersenne31Field; 4];
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
-        self.c0.mul_assign_by_base(elem);
-        self.c1.mul_assign_by_base(elem);
-
-        self
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline)]
-    fn into_coeffs_in_base(self) -> [Mersenne31Field; 4] {
-        let Mersenne31Quartic { c0, c1 } = self;
-        let [c2, c3] = c1.into_coeffs_in_base();
-        let [c0, c1] = c0.into_coeffs_in_base();
-
-        [c0, c1, c2, c3]
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self.c0.c0, self.c0.c1, self.c1.c0, self.c1.c1]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[Mersenne31Field; 4]) -> Self {
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
         Self {
             c0: Mersenne31Complex {
-                c0: coefs[0],
-                c1: coefs[1],
+                c0: coeffs[0],
+                c1: coeffs[1],
             },
             c1: Mersenne31Complex {
-                c0: coefs[2],
-                c1: coefs[3],
-            },
-        }
-    }
-
-    fn from_coeffs_in_base(coefs: &[Mersenne31Field]) -> Self {
-        Self {
-            c0: Mersenne31Complex {
-                c0: coefs[0],
-                c1: coefs[1],
-            },
-            c1: Mersenne31Complex {
-                c0: coefs[2],
-                c1: coefs[3],
+                c0: coeffs[2],
+                c1: coeffs[3],
             },
         }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Field]) -> Self {
-        todo!();
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Field>>(_coefs_iter: I) -> Self {
-        todo!()
-    }
-
-    fn coeffs_in_base(&self) -> &[Mersenne31Field] {
-        todo!();
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        Self {
+            c0: Mersenne31Complex {
+                c0: coeffs[0],
+                c1: coeffs[1],
+            },
+            c1: Mersenne31Complex {
+                c0: coeffs[2],
+                c1: coeffs[3],
+            },
+        }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -428,16 +382,21 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         self
     }
 
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
+        self.c0.mul_assign_by_base(elem);
+        self.c1.mul_assign_by_base(elem);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Field) -> Self {
         let c0 = Mersenne31Complex::from_base(elem);
         Self {
             c0,
             c1: Mersenne31Complex::ZERO,
         }
-    }
-
-    fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Field {
-        todo!();
     }
 }
 

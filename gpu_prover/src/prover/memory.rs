@@ -196,6 +196,7 @@ pub(crate) fn commit_memory<'a, A: GoodAllocator>(
             }
         },
     }
+    drop(evaluations);
     memory_holder.make_evaluations_sum_to_zero_extend_and_commit(context)?;
     let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();
     let mut tree_caps = Box::new(None);

@@ -257,6 +257,7 @@ impl BabyBearField {
         self.mul_assign_impl(&t)
     }
 
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
         if self.0 != 0 {
@@ -440,10 +441,6 @@ impl PrimeField for BabyBearField {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_boolean(flag: bool) -> Self {
         Self(if flag { Self::MONT_R } else { 0 })
-    }
-
-    fn to_le_bytes(self) -> [u8; Self::NUM_BYTES_IN_REPR] {
-        self.0.to_le_bytes()
     }
 
     fn increment_unchecked(&'_ mut self) {

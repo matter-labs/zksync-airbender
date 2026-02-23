@@ -26,6 +26,7 @@ prover = { workspace = true, features = ["prover"] }
 [features]
 security_80 = []
 security_100 = []
+worst_case_config_generation = [] # only used in tools/pow_config_generator
 blake2_with_compression = ["blake2s_u32/blake2_with_compression", "transcript/blake2_with_compression"]
 modular_ops = ["field/modular_ops"]
 modular_ext4_ops = ["field/modular_ext4_ops"]

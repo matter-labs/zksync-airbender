@@ -72,8 +72,12 @@ impl<const N: usize> MerkleTreeCap<N> {
     pub fn flatten<const M: usize>(input: &'_ [Self; M]) -> &'_ [u32] {
         // layouts are the same
         unsafe {
-            core::slice::from_ptr_range(
-                input.as_ptr_range().start.cast::<u32>()..input.as_ptr_range().end.cast::<u32>(),
+            core::slice::from_raw_parts(
+                input.as_ptr_range().start.cast::<u32>(),
+                input
+                    .as_ptr_range()
+                    .end
+                    .offset_from(input.as_ptr_range().start) as usize,
             )
         }
     }

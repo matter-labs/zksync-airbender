@@ -2,7 +2,7 @@
 
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn reduce_with_division_ct(value: u32) -> u32 {
-    value % crate::baby_bear::BabyBearField::ORDER
+    value % crate::baby_bear::base::BabyBearField::ORDER
 }
 
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -40,7 +40,7 @@ pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn sub_mod_ct(a: u32, b: u32) -> u32 {
     reduce_with_division_ct(
-        crate::baby_bear::BabyBearField::ORDER
+        crate::baby_bear::base::BabyBearField::ORDER
             .wrapping_add(a)
             .wrapping_sub(b),
     )

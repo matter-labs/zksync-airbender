@@ -1,12 +1,8 @@
 #![allow(internal_features)]
-// for generic const expr
-#![allow(incomplete_features)]
 #![cfg_attr(not(test), no_std)]
-#![feature(generic_const_exprs)]
 #![feature(associated_type_defaults)]
 #![feature(core_intrinsics)]
 #![feature(const_eval_select)]
-#![cfg_attr(target_feature = "avx512f", feature(stdarch_x86_avx512))]
 
 use core::fmt::Debug;
 use core::fmt::Display;
@@ -21,7 +17,6 @@ pub(crate) mod ops;
 pub mod base;
 pub mod complex;
 pub mod field;
-pub mod field_like;
 pub mod quartic;
 
 pub mod baby_bear;
@@ -34,39 +29,6 @@ pub use self::complex::*;
 pub use self::quartic::*;
 
 pub use self::field::*;
-pub use self::field_like::*;
-
-#[cfg(target_feature = "avx512f")]
-pub mod avx_512_impl;
-#[cfg(target_feature = "avx512f")]
-pub mod ext2_avx_512_impl;
-#[cfg(target_feature = "avx512f")]
-pub mod ext_avx_512_impl;
-#[cfg(target_feature = "avx512f")]
-pub mod ext_avx_512_interleaved_impl;
-
-#[cfg(target_feature = "avx512f")]
-pub use self::avx_512_impl::*;
-#[cfg(target_feature = "avx512f")]
-pub use self::ext2_avx_512_impl::*;
-#[cfg(target_feature = "avx512f")]
-pub use self::ext_avx_512_impl::*;
-#[cfg(target_feature = "avx512f")]
-pub use self::ext_avx_512_interleaved_impl::*;
-
-#[cfg(not(target_feature = "avx512f"))]
-pub mod arm_impl;
-#[cfg(not(target_feature = "avx512f"))]
-pub mod ext_arm_impl;
-#[cfg(not(target_feature = "avx512f"))]
-pub mod ext_arm_interleaved_impl;
-
-#[cfg(not(target_feature = "avx512f"))]
-pub use self::arm_impl::*;
-#[cfg(not(target_feature = "avx512f"))]
-pub use self::ext_arm_impl::*;
-#[cfg(not(target_feature = "avx512f"))]
-pub use self::ext_arm_interleaved_impl::*;
 
 const _: () = const {
     #[cfg(all(

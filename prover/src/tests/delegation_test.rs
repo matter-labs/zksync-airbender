@@ -1,11 +1,14 @@
 use super::*;
 
+use crate::prover_stages::ProofSecurityConfig;
 use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use cs::cs::{circuit::Circuit, cs_reference::BasicAssembly};
 use full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
-use risc_v_simulator::{cycle::IMStandardIsaConfig, delegations::DelegationsCSRProcessor};
+use risc_v_simulator::{
+    cycle::IWithoutByteAccessIsaConfigWithDelegation, delegations::DelegationsCSRProcessor,
+};
 
-const SECOND_WORD_BITS: usize = 4;
+const SECOND_WORD_BITS: usize = 6;
 
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 
@@ -16,7 +19,7 @@ pub fn run_basic_delegation_test_impl(
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
     // invalid locations
-    const NUM_PROC_CYCLES: usize = (1 << 20) - 1;
+    const NUM_PROC_CYCLES: usize = (1 << 23) - 1;
     const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
     let domain_size = NUM_PROC_CYCLES + 1;
@@ -52,7 +55,9 @@ pub fn run_basic_delegation_test_impl(
         TableType::SpecialCSRProperties.to_table_id(),
     );
 
-    let machine = FullIsaMachineWithDelegationNoExceptionHandling;
+    // let machine = FullIsaMachineWithDelegationNoExceptionHandling;
+    use cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
+    let machine = MinimalMachineNoExceptionHandlingWithDelegation;
     let compiled_machine = default_compile_machine::<_, SECOND_WORD_BITS>(
         machine,
         rom_table.clone(),
@@ -118,13 +123,13 @@ pub fn run_basic_delegation_test_impl(
     let (witness_chunks, register_final_values, delegation_circuits) =
         dev_run_all_and_make_witness_ext_with_gpu_tracers::<
             _,
-            IMStandardIsaConfig,
+            IWithoutByteAccessIsaConfigWithDelegation,
             _,
             SECOND_WORD_BITS,
         >(
             machine,
             &compiled_machine,
-            super::full_machine_with_gpu_tracer::witness_eval_fn,
+            super::reduced_machine::witness_eval_fn,
             delegation_circuits_eval_fns,
             &delegation_circuits,
             &binary,
@@ -308,6 +313,8 @@ pub fn run_basic_delegation_test_impl(
         None
     };
 
+    let default_security_config = ProofSecurityConfig::for_queries_only(5, 28, 63);
+
     let now = std::time::Instant::now();
     let (prover_data, proof) = prove::<DEFAULT_TRACE_PADDING_MULTIPLE, _>(
         &compiled_machine,
@@ -321,8 +328,7 @@ pub fn run_basic_delegation_test_impl(
         None,
         lde_factor,
         tree_cap_size,
-        53,
-        28,
+        &default_security_config,
         &worker,
     );
     println!("Full machine proving time is {:?}", now.elapsed());
@@ -425,8 +431,7 @@ pub fn run_basic_delegation_test_impl(
                 Some(delegation_type),
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!(

@@ -12,6 +12,7 @@ use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::ops_simple::set_by_ref;
+use crate::prover::pow::search_pow_challenge;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::{
     EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
@@ -24,11 +25,13 @@ use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::definitions::Transcript;
 use prover::prover_stages::cached_data::ProverCachedData;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::slice;
 
 pub(crate) struct StageTwoOutput {
     pub(crate) trace_holder: TraceHolder<BF>,
+    pub(crate) pow_challenge: Option<HostAllocation<u64>>,
     pub(crate) lookup_challenges: Option<HostAllocation<LookupChallenges>>,
     pub(crate) decoder_challenges: Option<HostAllocation<DecoderTableChallenges>>,
     pub(crate) last_row: Option<HostAllocation<[BF]>>,
@@ -64,6 +67,7 @@ impl StageTwoOutput {
         )?;
         Ok(Self {
             trace_holder,
+            pow_challenge: None,
             lookup_challenges: None,
             decoder_challenges: None,
             last_row: None,
@@ -75,6 +79,8 @@ impl StageTwoOutput {
     pub fn generate(
         &mut self,
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         circuit: &CompiledCircuitArtifact<BF>,
         is_unrolled: bool,
         cached_data: &ProverCachedData,
@@ -93,6 +99,17 @@ impl StageTwoOutput {
             unsafe { context.alloc_host_uninit::<DecoderTableChallenges>() };
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
+        let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let pow_bits = security_config.lookup_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut pow_challenge,
+            pow_bits,
+            external_challenges.as_ref().map(|c| c.lookup_pow_challenge),
+            callbacks,
+            context,
+        )?;
+        self.pow_challenge = Some(pow_challenge);
         let lookup_challenges_accessor = lookup_challenges.get_mut_accessor();
         let decoder_challenges_accessor = decoder_challenges.get_mut_accessor();
         let has_decoder = circuit
@@ -101,39 +118,36 @@ impl StageTwoOutput {
             .num_elements()
             > 0;
         let challenges_fn = move || unsafe {
-            // Imitates logic in prover/serc/prover_stages/unrolled_prover/stage2.rs
-            let lookup_challenges = lookup_challenges_accessor.get_mut();
-            let decoder_challenges = decoder_challenges_accessor.get_mut();
-            if has_decoder {
-                let mut transcript_challenges = [0u32;
-                    ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES
-                        + 1
-                        + EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES
-                        + 1)
-                        * 4)
-                    .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-                Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
-                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
-                let mut get_challenge =
-                    || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
-                lookup_challenges.linearization_challenges =
-                    std::array::from_fn(|_| get_challenge());
-                lookup_challenges.gamma = get_challenge();
-                decoder_challenges.linearization_challenges =
-                    std::array::from_fn(|_| get_challenge());
-                decoder_challenges.gamma = get_challenge();
+            let num_entries = {
+                let mut num_entries = if pow_bits == 0 { 0 } else { 1 };
+                let mut num_challenges = NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
+                if has_decoder {
+                    num_challenges +=
+                        EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES + 1;
+                }
+                num_entries += num_challenges * 4;
+                num_entries.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)
+            };
+            let mut transcript_challenges = vec![0u32; num_entries];
+            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            if pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
+            let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+            let mut get_challenge =
+                || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
+            *lookup_challenges_accessor.get_mut() = LookupChallenges {
+                linearization_challenges: std::array::from_fn(|_| get_challenge()),
+                gamma: get_challenge(),
+            };
+            *decoder_challenges_accessor.get_mut() = if has_decoder {
+                DecoderTableChallenges {
+                    linearization_challenges: std::array::from_fn(|_| get_challenge()),
+                    gamma: get_challenge(),
+                }
             } else {
-                let mut transcript_challenges = [0u32;
-                    ((NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
-                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-                Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
-                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
-                let mut get_challenge =
-                    || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
-                lookup_challenges.linearization_challenges =
-                    std::array::from_fn(|_| get_challenge());
-                lookup_challenges.gamma = get_challenge();
-                *decoder_challenges = DecoderTableChallenges::default();
+                DecoderTableChallenges::default()
             }
         };
         callbacks.schedule(challenges_fn, stream)?;
@@ -149,8 +163,8 @@ impl StageTwoOutput {
         let d_generic_lookups_args_to_table_entries_map =
             DeviceMatrix::new(&generic_lookup_mapping, trace_len);
         let trace_holder = &mut self.trace_holder;
-        let evaluations = trace_holder.get_uninit_evaluations_mut();
-        let mut d_stage_2_cols = DeviceMatrixMut::new(evaluations, trace_len);
+        let mut evaluations = trace_holder.get_uninit_evaluations_mut();
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut evaluations, trace_len);
         let num_e4_scratch_elems = get_stage_2_e4_scratch(trace_len, circuit);
         let mut d_alloc_e4_scratch =
             context.alloc(num_e4_scratch_elems, AllocationPlacement::BestFit)?;
@@ -245,6 +259,7 @@ impl StageTwoOutput {
                 context.get_device_properties(),
             )?;
         }
+        drop(evaluations);
         generic_lookup_mapping.free();
         d_alloc_e4_scratch.free();
         d_alloc_scratch_for_cub_ops.free();
@@ -262,7 +277,7 @@ impl StageTwoOutput {
         trace_holder.extend_and_commit(0, context)?;
         let mut d_last_row = context.alloc(num_stage_2_cols, AllocationPlacement::BestFit)?;
         let evaluations = trace_holder.get_evaluations(context)?;
-        let last_row_src = DeviceMatrixChunk::new(evaluations, trace_len, trace_len - 1, 1);
+        let last_row_src = DeviceMatrixChunk::new(&evaluations, trace_len, trace_len - 1, 1);
         let mut las_row_dst = DeviceMatrixMut::new(&mut d_last_row, 1);
         set_by_ref(&last_row_src, &mut las_row_dst, stream)?;
         let mut last_row = unsafe { context.alloc_host_uninit_slice(num_stage_2_cols) };

@@ -324,6 +324,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
         match kernel {
+            // KernelVariant::MaskIdentity(..) => {},
             _ => self.kernels.push(kernel),
         }
     }

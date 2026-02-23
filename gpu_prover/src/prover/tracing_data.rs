@@ -1,7 +1,6 @@
 use super::context::ProverContext;
 use super::transfer::Transfer;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::circuit_type::DelegationCircuitType;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_unrolled::{
     ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsHost, UnrolledMemoryTraceDevice,
@@ -39,14 +38,6 @@ pub(crate) enum DelegationTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> DelegationTracingDataHost<A> {
-    pub fn get_allocators_count(&self) -> usize {
-        match self {
-            DelegationTracingDataHost::BigIntWithControl(trace) => trace.get_allocators_count(),
-            DelegationTracingDataHost::Blake2WithCompression(trace) => trace.get_allocators_count(),
-            DelegationTracingDataHost::KeccakSpecial5(trace) => trace.get_allocators_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             DelegationTracingDataHost::BigIntWithControl(trace) => trace.into_allocators(),
@@ -57,26 +48,22 @@ impl<A: GoodAllocator> DelegationTracingDataHost<A> {
 }
 
 pub(crate) trait DelegationTracingDataHostSource: Sized {
-    const CIRCUIT_TYPE: DelegationCircuitType;
     fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A>;
 }
 
 impl DelegationTracingDataHostSource for BigintDelegationWitness {
-    const CIRCUIT_TYPE: DelegationCircuitType = DelegationCircuitType::BigIntWithControl;
     fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
         DelegationTracingDataHost::BigIntWithControl(trace)
     }
 }
 
 impl DelegationTracingDataHostSource for Blake2sRoundFunctionDelegationWitness {
-    const CIRCUIT_TYPE: DelegationCircuitType = DelegationCircuitType::Blake2WithCompression;
     fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
         DelegationTracingDataHost::Blake2WithCompression(trace)
     }
 }
 
 impl DelegationTracingDataHostSource for KeccakSpecial5DelegationWitness {
-    const CIRCUIT_TYPE: DelegationCircuitType = DelegationCircuitType::KeccakSpecial5;
     fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
         DelegationTracingDataHost::KeccakSpecial5(trace)
     }
@@ -90,14 +77,6 @@ pub(crate) enum UnrolledTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> UnrolledTracingDataHost<A> {
-    pub fn get_allocators_count(&self) -> usize {
-        match self {
-            UnrolledTracingDataHost::Memory(trace) => trace.get_allocators_count(),
-            UnrolledTracingDataHost::NonMemory(trace) => trace.get_allocators_count(),
-            UnrolledTracingDataHost::Unified(trace) => trace.get_allocators_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             UnrolledTracingDataHost::Memory(trace) => trace.into_allocators(),
@@ -114,13 +93,6 @@ pub(crate) enum TracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> TracingDataHost<A> {
-    pub fn get_allocators_count(&self) -> usize {
-        match self {
-            TracingDataHost::Delegation(trace) => trace.get_allocators_count(),
-            TracingDataHost::Unrolled(trace) => trace.get_allocators_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             TracingDataHost::Delegation(trace) => trace.into_allocators(),

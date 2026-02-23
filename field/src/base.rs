@@ -269,59 +269,6 @@ impl Mersenne31Field {
         self
     }
 
-    // #[cfg(all(feature = "use_division", feature = "use_mulmod_csr"))]
-    // #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    // pub(crate) const fn mul_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     const fn ct_impl(a: u32, b: u32) -> u32 {
-    //         let product = (a as u64) * (b as u64);
-    //         let product_low = (product as u32) & ((1 << 31) - 1);
-    //         let product_high = (product >> 31) as u32;
-    //         reduce_with_division(product_low + product_high)
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     #[cfg(target_arch = "riscv32")]
-    //     fn rt_impl(a: u32, b: u32) -> u32 {
-    //         let mut result;
-    //         unsafe {
-    //             core::arch::asm!(
-    //                 "csrrw x0, 0x7c2, {inp1}",
-    //                 "csrrw {rd}, 0x7c2, {inp2}",
-    //                 inp1 = in(reg) a,
-    //                 inp2 = in(reg) b,
-    //                 rd = out(reg) result,
-    //                 options(nomem, nostack, preserves_flags)
-    //             )
-    //         }
-
-    //         result
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     #[cfg(not(target_arch = "riscv32"))]
-    //     fn rt_impl(a: u32, b: u32) -> u32 {
-    //         let product = (a as u64) * (b as u64);
-    //         let product_low = (product as u32) & ((1 << 31) - 1);
-    //         let product_high = (product >> 31) as u32;
-    //         reduce_with_division(product_low + product_high)
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     const fn impl_inner(a: u32, b: u32) -> u32 {
-    //         core::intrinsics::const_eval_select(
-    //             (a,b,),
-    //             ct_impl,
-    //             rt_impl,
-    //         )
-    //     }
-
-    //     *self = Self(impl_inner(self.0, other.0));
-
-    //     self
-
-    // }
-
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn square_impl(&'_ mut self) -> &'_ mut Self {
         let t = *self;
@@ -545,10 +492,6 @@ impl PrimeField for Mersenne31Field {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_boolean(flag: bool) -> Self {
         Self(flag as u32)
-    }
-
-    fn to_le_bytes(self) -> [u8; Self::NUM_BYTES_IN_REPR] {
-        self.0.to_le_bytes()
     }
 
     fn increment_unchecked(&'_ mut self) {

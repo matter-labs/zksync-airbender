@@ -172,13 +172,55 @@ pub struct BatchConstraintEvalGKRRelationKernel<F: PrimeField, E: FieldExtension
     _marker: core::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> SingleInputTypeBatchSumcheckEvaluationKernel<F, E>
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    SingleInputTypeBatchSumcheckEvaluationKernelCore<F, E, 1>
     for BatchConstraintEvalGKRRelationKernel<F, E>
 {
-    fn num_challenges(&self) -> usize {
-        1
-    }
+    #[inline]
+    fn pointwise_eval(&self, input: &[E]) -> [E; 1] {
+        // verifier-sensitive
+        unsafe {
+            let mut result = self.constant_offset;
+            for ((a, b), challenge) in self.quadratic_parts.iter() {
+                debug_assert!(*a < input.len());
+                #[cfg(feature = "gkr_self_checks")]
+                assert!(*a < input.len());
 
+                let mut contribution = *input.get_unchecked(*a);
+
+                if *a != *b {
+                    debug_assert!(*b < input.len());
+                    #[cfg(feature = "gkr_self_checks")]
+                    assert!(*b < input.len());
+
+                    let b = input.get_unchecked(*b);
+                    contribution.mul_assign(b);
+                } else {
+                    contribution.square();
+                };
+                contribution.mul_assign(challenge);
+                result.add_assign(&contribution);
+            }
+            // just evaluate at the point
+            for (a, challenge) in self.linear_parts.iter() {
+                debug_assert!(*a < input.len());
+                #[cfg(feature = "gkr_self_checks")]
+                assert!(*a < input.len());
+
+                let mut contribution = *input.get_unchecked(*a);
+                contribution.mul_assign(challenge);
+                result.add_assign(&contribution);
+            }
+
+            [result]
+        }
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    SingleInputTypeBatchSumcheckEvaluationKernel<F, E, 1>
+    for BatchConstraintEvalGKRRelationKernel<F, E>
+{
     #[inline(always)]
     fn evaluate_first_round<
         R0: EvaluationRepresentation<F, E>,

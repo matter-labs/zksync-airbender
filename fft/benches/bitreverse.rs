@@ -13,7 +13,7 @@ fn get_random_slice(len: usize) -> Vec<Mersenne31Field> {
     let mut rng = rand::thread_rng();
 
     (0..len)
-        .map(|_| Mersenne31Field::from_u32_with_reduction(rng.gen_range(0..(1 << 31) - 1)).unwrap())
+        .map(|_| Mersenne31Field::from_u32_with_reduction(rng.gen_range(0..(1 << 31) - 1)))
         .collect()
 }
 

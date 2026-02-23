@@ -1,6 +1,7 @@
 use crate::gkr::whir::offsets_vec_for_leaf_construction;
 
 use super::*;
+use crate::utils::extension_field_into_base_coeffs;
 use blake2s_u32::*;
 use fft::bitreverse_enumeration_inplace;
 
@@ -444,8 +445,7 @@ where
                             for column in trace.iter() {
                                 for offset in offsets_ref.iter() {
                                     let el = column[i + *offset];
-                                    let as_base = el
-                                        .into_coeffs_in_base()
+                                    let as_base = extension_field_into_base_coeffs(el)
                                         .map(|el| el.as_u32_raw_repr_reduced());
                                     buffer.extend(as_base);
                                 }
@@ -609,8 +609,7 @@ where
                                 for column in coset.iter() {
                                     for offset in offsets_ref.iter() {
                                         let el = column[i + *offset];
-                                        let as_base = el
-                                            .into_coeffs_in_base()
+                                        let as_base = extension_field_into_base_coeffs(el)
                                             .map(|el| el.as_u32_raw_repr_reduced());
                                         buffer.extend(as_base);
                                     }

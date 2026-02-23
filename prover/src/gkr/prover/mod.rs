@@ -56,15 +56,64 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     }
 }
 
-// #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde_with::serde_as]
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(
+    bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
+)]
 pub struct GKRProof<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
 > {
     pub external_challenges: GKRExternalChallenges<F, E>,
-    // TODO: sumcheck intermediate values
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub final_explicit_evaluations: BTreeMap<OutputType, [Vec<E>; 2]>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub sumcheck_intermediate_values: BTreeMap<usize, SumcheckIntermediateProofValues<F, E>>,
     pub whir_proof: WhirPolyCommitProof<F, E, T>,
+    pub grand_product_accumulator_computed: E,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
+    GKRProof<F, E, T>
+{
+    pub fn estimate_size(&self) -> usize {
+        self.final_explicit_evaluations
+            .iter()
+            .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+            .sum::<usize>()
+            + self
+                .sumcheck_intermediate_values
+                .iter()
+                .map(|(_, v)| v.estimate_size())
+                .sum::<usize>()
+            + self.whir_proof.estimate_size()
+    }
+}
+
+#[serde_with::serde_as]
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(
+    bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
+)]
+pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> + Field> {
+    pub sumcheck_num_rounds: usize,
+    pub internal_round_coefficients: Vec<[E; 4]>, // max quadratic gates
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub final_step_evaluations: BTreeMap<GKRAddress, Vec<E>>,
+    pub _marker: core::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValues<F, E> {
+    pub fn estimate_size(&self) -> usize {
+        self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
+            + self
+                .final_step_evaluations
+                .iter()
+                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .sum::<usize>()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -246,8 +295,8 @@ where
 
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ... + additive_part)
     let (
-        preprocessed_range_check_16,
-        preprocessed_timestamp_range_checks,
+        _preprocessed_range_check_16,
+        _preprocessed_timestamp_range_checks,
         preprocessed_generic_lookup,
     ) = setup.preprocess_lookups(
         compiled_circuit,
@@ -270,8 +319,6 @@ where
             external_challenges,
             &mut witness_eval_data,
             trace_len,
-            &preprocessed_range_check_16,
-            &preprocessed_timestamp_range_checks,
             &preprocessed_generic_lookup,
             lookup_additive_part,
             constraints_batch_challenge,
@@ -306,19 +353,27 @@ where
     println!("Forward sumcheck loop is done, outputing explicit small polynomials");
 
     // get final evaluations
+    let mut final_explicit_evaluations = BTreeMap::new();
     let mut evals_flattened = vec![];
     for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
         match *k {
             OutputType::PermutationProduct => {
-                for addr in v.output.iter() {
+                let mut final_evals: [Vec<E>; 2] = std::array::from_fn(|_| Vec::new());
+                for (i, addr) in v.output.iter().enumerate() {
                     let poly = gkr_storage.get_ext_poly(*addr);
+                    assert_eq!(poly.len(), 1 << final_trace_size_log_2);
                     evals_flattened.extend_from_slice(poly);
+                    final_evals[i] = poly.to_vec();
                 }
+                final_explicit_evaluations.insert(*k, final_evals);
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
                 let [num, den] = v.output.clone().try_into().unwrap();
-                evals_flattened.extend_from_slice(gkr_storage.get_ext_poly(num));
-                evals_flattened.extend_from_slice(gkr_storage.get_ext_poly(den));
+                let num = gkr_storage.get_ext_poly(num);
+                evals_flattened.extend_from_slice(num);
+                let den = gkr_storage.get_ext_poly(den);
+                evals_flattened.extend_from_slice(den);
+                final_explicit_evaluations.insert(*k, [num.to_vec(), den.to_vec()]);
             }
         }
     }
@@ -404,10 +459,12 @@ where
     claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
     points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
 
+    let mut sumcheck_intermediate_values = BTreeMap::new();
+
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -418,6 +475,7 @@ where
             1 << reduced_trace_size_log_2,
             worker,
         );
+        sumcheck_intermediate_values.insert(layer_idx, proof);
         reduced_trace_size_log_2 += 1;
     }
 
@@ -425,7 +483,7 @@ where
 
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
-        sumcheck_loop::evaluate_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
             layer_idx,
             layer,
             &mut points_for_claims_at_layer,
@@ -439,6 +497,7 @@ where
             &mut seed,
             worker,
         );
+        sumcheck_intermediate_values.insert(layer_idx, proof);
     }
 
     let base_layer_z = points_for_claims_at_layer
@@ -489,8 +548,6 @@ where
         external_challenges,
     ));
 
-    drop(preprocessed_range_check_16);
-    drop(preprocessed_timestamp_range_checks);
     drop(preprocessed_generic_lookup);
 
     let mut mem_polys_claims = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
@@ -571,5 +628,28 @@ where
         worker,
     );
 
-    todo!();
+    let [read_set_computed, write_set_computed] = final_explicit_evaluations
+        .get(&OutputType::PermutationProduct)
+        .expect("must be present")
+        .clone()
+        .map(|els| {
+            let mut result = E::ONE;
+            for el in els.iter() {
+                result.mul_assign(el);
+            }
+
+            result
+        });
+
+    let mut grand_product_accumulator_computed = read_set_computed;
+    grand_product_accumulator_computed
+        .mul_assign(&write_set_computed.inverse().expect("must not be zero"));
+
+    GKRProof {
+        external_challenges: *external_challenges,
+        whir_proof,
+        final_explicit_evaluations,
+        sumcheck_intermediate_values,
+        grand_product_accumulator_computed,
+    }
 }

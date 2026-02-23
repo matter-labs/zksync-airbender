@@ -1,3 +1,4 @@
+use crate::gkr::prover::SumcheckIntermediateProofValues;
 use std::collections::BTreeMap;
 
 use crate::gkr::{
@@ -33,7 +34,8 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExt
     seed: &mut Seed,
     trace_len_after_reduction: usize,
     worker: &Worker,
-) where
+) -> SumcheckIntermediateProofValues<F, E>
+where
     [(); E::DEGREE]: Sized,
 {
     println!(
@@ -68,16 +70,17 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExt
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, last_evaluations) = run_sumcheck_loop::<F, E, 4>(
-        &collector,
-        claim,
-        prev_challenges,
-        &eq_polys,
-        gkr_storage,
-        folding_steps,
-        worker,
-        seed,
-    );
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations) =
+        run_sumcheck_loop::<F, E, 4>(
+            &collector,
+            claim,
+            prev_challenges,
+            &eq_polys,
+            gkr_storage,
+            folding_steps,
+            worker,
+            seed,
+        );
 
     // TODO: re-evaluate kernels over last evaluations
 
@@ -140,6 +143,15 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExt
     gkr_storage.purge_up_to_layer(layer_idx);
 
     *batching_challenge = next_batching_challenge;
+
+    SumcheckIntermediateProofValues {
+        sumcheck_num_rounds: folding_steps,
+        internal_round_coefficients,
+        final_step_evaluations: BTreeMap::from_iter(
+            last_evaluations.into_iter().map(|(k, v)| (k, v.to_vec())),
+        ),
+        _marker: core::marker::PhantomData,
+    }
 }
 
 pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -155,7 +167,8 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     constraints_batch_challenge: E,
     seed: &mut Seed,
     worker: &Worker,
-) where
+) -> SumcheckIntermediateProofValues<F, E>
+where
     [(); E::DEGREE]: Sized,
 {
     println!("Evaluating layer {} in sumcheck direction", layer_idx);
@@ -192,16 +205,17 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, last_evaluations) = run_sumcheck_loop::<F, E, 2>(
-        &collector,
-        claim,
-        prev_challenges,
-        &eq_polys,
-        gkr_storage,
-        folding_steps,
-        worker,
-        seed,
-    );
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations) =
+        run_sumcheck_loop::<F, E, 2>(
+            &collector,
+            claim,
+            prev_challenges,
+            &eq_polys,
+            gkr_storage,
+            folding_steps,
+            worker,
+            seed,
+        );
 
     // TODO: re-evaluate kernels over last evaluations
 
@@ -254,6 +268,15 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     gkr_storage.purge_up_to_layer(layer_idx);
 
     *batching_challenge = next_batching_challenge;
+
+    SumcheckIntermediateProofValues {
+        sumcheck_num_rounds: folding_steps,
+        internal_round_coefficients,
+        final_step_evaluations: BTreeMap::from_iter(
+            last_evaluations.into_iter().map(|(k, v)| (k, v.to_vec())),
+        ),
+        _marker: core::marker::PhantomData,
+    }
 }
 
 fn run_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field, const N: usize>(
@@ -265,7 +288,7 @@ fn run_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field, const N: usize
     folding_steps: usize,
     worker: &Worker,
     seed: &mut Seed,
-) -> (Vec<E>, BTreeMap<GKRAddress, [E; N]>)
+) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>)
 where
     [(); E::DEGREE]: Sized,
 {
@@ -277,6 +300,7 @@ where
 
     let max_acc_size = 1 << (folding_steps - 1);
     let mut accumulator_buffer = vec![[E::ZERO; 2]; max_acc_size];
+    let mut intermediate_coeffs = Vec::with_capacity(folding_steps);
 
     for step in 0..folding_steps - 1 {
         let acc_size = 1 << (folding_steps - step - 1);
@@ -326,6 +350,7 @@ where
         }
 
         commit_field_els(seed, &coeffs);
+        intermediate_coeffs.push(coeffs);
         let folding_challenge = draw_random_field_els(seed, 1)[0];
 
         let new_claim = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &folding_challenge);
@@ -374,7 +399,7 @@ where
         }
     }
 
-    (folding_challenges, last_evaluations)
+    (folding_challenges, intermediate_coeffs, last_evaluations)
 }
 
 #[inline(always)]

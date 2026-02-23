@@ -26,30 +26,6 @@ const fn reduce_with_division_ct(value: u32) -> u32 {
 #[cfg(all(
     target_arch = "riscv32",
     feature = "use_division",
-    not(feature = "modular_ops")
-))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn reduce_with_division_rt_riscv(value: u32) -> u32 {
-    // LLVM is a clever beast that does transform operation `a % MODULUS` into multiplication
-    // for the fixed modulus. We want to inhibit such behavior, and will need assembly tricks for it
-    let modulus = crate::Mersenne31Field::ORDER;
-    let mut output;
-    unsafe {
-        core::arch::asm!(
-            "remu {rd}, {inp}, {ch}",
-            ch = in(reg) modulus,
-            inp = in(reg) value,
-            rd = lateout(reg) output,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    output
-}
-
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "use_division",
     feature = "modular_ops"
 ))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]

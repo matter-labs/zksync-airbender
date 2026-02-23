@@ -9,3 +9,5 @@ rustflags = [
   "-C", "force-frame-pointers",
 ]
 
+[unstable]
+panic-immediate-abort = true

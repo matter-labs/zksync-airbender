@@ -5,6 +5,7 @@ use crate::{
     gkr::whir::WhirCommitment,
 };
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use field::FixedArrayConvertible;
 use transcript::Seed;
 
 pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
@@ -12,7 +13,9 @@ where
     [(); E::DEGREE]: Sized,
 {
     for el in src.iter() {
-        let coeffs = E::into_coeffs_in_base(*el).map(|el: F| el.as_u32_raw_repr_reduced());
+        let coeffs = E::into_coeffs(*el)
+            .into_array::<{ E::DEGREE }>()
+            .map(|el: F| el.as_u32_raw_repr_reduced());
         dst.extend(coeffs);
     }
 }
@@ -43,7 +46,11 @@ where
         .as_chunks::<{ E::DEGREE }>()
         .0
         .into_iter()
-        .map(|el| E::from_base_coeffs_array(&el.map(|el| F::from_u32_with_reduction(el))))
+        .map(|el| {
+            let array = el.map(|el| F::from_u32_with_reduction(el));
+            let coeffs = E::Coeffs::from_array(array);
+            E::from_coeffs(coeffs)
+        })
         .collect();
 
     assert!(all_challenges.len() >= num_challenges);

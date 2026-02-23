@@ -1,3 +1,5 @@
+use crate::definitions::sumcheck_kernel::fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -90,7 +92,7 @@ pub struct LookupAdditionGKRRelationKernel<F: PrimeField, E: FieldExtension<F> +
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, 4, 2>
     for LookupAdditionGKRRelationKernel<F, E>
 {
     #[inline(always)]
@@ -107,4 +109,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         den.mul_assign(&d);
         [num, den]
     }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only(
+        &self,
+        input: &[ExtensionFieldRepresentation<F, E>; 4],
+    ) -> [E; 2] {
+        self.pointwise_eval(input)
+    }
+
+    fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 4]) -> [E; 2] {
+        todo!()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    for LookupAdditionGKRRelationKernel<F, E>
+{
 }

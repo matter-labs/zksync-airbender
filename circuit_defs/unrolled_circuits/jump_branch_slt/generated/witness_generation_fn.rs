@@ -427,7 +427,7 @@ fn eval_fn_12<
     let v_14 = W::Field::constant(Mersenne31Field(0u32));
     let mut v_15 = v_14;
     W::Field::add_assign_product(&mut v_15, &v_6, &v_0);
-    let v_16 = W::U16::constant(43u16);
+    let v_16 = W::U16::constant(42u16);
     let v_17 = witness_proxy.lookup::<2usize, 1usize>(&[v_13, v_15], v_16, 0usize);
     let v_18 = v_17[0usize];
     witness_proxy.set_witness_place(29usize, v_18);
@@ -882,7 +882,7 @@ fn eval_fn_26<
     let v_2 = W::Field::constant(Mersenne31Field(1u32));
     let mut v_3 = v_1;
     W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
-    let v_4 = W::U16::constant(17u16);
+    let v_4 = W::U16::constant(16u16);
     let v_5 = witness_proxy.lookup::<1usize, 2usize>(&[v_3], v_4, 1usize);
     let v_6 = v_5[0usize];
     witness_proxy.set_witness_place(30usize, v_6);

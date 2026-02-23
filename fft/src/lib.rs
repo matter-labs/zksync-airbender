@@ -2,18 +2,15 @@
 #![feature(slice_swap_unchecked)]
 #![cfg_attr(target_arch = "aarch64", feature(stdarch_aarch64_prefetch))]
 
-use field::Mersenne31ComplexVectorizedInterleaved;
 use field::Mersenne31Field;
 
 pub mod column_major;
 pub mod field_utils;
-pub mod grinded_fft;
 pub mod row_major;
 pub mod utils;
 
 pub use self::column_major::*;
 pub use self::field_utils::*;
-pub use self::grinded_fft::*;
 pub use self::row_major::*;
 pub use self::utils::*;
 
@@ -35,13 +32,6 @@ pub const CACHE_LINE_MULTIPLE: usize = const {
     assert!(core::mem::size_of::<Mersenne31Field>() >= core::mem::align_of::<Mersenne31Field>());
 
     CACHE_LINE_WIDTH / core::mem::size_of::<Mersenne31Field>()
-};
-
-pub const VECTORIZED_MULTIPLE: usize = const {
-    assert!(core::mem::size_of::<Mersenne31Field>() >= core::mem::align_of::<Mersenne31Field>());
-
-    core::mem::size_of::<Mersenne31ComplexVectorizedInterleaved>()
-        / core::mem::size_of::<Mersenne31Field>()
 };
 
 #[cfg(target_arch = "aarch64")]

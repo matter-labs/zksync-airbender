@@ -55,6 +55,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     let lde_factor = 2;
     let tree_cap_size = 32;
 
+    let default_security_config = prover_stages::ProofSecurityConfig::for_queries_only(5, 28, 63);
+
     use crate::prover_stages::unrolled_prover::UnrolledModeProof;
     let serialize_to_file_if_not_gpu_comparison = |proof: &UnrolledModeProof, filename: &str| {
         if maybe_gpu_unrolled_comparison_hook.is_none()
@@ -481,8 +483,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -668,8 +669,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -865,8 +865,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -1061,8 +1060,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -1262,8 +1260,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -1465,8 +1462,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -1611,8 +1607,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 None,
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());
@@ -1791,8 +1786,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 Some(delegation_type),
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!(
@@ -1972,8 +1966,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
                 Some(delegation_type),
                 lde_factor,
                 tree_cap_size,
-                53,
-                28,
+                &default_security_config,
                 &worker,
             );
             println!(

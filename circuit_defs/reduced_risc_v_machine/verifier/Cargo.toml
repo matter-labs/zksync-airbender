@@ -17,6 +17,7 @@ verifier_common = { workspace = true , default-features = false}
 [features]
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
+worst_case_config_generation = ["verifier_common/worst_case_config_generation"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 modular_ops = ["verifier_common/modular_ops"]
 modular_ext4_ops = ["verifier_common/modular_ext4_ops"]
@@ -34,7 +35,6 @@ serde = "1"
 serde_json = "*"
 prover = {workspace = true, default-features = true}
 proc-macro2 = { version = "1" }
-syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 risc_v_simulator = { workspace = true, features = ["delegation"] }

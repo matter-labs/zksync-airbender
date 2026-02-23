@@ -172,7 +172,7 @@ fn test_simple_product() {
     }
 
     let batch_challenge = E::from_base(F::ONE);
-    let mut batch_challenges = vec![batch_challenge];
+    let batch_challenges = vec![batch_challenge];
 
     let mut folding_challenges = vec![];
 

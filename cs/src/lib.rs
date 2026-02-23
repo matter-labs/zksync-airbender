@@ -1,11 +1,10 @@
-#![allow(type_alias_bounds)]
 #![cfg_attr(not(feature = "compiler"), no_std)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-#![feature(iter_advance_by)]
-#![feature(option_zip)]
-#![feature(assert_matches)]
-#![feature(allocator_api)]
+#![allow(type_alias_bounds)]
+#![cfg_attr(feature = "compiler", allow(incomplete_features))]
+#![cfg_attr(feature = "compiler", feature(generic_const_exprs))]
+#![cfg_attr(feature = "compiler", feature(iter_advance_by))]
+#![cfg_attr(feature = "compiler", feature(option_zip))]
+#![cfg_attr(feature = "compiler", feature(allocator_api))]
 
 pub mod definitions;
 

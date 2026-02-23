@@ -1,6 +1,6 @@
-use field::PrimeField;
-
+use crate::definitions::Vec;
 use crate::definitions::{Variable, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
+use field::PrimeField;
 
 use super::{ColumnAddress, ColumnSet};
 

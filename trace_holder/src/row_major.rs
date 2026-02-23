@@ -458,19 +458,6 @@ impl<T: 'static + Sized + Clone + Copy, const N: usize> RowMajorTraceView<T, N> 
         }
     }
 
-    #[inline(always)]
-    pub fn get_row_mut_vectorized(
-        &self,
-        row_index: usize,
-    ) -> &mut [Mersenne31ComplexVectorizedInterleaved] {
-        debug_assert!(row_index < self.length);
-        unsafe {
-            let ptr = self.ptr.add(self.padded_width * row_index);
-            let row = core::slice::from_raw_parts_mut(ptr, self.padded_width);
-            cast_check_alignment_ref_mut_pack::<T, Mersenne31ComplexVectorizedInterleaved>(row)
-        }
-    }
-
     pub fn as_slice(&self) -> &[T] {
         unsafe {
             core::slice::from_raw_parts(self.ptr.cast_const(), self.length * self.padded_width)

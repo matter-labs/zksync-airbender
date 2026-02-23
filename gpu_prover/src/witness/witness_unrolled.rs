@@ -10,10 +10,8 @@ use crate::witness::trace_unrolled::{
 };
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_get_info;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use std::ptr::{null, null_mut};
 
 cuda_kernel!(GenerateWitnessUnrolledMemoryKernel,
     generate_witness_unrolled_memory_kernel,
@@ -191,72 +189,4 @@ pub(crate) fn generate_witness_values_unrolled_unified(
         count,
     );
     GenerateWitnessUnrolledUnifiedKernelFunction::default().launch(&config, &args)
-}
-
-fn touch_generate_witness_unrolled_non_memory_kernel(
-    kernel: GenerateWitnessUnrolledNonMemoryKernelSignature,
-) -> CudaResult<()> {
-    use era_cudart::result::CudaResultWrap;
-    use era_cudart_sys::*;
-    let instant = std::time::Instant::now();
-    let function = GenerateWitnessUnrolledNonMemoryKernelFunction(kernel);
-    let func_ptr = function.as_ptr();
-    let (free, _) = memory_get_info()?;
-    dbg!(free);
-    dbg!(instant.elapsed());
-    unsafe {
-        cudaFuncSetCacheConfig(func_ptr, CudaFuncCache::PreferL1).wrap()?;
-        dbg!(instant.elapsed());
-        let (free, _) = memory_get_info()?;
-        dbg!(free);
-        dbg!(instant.elapsed());
-        cudaFuncSetAttribute(
-            func_ptr,
-            CudaFuncAttribute::PreferredSharedMemoryCarveout,
-            0,
-        )
-        .wrap()?;
-        dbg!(instant.elapsed());
-        let (free, _) = memory_get_info()?;
-        dbg!(free);
-        dbg!(instant.elapsed());
-        let stream = CudaStream::DEFAULT;
-        let config = CudaLaunchConfig::basic(1, 1, &stream);
-        let args = GenerateWitnessUnrolledNonMemoryKernelArguments::new(
-            UnrolledNonMemoryTraceRaw {
-                cycles_count: 0,
-                tracing_data: null(),
-            },
-            null(),
-            null_mut(),
-            null_mut(),
-            null_mut(),
-            0,
-            0,
-        );
-        function.launch(&config, &args)?;
-        stream.synchronize()?;
-        dbg!(instant.elapsed());
-    }
-    let (free, _) = memory_get_info()?;
-    dbg!(free);
-    dbg!(instant.elapsed());
-    Ok(())
-}
-
-pub(crate) fn touch_kernels() -> CudaResult<()> {
-    touch_generate_witness_unrolled_non_memory_kernel(
-        ab_generate_witness_values_add_sub_lui_auipc_mop_kernel,
-    )?;
-    touch_generate_witness_unrolled_non_memory_kernel(
-        ab_generate_witness_values_jump_branch_slt_kernel,
-    )?;
-    touch_generate_witness_unrolled_non_memory_kernel(ab_generate_witness_values_mul_div_kernel)?;
-    touch_generate_witness_unrolled_non_memory_kernel(
-        ab_generate_witness_values_mul_div_unsigned_kernel,
-    )?;
-    touch_generate_witness_unrolled_non_memory_kernel(
-        ab_generate_witness_values_shift_binary_csr_kernel,
-    )?;
-    Ok(())
 }

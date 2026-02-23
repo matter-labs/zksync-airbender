@@ -44,6 +44,10 @@ impl MerkleTreeCapVarLength {
             buffer.extend_from_slice(el);
         }
     }
+
+    pub fn estimate_size(&self) -> usize {
+        self.cap.len() * DIGEST_SIZE_U32_WORDS * core::mem::size_of::<u32>()
+    }
 }
 
 pub trait MerkleTreeConstructor: Sized + Send + Sync {

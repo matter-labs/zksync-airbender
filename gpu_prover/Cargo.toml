@@ -23,7 +23,7 @@ prover = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }
 trace_and_split = { workspace = true }
-verifier_common = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
 worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }

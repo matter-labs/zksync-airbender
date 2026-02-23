@@ -1,5 +1,6 @@
 use super::*;
-use crate::utils::*;
+use crate::witness_evaluator::utils::encoding_tuple_into_lookup_index;
+use crate::witness_evaluator::utils::lookup_index_into_encoding_tuple;
 use ::field::Mersenne31Field;
 
 pub(crate) fn preprocess_lookup_tables<const N: usize, A: GoodAllocator>(

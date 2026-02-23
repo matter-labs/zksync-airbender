@@ -6,11 +6,11 @@ use crate::gkr::sumcheck::{
     output_univariate_monomial_form_max_quadratic,
 };
 use cs::definitions::GKRAddress;
+use field::FixedArrayConvertible;
 use field::{Field, FieldExtension, PrimeField};
+use rand::RngCore;
 use std::collections::BTreeMap;
 use worker::Worker;
-
-use rand::RngCore;
 
 pub(super) fn random_poly_in_ext<F, E>(size: usize) -> Vec<E>
 where
@@ -22,11 +22,10 @@ where
 
     (0..size)
         .map(|_| {
-            let coefs: Vec<F> = [rng.next_u32(); E::DEGREE]
-                .into_iter()
-                .map(|value| F::from_u32_with_reduction(value))
-                .collect();
-            E::from_coeffs_in_base(&coefs)
+            let coeffs = [rng.next_u32(); E::DEGREE].map(|value| F::from_u32_with_reduction(value));
+            <E as FieldExtension<F>>::from_coeffs(<E as FieldExtension<F>>::Coeffs::from_array(
+                coeffs,
+            ))
         })
         .collect()
 }

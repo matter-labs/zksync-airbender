@@ -23,12 +23,12 @@ use common_constants::delegation_types::blake2s_with_control::*;
 #[repr(C, align(128))]
 pub struct Blake2RoundFunctionEvaluator {
     pub state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS], // represents current state
-    extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
+    pub extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
     // there is no input buffer, and we will use registers to actually pass control flow flags
     // there will be special buffer for witness to write into, that
     // we will take care to initialize, even though we will use only half of it
     pub input_buffer: AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
-    t: u32, // we limit ourselves to <4Gb inputs
+    pub t: u32, // we limit ourselves to <4Gb inputs
 }
 
 impl Blake2RoundFunctionEvaluator {

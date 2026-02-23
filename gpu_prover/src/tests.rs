@@ -21,7 +21,7 @@ use itertools::Itertools;
 use prover::definitions::{
     produce_pc_into_permutation_accumulator_raw, AuxArgumentsBoundaryValues, ExternalChallenges,
     ExternalDelegationArgumentChallenges, ExternalMachineStateArgumentChallenges,
-    ExternalMemoryArgumentChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
+    ExternalMemoryArgumentChallenges, ExternalValues, Transcript, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
@@ -79,9 +79,7 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::{DelegationAbiDescription, UnifiedDestinationHolder};
-use setups::{
-    read_binary, unified_reduced_machine_circuit_setup, DelegationCircuitPrecomputations,
-};
+use setups::{read_binary, DelegationCircuitPrecomputations};
 use setups::{UnrolledCircuitPrecomputations, UnrolledCircuitWitnessEvalFn};
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
@@ -94,12 +92,11 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use trace_holder::RowMajorTrace;
+use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
-pub const NUM_QUERIES: usize = 53;
-pub const POW_BITS: u32 = 28;
-const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = true;
-// const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CacheNone;
+const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = false;
+const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CachePatrial;
 // const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
 // const TREES_CACHE_MODE_FOR_BENCHMARKS: TreesCacheMode = TreesCacheMode::CacheFull;
 
@@ -2627,7 +2624,30 @@ fn compare_proofs(left: &UnrolledModeProof, right: &UnrolledModeProof) {
             assert_query(cpu, gpu, &format!("fri_query {i}"));
         }
     }
-    assert_eq!(left.pow_nonce, right.pow_nonce);
+    assert_eq!(
+        left.pow_challenges.lookup_pow_challenge,
+        right.pow_challenges.lookup_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.quotient_alpha_pow_challenge,
+        right.pow_challenges.quotient_alpha_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.quotient_z_pow_challenge,
+        right.pow_challenges.quotient_z_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.deep_poly_alpha_pow_challenge,
+        right.pow_challenges.deep_poly_alpha_pow_challenge
+    );
+    assert_eq!(
+        left.pow_challenges.foldings_pow_challenges,
+        right.pow_challenges.foldings_pow_challenges
+    );
+    assert_eq!(
+        left.pow_challenges.fri_queries_pow_challenge,
+        right.pow_challenges.fri_queries_pow_challenge
+    );
 }
 //
 // fn find_binary_exit_point(binary: &[u8]) -> u32 {
@@ -2685,12 +2705,10 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     let (_, mut text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
     setups::pad_bytecode_for_proving(&mut text_section);
 
-    let precomputations = unified_reduced_machine_circuit_setup::<Global, Global>(
-        &binary_image,
-        &text_section,
-        &worker,
-    );
-    let circuit = &precomputations.compiled_circuit;
+    let precomputations = setups::unrolled_circuits::unified_reduced_machine_circuit_setup::<
+        Global,
+        Global,
+    >(&binary_image, &text_section, &worker);
 
     // first run to capture minimal information
     let instructions: Vec<Instruction> =
@@ -2718,14 +2736,9 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
         &mut non_determinism,
     );
 
-    let total_snapshots = snapshotter.snapshots.len();
-    let cycles_upper_bound = total_snapshots * period;
-
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 
     println!("Passed exactly {} cycles", exact_cycles_passed);
-
-    let counters = snapshotter.snapshots.last().unwrap().state.counters;
 
     let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
 
@@ -2975,7 +2988,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
 
     println!("Evaluating memory witness");
 
-    let memory_trace = evaluate_memory_witness_for_unified_executor::<_, Global>(
+    let _memory_trace = evaluate_memory_witness_for_unified_executor::<_, Global>(
         &circuit,
         NUM_CYCLES_PER_CHUNK,
         &inits_and_teardowns[0].lazy_init_data,
@@ -2987,7 +3000,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     init_logger();
     let instant = std::time::Instant::now();
     let prover_context_config = ProverContextConfig::default();
-    let prover_context = ProverContext::new(&prover_context_config).unwrap();
+    let prover_context = ProverContext::new(&prover_context_config)?;
     println!("prover_context created in {:?}", instant.elapsed());
 
     let h_decoder_table = decoder_table
@@ -3084,10 +3097,12 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     //     None
     // };
 
+    let security_config = CIRCUIT_TYPE.get_security_config();
+
     println!("Trying to prove");
 
     let now = std::time::Instant::now();
-    let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+    let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
         DEFAULT_TRACE_PADDING_MULTIPLE,
         _,
         DefaultTreeConstructor,
@@ -3103,8 +3118,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
         None,
         lde_factor,
         tree_cap_size,
-        53,
-        28,
+        &security_config,
         &worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -3166,11 +3180,10 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
             &lde_precomputations,
             None,
             lde_factor,
-            53,
-            28,
-            Some(proof.pow_nonce),
-            true,
-            TreesCacheMode::CacheNone,
+            &security_config,
+            Some(proof.pow_challenges.clone()),
+            RECOMPUTE_COSETS_FOR_CORRECTNESS,
+            TREES_CACHE_MODE_FOR_CORRECTNESS,
             &prover_context,
         )?;
         job.finish()?
@@ -3306,9 +3319,6 @@ pub fn prove_unrolled_execution_with_replayer<
     let prover_context = ProverContext::new(&prover_context_config)?;
     println!("prover_context created in {:?}", instant.elapsed());
 
-    const DEFAULT_SNAPSHOT_PERIOD: usize = 1 << 20;
-    let max_snapshots = cycles_bound.div_ceil(DEFAULT_SNAPSHOT_PERIOD);
-
     let family_chunk_sizes = HashMap::from_iter(
         [
             (
@@ -3360,7 +3370,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         non_mem_circuits,
         mem_circuits,
         (blake_circuits, bigint_circuits, keccak_circuits),
@@ -3507,9 +3517,9 @@ pub fn prove_unrolled_execution_with_replayer<
         }
 
         let machine_type = MachineType::from_machine_config::<C>();
-        let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Memory(
-            UnrolledMemoryCircuitType::from_family_idx(*family_idx, machine_type),
-        ));
+        // let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Memory(
+        //     UnrolledMemoryCircuitType::from_family_idx(*family_idx, machine_type),
+        // ));
         let mut family_caps = vec![];
         let precomputation = &unrolled_circuits_precomputations[family_idx];
         let UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. } = precomputation
@@ -3590,7 +3600,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::InitsAndTeardowns);
 
         for witness_chunk in inits_and_teardowns.iter() {
-            let (caps, aux_data) = commit_memory_tree_for_inits_and_teardowns_unrolled_circuit(
+            let (caps, _aux_data) = commit_memory_tree_for_inits_and_teardowns_unrolled_circuit(
                 &inits_and_teardowns_precomputation.compiled_circuit,
                 &witness_chunk.lazy_init_data,
                 &inits_and_teardowns_precomputation.twiddles,
@@ -3703,7 +3713,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 per_tree_set.push(caps);
             }
 
-            delegation_memory_trees.push((delegation_type as u32, per_tree_set));
+            delegation_memory_trees.push((delegation_type, per_tree_set));
         }
     }
     {
@@ -3774,7 +3784,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 per_tree_set.push(caps);
             }
 
-            delegation_memory_trees.push((delegation_type as u32, per_tree_set));
+            delegation_memory_trees.push((delegation_type, per_tree_set));
         }
     }
     {
@@ -3845,7 +3855,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 per_tree_set.push(caps);
             }
 
-            delegation_memory_trees.push((delegation_type as u32, per_tree_set));
+            delegation_memory_trees.push((delegation_type, per_tree_set));
         }
     }
 
@@ -3860,8 +3870,22 @@ pub fn prove_unrolled_execution_with_replayer<
             &delegation_memory_trees,
         );
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
+        0
+    } else {
+        Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     let mut aux_memory_trees = vec![];
 
@@ -3893,6 +3917,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -3924,7 +3949,7 @@ pub fn prove_unrolled_execution_with_replayer<
             );
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+            let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
                 DEFAULT_TRACE_PADDING_MULTIPLE,
                 A,
                 DefaultTreeConstructor,
@@ -3940,8 +3965,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &security_config,
                 &worker,
             );
             println!(
@@ -4003,11 +4027,10 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
-                    Some(proof.pow_nonce),
-                    true,
-                    TreesCacheMode::CacheNone,
+                    &security_config,
+                    Some(proof.pow_challenges.clone()),
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    TREES_CACHE_MODE_FOR_CORRECTNESS,
                     &prover_context,
                 )?;
                 job.finish()?
@@ -4046,6 +4069,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
+        let security_config = circuit_type.get_security_config();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -4065,7 +4089,6 @@ pub fn prove_unrolled_execution_with_replayer<
                 decoder_table,
             };
 
-            let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
                 &precomputation.compiled_circuit,
                 *witness_fn,
@@ -4076,7 +4099,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 A::default(),
             );
             let now = std::time::Instant::now();
-            let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+            let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
                 DEFAULT_TRACE_PADDING_MULTIPLE,
                 A,
                 DefaultTreeConstructor,
@@ -4092,8 +4115,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 None,
                 precomputation.lde_factor,
                 precomputation.tree_cap_size,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
+                &security_config,
                 &worker,
             );
             println!(
@@ -4155,11 +4177,10 @@ pub fn prove_unrolled_execution_with_replayer<
                     &precomputation.lde_precomputations,
                     None,
                     precomputation.lde_factor,
-                    NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
-                    Some(proof.pow_nonce),
-                    true,
-                    TreesCacheMode::CacheNone,
+                    &security_config,
+                    Some(proof.pow_challenges.clone()),
+                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                    TREES_CACHE_MODE_FOR_CORRECTNESS,
                     &prover_context,
                 )?;
                 job.finish()?
@@ -4197,9 +4218,9 @@ pub fn prove_unrolled_execution_with_replayer<
             num_witness_columns,
             lookup_mapping,
         };
-
+        let security_config = UnrolledCircuitType::InitsAndTeardowns.get_security_config();
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             A,
             DefaultTreeConstructor,
@@ -4215,8 +4236,7 @@ pub fn prove_unrolled_execution_with_replayer<
             None,
             inits_and_teardowns_precomputation.lde_factor,
             inits_and_teardowns_precomputation.tree_cap_size,
-            NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &security_config,
             &worker,
         );
         println!(
@@ -4278,11 +4298,10 @@ pub fn prove_unrolled_execution_with_replayer<
                 &inits_and_teardowns_precomputation.lde_precomputations,
                 None,
                 inits_and_teardowns_precomputation.lde_factor,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
-                Some(proof.pow_nonce),
-                true,
-                TreesCacheMode::CacheNone,
+                &security_config,
+                Some(proof.pow_challenges.clone()),
+                RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                TREES_CACHE_MODE_FOR_CORRECTNESS,
                 &prover_context,
             )?;
             job.finish()?
@@ -4315,6 +4334,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 _,
                 _,
             >(
+                DelegationCircuitType::Blake2WithCompression,
                 &delegation_circuits,
                 external_challenges,
                 prec,
@@ -4324,8 +4344,8 @@ pub fn prove_unrolled_execution_with_replayer<
                 &prover_context,
             )?;
 
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-            delegation_proofs.push((delegation_type as u32, proofs));
+            aux_delegation_memory_trees.push((delegation_type, per_tree_set));
+            delegation_proofs.push((delegation_type, proofs));
         }
     }
     {
@@ -4347,6 +4367,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 _,
                 _,
             >(
+                DelegationCircuitType::BigIntWithControl,
                 &delegation_circuits,
                 external_challenges,
                 prec,
@@ -4356,8 +4377,8 @@ pub fn prove_unrolled_execution_with_replayer<
                 &prover_context,
             )?;
 
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-            delegation_proofs.push((delegation_type as u32, proofs));
+            aux_delegation_memory_trees.push((delegation_type, per_tree_set));
+            delegation_proofs.push((delegation_type, proofs));
         }
     }
     {
@@ -4379,6 +4400,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 _,
                 _,
             >(
+                DelegationCircuitType::KeccakSpecial5,
                 &delegation_circuits,
                 external_challenges,
                 prec,
@@ -4388,8 +4410,8 @@ pub fn prove_unrolled_execution_with_replayer<
                 &prover_context,
             )?;
 
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-            delegation_proofs.push((delegation_type as u32, proofs));
+            aux_delegation_memory_trees.push((delegation_type, per_tree_set));
+            delegation_proofs.push((delegation_type, proofs));
         }
     }
 
@@ -4410,6 +4432,7 @@ fn prove_delegation_circuit_with_replayer_format<
     const INDIRECT_WRITES: usize,
     const VARIABLE_OFFSETS: usize,
 >(
+    circuit_type: DelegationCircuitType,
     witnesses: &[Vec<
         riscv_transpiler::witness::DelegationWitness<
             REG_ACCESSES,
@@ -4449,14 +4472,6 @@ where
         VARIABLE_OFFSETS,
     >: DelegationTracingDataHostSource,
 {
-    let circuit_type = <riscv_transpiler::witness::DelegationWitness<
-        REG_ACCESSES,
-        INDIRECT_READS,
-        INDIRECT_WRITES,
-        VARIABLE_OFFSETS,
-    > as DelegationTracingDataHostSource>::CIRCUIT_TYPE;
-    let stream = prover_context.get_exec_stream();
-
     let mut per_tree_set = vec![];
 
     let mut per_delegation_type_proofs = vec![];
@@ -4484,6 +4499,8 @@ where
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
 
+        let security_config = circuit_type.get_security_config();
+
         assert!(delegation_type < 1 << 12);
         let (_, proof) = prover::prover_stages::prove(
             &prec.compiled_circuit.compiled_circuit,
@@ -4494,11 +4511,10 @@ where
             &prec.twiddles,
             &prec.lde_precomputations,
             0,
-            Some(delegation_type as u16),
+            Some(delegation_type),
             prec.lde_factor,
             prec.tree_cap_size,
-            NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &security_config,
             worker,
         );
 
@@ -4561,11 +4577,10 @@ where
                 &prec.lde_precomputations,
                 Some(delegation_type),
                 prec.lde_factor,
-                NUM_QUERIES,
-                verifier_common::POW_BITS as u32,
-                Some(proof.pow_nonce),
-                true,
-                TreesCacheMode::CacheNone,
+                &security_config,
+                Some(proof.pow_challenges.clone()),
+                RECOMPUTE_COSETS_FOR_CORRECTNESS,
+                TREES_CACHE_MODE_FOR_CORRECTNESS,
                 &prover_context,
             )?;
             job.finish()?
@@ -4597,7 +4612,7 @@ fn proof_as_unrolled_mode_proof(proof: &Proof) -> UnrolledModeProof {
         last_fri_step_plain_leaf_values: proof.last_fri_step_plain_leaf_values.clone(),
         final_monomial_form: proof.final_monomial_form.clone(),
         queries: proof.queries.clone(),
-        pow_nonce: proof.pow_nonce,
+        pow_challenges: proof.pow_challenges.clone(),
         delegation_type: proof.delegation_type,
         aux_boundary_values: vec![proof.external_values.aux_boundary_values.clone()],
     }
@@ -4710,11 +4725,4 @@ fn print_circuit_sizes() {
         )
         .compiled_circuit,
     );
-}
-
-#[test]
-fn kernel_preload() -> era_cudart::result::CudaResult<()> {
-    crate::witness::witness_delegation::touch_kernels()?;
-    crate::witness::witness_unrolled::touch_kernels()?;
-    Ok(())
 }

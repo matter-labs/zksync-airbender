@@ -31,7 +31,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -44,7 +44,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -57,7 +57,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -70,7 +70,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -83,7 +83,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
         VerifierCompiledLookupSetDescription {
             input_columns: [
@@ -101,7 +101,7 @@ const COMPILED_WITNESS_LAYOUT: CompiledWitnessSubtree<Mersenne31Field> = Compile
                     },
                 ),
             ],
-            table_index: TableIndex::Constant(TableType::RangeCheckSmall),
+            table_index: TableIndex::Constant(TableType::RangeCheck8x8),
         },
     ],
     range_check_16_lookup_expressions: &[

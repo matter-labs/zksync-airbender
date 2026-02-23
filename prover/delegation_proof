@@ -105579,7 +105579,20 @@
       ]
     }
   ],
-  "pow_nonce": 190944089,
+  "pow_challenges": {
+    "lookup_pow_challenge": 0,
+    "quotient_alpha_pow_challenge": 0,
+    "quotient_z_pow_challenge": 0,
+    "deep_poly_alpha_pow_challenge": 0,
+    "foldings_pow_challenges": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "fri_queries_pow_challenge": 190944089
+  },
   "circuit_sequence": 0,
   "delegation_type": 0
 }

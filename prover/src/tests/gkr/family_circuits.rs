@@ -450,18 +450,16 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 );
             println!("Proving time is {:?}", now.elapsed());
 
-            // if is_empty {
-            //     assert_eq!(
-            //         proof.permutation_grand_product_accumulator,
-            //         BabyBearExt4::ONE
-            //     );
-            // }
-            // assert!(proof.delegation_argument_accumulator.is_none());
+            println!(
+                "Estimated proof size without compression is {} bytes",
+                proof.estimate_size()
+            );
 
-            // serialize_to_file_if_not_gpu_comparison(
-            //     &proof,
-            //     "add_sub_lui_auipc_mop_unrolled_proof.json",
-            // );
+            if is_empty {
+                assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+            }
+
+            serialize_to_file(&proof, "add_sub_lui_auipc_mop_gkr_proof.json");
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,

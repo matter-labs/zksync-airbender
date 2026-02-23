@@ -1,3 +1,5 @@
+use crate::definitions::sumcheck_kernel::fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -96,7 +98,8 @@ pub struct ProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field>
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1> for ProductGKRRelationKernel<F, E>
+    ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, 2, 1>
+    for ProductGKRRelationKernel<F, E>
 {
     #[inline(always)]
     fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
@@ -105,4 +108,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         a.repr_mul_assign::<false>(b);
         [a.into_value()]
     }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only(
+        &self,
+        input: &[ExtensionFieldRepresentation<F, E>; 2],
+    ) -> [E; 1] {
+        self.pointwise_eval(input)
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
+        todo!();
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 2, 1> for ProductGKRRelationKernel<F, E>
+{
 }
