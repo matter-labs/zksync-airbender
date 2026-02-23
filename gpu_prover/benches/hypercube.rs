@@ -15,6 +15,7 @@ use gpu_prover::{
 };
 
 const LOG_ROWS: u32 = 24;
+const COLS: usize = 10;
 
 struct HypercubeBitrevBenchCase {
     rows: usize,
@@ -26,11 +27,11 @@ impl HypercubeBitrevBenchCase {
     fn new(stream: &CudaStream) -> CudaResult<Self> {
         let rows = 1usize << LOG_ROWS;
 
-        let mut d_src = DeviceAllocation::alloc(rows)?;
-        let d_dst = DeviceAllocation::alloc(rows)?;
+        let mut d_src = DeviceAllocation::alloc(rows * COLS)?;
+        let d_dst = DeviceAllocation::alloc(rows * COLS)?;
 
         // Fill once to avoid benchmarking uninitialized memory reads.
-        let h_src = vec![BF::ZERO; rows];
+        let h_src = vec![BF::ZERO; rows * COLS];
         memory_copy_async(&mut d_src, &h_src, stream)?;
         stream.synchronize()?;
 
@@ -38,16 +39,22 @@ impl HypercubeBitrevBenchCase {
     }
 
     fn run_out_of_place(&mut self, stream: &CudaStream) -> CudaResult<()> {
-        hypercube_evals_into_coeffs_bitrev_bf(&self.d_src, &mut self.d_dst, stream)
+        for (src, dst) in self.d_src.chunks(self.rows).zip(self.d_dst.chunks_mut(self.rows)) {
+            hypercube_evals_into_coeffs_bitrev_bf(src, dst, stream)?;
+        }
+        Ok(())
     }
 
     fn run_in_place(&mut self, stream: &CudaStream) -> CudaResult<()> {
-        hypercube_evals_into_coeffs_bitrev_bf_in_place(&mut self.d_src, stream)
+        for src in self.d_src.chunks_mut(self.rows) {
+            hypercube_evals_into_coeffs_bitrev_bf_in_place(src, stream)?;
+        }
+        Ok(())
     }
 
     fn bytes_per_transform(&self) -> u64 {
         // Approximate traffic: read + write per launch, with exactly 3 launches.
-        (self.rows as u64) * (std::mem::size_of::<BF>() as u64) * 2 * 3
+        ((self.rows * COLS) as u64) * (std::mem::size_of::<BF>() as u64) * 2 * 3
     }
 }
 
