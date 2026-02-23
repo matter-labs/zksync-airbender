@@ -3,7 +3,6 @@ use super::*;
 use crate::prover_stages::ProofSecurityConfig;
 use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use cs::cs::{circuit::Circuit, cs_reference::BasicAssembly};
-use full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
 use risc_v_simulator::{
     cycle::IWithoutByteAccessIsaConfigWithDelegation, delegations::DelegationsCSRProcessor,
 };

@@ -4,8 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use proc_macro2::TokenStream;
-use quote::{ToTokens, TokenStreamExt, quote};
+use quote::quote;
 
 fn main() {
     println!("Running PoW Config Generator");
@@ -519,6 +518,7 @@ fn pow_bits_for_folding_round(
     }
 }
 
+#[allow(dead_code)]
 fn pow_bits_for_queries(security_bits: usize, num_queries: usize, lde_factor_log2: usize) -> usize {
     // We should add extra 20% of queries
     let queries_contribution = 5 * num_queries / 6;

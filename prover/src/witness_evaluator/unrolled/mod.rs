@@ -1,3 +1,5 @@
+#![allow(deprecated, unused_imports, unused_variables)]
+
 use core::mem::MaybeUninit;
 
 use super::*;

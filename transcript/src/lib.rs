@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "pow"), no_std)]
-#![feature(ptr_as_ref_unchecked)]
 
 use blake2s_u32::*;
 

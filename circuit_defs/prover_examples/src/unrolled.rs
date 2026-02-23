@@ -1,3 +1,5 @@
+#![allow(deprecated, unused_imports, unused_mut, unused_variables)]
+
 use crate::bincode_serialize_to_file;
 use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
 use crate::cs::machine::ops::unrolled::*;
@@ -2065,6 +2067,7 @@ pub(crate) mod test {
     use common_constants::TimestampScalar;
     use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 
+    #[allow(dead_code)]
     #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
     pub struct UnrolledProgramProof {
         pub final_pc: u32,
@@ -2079,6 +2082,7 @@ pub(crate) mod test {
         pub recursion_chain_hash: Option<[u32; 8]>,
     }
 
+    #[allow(dead_code)]
     impl UnrolledProgramProof {
         pub fn flatten_into_responses(&self, allowed_delegation_circuits: &[u32]) -> Vec<u32> {
             let mut responses = Vec::with_capacity(32 + 32 * 2);

@@ -23,7 +23,6 @@ use crate::prover_stages::stage2_utils::*;
 use cached_data::ProverCachedData;
 use cs::one_row_compiler::ColumnAddress;
 use fft::field_utils::batch_inverse_with_buffer;
-use transcript::pow;
 
 pub struct SecondStageOutput<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> {
     pub ldes: Vec<CosetBoundTracePart<N, A>>,

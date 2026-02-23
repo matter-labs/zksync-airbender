@@ -1,3 +1,5 @@
+#![allow(dead_code, unreachable_code, unused_variables)]
+
 use clap::ValueEnum;
 pub use execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,

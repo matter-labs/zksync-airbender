@@ -2,8 +2,6 @@ use crate::definitions::LazyInitAndTeardown;
 use cs::definitions::TimestampScalar;
 use fft::GoodAllocator;
 pub use risc_v_simulator::abstractions::memory::VectorMemoryImplWithRom;
-use risc_v_simulator::abstractions::memory::*;
-use risc_v_simulator::cycle::status_registers::*;
 use std::alloc::Global;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

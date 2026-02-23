@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 use super::*;
 
 use crate::unrolled::evaluate_witness_for_unified_executor;

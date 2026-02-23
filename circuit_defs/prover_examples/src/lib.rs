@@ -1,4 +1,5 @@
 #![allow(incomplete_features)]
+#![allow(unused_imports, unused_variables)]
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
@@ -6,13 +7,13 @@ use std::alloc::Global;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use prover;
+pub use ::prover;
+pub use ::setups;
 use prover::cs::utils::split_timestamp;
 use prover::trace_holder::RowMajorTrace;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
-pub use setups;
 
 use merkle_trees::DefaultTreeConstructor;
 use prover::cs::definitions::ColumnSet;

@@ -57,6 +57,7 @@ impl<A: GoodAllocator> DelegationWitness<A> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn skip_n(&mut self, n: usize) {
         self.write_timestamp = self.write_timestamp[n..].to_vec_in(A::default());
         self.register_accesses = self.register_accesses

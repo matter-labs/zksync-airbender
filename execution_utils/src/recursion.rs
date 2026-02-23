@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use super::*;
 // use crate::verifier_binaries::{
 //     recursion_layer_verifier_vk, recursion_log_23_layer_verifier_vk,

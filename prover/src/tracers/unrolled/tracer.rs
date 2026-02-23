@@ -1,3 +1,5 @@
+#![allow(deprecated, dead_code, unused_mut, unused_variables)]
+
 use crate::fft::GoodAllocator;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadData;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadWriteData;

@@ -1,8 +1,7 @@
 use execution_utils::Machine;
 // use execution_utils::verifier_binaries::VerificationKey;
-use sha3::{Digest, Keccak256};
 
-pub fn generate_vk(bin_path: &String, machine: &Option<Machine>, output: &Option<String>) {
+pub fn generate_vk(_bin_path: &String, _machine: &Option<Machine>, _output: &Option<String>) {
     todo!();
 
     // let binary = std::fs::read(bin_path).expect("Failed to read binary file");

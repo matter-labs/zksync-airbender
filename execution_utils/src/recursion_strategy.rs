@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use crate::Machine;
 use crate::ProofMetadata;
 use clap::ValueEnum;

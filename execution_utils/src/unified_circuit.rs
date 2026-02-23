@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use riscv_transpiler::common_constants;
 use sha3::Digest;
 use std::collections::BTreeMap;

@@ -1,3 +1,5 @@
+#![allow(unused_imports, unused_variables)]
+
 use crate::bincode_serialize_to_file;
 use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
 use crate::cs::machine::ops::unrolled::*;

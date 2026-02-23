@@ -204,6 +204,7 @@ pub(crate) unsafe fn stage_2_shuffle_ram_add_timestamp_contributions(
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 pub(crate) unsafe fn stage_2_batched_ram_assemble_address_contribution(
     memory_trace_row: &[Mersenne31Field],
     mem_offset_high: ColumnSet<1>,
@@ -293,6 +294,7 @@ pub(crate) unsafe fn stage_2_delegation_ram_assemble_timestamp_contribution(
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 pub(crate) unsafe fn stage_2_batched_ram_assemble_read_contribution(
     memory_trace_row: &[Mersenne31Field],
     read_value: ColumnSet<REGISTER_SIZE>,
@@ -345,6 +347,7 @@ pub(crate) unsafe fn stage_2_batched_ram_assemble_read_contribution(
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 pub(crate) unsafe fn stage_2_batched_ram_assemble_write_contribution(
     memory_trace_row: &[Mersenne31Field],
     read_value: ColumnSet<REGISTER_SIZE>,

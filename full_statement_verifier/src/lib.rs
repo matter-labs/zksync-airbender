@@ -3,10 +3,12 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use core::mem::MaybeUninit;
 
 pub use verifier_common;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod constants;
 pub mod definitions;
 
@@ -22,20 +24,32 @@ pub mod unrolled_proof_statement;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod statement_common;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use self::constants::*;
 
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::field::{Field, Mersenne31Field, Mersenne31Quartic, PrimeField};
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::non_determinism_source::NonDeterminismSource;
+use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
+use verifier_common::prover;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::prover::definitions::ExternalChallenges;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::prover::definitions::MerkleTreeCap;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::transcript::Blake2sBufferingTranscript;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+use verifier_common::ProofOutput;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+use verifier_common::ProofPublicInputs;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::VerifierFunctionPointer;
-use verifier_common::{parse_field_els_as_u32_from_u16_limbs_checked, ProofPublicInputs};
-use verifier_common::{prover, ProofOutput};
 
 pub const MAX_CYCLES: u64 = const {
     let max_unique_timestamps =

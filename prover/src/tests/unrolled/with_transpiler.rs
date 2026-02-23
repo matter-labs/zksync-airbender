@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 use super::*;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;

@@ -5,7 +5,6 @@ use crate::prover_stages::unrolled_prover::stage_2_shared::*;
 use crate::prover_stages::SetupPrecomputations;
 use cs::one_row_compiler::ColumnAddress;
 use fft::field_utils::batch_inverse_with_buffer;
-use transcript::pow;
 
 pub fn prover_stage_2_for_unrolled_circuit<
     const N: usize,

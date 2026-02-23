@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables)]
+
 use crate::definitions::*;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::prover_stages::SetupPrecomputations;
