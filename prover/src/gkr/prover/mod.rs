@@ -1,5 +1,6 @@
 use std::alloc::Global;
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::TwoAdicField;
@@ -343,6 +344,7 @@ where
         &gkr_storage,
         &evaluation_point,
         &dimension_reducing_inputs[&initial_layer_for_sumcheck],
+        worker,
     );
 
     // let (
@@ -444,7 +446,7 @@ where
         .expect("must have base layer point");
 
     use crate::gkr::sumcheck::eq_poly::*;
-    let eq_precomputed = make_eq_poly_in_full::<E>(base_layer_z);
+    let eq_precomputed = make_eq_poly_in_full::<E>(base_layer_z, worker);
     let eq_at_z = eq_precomputed.last().unwrap();
 
     let layer_desc = &compiled_circuit.layers[0];

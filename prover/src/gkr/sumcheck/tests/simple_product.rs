@@ -113,7 +113,7 @@ fn test_simple_product() {
         .collect();
     // dbg!(&previous_round_challenges);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_precomputed);
 
     let mut claim = evaluate_with_precomputed_eq_ext::<E>(
@@ -134,7 +134,7 @@ fn test_simple_product() {
         let folding_challenges: Vec<E> = (0..FOLDING_STEPS)
             .map(|el| E::from_base(F::from_u64_with_reduction(2 * (el as u64) + 1)))
             .collect();
-        let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges);
+        let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
         let a = &storage.layers[0]
             .extension_field_inputs
             .get(&GKRAddress::InnerLayer {
@@ -176,7 +176,7 @@ fn test_simple_product() {
 
     let mut folding_challenges = vec![];
 
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges);
+    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(&previous_round_challenges, &worker);
     // dbg!(&eq_reduced_precomputed);
     let eq_reduced_len = eq_reduced_precomputed.len();
 
@@ -245,6 +245,7 @@ fn test_simple_product() {
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
                 &eq,
+                &worker,
             );
 
             dbg!([c0, c2]);
