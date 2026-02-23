@@ -219,7 +219,8 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
 
 #[test]
 fn create_decoder_table_for_reduced_machine() {
-    let binary = std::fs::read("../tools/verifier/recursion_layer.bin").unwrap();
+    // let binary = std::fs::read("../tools/verifier/recursion_layer.bin").unwrap();
+    let binary = std::fs::read("../tools/verifier/recursion_in_unified_layer.bin").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()

@@ -286,7 +286,8 @@ mod test {
 
         let _ = process_binary_into_separate_tables::<Mersenne31Field, Global>(
             &binary,
-            &opcodes_for_full_machine(),
+            // &opcodes_for_full_machine(),
+            &opcodes_for_full_machine_with_mem_word_access_specialization(),
             1 << 20,
             &[],
         );

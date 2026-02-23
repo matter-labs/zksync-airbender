@@ -105,6 +105,7 @@ pub struct OptimizationContext<F: PrimeField, C: Circuit<F>> {
     is_zero_flags: Vec<Boolean>,
     lookup_outputs: Vec<Variable>,
 
+    enforce_all_called: bool,
     _marker: std::marker::PhantomData<(F, C)>,
 }
 
@@ -133,6 +134,7 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
             is_zero_flags: vec![],
             lookup_outputs: vec![],
 
+            enforce_all_called: false,
             _marker: std::marker::PhantomData,
         }
     }
@@ -1530,6 +1532,9 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
     }
 
     pub fn enforce_all(&mut self, cs: &mut CS) {
+        assert!(self.enforce_all_called == false, "trying to call enforce_all twice?");
+        self.enforce_all_called = true;
+
         // we have 7 different types of relations to enforce
 
         // 1) enforcing add-sub relations
@@ -1817,5 +1822,12 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
         {
             println!("In total of {} mul-div relations at the end", cur_index);
         }
+
+    }
+}
+
+impl<F: PrimeField, CS: Circuit<F>> Drop for OptimizationContext<F, CS> {
+    fn drop(&mut self) {
+        assert!(self.enforce_all_called, "ERR: forgot to call enforce_all on OptCtx!");
     }
 }
