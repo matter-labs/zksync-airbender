@@ -7,10 +7,27 @@ permissions: read-all
 jobs:
   typos:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute changed files
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          git fetch --no-tags --prune --depth=1 origin "$BASE_REF"
+          CHANGED_FILES="$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD | tr '\n' ' ')"
+          echo "files=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
 
       - name: Check for typos
-        uses: crate-ci/typos@master
+        if: steps.changed.outputs.files != ''
+        uses: crate-ci/typos@v1
+        with:
+          files: ${{ steps.changed.outputs.files }}
+          config: ./_typos.toml
