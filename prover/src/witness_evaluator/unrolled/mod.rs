@@ -15,7 +15,10 @@ mod family_circuits;
 
 pub use self::family_circuits::*;
 
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "delegation CSR path still depends on deprecated unrolled machine APIs"
+)]
 pub fn run_unrolled_machine_for_num_cycles<
     CSR: DelegationCSRProcessor,
     C: MachineConfig,

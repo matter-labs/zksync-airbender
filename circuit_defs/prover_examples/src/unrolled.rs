@@ -125,7 +125,7 @@ pub fn run_and_split_unrolled<
     panic!("deprecated");
 }
 
-#[allow(deprecated)]
+#[expect(deprecated, reason = "calls deprecated unrolled tracing entrypoint")]
 pub fn trace_unrolled_execution<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
     C: MachineConfig,

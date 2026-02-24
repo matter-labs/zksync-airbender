@@ -106,7 +106,10 @@ pub struct UnrolledGPUFriendlyTracer<
     pub _marker: core::marker::PhantomData<C>,
 }
 
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "uses deprecated machine/tracer APIs during migration"
+)]
 impl<
         C: MachineConfig,
         A: GoodAllocator,
@@ -217,7 +220,10 @@ impl<
     }
 }
 
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "implements deprecated tracing trait for compatibility"
+)]
 impl<
         C: MachineConfig,
         A: GoodAllocator,
