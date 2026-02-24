@@ -45,6 +45,13 @@ fn run_unrolled_reduced_test() {
     run_unrolled_reduced_test_impl(None);
 }
 
+#[cfg_attr(
+    all(feature = "test", not(test)),
+    expect(
+        dead_code,
+        reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
+    )
+)]
 pub fn run_unrolled_reduced_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {

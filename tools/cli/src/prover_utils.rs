@@ -54,7 +54,7 @@ pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
 }
 
 #[cfg(feature = "gpu")]
-pub fn multi_prove(bin_path: &String, input_files: Vec<Vec<u32>>) {
+pub fn multi_prove(_bin_path: &String, _input_files: Vec<Vec<u32>>) {
     todo!();
     /*
     let binary = load_binary_from_path(bin_path);
@@ -259,11 +259,13 @@ pub struct GpuSharedState {
 
 #[cfg(feature = "gpu")]
 impl GpuSharedState {
+    #[expect(dead_code, reason = "reserved key for pending GPU implementation")]
     const MAIN_BINARY_KEY: usize = 0;
+    #[expect(dead_code, reason = "reserved key for pending GPU implementation")]
     const RECURSION_BINARY_KEY: usize = 1;
 
     #[cfg(feature = "gpu")]
-    pub fn new(binary: &Vec<u32>) -> Self {
+    pub fn new(_binary: &Vec<u32>) -> Self {
         todo!()
         // use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
         // use gpu_prover::execution::prover::ExecutionProver;
@@ -304,7 +306,7 @@ pub fn create_proofs_internal(
     num_instances: usize,
     prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
     gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
+    _total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
     let worker = worker::Worker::new();
 
@@ -320,11 +322,11 @@ pub fn create_proofs_internal(
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
             }
             let (basic_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
+                if let Some(_gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
                         println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
+                        let _timer = std::time::Instant::now();
                         /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
@@ -344,8 +346,6 @@ pub fn create_proofs_internal(
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
                         panic!("GPU not enabled - please compile with --features gpu flag.")
                     }
                 } else {
@@ -377,11 +377,11 @@ pub fn create_proofs_internal(
         }
         Machine::Reduced => {
             let (reduced_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
+                if let Some(_gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
                         println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
+                        let _timer = std::time::Instant::now();
                         /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
@@ -401,8 +401,6 @@ pub fn create_proofs_internal(
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
                         panic!("GPU not enabled - please compile with --features gpu flag.")
                     }
                 } else {
@@ -434,11 +432,11 @@ pub fn create_proofs_internal(
         }
         Machine::ReducedLog23 => {
             let (reduced_log_23_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
+                if let Some(_gpu_shared_state) = gpu_shared_state {
                     #[cfg(feature = "gpu")]
                     {
                         println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
+                        let _timer = std::time::Instant::now();
                         /*let (final_register_values, basic_proofs, delegation_proofs) =
                             gpu_shared_state.prover.commit_memory_and_prove(
                                 0,
@@ -458,8 +456,6 @@ pub fn create_proofs_internal(
                     }
                     #[cfg(not(feature = "gpu"))]
                     {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
                         panic!("GPU not enabled - please compile with --features gpu flag.")
                     }
                 } else {

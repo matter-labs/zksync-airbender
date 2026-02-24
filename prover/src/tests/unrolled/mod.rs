@@ -13,6 +13,7 @@ use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
+#[cfg(test)]
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use std::alloc::Allocator;
 use std::collections::BTreeSet;
@@ -621,6 +622,13 @@ fn run_basic_unrolled_test() {
     run_basic_unrolled_test_impl(None);
 }
 
+#[cfg_attr(
+    all(feature = "test", not(test)),
+    expect(
+        dead_code,
+        reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
+    )
+)]
 pub fn run_basic_unrolled_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
