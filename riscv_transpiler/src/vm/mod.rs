@@ -6,6 +6,7 @@ use common_constants::circuit_families::*;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use std::fmt::Debug;
 
+#[cfg(feature = "flamegraph")]
 mod flamegraph;
 mod instructions;
 mod ram_with_rom_region;
@@ -14,6 +15,7 @@ mod simple_tape;
 
 pub(crate) mod delegations;
 
+#[cfg(feature = "flamegraph")]
 pub use self::flamegraph::*;
 pub use self::ram_with_rom_region::RamWithRomRegion;
 pub use self::replay_snapshotter::*;
@@ -256,6 +258,7 @@ impl<C: Counters> VM<C> {
         false
     }
 
+    #[cfg(feature = "flamegraph")]
     pub fn run_basic_unrolled_with_flamegraph<
         S: Snapshotter<C>,
         R: RAM + FlamegraphReadableRam,
@@ -292,6 +295,7 @@ impl<C: Counters> VM<C> {
         Ok(false)
     }
 
+    #[cfg(feature = "flamegraph")]
     pub fn run_by_timestamp_bound_with_flamegraph<
         S: Snapshotter<C>,
         R: RAM + FlamegraphReadableRam,

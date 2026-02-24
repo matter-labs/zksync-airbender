@@ -18,9 +18,9 @@ risc_v_simulator = { workspace = true, features = ["delegation"] }
 worker = { workspace = true }
 serde = { workspace = true }
 seq-macro = { workspace = true }
-inferno = { workspace = true }
-addr2line_new = { workspace = true }
-object = { workspace = true }
+inferno = { workspace = true, optional = true }
+addr2line_new = { workspace = true, optional = true }
+object = { workspace = true, optional = true }
 serde-big-array = "*"
 keccak = "*"
 
@@ -30,6 +30,7 @@ capstone = {version = "0.13", optional = true }
 
 [features]
 jit = ["dynasmrt", "riscv-decode", "capstone"]
+flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 default = ["jit"]
 
 [dev-dependencies]
