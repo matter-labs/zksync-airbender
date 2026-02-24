@@ -1,11 +1,8 @@
 #![allow(incomplete_features)]
-#![allow(unused_imports, unused_variables)]
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
-use std::alloc::Global;
 use std::collections::HashMap;
-use std::path::Path;
 
 pub use ::prover;
 pub use ::setups;
@@ -34,7 +31,6 @@ use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
 use setups::*;
 use trace_and_split::*;
-use verifier_common::SECURITY_BITS;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -370,6 +366,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     );
 
     // same for delegation circuits
+    #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
 
@@ -509,6 +506,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             cycle_data: witness_chunk,
         };
 
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let witness_trace = evaluate_witness(
             &risc_v_circuit_precomputations.compiled_circuit,

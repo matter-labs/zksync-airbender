@@ -1,5 +1,3 @@
-#![allow(dead_code, unreachable_code, unused_variables)]
-
 use clap::ValueEnum;
 pub use execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
@@ -316,7 +314,7 @@ pub fn create_proofs_internal(
         non_determinism_source.oracle.push_back(entry);
     }
 
-    let (proof_list, register_values) = match machine {
+    let (proof_list, register_values, pow_challenge) = match machine {
         Machine::Standard => {
             if prev_end_params_output.is_some() {
                 panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
@@ -374,6 +372,7 @@ pub fn create_proofs_internal(
                     delegation_proofs,
                 },
                 register_values,
+                pow_challenge,
             )
         }
         Machine::Reduced => {
@@ -430,6 +429,7 @@ pub fn create_proofs_internal(
                     delegation_proofs,
                 },
                 register_values,
+                pow_challenge,
             )
         }
         Machine::ReducedLog23 => {
@@ -489,6 +489,7 @@ pub fn create_proofs_internal(
                     delegation_proofs,
                 },
                 register_values,
+                pow_challenge,
             )
         }
     };
@@ -531,19 +532,19 @@ pub fn create_proofs_internal(
         end_params,
         prev_end_params_output_hash,
         prev_end_params_output,
-        pow_challenge: todo!(),
+        pow_challenge,
     };
 
     (proof_list, proof_metadata)
 }
 
 pub fn create_recursion_proofs(
-    proof_list: ProofList,
-    proof_metadata: ProofMetadata,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
+    _proof_list: ProofList,
+    _proof_metadata: ProofMetadata,
+    _recursion_mode: RecursionStrategy,
+    _tmp_dir: &Option<String>,
+    _gpu_shared_state: &mut Option<&mut GpuSharedState>,
+    _total_proof_time: &mut Option<f64>,
 ) -> (ProofList, ProofMetadata) {
     todo!()
     // assert!(
@@ -643,12 +644,12 @@ pub fn create_final_proofs_from_program_proof(
 }
 
 pub fn create_final_proofs(
-    proof_list: ProofList,
-    proof_metadata: ProofMetadata,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
+    _proof_list: ProofList,
+    _proof_metadata: ProofMetadata,
+    _recursion_mode: RecursionStrategy,
+    _tmp_dir: &Option<String>,
+    _gpu_shared_state: &mut Option<&mut GpuSharedState>,
+    _total_proof_time: &mut Option<f64>,
 ) -> ProgramProof {
     todo!()
     // let binary = recursion_mode.get_second_layer_binary();

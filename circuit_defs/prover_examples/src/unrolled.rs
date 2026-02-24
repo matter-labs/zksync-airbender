@@ -1,5 +1,3 @@
-#![allow(deprecated, unused_imports, unused_mut, unused_variables)]
-
 use crate::bincode_serialize_to_file;
 use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
 use crate::cs::machine::ops::unrolled::*;
@@ -9,7 +7,6 @@ use crate::DUMP_WITNESS_VAR;
 use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
-use common_constants::TIMESTAMP_STEP;
 use prover::check_satisfied;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::*;
@@ -24,7 +21,6 @@ use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
-use prover::transcript::pow;
 use prover::unrolled::evaluate_init_and_teardown_witness;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::unrolled::NonMemoryCircuitOracle;
@@ -35,11 +31,7 @@ use prover::VectorMemoryImplWithRom;
 use prover::WitnessEvaluationData;
 use prover::WitnessEvaluationDataForExecutionFamily;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
-use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
-use risc_v_simulator::delegations::DelegationsCSRProcessor;
-use risc_v_simulator::machine_mode_only_unrolled::DelegationCSRProcessor;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -47,7 +39,6 @@ use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::DelegationCircuitPrecomputations;
 use setups::UnrolledCircuitPrecomputations;
 use setups::UnrolledCircuitWitnessEvalFn;
-use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use trace_and_split::commit_memory_tree_for_delegation_circuit_with_gpu_tracer;
@@ -58,7 +49,6 @@ use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
-use verifier_common::SECURITY_BITS;
 
 pub fn preprocess_text_section_for_machine_config<
     C: MachineConfig,
@@ -107,24 +97,21 @@ pub fn run_and_split_unrolled<
     A: GoodAllocator,
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
-    cycles_bound: usize,
-    binary_image: &[u32],
-    text_section: &[u32],
-    non_determinism: &mut ND,
-    non_mem_factories: HashMap<
+    _cycles_bound: usize,
+    _binary_image: &[u32],
+    _text_section: &[u32],
+    _non_determinism: &mut ND,
+    _non_mem_factories: HashMap<
         u8,
         Box<dyn Fn() -> NonMemTracingFamilyChunk<A> + Send + Sync + 'static>,
     >,
-    mut mem_factories: HashMap<
-        u8,
-        Box<dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static>,
-    >,
-    delegation_factories: HashMap<
+    _mem_factories: HashMap<u8, Box<dyn Fn() -> MemTracingFamilyChunk<A> + Send + Sync + 'static>>,
+    _delegation_factories: HashMap<
         u16,
         Box<dyn Fn() -> DelegationWitness<A> + Send + Sync + 'static>,
     >,
-    ram_bound: usize,
-    worker: &worker::Worker,
+    _ram_bound: usize,
+    _worker: &worker::Worker,
 ) -> (
     u32,
     TimestampScalar,
@@ -138,6 +125,7 @@ pub fn run_and_split_unrolled<
     panic!("deprecated");
 }
 
+#[allow(deprecated)]
 pub fn trace_unrolled_execution<
     ND: NonDeterminismCSRSource<VectorMemoryImplWithRom>,
     C: MachineConfig,
@@ -175,7 +163,7 @@ pub fn trace_unrolled_execution<
     let (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         family_circuits,
         (word_mem_circuits, subword_mem_circuits),
         delegation_circuits,
@@ -207,7 +195,7 @@ pub fn trace_unrolled_execution<
     (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         family_circuits,
         (word_mem_circuits, subword_mem_circuits),
         delegation_circuits,
@@ -242,7 +230,7 @@ pub fn prove_unrolled_execution<
     let (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         family_circuits,
         (word_mem_circuits, subword_mem_circuits),
         delegation_circuits,
@@ -261,8 +249,8 @@ pub fn prove_unrolled_execution<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
+    // #[cfg(feature = "timing_logs")]
+    // let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // let decoder_preprocessing = preprocess_text_section_for_machine_config::<C, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(text_section);
@@ -390,7 +378,8 @@ pub fn prove_unrolled_execution<
     // );
 
     // same for delegation circuits
-    let now = std::time::Instant::now();
+    // #[cfg(feature = "timing_logs")]
+    // let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
 
     for (delegation_type, els) in delegation_circuits.iter() {
@@ -512,7 +501,7 @@ pub fn prove_unrolled_execution<
     //     main_circuits_witness.len()
     // );
 
-    let total_proving_start = std::time::Instant::now();
+    let _total_proving_start = std::time::Instant::now();
 
     // now prove one by one
     let mut main_proofs = BTreeMap::new();
@@ -556,6 +545,7 @@ pub fn prove_unrolled_execution<
                 default_pc_value_in_padding: *default_pc_value_in_padding,
             };
 
+            #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
                 &precomputation.compiled_circuit,
@@ -584,7 +574,7 @@ pub fn prove_unrolled_execution<
             }
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) =
+            let (_, proof) =
                 prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                     DEFAULT_TRACE_PADDING_MULTIPLE,
                     A,
@@ -674,6 +664,7 @@ pub fn prove_unrolled_execution<
                 decoder_table,
             };
 
+            #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
                 &precomputation.compiled_circuit,
@@ -702,7 +693,7 @@ pub fn prove_unrolled_execution<
             }
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) =
+            let (_, proof) =
                 prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                     DEFAULT_TRACE_PADDING_MULTIPLE,
                     A,
@@ -758,6 +749,7 @@ pub fn prove_unrolled_execution<
     let mut aux_inits_and_teardown_trees = vec![];
     let mut inits_and_teardowns_proofs = vec![];
     for witness_chunk in inits_and_teardowns.into_iter() {
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let witness_trace = evaluate_init_and_teardown_witness::<A>(
             &inits_and_teardowns_precomputation.compiled_circuit,
@@ -785,8 +777,9 @@ pub fn prove_unrolled_execution<
             lookup_mapping,
         };
 
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let (prover_data, proof) =
+        let (_, proof) =
             prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                 DEFAULT_TRACE_PADDING_MULTIPLE,
                 A,
@@ -1053,7 +1046,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         non_mem_circuits,
         mem_circuits,
         (blake_circuits, bigint_circuits, keccak_circuits),
@@ -1080,8 +1073,8 @@ pub fn prove_unrolled_execution_with_replayer<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
+    // #[cfg(feature = "timing_logs")]
+    // let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // let decoder_preprocessing = preprocess_text_section_for_machine_config::<C, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(text_section);
@@ -1241,6 +1234,7 @@ pub fn prove_unrolled_execution_with_replayer<
     // );
 
     // same for delegation circuits
+    #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
     {
@@ -1459,7 +1453,7 @@ pub fn prove_unrolled_execution_with_replayer<
     //     main_circuits_witness.len()
     // );
 
-    let total_proving_start = std::time::Instant::now();
+    let _total_proving_start = std::time::Instant::now();
 
     // now prove one by one
     let mut main_proofs = BTreeMap::new();
@@ -1505,6 +1499,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 default_pc_value_in_padding: *default_pc_value_in_padding,
             };
 
+            #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
                 &precomputation.compiled_circuit,
@@ -1533,7 +1528,7 @@ pub fn prove_unrolled_execution_with_replayer<
             }
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) =
+            let (_, proof) =
                 prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                     DEFAULT_TRACE_PADDING_MULTIPLE,
                     A,
@@ -1625,6 +1620,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 decoder_table,
             };
 
+            #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_executor_family::<_, A>(
                 &precomputation.compiled_circuit,
@@ -1653,7 +1649,7 @@ pub fn prove_unrolled_execution_with_replayer<
             }
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) =
+            let (_, proof) =
                 prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                     DEFAULT_TRACE_PADDING_MULTIPLE,
                     A,
@@ -1699,6 +1695,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let mut aux_inits_and_teardown_trees = vec![];
     let mut inits_and_teardowns_proofs = vec![];
     for witness_chunk in inits_and_teardowns.into_iter() {
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let witness_trace = evaluate_init_and_teardown_witness::<A>(
             &inits_and_teardowns_precomputation.compiled_circuit,
@@ -1726,8 +1723,9 @@ pub fn prove_unrolled_execution_with_replayer<
             lookup_mapping,
         };
 
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let (prover_data, proof) =
+        let (_, proof) =
             prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                 DEFAULT_TRACE_PADDING_MULTIPLE,
                 A,
@@ -2055,10 +2053,7 @@ fn prove_delegation_circuit_with_replayer_format<
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
-    use crate::bincode_deserialize_from_file;
-    use crate::deserialize_from_file;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-    use prover::prover_stages::pow_bits;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
     use std::path::Path;

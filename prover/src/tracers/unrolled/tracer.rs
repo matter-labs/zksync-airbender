@@ -1,5 +1,3 @@
-#![allow(deprecated, dead_code, unused_mut, unused_variables)]
-
 use crate::fft::GoodAllocator;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadData;
 use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadWriteData;
@@ -15,11 +13,16 @@ use risc_v_simulator::machine_mode_only_unrolled::*;
 
 pub(crate) const NUM_OPCODE_FAMILIES_NO_RAM: usize = 4;
 
+#[allow(dead_code)]
 pub(crate) const RS1_ACCESS_IDX: TimestampScalar = 0;
+#[allow(dead_code)]
 pub(crate) const RS2_ACCESS_IDX: TimestampScalar = 1;
+#[allow(dead_code)]
 pub(crate) const RD_ACCESS_IDX: TimestampScalar = 2;
 pub(crate) const DELEGATION_ACCESS_IDX: TimestampScalar = 3;
+#[allow(dead_code)]
 pub(crate) const RAM_READ_ACCESS_IDX: TimestampScalar = RS2_ACCESS_IDX;
+#[allow(dead_code)]
 pub(crate) const RAM_WRITE_ACCESS_IDX: TimestampScalar = RD_ACCESS_IDX;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -103,6 +106,7 @@ pub struct UnrolledGPUFriendlyTracer<
     pub _marker: core::marker::PhantomData<C>,
 }
 
+#[allow(deprecated)]
 impl<
         C: MachineConfig,
         A: GoodAllocator,
@@ -165,6 +169,7 @@ impl<
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn update_reg_access_timestamp<const ACCESS_IDX: u64>(
         &mut self,
         reg_idx: u8,
@@ -182,6 +187,7 @@ impl<
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn update_ram_access_timestmap<const ACCESS_IDX: u64>(
         &mut self,
         phys_address: u64,
@@ -211,6 +217,7 @@ impl<
     }
 }
 
+#[allow(deprecated)]
 impl<
         C: MachineConfig,
         A: GoodAllocator,
@@ -239,7 +246,7 @@ impl<
     }
 
     #[inline]
-    fn trace_non_mem_step(&mut self, family: u8, mut data: NonMemoryOpcodeTracingData) {
+    fn trace_non_mem_step(&mut self, _family: u8, _data: NonMemoryOpcodeTracingData) {
         panic!("deprecated");
         // let mut rs1_read_timestamp = TimestampData::EMPTY;
         // let mut rs2_read_timestamp = TimestampData::EMPTY;
@@ -276,7 +283,7 @@ impl<
     }
 
     #[inline]
-    fn trace_mem_load_step(&mut self, data: LoadOpcodeTracingData) {
+    fn trace_mem_load_step(&mut self, _data: LoadOpcodeTracingData) {
         panic!("deprecated");
         // let mut rs1_read_timestamp = TimestampData::EMPTY;
         // let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;
@@ -313,7 +320,7 @@ impl<
         // }
     }
 
-    fn trace_mem_store_step(&mut self, data: StoreOpcodeTracingData) {
+    fn trace_mem_store_step(&mut self, _data: StoreOpcodeTracingData) {
         panic!("deprecated");
         // let mut rs1_read_timestamp = TimestampData::EMPTY;
         // let mut rs2_or_ram_read_timestamp = TimestampData::EMPTY;

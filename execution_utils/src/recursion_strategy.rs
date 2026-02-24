@@ -1,7 +1,3 @@
-#![allow(unused_imports)]
-
-use crate::Machine;
-use crate::ProofMetadata;
 use clap::ValueEnum;
 
 /// We have two layers of recursion:
