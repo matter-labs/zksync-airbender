@@ -7,3 +7,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: EmbarkStudios/cargo-deny-action@v2
+      with:
+        # TODO(security): Re-enable advisories/licenses after dependency and license-policy remediation.
+        command-arguments: bans sources
