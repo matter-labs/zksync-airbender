@@ -367,13 +367,12 @@ mod test {
     #[test]
     fn prove_unified_recursion() {
         use crate::setups::read_and_pad_binary;
-        use crate::setups::CompiledCircuitsSet;
         use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
         use crate::unrolled::*;
         use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        use std::{io::Read, path::Path};
+        use std::path::Path;
 
         let (binary, binary_u32) = read_and_pad_binary(Path::new(
             "../tools/verifier/recursion_in_unified_layer.bin",
