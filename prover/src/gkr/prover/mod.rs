@@ -1,6 +1,5 @@
 use std::alloc::Global;
 use std::collections::BTreeMap;
-use std::time::Instant;
 
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::TwoAdicField;
