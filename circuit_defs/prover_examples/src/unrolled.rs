@@ -2053,6 +2053,8 @@ fn prove_delegation_circuit_with_replayer_format<
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
+    use crate::bincode_deserialize_from_file;
+    use crate::deserialize_from_file;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
