@@ -4,15 +4,9 @@ use super::*;
 use crate::tracers::delegation::DelegationWitness;
 use crate::tracers::unrolled::tracer::*;
 // use crate::tracers::unrolled::word_specialized_tracer::WordSpecializedTracer;
-use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
-use cs::machine::machine_configurations::full_isa_with_delegation_no_exceptions_no_signed_mul_div::FullIsaMachineWithDelegationNoExceptionHandlingNoSignedMulDiv;
-use cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
+use risc_v_simulator::machine_mode_only_unrolled::DelegationCSRProcessor;
 use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
-use risc_v_simulator::machine_mode_only_unrolled::{
-    DelegationCSRProcessor, RiscV32StateForUnrolledProver,
-};
-use riscv_transpiler::ir::preprocess_bytecode;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
@@ -21,6 +15,10 @@ mod family_circuits;
 
 pub use self::family_circuits::*;
 
+#[expect(
+    deprecated,
+    reason = "delegation CSR path still depends on deprecated unrolled machine APIs"
+)]
 pub fn run_unrolled_machine_for_num_cycles<
     CSR: DelegationCSRProcessor,
     C: MachineConfig,
@@ -56,7 +54,10 @@ pub fn run_unrolled_machine_for_num_cycles<
 
     let now = std::time::Instant::now();
 
-    let mut state = RiscV32StateForUnrolledProver::<C>::initial(initial_pc);
+    let mut state =
+        risc_v_simulator::machine_mode_only_unrolled::RiscV32StateForUnrolledProver::<C>::initial(
+            initial_pc,
+        );
 
     let ram_tracer =
         RamTracingData::<true>::new_for_ram_size_and_rom_bound(ram_bound, rom_address_space_bound);
@@ -463,16 +464,16 @@ pub fn run_unrolled_machine<
     let preprocessed_bytecode: Vec<_> = if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfig>()
     {
-        preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
     {
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
         )
     {
-        preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
     } else {
         panic!("Unknown machine config {}", core::any::type_name::<C>());
     };
@@ -788,16 +789,16 @@ pub fn run_unified_machine<
     let preprocessed_bytecode: Vec<_> = if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfig>()
     {
-        preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
     {
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
         )
     {
-        preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
+        riscv_transpiler::ir::preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
     } else {
         panic!("Unknown machine config {}", core::any::type_name::<C>());
     };
@@ -834,7 +835,7 @@ pub fn run_unified_machine<
         last_access_timestamp: el.timestamp,
     });
 
-    let total_snapshots = snapshotter.snapshots.len();
+    let _total_snapshots = snapshotter.snapshots.len();
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
     let final_pc = state.pc;
     let final_timestamp = state.timestamp;
@@ -852,7 +853,7 @@ pub fn run_unified_machine<
         == core::any::TypeId::of::<
             risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
-    let replay_mul_circuits = core::any::TypeId::of::<C>()
+    let _replay_mul_circuits = core::any::TypeId::of::<C>()
         != core::any::TypeId::of::<
             risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
@@ -1474,10 +1475,6 @@ pub(crate) fn replay_generic_work<
     work_type_idx: usize,
     worker: &Worker,
 ) -> Vec<Vec<D::Element, A>> {
-    use risc_v_simulator::machine_mode_only_unrolled::*;
-    use riscv_transpiler::vm::Counters;
-    use riscv_transpiler::witness::DestinationHolderConstructor;
-
     let counters = snapshotter
         .snapshots
         .last()
@@ -1603,7 +1600,6 @@ pub(crate) fn replay_generic_work<
 
             use riscv_transpiler::replayer::*;
             use riscv_transpiler::vm::ReplayBuffer;
-            use riscv_transpiler::witness::*;
 
             let tape_ref = tape;
             let snapshotter_ref = &snapshotter;

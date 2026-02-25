@@ -40,7 +40,7 @@ impl OpcodeFamilyDecoder for MemoryFamilyDecoder {
 
     fn define_decoder_subspace(
         &self,
-        opcode: u32,
+        _opcode: u32,
     ) -> Result<ExecutorFamilyDecoderExtendedData, ()> {
         todo!();
 

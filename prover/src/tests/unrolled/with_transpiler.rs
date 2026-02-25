@@ -119,7 +119,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     dbg!(state.counters);
 
-    let total_snapshots = snapshotter.snapshots.len();
+    let _total_snapshots = snapshotter.snapshots.len();
 
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 
@@ -1530,7 +1530,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
         let inits_data = &inits_and_teardowns[0];
 
-        let memory_trace = evaluate_init_and_teardown_memory_witness::<Global>(
+        let _memory_trace = evaluate_init_and_teardown_memory_witness::<Global>(
             &inits_and_teardowns_circuit,
             NUM_CYCLES_PER_CHUNK,
             &inits_data.lazy_init_data,
@@ -1707,7 +1707,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             "Evaluating memory-only witness for delegation circuit {}",
             delegation_type
         );
-        let mem_only_witness = evaluate_delegation_memory_witness(
+        let _mem_only_witness = evaluate_delegation_memory_witness(
             &circuit,
             NUM_DELEGATION_CYCLES,
             &oracle,
@@ -1887,7 +1887,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             "Evaluating memory-only witness for delegation circuit {}",
             delegation_type
         );
-        let mem_only_witness = evaluate_delegation_memory_witness(
+        let _mem_only_witness = evaluate_delegation_memory_witness(
             &circuit,
             NUM_DELEGATION_CYCLES,
             &oracle,
@@ -2014,21 +2014,21 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (idx, (address, (teardown_ts, teardown_value))) in
+            for (_idx, (address, (teardown_ts, teardown_value))) in
                 flattened_inits_and_teardowns.iter().enumerate()
             {
                 let mut init_set_el = None;
-                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (_i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
                 }
-                let Some(init_set_el) = init_set_el else {
+                let Some(_init_set_el) = init_set_el else {
                     panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
                 };
 
                 let mut teardown_set_el = None;
-                for (i, (is_reg, addr, ts, teardown_value)) in
+                for (_i, (is_reg, addr, ts, teardown_value)) in
                     expected_teardown_set.iter().enumerate()
                 {
                     if *addr == *address {

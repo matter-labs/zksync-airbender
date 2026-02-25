@@ -3,6 +3,7 @@ use crate::one_row_compiler::compile_layout::*;
 use crate::one_row_compiler::delegation::*;
 
 impl<F: PrimeField> OneRowCompiler<F> {
+    #[allow(unreachable_code, unused_variables)]
     pub fn compile_executor_circuit(
         &self,
         circuit_output: CircuitOutput<F>,

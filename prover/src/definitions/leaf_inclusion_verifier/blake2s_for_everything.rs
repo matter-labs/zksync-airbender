@@ -15,6 +15,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
     }
 
     #[unroll::unroll_for_loops]
+    #[expect(unreachable_code, unused_assignments, unused_variables)]
     unsafe fn verify_leaf_inclusion<
         I: NonDeterminismSource,
         const CAP_SIZE: usize,

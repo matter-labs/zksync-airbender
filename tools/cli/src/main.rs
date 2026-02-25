@@ -407,11 +407,12 @@ fn main() {
         } => flatten_two(first_metadata, second_metadata, output_file),
         Commands::GenerateConstants {
             bin,
-            universal_verifier,
-            recompute,
-            mode,
+            universal_verifier: _,
+            recompute: _,
+            mode: _,
         } => {
-            let base_layer_bin = std::fs::read(bin).expect("Failed to read base layer binary file");
+            let _base_layer_bin =
+                std::fs::read(bin).expect("Failed to read base layer binary file");
             todo!()
             // let (end_params, aux_values) = generate_constants_for_binary(
             //     &base_layer_bin,
@@ -612,12 +613,12 @@ fn verify_all(metadata_path: &String) {
 
     if metadata.basic_proof_count > 0 {
         assert_eq!(metadata.reduced_proof_count, 0);
-        let output = full_statement_verifier::verify_base_layer();
+        let output = full_statement_verifier::legacy_circuits::verify_base_layer();
         println!("Output is: {:?}", output);
     } else if metadata.reduced_proof_count > 0 {
         println!("Running continue recursive");
         assert!(metadata.reduced_proof_count > 0);
-        let output = full_statement_verifier::verify_recursion_layer();
+        let output = full_statement_verifier::legacy_circuits::verify_recursion_layer();
         println!("Output is: {:?}", output);
     } else if metadata.reduced_log_23_proof_count > 0 {
         todo!("not implemented yet");
@@ -646,7 +647,7 @@ fn verify_all_program_proof(program_proof_path: &String) {
     // Assume that program proof has only recursion proofs.
     println!("Running continue recursive");
     assert!(metadata.reduced_proof_count > 0);
-    let output = full_statement_verifier::verify_recursion_layer();
+    let output = full_statement_verifier::legacy_circuits::verify_recursion_layer();
     println!("Output is: {:?}", output);
 
     assert!(

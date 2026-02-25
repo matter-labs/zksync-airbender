@@ -1,4 +1,9 @@
 [advisories]
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "Temporary exception while migrating off bincode across workspace crates." },
+    { id = "RUSTSEC-2024-0388", reason = "Temporary exception while replacing derivative usage in cs tables." },
+    { id = "RUSTSEC-2024-0436", reason = "Temporary exception; paste is currently brought in transitively by era_cudart." },
+]
 
 [bans]
 multiple-versions = "warn"
@@ -23,6 +28,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "MPL-2.0",
+    "CDDL-1.0",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",

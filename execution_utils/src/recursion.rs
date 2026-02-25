@@ -1,13 +1,8 @@
-use super::*;
 // use crate::verifier_binaries::{
 //     recursion_layer_verifier_vk, recursion_log_23_layer_verifier_vk,
 //     universal_circuit_log_23_verifier_vk, universal_circuit_verifier_vk, BASE_LAYER_VERIFIER,
 //     RECURSION_LAYER_VERIFIER, UNIVERSAL_CIRCUIT_VERIFIER,
 // };
-use crate::{Machine, RecursionStrategy};
-use std::alloc::Global;
-
-use verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 
 // pub fn generate_constants_for_binary(
 //     base_layer_bin: &[u8],

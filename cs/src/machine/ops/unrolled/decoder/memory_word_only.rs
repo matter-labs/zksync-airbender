@@ -46,7 +46,7 @@ impl OpcodeFamilyDecoder for WordOnlyMemoryFamilyDecoder {
         let op = get_opcode_bits(opcode);
         let func3 = funct3_bits(opcode);
         let func7 = funct7_bits(opcode);
-        let mut imm = 0;
+        let imm;
         let (rs1_index, mut rs2_index, mut rd_index) =
             formally_parse_rs1_rs2_rd_props_for_tracer(opcode);
         let instruction_type;

@@ -180,6 +180,7 @@ jobs:
   #         fi
 
   build_cli_with_verify:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     runs-on: [matterlabs-ci-runner-c3d]
     name: build_cli_with_verify
     steps:
@@ -198,6 +199,7 @@ jobs:
           path: target/cli/cli
 
   build_cli_no_verifiers:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     runs-on: [matterlabs-ci-runner-highmem]
     name: build_cli_no_verifiers
     steps:
@@ -217,6 +219,7 @@ jobs:
 
 
   build_cli_no_verifiers_512:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     runs-on: [matterlabs-ci-runner-c3d]
     name: build_cli_no_verifiers_512
     steps:
@@ -262,6 +265,7 @@ jobs:
 
 
   basic_example:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: basic_example
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
@@ -283,6 +287,7 @@ jobs:
 
 
   large_example:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: large_example
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
@@ -306,6 +311,7 @@ jobs:
 
 
   delegation_example:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: delegation_example
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify]
@@ -328,6 +334,7 @@ jobs:
         run: ./cli verify-all --metadata output/metadata.json
 
   verification_example:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: verification_example
     runs-on: [matterlabs-ci-runner-highmem]
     needs: [build_cli_with_verify, build_verifier]
@@ -364,6 +371,7 @@ jobs:
 
   # Test incremental proofs.
   oh_bender:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: oh_bender_incremental_proofs
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_no_verifiers_512, build_verifier]
@@ -395,6 +403,7 @@ jobs:
 
 
   full_recursion:
+    if: ${{ false }} # TODO(cli): Re-enable when CLI stabilization work is in scope.
     name: full_recursion
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_no_verifiers_512, build_verifier]

@@ -1,12 +1,11 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(allocator_api))]
-#![feature(ptr_as_ref_unchecked)]
 #![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-#[cfg(any(all(feature = "security_80", feature = "security_100"),))]
-compile_error!("multiple security levels selected same time");
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!("multiple security levels selected at the same time");
 
 pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
 pub const POW_BITS_FOR_80_SECURITY_BITS: usize = 28;
@@ -16,7 +15,7 @@ pub const POW_BITS_FOR_100_SECURITY_BITS: usize = 28;
 pub const SECURITY_BITS: usize = 80;
 #[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
 pub const MEMORY_DELEGATION_POW_BITS: usize =
-    POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
+    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_80;
 
 #[cfg(feature = "security_100")]
 pub const SECURITY_BITS: usize = 100;
@@ -25,7 +24,7 @@ pub const SECURITY_BITS: usize = 100;
     not(feature = "worst_case_config_generation")
 ))]
 pub const MEMORY_DELEGATION_POW_BITS: usize =
-    POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
+    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_100;
 
 #[cfg(feature = "worst_case_config_generation")]
 pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
@@ -60,7 +59,17 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
 
 // The file should be generated with tools/pow_config_generator
 #[cfg(not(feature = "worst_case_config_generation"))]
-include!("pow_config_worst_constants.rs");
+#[allow(dead_code)]
+mod pow_config_worst_constants {
+    use super::SizedProofSecurityConfig;
+
+    include!("pow_config_worst_constants.rs");
+
+    pub(super) const MEMORY_DELEGATION_POW_BITS_80: usize =
+        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
+    pub(super) const MEMORY_DELEGATION_POW_BITS_100: usize =
+        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
+}
 
 #[cfg(feature = "worst_case_config_generation")]
 impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {

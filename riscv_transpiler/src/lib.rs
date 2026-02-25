@@ -4,7 +4,6 @@
 #![feature(vec_push_within_capacity)]
 #![feature(allocator_api)]
 #![feature(widening_mul)]
-#![feature(ptr_as_ref_unchecked)]
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(likely_unlikely)]
 #![feature(pointer_is_aligned_to)]

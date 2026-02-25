@@ -129,9 +129,13 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
             }
         }
     }
+    // Verifier expects PoW challenge at the end of the oracle stream.
+    oracle_data.push(metadata.pow_challenge as u32);
+    oracle_data.push((metadata.pow_challenge >> 32) as u32);
     if let Some(prev_params) = metadata.prev_end_params_output {
         oracle_data.extend(prev_params);
     }
+
     oracle_data
 }
 
