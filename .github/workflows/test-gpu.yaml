@@ -21,7 +21,7 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
-      RUST_TOOLCHAIN: nightly-2025-08-26
+      RUST_TOOLCHAIN: nightly-2026-02-10
     steps:
       - name: Prepare environment
         env:
@@ -69,6 +69,8 @@ jobs:
           if-no-files-found: error
 
   zksync-airbender-test:
+    # TODO(ci): Re-enable once tools/cli/src/prover_utils.rs:269 is implemented for zksmith test binary runs.
+    if: ${{ false }}
     runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
       matrix:

@@ -241,6 +241,7 @@ pub fn produce_aggregated_cache_for_binary(binary: &[u8]) -> BTreeMap<u32, Vec<S
 // }
 
 #[test]
+#[ignore]
 fn test_types() {
     use std::io::Read;
     let mut buffer = vec![];

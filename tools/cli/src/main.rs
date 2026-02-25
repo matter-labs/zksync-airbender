@@ -613,12 +613,12 @@ fn verify_all(metadata_path: &String) {
 
     if metadata.basic_proof_count > 0 {
         assert_eq!(metadata.reduced_proof_count, 0);
-        let output = full_statement_verifier::verify_base_layer();
+        let output = full_statement_verifier::legacy_circuits::verify_base_layer();
         println!("Output is: {:?}", output);
     } else if metadata.reduced_proof_count > 0 {
         println!("Running continue recursive");
         assert!(metadata.reduced_proof_count > 0);
-        let output = full_statement_verifier::verify_recursion_layer();
+        let output = full_statement_verifier::legacy_circuits::verify_recursion_layer();
         println!("Output is: {:?}", output);
     } else if metadata.reduced_log_23_proof_count > 0 {
         todo!("not implemented yet");
@@ -647,7 +647,7 @@ fn verify_all_program_proof(program_proof_path: &String) {
     // Assume that program proof has only recursion proofs.
     println!("Running continue recursive");
     assert!(metadata.reduced_proof_count > 0);
-    let output = full_statement_verifier::verify_recursion_layer();
+    let output = full_statement_verifier::legacy_circuits::verify_recursion_layer();
     println!("Output is: {:?}", output);
 
     assert!(
