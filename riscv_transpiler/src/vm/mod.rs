@@ -6,6 +6,8 @@ use common_constants::circuit_families::*;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use std::fmt::Debug;
 
+#[cfg(feature = "flamegraph")]
+mod flamegraph;
 mod instructions;
 mod ram_with_rom_region;
 mod replay_snapshotter;
@@ -13,6 +15,8 @@ mod simple_tape;
 
 pub(crate) mod delegations;
 
+#[cfg(feature = "flamegraph")]
+pub use self::flamegraph::*;
 pub use self::ram_with_rom_region::RamWithRomRegion;
 pub use self::replay_snapshotter::*;
 pub use self::simple_tape::SimpleTape;
@@ -252,6 +256,84 @@ impl<C: Counters> VM<C> {
         }
 
         false
+    }
+
+    #[cfg(feature = "flamegraph")]
+    pub fn run_basic_unrolled_with_flamegraph<
+        S: Snapshotter<C>,
+        R: RAM + FlamegraphReadableRam,
+        ND: NonDeterminismCSRSource,
+    >(
+        state: &mut State<C>,
+        ram: &mut R,
+        snapshotter: &mut S,
+        instruction_tape: &impl InstructionTape,
+        cycle_bound: usize,
+        nd: &mut ND,
+        profiler: &mut VmFlamegraphProfiler,
+    ) -> std::io::Result<bool> {
+        for cycle in 0..cycle_bound {
+            let pc = state.pc;
+
+            profiler.sample_cycle(state, &*ram, cycle);
+            Self::run_step(state, ram, snapshotter, instruction_tape, nd);
+
+            state.timestamp += TIMESTAMP_STEP;
+            if state.pc == pc {
+                snapshotter.take_final_snapshot(&*state);
+                profiler.write_flamegraph()?;
+                return Ok(true);
+            }
+
+            if snapshotter.take_snapshot_if_needed(&*state) {
+                profiler.write_flamegraph()?;
+                return Ok(false);
+            }
+        }
+
+        profiler.write_flamegraph()?;
+        Ok(false)
+    }
+
+    #[cfg(feature = "flamegraph")]
+    pub fn run_by_timestamp_bound_with_flamegraph<
+        S: Snapshotter<C>,
+        R: RAM + FlamegraphReadableRam,
+        ND: NonDeterminismCSRSource,
+    >(
+        state: &mut State<C>,
+        ram: &mut R,
+        snapshotter: &mut S,
+        instruction_tape: &impl InstructionTape,
+        timestamp_bound: TimestampScalar,
+        nd: &mut ND,
+        profiler: &mut VmFlamegraphProfiler,
+    ) -> std::io::Result<bool> {
+        let mut cycle = 0usize;
+
+        while state.timestamp < timestamp_bound {
+            let pc = state.pc;
+
+            profiler.sample_cycle(state, &*ram, cycle);
+            cycle += 1;
+
+            Self::run_step(state, ram, snapshotter, instruction_tape, nd);
+
+            state.timestamp += TIMESTAMP_STEP;
+            if state.pc == pc {
+                snapshotter.take_final_snapshot(&*state);
+                profiler.write_flamegraph()?;
+                return Ok(true);
+            }
+
+            if snapshotter.take_snapshot_if_needed(&*state) {
+                profiler.write_flamegraph()?;
+                return Ok(false);
+            }
+        }
+
+        profiler.write_flamegraph()?;
+        Ok(false)
     }
 
     #[inline(always)]
