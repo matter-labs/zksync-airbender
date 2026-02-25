@@ -11,6 +11,8 @@ pub fn load_store_subword_only_circuit_setup<A: GoodAllocator + 'static, B: Good
     let table_driver = ::load_store_subword_only::get_table_driver(binary_image);
     let (decoder_table_data, witness_gen_data) =
         ::load_store_subword_only::get_decoder_table::<B>(bytecode);
+    #[cfg(not(feature = "witness_eval_fn"))]
+    let _ = &witness_gen_data;
     use prover::cs::machine::ops::unrolled::materialize_flattened_decoder_table;
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 

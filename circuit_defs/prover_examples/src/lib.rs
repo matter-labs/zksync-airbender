@@ -2,17 +2,15 @@
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
-use std::alloc::Global;
 use std::collections::HashMap;
-use std::path::Path;
 
-pub use prover;
+pub use ::prover;
+pub use ::setups;
 use prover::cs::utils::split_timestamp;
 use prover::trace_holder::RowMajorTrace;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
-pub use setups;
 
 use merkle_trees::DefaultTreeConstructor;
 use prover::cs::definitions::ColumnSet;
@@ -33,7 +31,6 @@ use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
 use risc_v_simulator::cycle::MachineConfig;
 use setups::*;
 use trace_and_split::*;
-use verifier_common::SECURITY_BITS;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -369,6 +366,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
     );
 
     // same for delegation circuits
+    #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
 
@@ -508,6 +506,7 @@ pub fn prove_image_execution_for_machine_with_gpu_tracers<
             cycle_data: witness_chunk,
         };
 
+        #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let witness_trace = evaluate_witness(
             &risc_v_circuit_precomputations.compiled_circuit,

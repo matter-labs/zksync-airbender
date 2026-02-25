@@ -3,7 +3,6 @@
 #![feature(allocator_api)]
 
 use clap::ValueEnum;
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
 use verifier_common::prover::definitions::MerkleTreeCap;

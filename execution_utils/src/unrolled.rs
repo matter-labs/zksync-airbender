@@ -7,10 +7,8 @@ use trace_and_split::setups;
 use super::*;
 use prover::common_constants::TimestampScalar;
 use prover::cs::utils::split_timestamp;
-use prover::field::*;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator;
 use setups::CompiledCircuitsSet;
 use trace_and_split::FinalRegisterValue;
 

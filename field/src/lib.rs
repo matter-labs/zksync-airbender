@@ -6,7 +6,6 @@
 #![feature(associated_type_defaults)]
 #![feature(core_intrinsics)]
 #![feature(const_eval_select)]
-#![cfg_attr(target_feature = "avx512f", feature(stdarch_x86_avx512))]
 
 use core::fmt::Debug;
 use core::fmt::Display;

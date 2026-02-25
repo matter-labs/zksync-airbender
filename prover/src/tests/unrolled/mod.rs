@@ -5,7 +5,6 @@ use crate::unrolled::evaluate_witness_for_executor_family;
 use crate::unrolled::run_unrolled_machine_for_num_cycles;
 use crate::unrolled::MemoryCircuitOracle;
 use crate::unrolled::NonMemoryCircuitOracle;
-use common_constants::circuit_families::*;
 use common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 use common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
@@ -14,6 +13,7 @@ use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
+#[cfg(test)]
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use std::alloc::Allocator;
 use std::collections::BTreeSet;
@@ -24,6 +24,7 @@ use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_fam
 mod reduced_machine;
 pub mod with_transpiler;
 
+#[allow(unused_imports)]
 pub mod add_sub_lui_auipc_mod {
     use crate::unrolled::NonMemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -51,6 +52,7 @@ pub mod add_sub_lui_auipc_mod {
     }
 }
 
+#[allow(unused_imports)]
 pub mod jump_branch_slt {
     use crate::unrolled::NonMemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -78,6 +80,7 @@ pub mod jump_branch_slt {
     }
 }
 
+#[allow(unused_imports)]
 pub mod shift_binop_csrrw {
     use crate::unrolled::NonMemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -105,6 +108,7 @@ pub mod shift_binop_csrrw {
     }
 }
 
+#[allow(unused_imports)]
 pub mod mul_div {
     use crate::unrolled::NonMemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -132,6 +136,7 @@ pub mod mul_div {
     }
 }
 
+#[allow(unused_imports)]
 pub mod mul_div_unsigned_only {
     use crate::unrolled::NonMemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -159,6 +164,7 @@ pub mod mul_div_unsigned_only {
     }
 }
 
+#[allow(unused_imports)]
 pub mod load_store {
     use crate::unrolled::MemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -184,6 +190,7 @@ pub mod load_store {
     }
 }
 
+#[allow(unused_imports)]
 pub mod word_load_store {
     use crate::unrolled::MemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -209,6 +216,7 @@ pub mod word_load_store {
     }
 }
 
+#[allow(unused_imports)]
 pub mod subword_load_store {
     use crate::unrolled::MemoryCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -481,7 +489,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
         {
             // register
             {
-                let reg_idx = access.register_access.get_register_index();
+                let _reg_idx = access.register_access.get_register_index();
                 let read_ts = read_timestamp(
                     trace_row,
                     access.register_access.get_read_timestamp_columns(),
@@ -614,8 +622,15 @@ fn run_basic_unrolled_test() {
     run_basic_unrolled_test_impl(None);
 }
 
+#[cfg_attr(
+    all(feature = "test", not(test)),
+    expect(
+        dead_code,
+        reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
+    )
+)]
 pub fn run_basic_unrolled_test_impl(
-    maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
+    _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
     // NOTE: these constants must match with ones used in CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
@@ -705,9 +720,9 @@ pub fn run_basic_unrolled_test_impl(
         final_pc,
         family_circuits,
         mem_circuits,
-        delegation_circuits,
+        _delegation_circuits,
         register_final_state,
-        shuffle_ram_touched_addresses,
+        _shuffle_ram_touched_addresses,
     ) = if SUPPORT_SIGNED {
         let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]); // 1000 steps of fibonacci, and 1 round of hashing
         run_unrolled_machine_for_num_cycles::<_, IMStandardIsaConfig, Global>(
@@ -901,7 +916,7 @@ pub fn run_basic_unrolled_test_impl(
         //     family_data[0].data[4].opcode_data.opcode
         // );
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let _memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &add_sub_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
@@ -949,7 +964,7 @@ pub fn run_basic_unrolled_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, _proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -1005,7 +1020,7 @@ pub fn run_basic_unrolled_test_impl(
         //     family_data[0].data[4].opcode_data.opcode
         // );
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let _memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &jump_branch_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
@@ -1053,7 +1068,7 @@ pub fn run_basic_unrolled_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, _proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -1125,7 +1140,7 @@ pub fn run_basic_unrolled_test_impl(
         //     family_data[0].data[26].opcode_data.opcode
         // );
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let _memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &shift_binop_csrrw_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
@@ -1173,7 +1188,7 @@ pub fn run_basic_unrolled_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, _proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -1237,7 +1252,7 @@ pub fn run_basic_unrolled_test_impl(
         //     family_data[0].data[26].opcode_data.opcode
         // );
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let _memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &mul_div_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
@@ -1285,7 +1300,7 @@ pub fn run_basic_unrolled_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, _proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -1350,7 +1365,7 @@ pub fn run_basic_unrolled_test_impl(
         //     family_data[0].data[29].opcode_data.opcode
         // );
 
-        let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
+        let _memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
             &load_store_circuit,
             NUM_CYCLES_PER_CHUNK,
             &oracle,
@@ -1398,7 +1413,7 @@ pub fn run_basic_unrolled_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, _proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -1570,7 +1585,6 @@ fn test_single_non_mem_circuit() {
     use crate::cs::cs::cs_reference::BasicAssembly;
     use cs::cs::circuit::Circuit;
     use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::*;
-    use cs::machine::ops::unrolled::shift_binary_csr::*;
     use std::path::Path;
 
     let family_idx = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
@@ -1687,7 +1701,7 @@ fn test_bigint_with_replayer_oracle() {
         }
 
         let register = Register(output_extended_state_vars.map(|el| Num::Var(el)));
-        let result_x12 = register.get_value_unsigned(&cs).unwrap();
+        let _result_x12 = register.get_value_unsigned(&cs).unwrap();
 
         // assert_eq!(expected_x12, result_x12, "x12 diverged for round {}", round);
 

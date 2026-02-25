@@ -33,7 +33,9 @@ use rand::Rng;
 impl Rand for Mersenne31FieldVectorized {
     fn random_element<R: Rng + ?Sized>(rng: &mut R) -> Mersenne31FieldVectorized {
         let t = [(); WIDTH].map(|_| {
-            Mersenne31Field::from_u64_unchecked(rng.gen_range(0..Mersenne31Field::CHARACTERISTICS))
+            Mersenne31Field::from_u64_unchecked(
+                rng.random_range(0..Mersenne31Field::CHARACTERISTICS),
+            )
         });
         Mersenne31FieldVectorized(t)
     }

@@ -2,19 +2,17 @@ use super::*;
 
 use crate::unrolled::evaluate_witness_for_unified_executor;
 use crate::unrolled::UnifiedRiscvCircuitOracle;
-use common_constants::circuit_families::*;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 use cs::cs::circuit::Circuit;
-use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
-use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_unified_executor;
 
+#[allow(unused_imports)]
 pub mod reduced_machine {
     use crate::unrolled::UnifiedRiscvCircuitOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -47,8 +45,15 @@ fn run_unrolled_reduced_test() {
     run_unrolled_reduced_test_impl(None);
 }
 
+#[cfg_attr(
+    all(feature = "test", not(test)),
+    expect(
+        dead_code,
+        reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
+    )
+)]
 pub fn run_unrolled_reduced_test_impl(
-    maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
+    _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
     use riscv_transpiler::ir::*;
     use riscv_transpiler::replayer::*;
@@ -123,14 +128,14 @@ pub fn run_unrolled_reduced_test_impl(
 
     dbg!(state.counters);
 
-    let total_snapshots = snapshotter.snapshots.len();
-    let cycles_upper_bound = cycles_bound;
+    let _total_snapshots = snapshotter.snapshots.len();
+    let _cycles_upper_bound = cycles_bound;
 
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 
     println!("Passed exactly {} cycles", exact_cycles_passed);
 
-    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let _counters = snapshotter.snapshots.last().unwrap().state.counters;
 
     let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
 
@@ -462,7 +467,7 @@ pub fn run_unrolled_reduced_test_impl(
         println!("Trying to prove");
 
         let now = std::time::Instant::now();
-        let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
+        let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
             _,
             DefaultTreeConstructor,
@@ -500,21 +505,21 @@ pub fn run_unrolled_reduced_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (idx, (address, (teardown_ts, teardown_value))) in
+            for (_idx, (address, (teardown_ts, teardown_value))) in
                 flattened_inits_and_teardowns.iter().enumerate()
             {
                 let mut init_set_el = None;
-                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (_i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
                 }
-                let Some(init_set_el) = init_set_el else {
+                let Some(_init_set_el) = init_set_el else {
                     panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
                 };
 
                 let mut teardown_set_el = None;
-                for (i, (is_reg, addr, ts, teardown_value)) in
+                for (_i, (is_reg, addr, ts, teardown_value)) in
                     expected_teardown_set.iter().enumerate()
                 {
                     if *addr == *address {

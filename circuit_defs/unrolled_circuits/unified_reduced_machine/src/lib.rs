@@ -179,6 +179,7 @@ pub fn get_decoder_table_for_rom_bound<
 }
 
 #[cfg(feature = "witness_eval_fn")]
+#[expect(unused_imports)]
 mod sealed {
     use crate::field::Mersenne31Field;
     use prover::cs::cs::placeholder::Placeholder;
