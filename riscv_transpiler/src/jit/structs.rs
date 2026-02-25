@@ -166,7 +166,7 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
         debug_assert_eq!(*address % 4, 0);
         if (*address as usize) < common_constants::rom::ROM_BYTE_SIZE {
             // NOTE: we no longer mask an address, just a value as it's only initialized to
-            // 0 via inits, and can not be writen over by circuits
+            // 0 via inits, and can not be written over by circuits
             // *address = 0u32;
             *value = 0u32;
         }

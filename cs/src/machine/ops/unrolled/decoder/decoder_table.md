@@ -43,4 +43,4 @@ Total of 5 bits
 
 Decoder table takes a combination of `opcode` (7 bits) + `funct3` (3 bits) + `funct7` (7 bits) pieces as the input, and outputs 2 values:
 - opcode family. It's a variable that will participate directly in the permutation argument over states
-- linear combination of bitmask of `invalid || opcode_format_bits` to select immediate - this part will be bit-decomposed by the decoder for it's work - and 8 bit coarsely constrainted bitmask that will be a variable named `circuit_family_extra_mask` in the permutation argument over states 
+- linear combination of bitmask of `invalid || opcode_format_bits` to select immediate - this part will be bit-decomposed by the decoder for it's work - and 8 bit coarsely constrained bitmask that will be a variable named `circuit_family_extra_mask` in the permutation argument over states 

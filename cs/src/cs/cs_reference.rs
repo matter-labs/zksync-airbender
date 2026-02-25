@@ -708,7 +708,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                 rs1_index: self.add_variable(),
                 rs2_index: self.add_variable(),
                 rd_index: self.add_variable(),
-                rd_is_zero: self.add_variable(), // boolean in nature, but constrainted by prover directly
+                rd_is_zero: self.add_variable(), // boolean in nature, but constrained by prover directly
                 imm: std::array::from_fn(|_| self.add_variable()),
                 funct3: self.add_variable(),
                 funct7: Some(self.add_variable()),
@@ -782,7 +782,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             rs1_index: self.add_variable(),
             rs2_index: self.add_variable(),
             rd_index: self.add_variable(),
-            rd_is_zero: self.add_variable(), // boolean in nature, but constrainted by prover directly
+            rd_is_zero: self.add_variable(), // boolean in nature, but constrained by prover directly
             imm: std::array::from_fn(|_| self.add_variable()),
             funct3: self.add_variable(),
             funct7: if ASSUME_PREPROCESSED_DECODER_TABLE {
@@ -852,7 +852,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             todo!();
         }
 
-        // not make a final state - opcode family circuit is reponsible to create a PC,
+        // not make a final state - opcode family circuit is responsible to create a PC,
         // and timestamps bump comes from compiler
 
         let pc: [Variable; 2] = std::array::from_fn(|_| self.add_variable());

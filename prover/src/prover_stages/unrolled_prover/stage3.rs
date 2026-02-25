@@ -232,7 +232,7 @@ pub fn prover_stage_3_for_unrolled_circuit<
     // by our selected divisor, where "value" == negate(our sum over all other domain), and we also require that sum over
     // all the domain is 0
 
-    // interpolant is literaly 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
+    // interpolant is literally 1/omega^-1 * value * X (as one can see it's 0 at 0 and `value` at omega^-1)
     let mut delegation_accumulator_interpolant_prefactor = stage_2_output.sum_over_delegation_poly;
     delegation_accumulator_interpolant_prefactor.mul_assign_by_base(&omega);
     delegation_accumulator_interpolant_prefactor.negate();

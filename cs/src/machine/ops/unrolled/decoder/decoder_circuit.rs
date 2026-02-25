@@ -38,7 +38,7 @@ pub fn describe_decoder_cycle<
     // instruction set of variables: low: [15:0], high: [31:16]
     // the most shredded instruction type is B-type (with additional splitting of rs_2, required for J-type):
     // all other instruction types can be constructed from
-    // chunks of splitted instruction are:
+    // chunks of split instruction are:
     // opcode [6:0], imm11: [7], imm[4-1]: [11:8], func3: [14:12], rs1: [19:15],
     // rs2_low: [20], rs2_high: [24:21], imm[10-5]: [30:25], imm12: [31]
     // rs1 crosses the border of register, so we will allocate an extra boolean variable

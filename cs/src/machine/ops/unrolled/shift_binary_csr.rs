@@ -3,7 +3,7 @@ use crate::cs::witness_placer::*;
 use super::*;
 
 // NOTE: this circuit should specify non-dummy CSR table in proving/setup. while compilation in tests
-// takes case of properly computing offsets by using dummy talbe
+// takes case of properly computing offsets by using dummy table
 
 pub fn shift_binop_csrrw_tables() -> Vec<TableType> {
     vec![

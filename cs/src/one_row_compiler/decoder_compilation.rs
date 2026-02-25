@@ -127,7 +127,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup,
         );
 
-        // Now we will pause and place boolean variables, as those can have their contraints special-handled in quotient
+        // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
 
         let mut constraints = constraints;
         // normalize again just in case

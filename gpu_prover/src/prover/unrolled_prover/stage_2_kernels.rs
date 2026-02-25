@@ -1154,7 +1154,7 @@ mod tests {
     #[serial]
     fn test_standalone_stage_2_unrolled_with_transpiler_for_main_and_blake() {
         let ctx = DeviceContext::create(12).unwrap();
-        // Tells the CPU test to use this file's comparison_hook for unrolled ciruits,
+        // Tells the CPU test to use this file's comparison_hook for unrolled circuits,
         // and comparison_hook from non-unrolled stage_2_kernels for delegation circuits.
         run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             Some(Box::new(comparison_hook)),

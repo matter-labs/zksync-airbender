@@ -117,7 +117,7 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
         };
 
         let mut validate_csr = false;
-        let mut avoid_sign_ext_immedaite = false;
+        let mut avoid_sign_ext_immediate = false;
 
         for supported_opcode in self.cached_all_opcodes.iter() {
             if let Ok((instr_format, major_key, minor_keys)) =
@@ -126,11 +126,11 @@ impl OpcodeFamilyDecoder for ReducedMachineDecoder {
                 if op == OPERATION_SYSTEM && func3 == 0b001 {
                     // CSRRW only in system space, not MOP one
                     // only if opcode is supported
-                    avoid_sign_ext_immedaite = true;
+                    avoid_sign_ext_immediate = true;
                     validate_csr = true;
                 }
 
-                let imm = instr_format.parse_imm(opcode, avoid_sign_ext_immedaite);
+                let imm = instr_format.parse_imm(opcode, avoid_sign_ext_immediate);
 
                 let mut mask = 0u32;
 

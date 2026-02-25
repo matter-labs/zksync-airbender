@@ -377,7 +377,7 @@ impl LookupAndMemoryArgumentLayout {
                     memory_layout.batched_ram_accesses.is_empty()
                         && memory_layout.register_and_indirect_accesses.is_empty()
                 );
-                // itermediate accumulators per access
+                // intermediate accumulators per access
                 let num_set_polys_for_memory_shuffle = memory_layout.shuffle_ram_access_sets.len();
 
                 AlignedColumnSet::layout_at(&mut offset, num_set_polys_for_memory_shuffle)
@@ -393,7 +393,7 @@ impl LookupAndMemoryArgumentLayout {
                     num_intermediate_polys_for_register_or_indirect_accesses +=
                         el.indirect_accesses.len();
                 }
-                // itermediate accumulators per access
+                // intermediate accumulators per access
                 let num_set_polys_for_memory_shuffle = num_intermediate_polys_for_batched_ram
                     + num_intermediate_polys_for_register_or_indirect_accesses;
 

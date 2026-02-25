@@ -468,7 +468,7 @@ impl Profiler {
         // first we need to count all encountered PCs, even if stack frames below them are different
 
         let mut mapped = Vec::with_capacity(frames.len());
-        println!("Counting frame populaiton");
+        println!("Counting frame population");
         'outer: for (i, (pc, callsites)) in frames.iter_mut().enumerate() {
             if i > 0 && i % 10_000_000 == 0 {
                 println!("{} frames counted", i);

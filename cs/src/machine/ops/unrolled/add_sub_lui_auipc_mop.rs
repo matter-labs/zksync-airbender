@@ -260,7 +260,7 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
 
     // Witness function
     let out_vars = out.0.map(|el| el.get_variable());
-    let intemediate_vars = intermediate_tmp.0.map(|el| el.get_variable());
+    let intermediate_vars = intermediate_tmp.0.map(|el| el.get_variable());
     let imm_vars = inputs.decoder_data.imm;
     let pc_vars = inputs.cycle_start_state.pc;
     let rs1_vars = rs1_reg.0.map(|el| el.get_variable());
@@ -420,7 +420,7 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
 
         // actually assign
         placer.assign_u32_from_u16_parts(out_vars, &out_value);
-        placer.assign_u32_from_u16_parts(intemediate_vars, &intermediate_value);
+        placer.assign_u32_from_u16_parts(intermediate_vars, &intermediate_value);
         placer.assign_mask(of_var, &of_value);
     };
     cs.set_values(value_fn);

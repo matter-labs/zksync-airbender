@@ -218,14 +218,14 @@ pub struct PreprocessedConstraintForEval<F: PrimeField> {
 
 impl<F: PrimeField> PreprocessedConstraintForEval<F> {
     pub fn from_constraint(constraint: Constraint<F>) -> Self {
-        let (quatratic_terms, linear_terms, constant_term) =
+        let (quadratic_terms, linear_terms, constant_term) =
             constraint.clone().split_max_quadratic();
 
         // split quadratic terms and linear terms into cases where coefficient is 1 or not
         let mut quadratic_trivial_additions = vec![];
         let mut quadratic_trivial_subtractions = vec![];
         let mut quadratic_nontrivial = vec![];
-        for (c, a, b) in quatratic_terms.into_iter() {
+        for (c, a, b) in quadratic_terms.into_iter() {
             assert!(c != F::ZERO);
             if c == F::ONE {
                 quadratic_trivial_additions.push((a, b));

@@ -427,7 +427,7 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
             verify_unified_circuit_recursion_layer()
         }
         _ => {
-            panic!("Uknown op");
+            panic!("Unknown op");
         }
     }
 }

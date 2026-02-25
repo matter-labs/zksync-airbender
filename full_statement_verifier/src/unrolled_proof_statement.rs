@@ -721,7 +721,7 @@ pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
         OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
         OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
         _ => {
-            panic!("Uknown op");
+            panic!("Unknown op");
         }
     }
 }

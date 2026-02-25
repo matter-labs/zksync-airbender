@@ -135,7 +135,7 @@ pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
 ) {
     // Input invariant: PC % 4 == 0, preserved as:
     // - initial PC is valid % 4
-    // - jumps and branches check for alignemnts
+    // - jumps and branches check for alignments
 
     // check if PC_LOW + 4 is exactly 2^16, and then select
 

@@ -662,7 +662,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -685,7 +685,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
