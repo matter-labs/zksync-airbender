@@ -28,6 +28,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "MPL-2.0",
+    "CDDL-1.0",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
