@@ -103,8 +103,6 @@ pub fn prove_unified_execution_with_replayer<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    // #[cfg(feature = "timing_logs")]
-    // let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // restructure inits/teardowns
@@ -172,13 +170,6 @@ pub fn prove_unified_execution_with_replayer<
         }
         memory_trees.push((REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32, family_caps));
     }
-
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} RISC-V circuits memory trees took {:?}",
-    //     main_circuits_witness.len(),
-    //     now.elapsed()
-    // );
 
     // same for delegation circuits
     #[cfg(feature = "timing_logs")]
@@ -399,8 +390,6 @@ pub fn prove_unified_execution_with_replayer<
     //     "Producing proofs for main RISC-V circuit, {} proofs in total",
     //     main_circuits_witness.len()
     // );
-
-    let _total_proving_start = std::time::Instant::now();
 
     // now prove one by one
     let mut main_proofs = BTreeMap::new();

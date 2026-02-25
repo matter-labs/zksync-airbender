@@ -5,7 +5,7 @@ fn main() {}
 
 #[cfg(test)]
 mod tests {
-    #![allow(unused_variables)]
+    #![expect(unused_variables)] // TODO: Remove unused variables
 
     use execution_utils::setups::prover::prover_stages::unrolled_prover::UnrolledModeProof;
     use execution_utils::setups::prover::prover_stages::Proof;

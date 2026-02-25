@@ -249,8 +249,6 @@ pub fn prove_unrolled_execution<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    // #[cfg(feature = "timing_logs")]
-    // let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // let decoder_preprocessing = preprocess_text_section_for_machine_config::<C, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(text_section);
@@ -370,16 +368,7 @@ pub fn prove_unrolled_execution<
         }
     }
 
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} RISC-V circuits memory trees took {:?}",
-    //     main_circuits_witness.len(),
-    //     now.elapsed()
-    // );
-
     // same for delegation circuits
-    // #[cfg(feature = "timing_logs")]
-    // let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
 
     for (delegation_type, els) in delegation_circuits.iter() {
@@ -408,13 +397,6 @@ pub fn prove_unrolled_execution<
 
         delegation_memory_trees.push((*delegation_type as u32, per_tree_set));
     }
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} delegation circuits memory trees took {:?}",
-    //     delegation_circuits_witness.len(),
-    //     now.elapsed()
-    // );
-
     #[cfg(feature = "debug_logs")]
     println!("Will create FS transformation challenge for memory and delegation arguments");
 
@@ -500,8 +482,6 @@ pub fn prove_unrolled_execution<
     //     "Producing proofs for main RISC-V circuit, {} proofs in total",
     //     main_circuits_witness.len()
     // );
-
-    let _total_proving_start = std::time::Instant::now();
 
     // now prove one by one
     let mut main_proofs = BTreeMap::new();
@@ -1073,8 +1053,6 @@ pub fn prove_unrolled_execution_with_replayer<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    // #[cfg(feature = "timing_logs")]
-    // let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // let decoder_preprocessing = preprocess_text_section_for_machine_config::<C, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(text_section);
@@ -1225,13 +1203,6 @@ pub fn prove_unrolled_execution_with_replayer<
             previous_aux = Some(*aux_data);
         }
     }
-
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} RISC-V circuits memory trees took {:?}",
-    //     main_circuits_witness.len(),
-    //     now.elapsed()
-    // );
 
     // same for delegation circuits
     #[cfg(feature = "timing_logs")]
@@ -1452,8 +1423,6 @@ pub fn prove_unrolled_execution_with_replayer<
     //     "Producing proofs for main RISC-V circuit, {} proofs in total",
     //     main_circuits_witness.len()
     // );
-
-    let _total_proving_start = std::time::Instant::now();
 
     // now prove one by one
     let mut main_proofs = BTreeMap::new();
@@ -2058,94 +2027,99 @@ pub(crate) mod test {
     use std::alloc::Global;
     use std::path::Path;
 
-    use crate::cs::one_row_compiler::CompiledCircuitArtifact;
-    use common_constants::TimestampScalar;
-    use prover::prover_stages::unrolled_prover::UnrolledModeProof;
+    #[cfg(feature = "verifiers")]
+    mod verifiers_only {
+        use super::*;
+        use crate::cs::one_row_compiler::CompiledCircuitArtifact;
+        use common_constants::TimestampScalar;
+        use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 
-    #[allow(dead_code)]
-    #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
-    pub struct UnrolledProgramProof {
-        pub final_pc: u32,
-        pub final_timestamp: TimestampScalar,
-        pub compiled_circuit_families: BTreeMap<u8, CompiledCircuitArtifact<Mersenne31Field>>,
-        pub circuit_families_proofs: BTreeMap<u8, Vec<UnrolledModeProof>>,
-        pub compiled_inits_and_teardowns: CompiledCircuitArtifact<Mersenne31Field>,
-        pub inits_and_teardowns_proofs: Vec<UnrolledModeProof>,
-        pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
-        pub register_final_values: [FinalRegisterValue; 32],
-        pub recursion_chain_preimage: Option<[u32; 16]>,
-        pub recursion_chain_hash: Option<[u32; 8]>,
-    }
+        #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+        pub(super) struct UnrolledProgramProof {
+            pub final_pc: u32,
+            pub final_timestamp: TimestampScalar,
+            pub compiled_circuit_families: BTreeMap<u8, CompiledCircuitArtifact<Mersenne31Field>>,
+            pub circuit_families_proofs: BTreeMap<u8, Vec<UnrolledModeProof>>,
+            pub compiled_inits_and_teardowns: CompiledCircuitArtifact<Mersenne31Field>,
+            pub inits_and_teardowns_proofs: Vec<UnrolledModeProof>,
+            pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
+            pub register_final_values: [FinalRegisterValue; 32],
+            pub recursion_chain_preimage: Option<[u32; 16]>,
+            pub recursion_chain_hash: Option<[u32; 8]>,
+        }
 
-    #[allow(dead_code)]
-    impl UnrolledProgramProof {
-        pub fn flatten_into_responses(&self, allowed_delegation_circuits: &[u32]) -> Vec<u32> {
-            let mut responses = Vec::with_capacity(32 + 32 * 2);
+        impl UnrolledProgramProof {
+            pub fn flatten_into_responses(&self, allowed_delegation_circuits: &[u32]) -> Vec<u32> {
+                let mut responses = Vec::with_capacity(32 + 32 * 2);
 
-            assert_eq!(self.register_final_values.len(), 32);
-            // registers
-            for final_values in self.register_final_values.iter() {
-                responses.push(final_values.value);
-                let (low, high) = split_timestamp(final_values.last_access_timestamp);
-                responses.push(low);
-                responses.push(high);
-            }
-
-            // final PC and timestamp
-            {
-                responses.push(self.final_pc);
-                let (low, high) = split_timestamp(self.final_timestamp);
-                responses.push(low);
-                responses.push(high);
-            }
-
-            // families ones
-            for (family, proofs) in self.circuit_families_proofs.iter() {
-                responses.push(proofs.len() as u32);
-                for proof in proofs.iter() {
-                    let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
-                        proof,
-                        &self.compiled_circuit_families[family],
-                    );
-                    responses.extend(t);
+                assert_eq!(self.register_final_values.len(), 32);
+                // registers
+                for final_values in self.register_final_values.iter() {
+                    responses.push(final_values.value);
+                    let (low, high) = split_timestamp(final_values.last_access_timestamp);
+                    responses.push(low);
+                    responses.push(high);
                 }
-            }
 
-            // inits and teardowns
-            {
-                responses.push(self.inits_and_teardowns_proofs.len() as u32);
-                for proof in self.inits_and_teardowns_proofs.iter() {
-                    let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
-                        proof,
-                        &self.compiled_inits_and_teardowns,
-                    );
-                    responses.extend(t);
+                // final PC and timestamp
+                {
+                    responses.push(self.final_pc);
+                    let (low, high) = split_timestamp(self.final_timestamp);
+                    responses.push(low);
+                    responses.push(high);
                 }
-            }
 
-            // then for every allowed delegation circuit
-            for delegation_type in allowed_delegation_circuits.iter() {
-                if *delegation_type == common_constants::NON_DETERMINISM_CSR {
-                    continue;
-                }
-                if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
+                // families ones
+                for (family, proofs) in self.circuit_families_proofs.iter() {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
-                        let t = verifier_common::proof_flattener::flatten_full_proof(proof, 0);
+                        let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
+                            proof,
+                            &self.compiled_circuit_families[family],
+                        );
                         responses.extend(t);
                     }
-                } else {
-                    responses.push(0);
                 }
-            }
 
-            if let Some(preimage) = self.recursion_chain_preimage {
-                responses.extend(preimage);
-            }
+                // inits and teardowns
+                {
+                    responses.push(self.inits_and_teardowns_proofs.len() as u32);
+                    for proof in self.inits_and_teardowns_proofs.iter() {
+                        let t = verifier_common::proof_flattener::flatten_full_unrolled_proof(
+                            proof,
+                            &self.compiled_inits_and_teardowns,
+                        );
+                        responses.extend(t);
+                    }
+                }
 
-            responses
+                // then for every allowed delegation circuit
+                for delegation_type in allowed_delegation_circuits.iter() {
+                    if *delegation_type == common_constants::NON_DETERMINISM_CSR {
+                        continue;
+                    }
+                    if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
+                        responses.push(proofs.len() as u32);
+                        for proof in proofs.iter() {
+                            let t = verifier_common::proof_flattener::flatten_full_proof(proof, 0);
+                            responses.extend(t);
+                        }
+                    } else {
+                        responses.push(0);
+                    }
+                }
+
+                if let Some(preimage) = self.recursion_chain_preimage {
+                    responses.extend(preimage);
+                }
+
+                responses
+            }
         }
     }
+
+    #[cfg(feature = "verifiers")]
+    use verifiers_only::UnrolledProgramProof;
 
     #[test]
     fn test_prove_unrolled_fibonacci() {
