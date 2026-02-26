@@ -403,7 +403,7 @@ pub fn generate_inlined_configured<MW: MersenneWrapper>(
         let pc_1 = ColumnAddress::MemorySubtree(pc.start() + 1);
         let rs1_index = ColumnAddress::MemorySubtree(rs1_index.start());
 
-        // rs2 and rd are column addresses explicily
+        // rs2 and rd are column addresses explicitly
 
         // then we need to make it conditionally
         let [rd_is_zero, imm_0, imm_1, funct3] = [

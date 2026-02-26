@@ -120,7 +120,7 @@ where
         // }
 
         if let Some(profiler) = self.profiler.as_mut() {
-            println!("Beging stack tracing");
+            println!("Beginning stack tracing");
 
             println!("Computing caches");
             let binary = profiler.symbol_info.buffer.clone();

@@ -39,7 +39,7 @@ We can bound $\frac{|H|+2}{|D|}$ by $\frac{|H|}{|D|} = \frac{1}{lde \textundersc
 ```math
 e \leq 4\sqrt{lde \textunderscore factor} \cdot \frac{C}{|F|}
 ```
-Then secutity bits can be computed as:  
+Then security bits can be computed as:  
 ```math
 security \textunderscore bits = -log_2(e) = -log_2(4) - \frac{1}{2}log_2(lde \textunderscore factor) - log_2(C) + log_2(|F|)
 ```
@@ -49,7 +49,7 @@ We can use error bound from https://eprint.iacr.org/2022/1216.pdf:
 ```math
 e \leq L^{+} \cdot \frac{d(|H|+1) + (|H|-1)}{|F| - |H \cup D|}
 ```
-Where $d$ is the maximum constraint degree and the rest are the same. We can bound $|F| - |H \cup D|$ as $\frac{|F|}{2}$, $d(|H|+1) + (|H|-1)$ as $2d|H|$ and $L^{+}$ as previousely then:  
+Where $d$ is the maximum constraint degree and the rest are the same. We can bound $|F| - |H \cup D|$ as $\frac{|F|}{2}$, $d(|H|+1) + (|H|-1)$ as $2d|H|$ and $L^{+}$ as previously then:  
 ```math
 security \textunderscore bits = -log_2(e) = -log_2(4) - \frac{1}{2}log_2(lde \textunderscore factor) - 1 - log_2(d) - log_2(|H|) + log_2(|F|) - 1
 ```

@@ -166,8 +166,8 @@ pub(crate) unsafe fn evaluate_delegation_processing_conventions(
     // We require that on unused rows in delegation circuits prover
     // can only substitute 0s for:
     // - delegation data itself - so write timestamp is 0
-    // - all memory reads values/read timestamps - so that they do not contribute to RAM permutaiton (cancel immediatelly with writes)
-    // - all memory writes created by circuits are masked/default 0s - same, so that they do not contribute to RAM permutaiton (cancel immediatelly with reads)
+    // - all memory reads values/read timestamps - so that they do not contribute to RAM permutaiton (cancel immediately with writes)
+    // - all memory writes created by circuits are masked/default 0s - same, so that they do not contribute to RAM permutaiton (cancel immediately with reads)
     let predicate =
         *memory_trace_view_row.get_unchecked(delegation_processor_layout.multiplicity.start());
     let mut t = *tau_in_domain_by_half;
@@ -1356,19 +1356,19 @@ pub(crate) unsafe fn evaluate_memory_queries_accumulation(
         let read_value_columns = memory_access_columns.get_read_value_columns();
         let read_timestamp_columns = memory_access_columns.get_read_timestamp_columns();
 
-        let address_contibution = match memory_access_columns.get_address() {
+        let address_contribution = match memory_access_columns.get_address() {
             ShuffleRamAddress::RegisterOnly(RegisterOnlyAccessAddress { register_index }) => {
                 let address_low = *memory_trace_view_row.get_unchecked(register_index.start());
-                let mut address_contibution = memory_argument_challenges
+                let mut address_contribution = memory_argument_challenges
                     .memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                address_contibution.mul_assign_by_base(&address_low);
+                address_contribution.mul_assign_by_base(&address_low);
 
                 // considered is register always
                 // to we need to add literal 1, so we cancel multiplication by tau^H/2 below
-                address_contibution.add_assign_base(tau_in_domain_by_half_inv);
+                address_contribution.add_assign_base(tau_in_domain_by_half_inv);
 
-                address_contibution
+                address_contribution
             }
 
             ShuffleRamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
@@ -1378,65 +1378,65 @@ pub(crate) unsafe fn evaluate_memory_queries_accumulation(
                 debug_assert_eq!(address.width(), 2);
 
                 let address_low = *memory_trace_view_row.get_unchecked(address.start());
-                let mut address_contibution = memory_argument_challenges
+                let mut address_contribution = memory_argument_challenges
                     .memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                address_contibution.mul_assign_by_base(&address_low);
+                address_contribution.mul_assign_by_base(&address_low);
 
                 let address_high = *memory_trace_view_row.get_unchecked(address.start() + 1);
                 let mut t = memory_argument_challenges.memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                 t.mul_assign_by_base(&address_high);
-                address_contibution.add_assign(&t);
+                address_contribution.add_assign(&t);
 
                 debug_assert_eq!(is_register.width(), 1);
                 let is_reg = *memory_trace_view_row.get_unchecked(is_register.start());
-                address_contibution.add_assign_base(&is_reg);
+                address_contribution.add_assign_base(&is_reg);
 
-                address_contibution
+                address_contribution
             }
         };
 
         debug_assert_eq!(read_value_columns.width(), 2);
 
         let read_value_low = *memory_trace_view_row.get_unchecked(read_value_columns.start());
-        let mut read_value_contibution = memory_argument_challenges
+        let mut read_value_contribution = memory_argument_challenges
             .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-        read_value_contibution.mul_assign_by_base(&read_value_low);
+        read_value_contribution.mul_assign_by_base(&read_value_low);
 
         let read_value_high = *memory_trace_view_row.get_unchecked(read_value_columns.start() + 1);
         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
             [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         t.mul_assign_by_base(&read_value_high);
-        read_value_contibution.add_assign(&t);
+        read_value_contribution.add_assign(&t);
 
         debug_assert_eq!(read_timestamp_columns.width(), 2);
 
         let read_timestamp_low =
             *memory_trace_view_row.get_unchecked(read_timestamp_columns.start());
-        let mut read_timestamp_contibution = memory_argument_challenges
+        let mut read_timestamp_contribution = memory_argument_challenges
             .memory_argument_linearization_challenges
             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        read_timestamp_contibution.mul_assign_by_base(&read_timestamp_low);
+        read_timestamp_contribution.mul_assign_by_base(&read_timestamp_low);
 
         let read_timestamp_high =
             *memory_trace_view_row.get_unchecked(read_timestamp_columns.start() + 1);
         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         t.mul_assign_by_base(&read_timestamp_high);
-        read_timestamp_contibution.add_assign(&t);
+        read_timestamp_contribution.add_assign(&t);
 
         // NOTE on write timestamp: it has literal constants in contribution, so we add it AFTER
         // scaling by tau^H/2
-        let mut write_timestamp_contibution = memory_argument_challenges
+        let mut write_timestamp_contribution = memory_argument_challenges
             .memory_argument_linearization_challenges
             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        write_timestamp_contibution.mul_assign_by_base(&write_timestamp_low);
+        write_timestamp_contribution.mul_assign_by_base(&write_timestamp_low);
 
         let mut t = memory_argument_challenges.memory_argument_linearization_challenges
             [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         t.mul_assign_by_base(&write_timestamp_high);
-        write_timestamp_contibution.add_assign(&t);
+        write_timestamp_contribution.add_assign(&t);
 
         let mut extra_write_timestamp_low = memory_argument_challenges
             .memory_argument_linearization_challenges
@@ -1460,14 +1460,14 @@ pub(crate) unsafe fn evaluate_memory_queries_accumulation(
 
         match memory_access_columns {
             ShuffleRamQueryColumns::Readonly(_) => {
-                let mut numerator = address_contibution;
-                numerator.add_assign(&read_value_contibution);
+                let mut numerator = address_contribution;
+                numerator.add_assign(&read_value_contribution);
 
                 let mut denom = numerator;
 
                 // read and write set only differ in timestamp contribution
-                numerator.add_assign(&write_timestamp_contibution);
-                denom.add_assign(&read_timestamp_contibution);
+                numerator.add_assign(&write_timestamp_contribution);
+                denom.add_assign(&read_timestamp_contribution);
 
                 // scale all previous terms that are linear in witness
                 numerator.mul_assign_by_base(tau_in_domain_by_half);
@@ -1514,27 +1514,27 @@ pub(crate) unsafe fn evaluate_memory_queries_accumulation(
 
                 let write_value_low =
                     *memory_trace_view_row.get_unchecked(columns.write_value.start());
-                let mut write_value_contibution = memory_argument_challenges
+                let mut write_value_contribution = memory_argument_challenges
                     .memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                write_value_contibution.mul_assign_by_base(&write_value_low);
+                write_value_contribution.mul_assign_by_base(&write_value_low);
 
                 let write_value_high =
                     *memory_trace_view_row.get_unchecked(columns.write_value.start() + 1);
                 let mut t = memory_argument_challenges.memory_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                 t.mul_assign_by_base(&write_value_high);
-                write_value_contibution.add_assign(&t);
+                write_value_contribution.add_assign(&t);
 
-                let mut numerator = address_contibution;
+                let mut numerator = address_contribution;
                 let mut denom = numerator;
 
                 // read and write set differ in timestamp and value
-                numerator.add_assign(&write_value_contibution);
-                denom.add_assign(&read_value_contibution);
+                numerator.add_assign(&write_value_contribution);
+                denom.add_assign(&read_value_contribution);
 
-                numerator.add_assign(&write_timestamp_contibution);
-                denom.add_assign(&read_timestamp_contibution);
+                numerator.add_assign(&write_timestamp_contribution);
+                denom.add_assign(&read_timestamp_contribution);
 
                 // scale all previous terms that are linear in witness
                 numerator.mul_assign_by_base(tau_in_domain_by_half);

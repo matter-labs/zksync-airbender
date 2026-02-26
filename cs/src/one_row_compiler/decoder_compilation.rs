@@ -148,7 +148,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
                 0,
             );
 
-        // Now we will pause and place boolean variables, as those can have their contraints special-handled in quotient
+        // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
 
         let mut constraints = constraints;
         // normalize again just in case

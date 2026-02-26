@@ -40,13 +40,13 @@ fn test_jit_recursive_verifier() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
 }
@@ -68,13 +68,13 @@ fn test_ensure_proof_correctness() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     let instructions: Vec<Instruction> = preprocess_bytecode::<ReducedMachineDecoderConfig>(&text);
     let tape = SimpleTape::new(&instructions);
@@ -502,13 +502,13 @@ fn run_recursion_and_compare() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     let step = 1 << 16;
     let initial_step = 836694;

@@ -68,7 +68,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         debug_assert_eq!(*address % 4, 0);
         if *address < 1 << (16 + ROM_BOUND_SECOND_WORD_BITS) {
             // NOTE: we no longer mask an address, just a value as it's only initialized to
-            // 0 via inits, and can not be writen over by circuits
+            // 0 via inits, and can not be written over by circuits
             // *address = 0u32;
             *value = 0u32;
         }

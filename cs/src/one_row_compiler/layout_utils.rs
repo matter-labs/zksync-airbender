@@ -631,9 +631,9 @@ pub(crate) fn allocate_range_check_expressions<F: PrimeField>(
         );
     }
 
-    // range checks 16 deserve their own treatment and own table, and for lookups over explicit
-    // variables we just layout those continously in the row. We will also declare formal lookup
-    // expressions over them, as below we will declare less-trivial range-check 16 expressions
+    // range checks 16 deserve their own treatment and own table, and for lookups over explicit variables
+    // we just layout those continuously in the row. We will also declare formal lookup expressions over them,
+    // as below we will declare less-trivial range-check 16 expressions
 
     let mut range_check_16_lookup_expressions = vec![];
 
@@ -807,7 +807,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
     setup_layout: &SetupLayout,
     cycle_timestamp: Option<ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>>,
 ) -> (usize, std::vec::Vec<LookupExpression<F>>) {
-    let mut compiled_timestamp_comparion_expressions = vec![];
+    let mut compiled_timestamp_comparison_expressions = vec![];
 
     // we already have enough information to compile range check expressions that are left from
     // memory accesses layout
@@ -833,7 +833,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
             constant_term: constant_coeff,
         };
         let lookup_expr = LookupExpression::Expression(compiled_constraint);
-        compiled_timestamp_comparion_expressions.push(lookup_expr);
+        compiled_timestamp_comparison_expressions.push(lookup_expr);
     }
 
     // timestamps deserve separate range checks for shuffle RAM in the main circuit,
@@ -843,7 +843,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
     // constant that comes during the proving only
 
     let offset_for_special_shuffle_ram_timestamps_range_check_expressions =
-        compiled_timestamp_comparion_expressions.len();
+        compiled_timestamp_comparison_expressions.len();
 
     for data in shuffle_ram_timestamp_range_check_partial_sets.into_iter() {
         let ShuffleRamTimestampComparisonPartialData {
@@ -884,7 +884,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
                 constant_term: constant_coeff,
             };
             let lookup_expr = LookupExpression::Expression(compiled_constraint);
-            compiled_timestamp_comparion_expressions.push(lookup_expr);
+            compiled_timestamp_comparison_expressions.push(lookup_expr);
         }
         // and almost the same for high part
         {
@@ -911,23 +911,23 @@ pub(crate) fn compile_timestamp_range_check_expressions<
                 constant_term: constant_coeff,
             };
             let lookup_expr = LookupExpression::Expression(compiled_constraint);
-            compiled_timestamp_comparion_expressions.push(lookup_expr);
+            compiled_timestamp_comparison_expressions.push(lookup_expr);
         }
     }
 
     let offset_for_special_shuffle_ram_timestamps_range_check_expressions = if USE_CIRCUIT_SEQ {
         offset_for_special_shuffle_ram_timestamps_range_check_expressions
     } else {
-        compiled_timestamp_comparion_expressions.len()
+        compiled_timestamp_comparison_expressions.len()
     };
 
     let total_timestamp_range_check_lookups =
-        compiled_timestamp_comparion_expressions.len() as u64 * trace_len as u64;
+        compiled_timestamp_comparison_expressions.len() as u64 * trace_len as u64;
     assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS);
 
     (
         offset_for_special_shuffle_ram_timestamps_range_check_expressions,
-        compiled_timestamp_comparion_expressions,
+        compiled_timestamp_comparison_expressions,
     )
 }
 
@@ -955,7 +955,7 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
 
             // we need
             // - some "defining" constraint where variable comes as the first degree
-            // - potentially other constraints that contant such variable
+            // - potentially other constraints that contain such variable
             let mut defining_constraints = vec![];
 
             for (constraint_id, (constraint, prevent_optimizations)) in
@@ -990,21 +990,21 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
             }
 
             if defining_constraints.len() > 0 {
-                let mut occurances = vec![];
+                let mut occurrences = vec![];
 
                 for (constraint_id, (constraint, _)) in constraints.iter().enumerate() {
                     if constraint.contains_var(variable) && constraint.degree_for_var(variable) < 2
                     {
-                        occurances.push((constraint_id, constraint));
+                        occurrences.push((constraint_id, constraint));
                     }
                 }
 
-                if occurances.len() > 1 {
+                if occurrences.len() > 1 {
                     // defining constraint will be here too
                     to_remove = Some((
                         *variable,
                         defining_constraints.iter().map(|el| el.0).collect(),
-                        occurances.iter().map(|el| el.0).collect(),
+                        occurrences.iter().map(|el| el.0).collect(),
                     ));
                     break;
                 }
@@ -1015,7 +1015,7 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
             break 'outer;
         }
 
-        let Some((variable_to_optimize_out, defining_constraints, occurances)) = to_remove else {
+        let Some((variable_to_optimize_out, defining_constraints, occurrences)) = to_remove else {
             panic!();
         };
 
@@ -1048,12 +1048,12 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
             let mut can_be_optimized_out = true;
             let mut replacement_constraints = vec![];
             // now we should walk over other constraints and rewrite them
-            for occurance_constraint_idx in occurances.iter().copied() {
-                if occurance_constraint_idx == defining_constraint_idx {
+            for occurrence_constraint_idx in occurrences.iter().copied() {
+                if occurrence_constraint_idx == defining_constraint_idx {
                     continue;
                 }
 
-                let existing_constraint = constraints[occurance_constraint_idx].0.clone();
+                let existing_constraint = constraints[occurrence_constraint_idx].0.clone();
                 let rewritten_constraint = existing_constraint
                     .clone()
                     .substitute_variable(variable_to_optimize_out, expression.clone());
@@ -1078,7 +1078,7 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
                     can_be_optimized_out = false;
                     break;
                 } else {
-                    replacement_constraints.push((occurance_constraint_idx, rewritten_constraint));
+                    replacement_constraints.push((occurrence_constraint_idx, rewritten_constraint));
                 }
             }
 
@@ -1099,7 +1099,7 @@ pub fn optimize_out_linear_constraints<F: PrimeField>(
             #[cfg(feature = "debug_logs")]
             {
                 println!(
-                    "Succesfully removed variable {:?}",
+                    "Successfully removed variable {:?}",
                     variable_to_optimize_out
                 );
             }

@@ -251,7 +251,7 @@ pub fn prover_stage_2_for_unrolled_circuit<
     // now for self-check we should compute how many batch inverses we will want,
     // and define ranges when numerators that are part of batch inverses are 1, so we can skip those
 
-    // batch inverses are only requried for delegation linkage poly and memory grand product accumulators
+    // batch inverses are only required for delegation linkage poly and memory grand product accumulators
     let mut num_batch_inverses = 0;
 
     if let Some(el) = compiled_circuit

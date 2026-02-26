@@ -194,7 +194,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         // no generic lookup
         let multiplicities_columns_for_generic_lookup = ColumnSet::empty();
 
-        // Now we will pause and place boolean variables, as those can have their contraints special-handled in quotient
+        // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
 
         // now we should just place boolean variables, and then everything from scratch space
 

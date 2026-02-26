@@ -26,7 +26,7 @@ pub use self::impls::*;
 #[cfg(all(target_arch = "x86_64", feature = "jit", test))]
 mod tests;
 
-const MAX_RAM_SIZE: usize = 1 << 30; // 1 Gb, as we want to avoid having separate pointers to RAM (that we want to have continuous to perform very simple read/writes), and timestamp bookkeping space
+const MAX_RAM_SIZE: usize = 1 << 30; // 1 Gb, as we want to avoid having separate pointers to RAM (that we want to have continuous to perform very simple read/writes), and timestamp bookkeeping space
 
 pub const RAM_SIZE: usize = 1 << 30;
 const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();

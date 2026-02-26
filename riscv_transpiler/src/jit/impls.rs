@@ -31,7 +31,7 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 // register writes go via rax and reads via rdx
 // rcx also doesn't contain a register because it must be used for bitshifts
 //
-// x10 - x15 are assiged to r10 - r15
+// x10 - x15 are assigned to r10 - r15
 // rbx is for x9
 
 // Registers that are placed not in the GPR are instead placed into 128-bit vector registers, and loaded using PEXTRD and stored using PINSRD.
@@ -187,7 +187,7 @@ macro_rules! save_machine_state {
             ; mov [rdx + (14 * 4 as i32)], r14d // x14 -> R14
             ; mov [rdx + (15 * 4 as i32)], r15d // x15 -> R15
 
-            // put current timestamp (without asumptions about mod 4)
+            // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
         )
     }
@@ -844,7 +844,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // Instructions that just compute a result are NOPs if they write to x0, and formally touch x0 twice on read
                 if rd == 0 {
                     println!(
-                        "Skipping instuction {:?} (0x{:08x}) at PC = 0x{:08x}",
+                        "Skipping instruction {:?} (0x{:08x}) at PC = 0x{:08x}",
                         instruction, raw_instruction, pc
                     );
                     pre_bump_timestamp_and_touch!(ops, 2, 0);
@@ -1165,7 +1165,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         issue_snapshot = true;
                     }
                     Instruction::Lw(parts) => {
-                        // NOTE: here address is exactly couting in 4 bytes, so we do not need extra word counter and
+                        // NOTE: here address is exactly counting in 4 bytes, so we do not need extra word counter and
                         // use RDX for bookkeeping
                         // TODO: exception on misalignment
                         let address = load(&mut ops, parts.rs1());

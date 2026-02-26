@@ -126,7 +126,7 @@ impl<
     }
 
     #[inline]
-    fn update_ram_access_timestmap<const ACCESS_IDX: u64>(
+    fn update_ram_access_timestamp<const ACCESS_IDX: u64>(
         &mut self,
         phys_address: u64,
         is_write: bool,
@@ -229,7 +229,7 @@ impl<
             debug_assert_eq!(data.rd_value, 0);
         }
         self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_READ_ACCESS_IDX>(
+        self.update_ram_access_timestamp::<RAM_READ_ACCESS_IDX>(
             data.aligned_ram_address as u64,
             false,
             &mut rs2_or_ram_read_timestamp,
@@ -269,7 +269,7 @@ impl<
             debug_assert_eq!(data.rd_value, 0);
         }
         self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_READ_ACCESS_IDX>(
+        self.update_ram_access_timestamp::<RAM_READ_ACCESS_IDX>(
             data.aligned_ram_address as u64,
             false,
             &mut rs2_or_ram_read_timestamp,
@@ -306,7 +306,7 @@ impl<
         let (rs1, rs2, _) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
         self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
         self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_or_ram_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_WRITE_ACCESS_IDX>(
+        self.update_ram_access_timestamp::<RAM_WRITE_ACCESS_IDX>(
             data.aligned_ram_address as u64,
             true,
             &mut rd_or_ram_read_timestamp,
@@ -343,7 +343,7 @@ impl<
         let (rs1, rs2, _) = formally_parse_rs1_rs2_rd_props_for_tracer(data.opcode);
         self.update_reg_access_timestamp::<RS1_ACCESS_IDX>(rs1, &mut rs1_read_timestamp);
         self.update_reg_access_timestamp::<RS2_ACCESS_IDX>(rs2, &mut rs2_or_ram_read_timestamp);
-        self.update_ram_access_timestmap::<RAM_WRITE_ACCESS_IDX>(
+        self.update_ram_access_timestamp::<RAM_WRITE_ACCESS_IDX>(
             data.aligned_ram_address as u64,
             true,
             &mut rd_or_ram_read_timestamp,

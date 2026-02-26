@@ -514,7 +514,7 @@ mod test {
                 &worker,
             );
 
-        println!("Proving completed, prepairing to verify");
+        println!("Proving completed, preparing to verify");
 
         let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
             IMStandardIsaConfigWithUnsignedMulDiv,
@@ -547,7 +547,7 @@ mod test {
             &worker,
         );
 
-        println!("Proving completed, prepairing to verify");
+        println!("Proving completed, preparing to verify");
 
         let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
             IMStandardIsaConfigWithUnsignedMulDiv,

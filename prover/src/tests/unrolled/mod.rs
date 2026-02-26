@@ -1012,7 +1012,7 @@ pub fn run_basic_unrolled_test_impl(
         let oracle = NonMemoryCircuitOracle {
             inner: &family_data[0].data,
             decoder_table: witness_gen_data,
-            default_pc_value_in_padding: 0, // we conditionally manupulate PC, and if no opcodes are applied in padding - it would end up in 0
+            default_pc_value_in_padding: 0, // we conditionally manipulate PC, and if no opcodes are applied in padding - it would end up in 0
         };
 
         // println!(

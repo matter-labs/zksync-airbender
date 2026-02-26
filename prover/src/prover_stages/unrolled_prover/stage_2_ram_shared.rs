@@ -15,30 +15,30 @@ pub(crate) unsafe fn stage_2_shuffle_ram_add_timestamp_contributions_in_executor
     // Numerator is write set, denom is read set
 
     let read_timestamp_low = *memory_trace_row.get_unchecked(read_timestamp.start());
-    let mut read_timestamp_contibution = memory_argument_challenges
+    let mut read_timestamp_contribution = memory_argument_challenges
         .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-    read_timestamp_contibution.mul_assign_by_base(&read_timestamp_low);
+    read_timestamp_contribution.mul_assign_by_base(&read_timestamp_low);
 
     let read_timestamp_high = *memory_trace_row.get_unchecked(read_timestamp.start() + 1);
     let mut t = memory_argument_challenges.memory_argument_linearization_challenges
         [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
     t.mul_assign_by_base(&read_timestamp_high);
-    read_timestamp_contibution.add_assign(&t);
+    read_timestamp_contribution.add_assign(&t);
 
     let mut write_timestamp_low = *memory_trace_row.get_unchecked(cycle_timestamp_columns.start());
     write_timestamp_low.add_assign(&Mersenne31Field::from_u64_unchecked(access_idx as u64));
-    let mut write_timestamp_contibution = memory_argument_challenges
+    let mut write_timestamp_contribution = memory_argument_challenges
         .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-    write_timestamp_contibution.mul_assign_by_base(&write_timestamp_low);
+    write_timestamp_contribution.mul_assign_by_base(&write_timestamp_low);
 
     let write_timestamp_high = *memory_trace_row.get_unchecked(cycle_timestamp_columns.start() + 1);
     let mut t = memory_argument_challenges.memory_argument_linearization_challenges
         [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
     t.mul_assign_by_base(&write_timestamp_high);
-    write_timestamp_contibution.add_assign(&t);
+    write_timestamp_contribution.add_assign(&t);
 
-    numerator.add_assign(&write_timestamp_contibution);
-    denom.add_assign(&read_timestamp_contibution);
+    numerator.add_assign(&write_timestamp_contribution);
+    denom.add_assign(&read_timestamp_contribution);
 }
 
 #[inline(always)]
@@ -56,19 +56,19 @@ pub(crate) unsafe fn stage_2_shuffle_ram_assemble_read_contribution_in_executor_
     debug_assert_eq!(columns.read_value.width(), 2);
 
     let value_low = *memory_trace_row.get_unchecked(columns.read_value.start());
-    let mut value_contibution = memory_argument_challenges.memory_argument_linearization_challenges
-        [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-    value_contibution.mul_assign_by_base(&value_low);
+    let mut value_contribution = memory_argument_challenges
+        .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+    value_contribution.mul_assign_by_base(&value_low);
 
     let value_high = *memory_trace_row.get_unchecked(columns.read_value.start() + 1);
     let mut t = memory_argument_challenges.memory_argument_linearization_challenges
         [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
     t.mul_assign_by_base(&value_high);
-    value_contibution.add_assign(&t);
+    value_contribution.add_assign(&t);
 
     let mut numerator = memory_argument_challenges.memory_argument_gamma;
     numerator.add_assign(&address_contribution);
-    numerator.add_assign(&value_contibution);
+    numerator.add_assign(&value_contribution);
 
     let mut denom = numerator;
 
@@ -101,36 +101,36 @@ pub(crate) unsafe fn stage_2_shuffle_ram_assemble_write_contribution_in_executor
     debug_assert_eq!(columns.read_value.width(), 2);
 
     let read_value_low = *memory_trace_row.get_unchecked(columns.read_value.start());
-    let mut read_value_contibution = memory_argument_challenges
+    let mut read_value_contribution = memory_argument_challenges
         .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-    read_value_contibution.mul_assign_by_base(&read_value_low);
+    read_value_contribution.mul_assign_by_base(&read_value_low);
 
     let read_value_high = *memory_trace_row.get_unchecked(columns.read_value.start() + 1);
     let mut t = memory_argument_challenges.memory_argument_linearization_challenges
         [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
     t.mul_assign_by_base(&read_value_high);
-    read_value_contibution.add_assign(&t);
+    read_value_contribution.add_assign(&t);
 
     debug_assert_eq!(columns.write_value.width(), 2);
 
     let write_value_low = *memory_trace_row.get_unchecked(columns.write_value.start());
-    let mut write_value_contibution = memory_argument_challenges
+    let mut write_value_contribution = memory_argument_challenges
         .memory_argument_linearization_challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-    write_value_contibution.mul_assign_by_base(&write_value_low);
+    write_value_contribution.mul_assign_by_base(&write_value_low);
 
     let write_value_high = *memory_trace_row.get_unchecked(columns.write_value.start() + 1);
     let mut t = memory_argument_challenges.memory_argument_linearization_challenges
         [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
     t.mul_assign_by_base(&write_value_high);
-    write_value_contibution.add_assign(&t);
+    write_value_contribution.add_assign(&t);
 
     let mut numerator = memory_argument_challenges.memory_argument_gamma;
     numerator.add_assign(&address_contribution);
 
     let mut denom = numerator;
 
-    numerator.add_assign(&write_value_contibution);
-    denom.add_assign(&read_value_contibution);
+    numerator.add_assign(&write_value_contribution);
+    denom.add_assign(&read_value_contribution);
 
     stage_2_shuffle_ram_add_timestamp_contributions_in_executor_circuit(
         memory_trace_row,

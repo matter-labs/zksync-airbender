@@ -199,7 +199,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
     // For simplicity we will stick to reading u32s, and will not unroll that much
 
-    // NOTE: on bounds: we have somewhat "strage" bounds like 20 and 17/18/19 below - this way
+    // NOTE: on bounds: we have somewhat "strange" bounds like 20 and 17/18/19 below - this way
     // we ensure that we do not access out of bounds of src/dest
     if n >= 20 {
         // NOTE: source is aligned
