@@ -533,8 +533,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 KernelVariant::MaskIdentity(rel, challenge, _) => {
                     let k = MaskIntoIdentityProductGKRRelationKernel::<F, E>::default();
                     for j in 0..2usize {
-                        let in_base = efr(get(rel.input, j));
-                        let in_ext = efr(get(rel.mask, j));
+                        let in_base = efr(get(rel.mask, j));
+                        let in_ext = efr(get(rel.input, j));
                         let [mut val] = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
                             F,
                             E,
