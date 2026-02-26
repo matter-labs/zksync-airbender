@@ -35,9 +35,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         trace_len: usize,
         worker: &Worker,
     ) {
-        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel {
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel::<F, E>::default();
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
         forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs(
             &kernel,
@@ -64,9 +62,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             batch_challenges.len(),
             <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
         );
-        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel {
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseExtMinusBaseExtGKRRelationKernel::<F, E>::default();
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
 
         // println!(
@@ -91,6 +87,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 }
 
 // Assumes reordering of access implementors, to have lhs at 0 and rhs at 1
+#[derive(Default)]
 pub struct LookupBaseExtMinusBaseExtGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
 }
