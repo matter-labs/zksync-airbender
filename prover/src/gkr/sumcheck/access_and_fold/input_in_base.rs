@@ -225,6 +225,7 @@ pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<
     pub(crate) next_layer_size: usize,
     pub(crate) first_folding_challenge: E,
     pub(crate) second_folding_challenge: E,
+    pub(crate) combined_challenges: E, // r1 * r2, precomputed to avoid E×E at get_at_index time
     pub(crate) first_access: bool,
 }
 
@@ -263,6 +264,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFol
         first_folding_challenge: E,
         second_folding_challenge: E,
     ) -> Self {
+        let mut combined_challenges = first_folding_challenge;
+        combined_challenges.mul_assign(&second_folding_challenge);
         Self {
             base_input_start: null_mut(),
             this_layer_cache_start: null_mut(),
@@ -271,6 +274,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFol
             next_layer_size: 0,
             first_folding_challenge,
             second_folding_challenge,
+            combined_challenges,
             first_access: false,
         }
     }
@@ -305,23 +309,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         // fold two times
         unsafe {
             if self.first_access {
-                // recompute corresponding input from the previous layer
-
-                // TODO: can compute faster
+                // Use the multilinear expansion to avoid an E×E multiplication:
+                //   f(r1, r2) = f00 + r1*(f01-f00) + r2*(f10-f00) + r1*r2*(f00-f01-f10+f11)
+                // All four coefficients are base-field values, so all multiplications are E×F.
 
                 let f00 = self.base_input_start.add(index).read();
                 let f01 = self
                     .base_input_start
                     .add(self.base_layer_half_size + index)
                     .read();
-
-                let f0_c0 = f00;
-                let mut f0_c1 = f01;
-                f0_c1.sub_assign(&f00);
-                let mut f0 = self.first_folding_challenge;
-                f0.mul_assign_by_base(&f0_c1);
-                f0.add_assign_base(&f0_c0);
-
                 let f10 = self
                     .base_input_start
                     .add(self.base_quarter_size + index)
@@ -331,20 +327,32 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                     .add(self.base_layer_half_size + self.base_quarter_size + index)
                     .read();
 
-                let f1_c0 = f10;
-                let mut f1_c1 = f11;
-                f1_c1.sub_assign(&f10);
-                let mut f1 = self.first_folding_challenge;
-                f1.mul_assign_by_base(&f1_c1);
-                f1.add_assign_base(&f1_c0);
+                // c01 = f01 - f00
+                let mut c01 = f01;
+                c01.sub_assign(&f00);
+                // c10 = f10 - f00
+                let mut c10 = f10;
+                c10.sub_assign(&f00);
+                // c11 = f00 - f01 - f10 + f11
+                let mut c11 = f00;
+                c11.sub_assign(&f01);
+                c11.sub_assign(&f10);
+                c11.add_assign(&f11);
 
-                // and again
+                // result = f00 + r1*c01 + r2*c10 + (r1*r2)*c11  — all E×F
+                let mut term_r1 = self.first_folding_challenge;
+                term_r1.mul_assign_by_base(&c01);
 
-                let mut t = f1;
-                t.sub_assign(&f0);
-                let mut result = self.second_folding_challenge;
-                result.mul_assign(&t);
-                result.add_assign(&f0);
+                let mut term_r2 = self.second_folding_challenge;
+                term_r2.mul_assign_by_base(&c10);
+
+                let mut term_r1r2 = self.combined_challenges;
+                term_r1r2.mul_assign_by_base(&c11);
+
+                let mut result = term_r1;
+                result.add_assign(&term_r2);
+                result.add_assign(&term_r1r2);
+                result.add_assign_base(&f00);
 
                 // write down
                 self.this_layer_cache_start.add(index).write(result);

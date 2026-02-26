@@ -257,6 +257,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         let this_layer_start = buffer.initial_pointer();
         #[allow(dropping_references)]
         drop(buffer);
+        let mut combined_challenges = first_folding_challenge;
+        combined_challenges.mul_assign(&second_folding_challenge);
+
         if *last_used_for_layer == sumcheck_step {
             // we can reuse those values
             BaseFieldPolySourceAfterTwoFoldings {
@@ -267,6 +270,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                 next_layer_size: base_poly_len / 8,
                 first_folding_challenge,
                 second_folding_challenge,
+                combined_challenges,
                 first_access: false,
             }
         } else {
@@ -280,6 +284,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                 next_layer_size: base_poly_len / 8,
                 first_folding_challenge,
                 second_folding_challenge,
+                combined_challenges,
                 first_access: true,
             }
         }
