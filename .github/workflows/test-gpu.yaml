@@ -15,6 +15,7 @@ jobs:
   zksync-airbender-build:
     runs-on: [ ubuntu-latest ]
     strategy:
+      fail-fast: false
       matrix:
         cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
         package: [ "zksmith" ]
@@ -72,9 +73,9 @@ jobs:
   zksync-airbender-test:
     runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
+      fail-fast: false
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04" ]
-        # TODO: CUDA 13.0.0 is not yet supported by matterlabs-ci-gpu-runner.
+        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
         package: [ "zksmith" ]
         security: [ "security_80", "security_100" ]
 
