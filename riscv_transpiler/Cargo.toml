@@ -32,6 +32,7 @@ capstone = {version = "0.13", optional = true }
 delegation = []
 jit = ["dynasmrt", "riscv-decode", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
+fuzzing-support = []
 default = ["jit"]
 
 [dev-dependencies]
