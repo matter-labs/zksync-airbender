@@ -18,6 +18,7 @@ jobs:
       matrix:
         cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
         package: [ "zksmith" ]
+        security: [ "security_80", "security_100" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
@@ -55,7 +56,7 @@ jobs:
         run: |
           mkdir artifacts
           CUDAARCHS=80 CARGO_TARGET_DIR=./build \
-          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
+          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-default-features --features gpu,${{ matrix.security }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
             cp "$binary" artifacts/${{ matrix.package }}
@@ -64,19 +65,18 @@ jobs:
       - name: Upload test binary
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-${{ matrix.security }}-test-binary
           path: artifacts/${{ matrix.package }}
           if-no-files-found: error
 
   zksync-airbender-test:
-    # TODO(ci): Re-enable once tools/cli/src/prover_utils.rs:269 is implemented for zksmith test binary runs.
-    if: ${{ false }}
     runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
       matrix:
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
         # TODO: CUDA 13.0.0 is not yet supported by matterlabs-ci-gpu-runner.
         package: [ "zksmith" ]
+        security: [ "security_80" ]
 
     needs: zksync-airbender-build
     steps:
@@ -93,10 +93,10 @@ jobs:
       - name: Download test binary
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-${{ matrix.security }}-test-binary
           path: zksync-airbender-test-binary/
 
       - name: Run test binary
         run: |
           chmod +x zksync-airbender-test-binary/${{ matrix.package }}
-          zksync-airbender-test-binary/${{ matrix.package }} --nocapture
+          zksync-airbender-test-binary/${{ matrix.package }} --exact tests::test_local_prover_with_files --nocapture

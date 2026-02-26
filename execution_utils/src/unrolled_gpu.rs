@@ -85,14 +85,31 @@ pub struct UnrolledProver {
     pub prover: ExecutionProver,
 }
 
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.text");
+
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
 
 impl UnrolledProver {
     pub fn new(
