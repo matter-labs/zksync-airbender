@@ -22,7 +22,7 @@ jobs:
         run: |
           rustup set profile minimal
       - name: Test
-        run: cargo test --release -p execution_utils -- --nocapture --exact unrolled::test::test_prove_unrolled_hashed_fibonacci
+        run: cargo test -p riscv_transpiler -- --nocapture
 
   formatting:
     name: cargo fmt
@@ -223,14 +223,14 @@ jobs:
           name: cli_with_verify_80
       - name: Setup
         run: |
-          chmod +x ./cli
+          chmod +x ./target/release/cli
           mkdir -p output
       - name: Run
-        run: ./cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
+        run: ./target/release/cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
       - name: Prove
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
       - name: Verify
-        run: ./cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
+        run: ./target/release/cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
 
   cli_smoke_100_base_verify:
     name: cli_smoke_100_base_verify
@@ -242,47 +242,45 @@ jobs:
           name: cli_with_verify_100
       - name: Setup
         run: |
-          chmod +x ./cli
+          chmod +x ./target/release/cli
           mkdir -p output
       - name: Run
-        run: ./cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
+        run: ./target/release/cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
       - name: Prove
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
       - name: Verify
-        run: ./cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
+        run: ./target/release/cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
 
   cli_smoke_80_recursion_unified_verify:
     name: cli_smoke_80_recursion_unified_verify
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_with_verify_80]
     steps:
-      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify_80
       - name: Setup
         run: |
-          chmod +x ./cli
+          chmod +x ./target/release/cli
           mkdir -p output
       - name: Prove recursion unified
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
-        run: ./cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
 
   cli_smoke_100_recursion_unified_verify:
     name: cli_smoke_100_recursion_unified_verify
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_with_verify_100]
     steps:
-      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify_100
       - name: Setup
         run: |
-          chmod +x ./cli
+          chmod +x ./target/release/cli
           mkdir -p output
       - name: Prove recursion unified
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
-        run: ./cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin

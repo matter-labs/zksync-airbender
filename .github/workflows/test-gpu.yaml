@@ -76,7 +76,7 @@ jobs:
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
         # TODO: CUDA 13.0.0 is not yet supported by matterlabs-ci-gpu-runner.
         package: [ "zksmith" ]
-        security: [ "security_80" ]
+        security: [ "security_80", "security_100" ]
 
     needs: zksync-airbender-build
     steps:
