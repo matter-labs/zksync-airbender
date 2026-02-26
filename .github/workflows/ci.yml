@@ -268,3 +268,21 @@ jobs:
         run: ./cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+
+  cli_smoke_100_recursion_unified_verify:
+    name: cli_smoke_100_recursion_unified_verify
+    runs-on: [matterlabs-ci-runner-c3d]
+    needs: [build_cli_with_verify_100]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli_with_verify_100
+      - name: Setup
+        run: |
+          chmod +x ./cli
+          mkdir -p output
+      - name: Prove recursion unified
+        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
+      - name: Verify recursion unified
+        run: ./cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
