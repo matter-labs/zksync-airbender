@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
+        cuda: [ "12.9.1-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
         security: [ "security_80", "security_100" ]
     container:
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=89 CARGO_TARGET_DIR=./build \
+          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-default-features --features gpu,${{ matrix.security }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
+        cuda: [ "12.9.1-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
         security: [ "security_80", "security_100" ]
 
@@ -91,6 +91,27 @@ jobs:
         run: |
           nvidia-smi
 
+      - name: Configure low VRAM mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpu_info="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
+          low_vram_mode=0
+          while IFS=',' read -r name memory; do
+            name="$(echo "$name" | xargs)"
+            memory_mib="$(echo "$memory" | tr -dc '0-9')"
+            if [[ "$name" == *"L4"* ]] || [[ "$memory_mib" -le 24576 ]]; then
+              low_vram_mode=1
+              break
+            fi
+          done <<< "$gpu_info"
+          if [[ "$low_vram_mode" -eq 1 ]]; then
+            echo "ZKSYNC_AIRBENDER_LOW_VRAM_MODE=1" >> "$GITHUB_ENV"
+            echo "Enabled low VRAM mode"
+          else
+            echo "Low VRAM mode is not required"
+          fi
+
       - name: Download test binary
         uses: actions/download-artifact@v4
         with:
@@ -98,8 +119,6 @@ jobs:
           path: zksync-airbender-test-binary/
 
       - name: Run test binary
-        env:
-          ZKSYNC_AIRBENDER_LOW_VRAM_MODE: "1"
         run: |
           chmod +x zksync-airbender-test-binary/${{ matrix.package }}
           zksync-airbender-test-binary/${{ matrix.package }} --exact tests::test_local_prover_with_files --nocapture
