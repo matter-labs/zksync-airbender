@@ -38,6 +38,13 @@ impl ReducedMachineCircuitMask {
         self.inner[B_INST_BIT]
     }
 
+    pub fn as_variables(&self) -> [Variable; REDUCED_MACHINE_NUM_FLAGS] {
+        self.inner.map(|bit| match bit {
+            Boolean::Is(var) => var,
+            _ => panic!("reduced machine mask bit must be a variable"),
+        })
+    }
+
     // pub fn get_rs2_query_is_register_flag(&self) -> Boolean {
     //     self.inner[RS2_QUERY_IS_REGISTER]
     // }

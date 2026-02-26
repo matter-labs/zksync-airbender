@@ -27,6 +27,7 @@ capstone = {version = "0.13", optional = true }
 
 [features]
 jit = ["dynasmrt", "riscv-decode", "capstone"]
+fuzzing-support = []
 default = ["jit"]
 
 [dev-dependencies]

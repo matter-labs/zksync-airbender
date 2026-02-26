@@ -182,7 +182,7 @@ use std::collections::HashMap;
 
 mod delegation_test;
 mod keccak_test;
-mod unrolled;
+pub mod unrolled;
 
 #[cfg(test)]
 mod lde_tests;

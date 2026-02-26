@@ -1722,9 +1722,30 @@ fn enforce_copies<F: PrimeField, CS: Circuit<F>>(
 mod test {
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::one_row_compiler::{CompiledCircuitArtifact, OneRowCompiler, ProtectedConstraintSnapshot};
     use crate::utils::serialize_to_file;
     use field::Mersenne31Field;
+
+    fn assert_all_protected_constraints_are_present(
+        artifact: &CompiledCircuitArtifact<Mersenne31Field>,
+        protected: &ProtectedConstraintSnapshot<Mersenne31Field>,
+    ) {
+        for constraint in protected.degree_1_constraints.iter() {
+            assert!(
+                artifact.degree_1_constraints.contains(constraint),
+                "missing protected degree-1 constraint: {:?}",
+                constraint
+            );
+        }
+
+        for constraint in protected.degree_2_constraints.iter() {
+            assert!(
+                artifact.degree_2_constraints.contains(constraint),
+                "missing protected degree-2 constraint: {:?}",
+                constraint
+            );
+        }
+    }
 
     #[test]
     fn compile_keccak_special5() {
@@ -1734,6 +1755,18 @@ mod test {
         let compiler = OneRowCompiler::default();
         let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
         serialize_to_file(&compiled, "keccak_delegation_layout.json");
+    }
+
+    #[test]
+    fn keccak_delegation_keeps_all_protected_constraints() {
+        let mut cs = BasicAssembly::<Mersenne31Field>::new();
+        define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
+        let (circuit_output, _) = cs.finalize();
+
+        let (compiled, protected) = OneRowCompiler::default()
+            .compile_to_evaluate_delegations_and_protected_constraints(circuit_output, 20);
+
+        assert_all_protected_constraints_are_present(&compiled, &protected);
     }
 
     #[test]

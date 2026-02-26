@@ -1,17 +1,19 @@
 use crate::cs::circuit::Circuit;
 use crate::definitions::*;
-use crate::types::{Boolean, Num};
+use crate::types::Boolean;
+use crate::types::Num;
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
 
 // #[derive(Clone, Debug, Copy, PartialEq, Eq)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Term<F: PrimeField> {
     Constant(F),
     Expression {
         coeff: F,
-        inner: [Variable; TERM_INNER_CAPACITY], // we count on the fact that the degree is always <= 4
+        inner: [Variable; TERM_INNER_CAPACITY], /* we count on the fact that the degree is
+                                                 * always <= 4 */
         degree: usize,
     },
 }
@@ -316,7 +318,7 @@ impl<F: PrimeField> Term<F> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }
@@ -632,7 +634,7 @@ impl<F: PrimeField> Constraint<F> {
     }
 }
 
-//CONSTRAINT -> CONSTRAINT OPS
+// CONSTRAINT -> CONSTRAINT OPS
 impl<F: PrimeField> std::ops::Add for Constraint<F> {
     type Output = Self;
 
@@ -682,7 +684,7 @@ impl<F: PrimeField> std::ops::Mul for Constraint<F> {
     }
 }
 
-//CONSTRAINT -> TERM OPS
+// CONSTRAINT -> TERM OPS
 impl<F: PrimeField> std::ops::Add<Term<F>> for Constraint<F> {
     type Output = Self;
 
@@ -752,7 +754,7 @@ impl<F: PrimeField> std::ops::Mul<Term<F>> for Constraint<F> {
     }
 }
 
-//TERM -> CONSTRAINT OPS
+// TERM -> CONSTRAINT OPS
 impl<F: PrimeField> std::ops::Mul<Constraint<F>> for Term<F> {
     type Output = Constraint<F>;
 
@@ -761,7 +763,7 @@ impl<F: PrimeField> std::ops::Mul<Constraint<F>> for Term<F> {
     }
 }
 
-//TERM -> TERM OPS
+// TERM -> TERM OPS
 impl<F: PrimeField> std::ops::Add for Term<F> {
     type Output = Constraint<F>;
 
@@ -888,7 +890,7 @@ impl<F: PrimeField> std::ops::Mul for Term<F> {
     }
 }
 
-//CAST
+// CAST
 impl<F: PrimeField> Term<F> {
     pub fn from_field(value: F) -> Self {
         Term::Constant(value)

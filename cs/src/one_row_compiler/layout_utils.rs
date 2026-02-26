@@ -433,7 +433,8 @@ pub(crate) fn layout_executor_state_for_preprocessed_bytecode<F: PrimeField>(
         layout,
     );
 
-    // in decoder PC/Timestamp for the current state - always in memory as they are part of permutation
+    // in decoder PC/Timestamp for the current state - always in memory as they are part of
+    // permutation
     let pc = layout_memory_subtree_multiple_variables(
         memory_tree_offset,
         state.cycle_start_state.pc,
@@ -630,9 +631,9 @@ pub(crate) fn allocate_range_check_expressions<F: PrimeField>(
         );
     }
 
-    // range checks 16 deserve their own treatment and own table, and for lookups over explicit variables
-    // we just layout those continously in the row. We will also declare formal lookup expressions over them,
-    // as below we will declare less-trivial range-check 16 expressions
+    // range checks 16 deserve their own treatment and own table, and for lookups over explicit
+    // variables we just layout those continously in the row. We will also declare formal lookup
+    // expressions over them, as below we will declare less-trivial range-check 16 expressions
 
     let mut range_check_16_lookup_expressions = vec![];
 
@@ -808,7 +809,8 @@ pub(crate) fn compile_timestamp_range_check_expressions<
 ) -> (usize, std::vec::Vec<LookupExpression<F>>) {
     let mut compiled_timestamp_comparion_expressions = vec![];
 
-    // we already have enough information to compile range check expressions that are left from memory accesses layout
+    // we already have enough information to compile range check expressions that are left from
+    // memory accesses layout
     for input in timestamp_range_check_expressions_to_compile.into_iter() {
         let (linear_terms, constant_coeff) = match input {
             LookupInput::Expression {
@@ -837,8 +839,8 @@ pub(crate) fn compile_timestamp_range_check_expressions<
     // timestamps deserve separate range checks for shuffle RAM in the main circuit,
     // as those also take contribution from circuit index in the sequence
 
-    // NOTE: these expressions are separate, as we will have to add to them a circuit sequence constant
-    // that comes during the proving only
+    // NOTE: these expressions are separate, as we will have to add to them a circuit sequence
+    // constant that comes during the proving only
 
     let offset_for_special_shuffle_ram_timestamps_range_check_expressions =
         compiled_timestamp_comparion_expressions.len();
@@ -929,7 +931,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
     )
 }
 
-pub(crate) fn optimize_out_linear_constraints<F: PrimeField>(
+pub fn optimize_out_linear_constraints<F: PrimeField>(
     state_input: &[Variable],
     state_output: &[Variable],
     substitutions: &HashMap<(Placeholder, usize), Variable>,
@@ -1158,6 +1160,90 @@ pub(crate) fn optimize_out_linear_constraints<F: PrimeField>(
     (optimized_out_variables, constraints)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::optimize_out_linear_constraints;
+    use crate::constraint::Constraint;
+    use crate::cs::placeholder::Placeholder;
+    use crate::definitions::Variable;
+    use field::{Mersenne31Field, PrimeField};
+    use std::collections::{BTreeSet, HashMap};
+
+    fn normalized(mut constraint: Constraint<Mersenne31Field>) -> Constraint<Mersenne31Field> {
+        constraint.normalize();
+        constraint
+    }
+
+    fn equal_up_to_sign(
+        lhs: Constraint<Mersenne31Field>,
+        rhs: Constraint<Mersenne31Field>,
+    ) -> bool {
+        let lhs = normalized(lhs);
+        let rhs = normalized(rhs);
+        if lhs.terms == rhs.terms {
+            return true;
+        }
+
+        let mut neg_rhs = rhs.clone();
+        neg_rhs.scale(Mersenne31Field::MINUS_ONE);
+        neg_rhs.normalize();
+
+        lhs.terms == neg_rhs.terms
+    }
+
+    #[test]
+    fn protected_linear_constraints_are_not_rewritten_by_optimizer() {
+        let v0 = Variable(0);
+        let v1 = Variable(1);
+        let v2 = Variable(2);
+        let v3 = Variable(3);
+
+        let defining = normalized(Constraint::from(v1) - Constraint::from(v0));
+        let protected = normalized(Constraint::from(v1) + Constraint::from(v2));
+        let rewriteable = normalized(Constraint::from(v1) + Constraint::from(v3));
+
+        let constraints = vec![
+            (defining, false),
+            (protected.clone(), true),
+            (rewriteable, false),
+        ];
+        let mut all_variables_to_place = BTreeSet::from([v0, v1, v2, v3]);
+        let substitutions = HashMap::<(Placeholder, usize), Variable>::new();
+
+        let (optimized_out_variables, optimized_constraints) = optimize_out_linear_constraints(
+            &[],
+            &[],
+            &substitutions,
+            constraints,
+            &mut all_variables_to_place,
+        );
+
+        assert_eq!(optimized_out_variables, vec![v1, v3]);
+        assert!(!all_variables_to_place.contains(&v1));
+
+        let protected_constraints: Vec<_> = optimized_constraints
+            .iter()
+            .filter(|(_, prevent_optimizations)| *prevent_optimizations)
+            .collect();
+        assert_eq!(protected_constraints.len(), 1);
+        assert_eq!(
+            normalized(protected_constraints[0].0.clone()).terms,
+            protected.terms
+        );
+
+        let unprotected_constraints: Vec<_> = optimized_constraints
+            .iter()
+            .filter(|(_, prevent_optimizations)| !*prevent_optimizations)
+            .map(|(constraint, _)| normalized(constraint.clone()))
+            .collect();
+        assert_eq!(unprotected_constraints.len(), 1);
+        assert!(equal_up_to_sign(
+            unprotected_constraints[0].clone(),
+            Constraint::from(v3) + Constraint::from(v0)
+        ));
+    }
+}
+
 pub(crate) fn layout_scratch_space<F: PrimeField>(
     compiled_quadratic_terms: &mut Vec<CompiledDegree2Constraint<F>>,
     compiled_linear_terms: &mut Vec<CompiledDegree1Constraint<F>>,
@@ -1277,4 +1363,87 @@ pub(crate) fn layout_scratch_space<F: PrimeField>(
     }
 
     scratch_space_columns_range
+}
+
+pub(crate) fn compile_constraints_using_layout<F: PrimeField>(
+    constraints: Vec<Constraint<F>>,
+    layout: &BTreeMap<Variable, ColumnAddress>,
+) -> (
+    Vec<CompiledDegree2Constraint<F>>,
+    Vec<CompiledDegree1Constraint<F>>,
+) {
+    let mut compiled_quadratic_terms = vec![];
+    let mut compiled_linear_terms = vec![];
+
+    for constraint in constraints.into_iter() {
+        assert!(constraint
+            .terms
+            .is_sorted_by(|a, b| a.degree() >= b.degree()));
+
+        match constraint.degree() {
+            2 => {
+                let mut quadratic_terms = vec![];
+                let mut linear_terms = vec![];
+                let mut constant_term = F::ZERO;
+                for term in constraint.terms.into_iter() {
+                    match term.degree() {
+                        2 => {
+                            let coeff = term.get_coef();
+                            let [a, b] = term.as_slice() else { panic!() };
+                            assert!(*a <= *b);
+                            let a = layout.get(a).copied().unwrap();
+                            let b = layout.get(b).copied().unwrap();
+                            quadratic_terms.push((coeff, a, b));
+                        }
+                        1 => {
+                            let coeff = term.get_coef();
+                            let [a] = term.as_slice() else { panic!() };
+                            let a = layout.get(a).copied().unwrap();
+                            linear_terms.push((coeff, a));
+                        }
+                        0 => {
+                            constant_term.add_assign(&term.get_coef());
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                let mut compiled_term = CompiledDegree2Constraint {
+                    quadratic_terms: quadratic_terms.into_boxed_slice(),
+                    linear_terms: linear_terms.into_boxed_slice(),
+                    constant_term,
+                };
+                compiled_term.normalize();
+                compiled_quadratic_terms.push(compiled_term);
+            }
+            1 => {
+                let mut linear_terms = vec![];
+                let mut constant_term = F::ZERO;
+                for term in constraint.terms.into_iter() {
+                    match term.degree() {
+                        1 => {
+                            let coeff = term.get_coef();
+                            let [a] = term.as_slice() else { panic!() };
+                            let a = layout.get(a).copied().unwrap();
+                            linear_terms.push((coeff, a));
+                        }
+                        0 => {
+                            constant_term.add_assign(&term.get_coef());
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                let mut compiled_term = CompiledDegree1Constraint {
+                    linear_terms: linear_terms.into_boxed_slice(),
+                    constant_term,
+                };
+                compiled_term.normalize();
+                compiled_linear_terms.push(compiled_term);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    (compiled_quadratic_terms, compiled_linear_terms)
 }

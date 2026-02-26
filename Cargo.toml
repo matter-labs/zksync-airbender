@@ -13,7 +13,7 @@ members = [
     "transcript",
     "non_determinism_source",
     "risc_v_simulator",
-
+    
     "verifier_common",
     "verifier_generator",
     "witness_eval_generator",
@@ -61,7 +61,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary_csr",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
-    "riscv_transpiler",
+    "riscv_transpiler", "llzk_backend", "fuzzing"
 ]
 
 default-members = [
@@ -121,6 +121,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
+picus = {path = "./picus"}
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
@@ -219,3 +220,7 @@ debug = true         # Disable debug info to reduce compile time (optional, set 
 # strip = "symbols"     # Strip symbols to reduce binary size and linking time
 # panic = "unwind"      # Default panic strategy, no change needed (abort can be faster but less safe for tests)
 rpath = false         # Disable rpath (rarely needed, speeds up linking slightly)
+
+[profile.compliance-tests]
+inherits = "release"
+debug-assertions = true

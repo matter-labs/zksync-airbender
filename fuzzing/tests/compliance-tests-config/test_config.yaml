@@ -1,0 +1,7 @@
+name: zksync-rv32im
+compiler_exe: riscv64-elf-gcc # executable name on $PATH or full path to executable
+objdump_exe: riscv64-elf-objdump # executable name on $PATH or full path to executable, optional
+ref_model_exe: /Users/foldr/code/veridise/audits/zksync/sail-riscv/build/c_emulator/sail_riscv_sim # executable name on $PATH or full path to executable
+udb_config: zksync-rv32im.yaml
+linker_script: link.ld
+dut_include_dir: . # Directory containing DUT specific rvmodel_macros.h header

@@ -1,0 +1,30 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+# Instructions:
+# Install pre-commit to the repo (so that it runs with every commit):
+#   pre-commit install
+# Apply to all files without committing:
+#   pre-commit run --all-files
+# Update this file:
+#   pre-commit autoupdate
+
+# Only run on the llzk_backend and picus directories for now to avoid upstream conflicts
+files: '^llzk_backend/|^picus/'
+# Default hooks for fixing files
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-case-conflict
+  - id: mixed-line-ending
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+
+# Run cargo fmt on just the llzk_backend and picus packages
+- repo: https://github.com/doublify/pre-commit-rust
+  rev: v1.0
+  hooks:
+  - id: fmt
+    args: [ "--package", "llzk_backend", "picus" ]
+    pass_filenames: false

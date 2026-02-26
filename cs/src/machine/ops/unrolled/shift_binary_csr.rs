@@ -35,28 +35,36 @@ pub fn shift_binop_csrrw_table_driver_fn<F: PrimeField>(table_driver: &mut Table
 
 fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
-    inputs: OpcodeFamilyCircuitState<F>,
-) {
+    input_circuit_state: OpcodeFamilyCircuitState<F>,
+) -> [Variable; SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS] {
     // we will not use optimization context and utilize scratch space ourselves
     let decoder = <ShiftBinaryCsrrwDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
         cs,
-        inputs.decoder_data.circuit_family_extra_mask,
+        input_circuit_state.decoder_data.circuit_family_extra_mask,
     );
 
     // read inputs
     let (rs1_reg, rs1_mem_query) =
-        get_rs1_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs1_index), true);
+        get_rs1_as_shuffle_ram(cs, Num::Var(input_circuit_state.decoder_data.rs1_index), true);
     cs.add_shuffle_ram_query(rs1_mem_query);
     let (rs2_reg, rs2_mem_query) =
-        get_rs2_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs2_index), true);
+        get_rs2_as_shuffle_ram(cs, Num::Var(input_circuit_state.decoder_data.rs2_index), true);
     cs.add_shuffle_ram_query(rs2_mem_query);
-    let imm_as_reg = Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el)));
+    let imm_as_reg = Register::<F>(input_circuit_state.decoder_data.imm.map(|el| Num::Var(el)));
 
     if let Some(rs1_reg) = rs1_reg.get_value_unsigned(cs) {
         println!("RS1 value = 0x{:08x}", rs1_reg);
     }
 
     let use_imm = decoder.use_imm();
+    let decoded_mask_bits = [
+        decoder.perform_sll().get_variable().unwrap(),
+        decoder.perform_srl().get_variable().unwrap(),
+        decoder.perform_sra().get_variable().unwrap(),
+        decoder.perform_binary_op().get_variable().unwrap(),
+        decoder.perform_csrrw().get_variable().unwrap(),
+        decoder.use_imm().get_variable().unwrap(),
+    ];
     let rs2_value = Register::choose(cs, &use_imm, &imm_as_reg, &rs2_reg);
 
     if let Some(rs2_value) = rs2_value.get_value_unsigned(cs) {
@@ -362,7 +370,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         let is_binary = decoder.perform_binary_op();
         if is_binary.get_value(cs).unwrap_or(false) {
             println!("BINARY OP");
-            if let Some(funct3) = cs.get_value(inputs.decoder_data.funct3) {
+            if let Some(funct3) = cs.get_value(input_circuit_state.decoder_data.funct3) {
                 println!("Funct3 = {:03b}", funct3.as_u64_reduced());
             }
         }
@@ -414,7 +422,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::Variable(rs2_byte_0),
             ],
             &[out_byte_0],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
             is_binary,
         );
 
@@ -424,7 +432,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::Variable(rs2_byte_0),
                 LookupInput::Variable(out_byte_0),
             ],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
         );
 
         // (word - u8) / 2^8 == u8 -> word == u8 + 2^8 u8
@@ -441,7 +449,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::from(rs2_byte_1.clone()),
             ],
             &[out_byte_1],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
             is_binary,
         );
 
@@ -451,7 +459,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::from(rs2_byte_1),
                 LookupInput::Variable(out_byte_1),
             ],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
         );
 
         cs.peek_lookup_value_unconstrained_ext(
@@ -460,7 +468,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::Variable(rs2_byte_2),
             ],
             &[out_byte_2],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
             is_binary,
         );
 
@@ -470,7 +478,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::Variable(rs2_byte_2),
                 LookupInput::Variable(out_byte_2),
             ],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
         );
 
         // (word - u8) / 2^8 == u8 -> word == u8 + 2^8 u8
@@ -487,7 +495,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::from(rs2_byte_3.clone()),
             ],
             &[out_byte_3],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
             is_binary,
         );
 
@@ -497,7 +505,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 LookupInput::from(rs2_byte_3),
                 LookupInput::Variable(out_byte_3),
             ],
-            Num::Var(inputs.decoder_data.funct3),
+            Num::Var(input_circuit_state.decoder_data.funct3),
         );
 
         (
@@ -541,7 +549,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         let is_supported_table_output = s0;
         let perform_delegation_table_output = s1;
 
-        let csr_index = inputs.decoder_data.imm[0];
+        let csr_index = input_circuit_state.decoder_data.imm[0];
 
         cs.peek_lookup_value_unconstrained_ext(
             &[LookupInput::Variable(csr_index)],
@@ -551,7 +559,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         );
         // panic if CSR is not supported (even though we could make a table this way, for convenience table just spans 12 bits)
         cs.add_constraint(
-            (Term::from(1) - Term::from(is_supported_table_output)) * is_csrrw.get_terms(),
+            (Term::from(1)  - Term::from(is_supported_table_output)) * is_csrrw.get_terms(),
         );
 
         let t0 = (
@@ -680,7 +688,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         // And to avoid prover's possibility to set delegation to 1 when we actually do not execute on this row, check
         // that we indeed execute
         cs.add_constraint(
-            Term::from(execute_delegation) * (Term::from(1u64) - Term::from(inputs.execute)),
+            Term::from(execute_delegation) * (Term::from(1u64) - Term::from(input_circuit_state.execute)),
         );
 
         let delegation_request = DelegatedComputationRequest {
@@ -755,6 +763,60 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
 
                 cs.choose_from_orthogonal_variants_for_linear_terms(&flags, &variants)
             });
+            let funct3_var = input_circuit_state.decoder_data.funct3;
+
+            let mut cases = Vec::with_capacity(flags.len() + 2);
+            for ((flag, row), table) in flags
+                .iter()
+                .cloned()
+                .zip(input_array.iter().cloned())
+                .zip(table_ids.iter().cloned())
+            {
+                if let Num::Var(table_var) = table {
+                    if table_var == funct3_var {
+                        cases.push(crate::cs::circuit::DisjunctiveLookupCase {
+                            flag,
+                            row: row.clone(),
+                            table: TableType::Xor.to_num(),
+                            guard: Some(crate::cs::circuit::DisjunctiveLookupGuard::EqConst {
+                                var: funct3_var,
+                                value: TableType::Xor.to_num().get_constant_value(),
+                            }),
+                        });
+                        cases.push(crate::cs::circuit::DisjunctiveLookupCase {
+                            flag,
+                            row: row.clone(),
+                            table: TableType::Or.to_num(),
+                            guard: Some(crate::cs::circuit::DisjunctiveLookupGuard::EqConst {
+                                var: funct3_var,
+                                value: TableType::Or.to_num().get_constant_value(),
+                            }),
+                        });
+                        cases.push(crate::cs::circuit::DisjunctiveLookupCase {
+                            flag,
+                            row,
+                            table: TableType::And.to_num(),
+                            guard: Some(crate::cs::circuit::DisjunctiveLookupGuard::EqConst {
+                                var: funct3_var,
+                                value: TableType::And.to_num().get_constant_value(),
+                            }),
+                        });
+
+                        continue;
+                    }
+                }
+
+                cases.push(crate::cs::circuit::DisjunctiveLookupCase {
+                    flag,
+                    row,
+                    table,
+                    guard: None,
+                });
+            }
+            cs.add_disjunctive_lookup_hint(crate::cs::circuit::DisjunctiveLookup {
+                relation_index: i,
+                cases,
+            });
             let table_id = cs.choose_from_orthogonal_variants(&flags, &table_ids);
 
             let inputs: [LookupInput<F>; COMMON_TABLE_WIDTH] =
@@ -792,7 +854,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     }
 
     let rd_reg = Register([Num::Var(rd_low), Num::Var(rd_high)]);
-    let is_rd_x0 = Boolean::Is(inputs.decoder_data.rd_is_zero);
+    let is_rd_x0 = Boolean::Is(input_circuit_state.decoder_data.rd_is_zero);
 
     if let Some(rd_reg) = rd_reg.get_value_unsigned(cs) {
         println!("RD value = 0x{:08x}", rd_reg);
@@ -800,7 +862,7 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
 
     let rd_mem_query = set_rd_with_mask_as_shuffle_ram(
         cs,
-        Num::Var(inputs.decoder_data.rd_index),
+        Num::Var(input_circuit_state.decoder_data.rd_index),
         rd_reg,
         is_rd_x0,
         true,
@@ -812,9 +874,11 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // write to PC
     bump_pc_no_range_checks_explicit(
         cs,
-        Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x))),
-        Register(inputs.cycle_end_state.pc.map(|x| Num::Var(x))),
+        Register(input_circuit_state.cycle_start_state.pc.map(|x| Num::Var(x))),
+        Register(input_circuit_state.cycle_end_state.pc.map(|x| Num::Var(x))),
     );
+
+    decoded_mask_bits
 }
 
 pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode<F: PrimeField, CS: Circuit<F>>(
@@ -822,6 +886,20 @@ pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode<F: PrimeField, CS: C
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     apply_shift_binop_csrrw(cs, input);
+}
+
+pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode_with_decoded_bits<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (
+    OpcodeFamilyCircuitState<F>,
+    [Variable; SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS],
+) {
+    let input = cs.allocate_execution_circuit_state::<true>();
+    let decoded_bits = apply_shift_binop_csrrw(cs, input);
+    (input, decoded_bits)
 }
 
 #[cfg(test)]
