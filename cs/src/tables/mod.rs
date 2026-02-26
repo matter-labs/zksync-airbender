@@ -3,12 +3,12 @@ use derivative::Derivative;
 use field::PrimeField;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use std::sync::{LazyLock, Mutex};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    vec,
-};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::vec;
 use type_map::concurrent::TypeMap;
 
 mod binops;
@@ -71,7 +71,7 @@ pub enum IndexLookupFn<F: PrimeField, const N: usize> {
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
 #[derive(Derivative)]
-#[derivative(Clone, Debug)]
+#[derivative(Clone, Debug, PartialEq, Eq)]
 pub struct LookupTable<F: PrimeField, const N: usize> {
     pub name: String,
 
@@ -86,9 +86,9 @@ pub struct LookupTable<F: PrimeField, const N: usize> {
     // for setup - plain content of the table
     #[derivative(Debug = "ignore")]
     pub data: Arc<Vec<[F; N]>>,
-    #[derivative(Debug = "ignore")]
+    #[derivative(Debug = "ignore", PartialEq = "ignore")]
     pub quick_value_lookup_fn: ValueLookupFn<F, N>,
-    #[derivative(Debug = "ignore")]
+    #[derivative(Debug = "ignore", PartialEq = "ignore")]
     pub quick_index_lookup_fn: IndexLookupFn<F, N>,
 
     pub num_key_columns: usize,
@@ -553,7 +553,7 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LookupWrapper<F: PrimeField> {
     Uninitialized,
     Dimensional1(LookupTable<F, 1>),
@@ -1099,7 +1099,7 @@ pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
 }
 
 /// Manages multiple lookup tables.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TableDriver<F: PrimeField> {
     pub tables: [LookupWrapper<F>; TABLE_TYPES_UPPER_BOUNDS],
     offsets_for_multiplicities: [usize; TABLE_TYPES_UPPER_BOUNDS],

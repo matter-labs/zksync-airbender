@@ -47,9 +47,60 @@ pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Blake2WithExtendedControlDelegationPicusMetadata {
+    pub input_state: Vec<[Variable; 2]>,
+    pub input_extended_state: Vec<[Variable; 2]>,
+    pub input_words: Vec<[Variable; 2]>,
+    pub x12_read_vars: [Variable; 2],
+    pub output_state: Vec<[Variable; 2]>,
+    pub output_extended_state: Vec<[Variable; 2]>,
+    pub x12_write_vars: [Variable; 2],
+}
+
+pub fn define_blake2_with_extended_control_delegation_circuit_with_metadata<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (
+    Vec<[Variable; 2]>,
+    Vec<[Variable; 2]>,
+    Blake2WithExtendedControlDelegationPicusMetadata,
+) {
+    let (output_state, output_extended_state, metadata) =
+        define_blake2_with_extended_control_delegation_circuit_inner(cs);
+    (output_state, output_extended_state, metadata)
+}
+
 pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> (Vec<[Variable; 2]>, Vec<[Variable; 2]>) {
+    let (output_state, output_extended_state, _) =
+        define_blake2_with_extended_control_delegation_circuit_inner(cs);
+    (output_state, output_extended_state)
+}
+
+/// VERIDISE: Wrapper for downstream translation code that only needs the side effects on `cs`.
+pub fn define_blake2_with_extended_control_delegation_circuit_for_translation<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+}
+
+fn define_blake2_with_extended_control_delegation_circuit_inner<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (
+    Vec<[Variable; 2]>,
+    Vec<[Variable; 2]>,
+    Blake2WithExtendedControlDelegationPicusMetadata,
+) {
     // add tables
     materialize_tables_into_cs(cs);
 
@@ -160,6 +211,11 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
         (read_value, write_value)
     };
+
+    let input_state_for_metadata = input_state.clone();
+    let input_extended_state_for_metadata = input_extended_state.clone();
+    let input_words_for_metadata = input_words.clone();
+    let x12_read_vars_for_metadata = x12_vars;
 
     {
         for (i, input) in input_state.iter().enumerate() {
@@ -869,7 +925,17 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         }
     }
 
-    (output_placeholder_state, output_placeholder_extended_state)
+    let metadata = Blake2WithExtendedControlDelegationPicusMetadata {
+        input_state: input_state_for_metadata,
+        input_extended_state: input_extended_state_for_metadata,
+        input_words: input_words_for_metadata,
+        x12_read_vars: x12_read_vars_for_metadata,
+        output_state: output_placeholder_state.clone(),
+        output_extended_state: output_placeholder_extended_state.clone(),
+        x12_write_vars,
+    };
+
+    (output_placeholder_state, output_placeholder_extended_state, metadata)
 }
 
 pub(crate) fn chunk_16_bit_input<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS: usize>(
@@ -938,9 +1004,30 @@ mod test {
 
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::one_row_compiler::{CompiledCircuitArtifact, OneRowCompiler, ProtectedConstraintSnapshot};
     use crate::utils::serialize_to_file;
     use field::Mersenne31Field;
+
+    fn assert_all_protected_constraints_are_present(
+        artifact: &CompiledCircuitArtifact<Mersenne31Field>,
+        protected: &ProtectedConstraintSnapshot<Mersenne31Field>,
+    ) {
+        for constraint in protected.degree_1_constraints.iter() {
+            assert!(
+                artifact.degree_1_constraints.contains(constraint),
+                "missing protected degree-1 constraint: {:?}",
+                constraint
+            );
+        }
+
+        for constraint in protected.degree_2_constraints.iter() {
+            assert!(
+                artifact.degree_2_constraints.contains(constraint),
+                "missing protected degree-2 constraint: {:?}",
+                constraint
+            );
+        }
+    }
 
     #[test]
     fn compile_blake2_with_extended_control() {

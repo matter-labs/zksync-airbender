@@ -81,6 +81,20 @@ pub fn calculate_pc_next_no_overflows<F: PrimeField, CS: Circuit<F>>(
     let mut t = carry_constraint.clone();
     t -= Term::from(1u64);
     circuit.add_constraint(carry_constraint.clone() * t);
+    let parallel_carry_constraint = (picus_expr_from_num(pc.0[0])
+        + PicusExpr::from_const(PC_INC_STEP)
+        - PicusExpr::Variable(pc_next_low))
+        * PicusExpr::Constant(F::from_u64_unchecked(1 << 16).inverse().unwrap());
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(pc_next_low)
+            + PicusExpr::Constant(F::from_u64_unchecked(1 << 16)) * parallel_carry_constraint.clone(),
+        rhs: picus_expr_from_num(pc.0[0]) + PicusExpr::from_const(PC_INC_STEP),
+    });
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_carry_constraint.clone()
+            * (parallel_carry_constraint.clone() - PicusExpr::from_const(1)),
+        rhs: PicusExpr::from_const(0),
+    });
 
     let mut pc_high_constraint = carry_constraint;
     pc_high_constraint += pc_t[1].clone();
@@ -89,12 +103,22 @@ pub fn calculate_pc_next_no_overflows<F: PrimeField, CS: Circuit<F>>(
         .add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
             pc_high_constraint,
         );
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(pc_next_high),
+        rhs: picus_expr_from_num(pc.0[1]) + parallel_carry_constraint,
+    });
     // ensure that it is not equal to 2^16
     let inversion_witness = circuit.add_variable();
     circuit.add_constraint(
         (Term::from(inversion_witness) * (Term::from(pc_next_high) - Term::from(1u64 << 16)))
             - Term::from(1u64),
     );
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(inversion_witness)
+            * (PicusExpr::Variable(pc_next_high) - PicusExpr::from_const(1u64 << 16))
+            - PicusExpr::from_const(1u64),
+        rhs: PicusExpr::from_const(0),
+    });
 
     let pc_next = Register([Num::Var(pc_next_low), Num::Var(pc_next_high)]);
 
@@ -153,12 +177,26 @@ pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
             (Term::from(pc_low_var) + Term::from(PC_INC_STEP) - Term::from(1 << 16))
                 * Term::from(low_eq_flag),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::Variable(pc_low_var) + PicusExpr::from_const(PC_INC_STEP)
+                - PicusExpr::from_const(1 << 16))
+                * picus_expr_from_bool(low_eq_flag),
+            rhs: PicusExpr::from_const(0),
+        });
         circuit.add_constraint(
             (Term::from(pc_low_var) + Term::from(PC_INC_STEP) - Term::from(1 << 16))
                 * Term::from(var_inv)
                 + Term::from(low_eq_flag)
                 - Term::from(1),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::Variable(pc_low_var) + PicusExpr::from_const(PC_INC_STEP)
+                - PicusExpr::from_const(1 << 16))
+                * PicusExpr::Variable(var_inv)
+                + picus_expr_from_bool(low_eq_flag)
+                - PicusExpr::from_const(1),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // then select - just make a constraint - if equal then 0, otherwise - result of addition
         circuit.add_constraint(
@@ -166,6 +204,12 @@ pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
                 * (Term::from(pc_low_var) + Term::from(PC_INC_STEP))
                 - Term::from(pc_next_low_var),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::from_const(1) - picus_expr_from_bool(low_eq_flag))
+                * (PicusExpr::Variable(pc_low_var) + PicusExpr::from_const(PC_INC_STEP))
+                - PicusExpr::Variable(pc_next_low_var),
+            rhs: PicusExpr::from_const(0),
+        });
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             use crate::cs::witness_placer::*;
@@ -216,12 +260,26 @@ pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
             (Term::from(pc_high_var) + Term::from(carry_var) - Term::from(1 << 16))
                 * Term::from(eq_flag),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::Variable(pc_high_var) + PicusExpr::Variable(carry_var)
+                - PicusExpr::from_const(1 << 16))
+                * picus_expr_from_bool(eq_flag),
+            rhs: PicusExpr::from_const(0),
+        });
         circuit.add_constraint(
             (Term::from(pc_high_var) + Term::from(carry_var) - Term::from(1 << 16))
                 * Term::from(var_inv)
                 + Term::from(eq_flag)
                 - Term::from(1),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::Variable(pc_high_var) + PicusExpr::Variable(carry_var)
+                - PicusExpr::from_const(1 << 16))
+                * PicusExpr::Variable(var_inv)
+                + picus_expr_from_bool(eq_flag)
+                - PicusExpr::from_const(1),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // then select - just make a constraint
         circuit.add_constraint(
@@ -229,6 +287,12 @@ pub fn bump_pc_no_range_checks_explicit<F: PrimeField, CS: Circuit<F>>(
                 * (Term::from(pc_high_var) + Term::from(carry_var))
                 - Term::from(pc_next_high_var),
         );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (PicusExpr::from_const(1) - picus_expr_from_bool(eq_flag))
+                * (PicusExpr::Variable(pc_high_var) + PicusExpr::Variable(carry_var))
+                - PicusExpr::Variable(pc_next_high_var),
+            rhs: PicusExpr::from_const(0),
+        });
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             use crate::cs::witness_placer::*;
@@ -393,6 +457,10 @@ pub(crate) fn read_opcode_from_rom<
     );
     // assert that we only read opcodes from ROM, so "is RAM" is always false here
     cs.add_constraint_allow_explicit_linear(Constraint::<F>::from(is_ram_range));
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(is_ram_range),
+        rhs: PicusExpr::from_const(0),
+    });
     let rom_address_constraint = Term::from(pc.0[0].get_variable())
         + Term::from((F::from_u64_unchecked(1 << 16), rom_address_low));
 
@@ -491,6 +559,7 @@ pub(crate) fn set_rd_with_mask_as_shuffle_ram<F: PrimeField, C: Circuit<F>>(
     let read_value =
         Register::new_unchecked_from_placeholder(cs, Placeholder::WriteRdReadSetWitness);
     let masked_write_value = write_value.mask(cs, reg_is_x0.toggle());
+    println!("MASKED WRITE VALUE: {masked_write_value:?}");
     let query = form_mem_op_for_register_only(
         local_timestamp_in_cycle,
         reg_encoding,
@@ -686,13 +755,21 @@ pub fn get_sign_bit_from_orthogonal_terms<F: PrimeField, CS: Circuit<F>, const N
     cs.set_values(value_fn);
 
     let mut input = Constraint::empty();
+    let mut parallel_input = PicusExpr::from_const(0);
     for (&b, &x) in orthoflags.iter().zip(orthoxs.iter()) {
         input = input + Term::from(b) * Term::from(x);
+        parallel_input = parallel_input + picus_expr_from_bool(b) * PicusExpr::Variable(x);
     }
     cs.add_constraint(
         (input - Term::from(1 << 15))
             - (Constraint::from(out) - Term::from(1 << 16) * Term::from(underflow)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: (parallel_input - PicusExpr::from_const(1 << 15))
+            - (PicusExpr::Variable(out.get_variable())
+                - PicusExpr::from_const(1 << 16) * picus_expr_from_bool(underflow)),
+        rhs: PicusExpr::from_const(0),
+    });
     underflow.toggle()
 }
 
@@ -742,7 +819,36 @@ pub fn get_sign_bit_masked<F: PrimeField, CS: Circuit<F>>(
             - Term::from(1 << 16) * Constraint::from(mask.toggle()))
             - (Constraint::from(out) - Term::from(1 << 16) * Constraint::from(underflow)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(x)
+            - picus_expr_from_bool(mask) * PicusExpr::from_const(1 << 15)
+            - PicusExpr::from_const(1 << 16) * picus_expr_from_bool(mask.toggle())
+            - picus_expr_from_num(out)
+            + PicusExpr::from_const(65536) * picus_expr_from_bool(underflow),
+        rhs: PicusExpr::from_const(0),
+    });
     underflow.toggle()
+}
+
+pub fn picus_expr_from_num<F: PrimeField>(num: Num<F>) -> PicusExpr<F> {
+    match num {
+        Num::Var(variable) => PicusExpr::Variable(variable),
+        Num::Constant(c) => PicusExpr::Constant(c),
+    }
+}
+
+pub fn picus_expr_from_bool<F: PrimeField>(bool: Boolean) -> PicusExpr<F> {
+    match bool {
+        Boolean::Is(variable) => PicusExpr::Variable(variable),
+        Boolean::Not(variable) => PicusExpr::from_const(1) - PicusExpr::Variable(variable),
+        Boolean::Constant(c) => {
+            if c {
+                PicusExpr::from_const(1)
+            } else {
+                PicusExpr::from_const(0)
+            }
+        }
+    }
 }
 
 pub fn get_reg_add_and_overflow<F: PrimeField, CS: Circuit<F>>(
@@ -772,13 +878,30 @@ pub fn get_reg_add_and_overflow<F: PrimeField, CS: Circuit<F>>(
     let mut carry_constraint = Constraint::from(a_low) + Term::from(b_low) - Term::from(c_low);
     carry_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
 
+    let mut parallel_carry_constraint =
+        PicusExpr::<F>::Variable(a_low) + PicusExpr::Variable(b_low) - PicusExpr::Variable(c_low);
+    parallel_carry_constraint = parallel_carry_constraint
+        * PicusExpr::Constant(F::from_u64_unchecked(1 << 16).inverse().unwrap());
+
     let bool_constraint = carry_constraint.clone() * (carry_constraint.clone() - Term::from(1));
+    let parallel_bool_constraint = parallel_carry_constraint.clone()
+        * (parallel_carry_constraint.clone() - PicusExpr::from_const(1));
     cs.add_constraint(bool_constraint);
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_bool_constraint,
+        rhs: PicusExpr::from_const(0),
+    });
 
     cs.add_constraint_allow_explicit_linear(
         carry_constraint + Term::from(a_high) + Term::from(b_high)
             - (Constraint::from(c_high) + Term::from(1 << 16) * Term::from(of)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_carry_constraint + PicusExpr::Variable(a_high) + PicusExpr::Variable(b_high)
+            - (PicusExpr::Variable(c_high)
+                + picus_expr_from_bool(of) * PicusExpr::from_const(65536)),
+        rhs: PicusExpr::from_const(0),
+    });
     (c, of)
 }
 
@@ -809,9 +932,18 @@ pub fn get_reg_sub_and_underflow<F: PrimeField, CS: Circuit<F>>(
     // a - b == c - 2^16 uf --> 2^16 uf == c - a + b
     let mut carry_constraint = Constraint::from(c_low) - Term::from(a_low) + Term::from(b_low);
     carry_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
+    let parallel_carry_constraint = (PicusExpr::Variable(c_low) - PicusExpr::Variable(a_low)
+        + PicusExpr::Variable(b_low))
+        * PicusExpr::Constant(F::from_u64_unchecked(1 << 16).inverse().unwrap());
 
     let bool_constraint = carry_constraint.clone() * (carry_constraint.clone() - Term::from(1));
+    let parallel_bool_constraint = parallel_carry_constraint.clone()
+        * (parallel_carry_constraint.clone() - PicusExpr::from_const(1));
     cs.add_constraint(bool_constraint);
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_bool_constraint,
+        rhs: PicusExpr::from_const(0),
+    });
 
     cs.add_constraint_allow_explicit_linear(
         Constraint::from(a_high)
@@ -819,6 +951,14 @@ pub fn get_reg_sub_and_underflow<F: PrimeField, CS: Circuit<F>>(
             - carry_constraint
             - (Constraint::from(c_high) - Term::from(1 << 16) * Term::from(uf)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(a_high)
+            - PicusExpr::Variable(b_high)
+            - parallel_carry_constraint
+            - (PicusExpr::Variable(c_high)
+                - picus_expr_from_bool(uf) * PicusExpr::from_const(65536)),
+        rhs: PicusExpr::from_const(0),
+    });
     (c, uf)
 }
 
@@ -899,6 +1039,15 @@ pub fn choose_reg_add_sub_and_overflow<F: PrimeField, CS: Circuit<F>>(
                 + Constraint::from(is_sub) * Term::from(a_low)
                 + Term::from(1 << 16) * Term::from(of_low)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_bool(is_add) * PicusExpr::Variable(a_low)
+            + picus_expr_from_bool(is_sub) * PicusExpr::Variable(c_low)
+            + PicusExpr::Variable(b_low)
+            - (picus_expr_from_bool(is_add) * PicusExpr::Variable(c_low)
+                + picus_expr_from_bool(is_sub) * PicusExpr::Variable(a_low)
+                + picus_expr_from_bool(of_low) * PicusExpr::from_const(65536)),
+        rhs: PicusExpr::from_const(0),
+    });
     cs.add_constraint(
         Constraint::from(is_add) * Term::from(a_high)
             + Constraint::from(is_sub) * Term::from(c_high)
@@ -908,5 +1057,15 @@ pub fn choose_reg_add_sub_and_overflow<F: PrimeField, CS: Circuit<F>>(
                 + Constraint::from(is_sub) * Term::from(a_high)
                 + Term::from(1 << 16) * Term::from(of_high)),
     );
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_bool(is_add) * PicusExpr::Variable(a_high)
+            + picus_expr_from_bool(is_sub) * PicusExpr::Variable(c_high)
+            + PicusExpr::Variable(b_high)
+            + picus_expr_from_bool(of_low)
+            - (picus_expr_from_bool(is_add) * PicusExpr::Variable(c_high)
+                + picus_expr_from_bool(is_sub) * PicusExpr::Variable(a_high)
+                + picus_expr_from_bool(of_high) * PicusExpr::from_const(65536)),
+        rhs: PicusExpr::from_const(0),
+    });
     (c, of_high)
 }

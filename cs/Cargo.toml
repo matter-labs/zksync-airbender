@@ -12,6 +12,7 @@ categories.workspace = true
 [dependencies]
 field.workspace = true
 serde.workspace = true
+picus.workspace = true
 blake2s_u32 = { workspace = true, optional = true }
 fft = { workspace = true, optional = true }
 common_constants = { workspace = true }

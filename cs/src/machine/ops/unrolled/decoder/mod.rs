@@ -38,7 +38,10 @@ pub use self::shift_binop_csrrw::*;
 
 mod decoder_circuit;
 
-pub use decoder_circuit::describe_decoder_cycle;
+pub use decoder_circuit::{
+    describe_decoder_cycle, describe_decoder_cycle_from_opcode,
+    describe_decoder_cycle_from_opcode_with_metadata, UnrolledDecoderPicusMetadata,
+};
 
 pub type InstructionFamilyBitmaskRepr = u32;
 

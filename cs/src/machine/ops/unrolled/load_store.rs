@@ -64,7 +64,7 @@ fn apply_load_store<
 >(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> [Variable; MEMORY_FAMILY_NUM_FLAGS] {
     let decoder = <MemoryFamilyDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
         cs,
         inputs.decoder_data.circuit_family_extra_mask,
@@ -462,6 +462,7 @@ fn apply_load_store<
     let pc = Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x)));
     let pc_next = Register(inputs.cycle_end_state.pc.map(Num::Var));
     bump_pc_no_range_checks_explicit(cs, pc, pc_next);
+    [is_store.get_variable().unwrap()]
 }
 
 pub fn load_store_circuit_with_preprocessed_bytecode<
@@ -473,6 +474,21 @@ pub fn load_store_circuit_with_preprocessed_bytecode<
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     apply_load_store::<F, CS, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
+}
+
+pub fn load_store_circuit_with_preprocessed_bytecode_with_decoded_bits<
+    F: PrimeField,
+    CS: Circuit<F>,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    cs: &mut CS,
+) -> (
+    OpcodeFamilyCircuitState<F>,
+    [Variable; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS],
+) {
+    let input = cs.allocate_execution_circuit_state::<true>();
+    let selectors = apply_load_store::<F, CS, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
+    (input, selectors)
 }
 
 #[cfg(test)]

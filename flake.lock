@@ -1,0 +1,273 @@
+{
+  "nodes": {
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1652776076,
+        "narHash": "sha256-gzTw/v1vj4dOVbpBSJX4J0DwUR6LIyXo7/SuuTJp1kM=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "04c1b180862888302ddfb2e3ad9eaa63afc60cf8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "ref": "v1.0.0",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "llzk-lib": {
+      "inputs": {
+        "flake-utils": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs",
+          "flake-utils"
+        ],
+        "llzk-pkgs": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs"
+        ],
+        "nixpkgs": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs",
+          "nixpkgs"
+        ],
+        "pcl-mlir-pkg": [
+          "llzk-rs-pkgs",
+          "pcl-mlir-pkg"
+        ],
+        "release-helpers": "release-helpers"
+      },
+      "locked": {
+        "lastModified": 1775836305,
+        "narHash": "sha256-2PwzKqj9vV9qZ9to6TsfLwiNJ52GEsh4EH+NLiyKxqs=",
+        "owner": "project-llzk",
+        "repo": "llzk-lib",
+        "rev": "6636d85c10791e413b8647f1023e4893df2125c8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "project-llzk",
+        "repo": "llzk-lib",
+        "type": "github"
+      }
+    },
+    "llzk-pkgs": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1768329036,
+        "narHash": "sha256-aScxpJJ7VMDETL4hi+6Pojxb4VwKucW0VwOPCZDt53Q=",
+        "owner": "project-llzk",
+        "repo": "llzk-nix-pkgs",
+        "rev": "830b084608fe510c2bd2612bf66def7cdabf7cf7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "project-llzk",
+        "repo": "llzk-nix-pkgs",
+        "type": "github"
+      }
+    },
+    "llzk-rs-pkgs": {
+      "inputs": {
+        "flake-utils": [
+          "llzk-pkgs",
+          "flake-utils"
+        ],
+        "llzk-lib": "llzk-lib",
+        "llzk-pkgs": [
+          "llzk-pkgs"
+        ],
+        "nixpkgs": [
+          "llzk-pkgs",
+          "nixpkgs"
+        ],
+        "pcl-mlir-pkg": "pcl-mlir-pkg",
+        "release-helpers": [
+          "llzk-rs-pkgs",
+          "llzk-lib",
+          "release-helpers"
+        ],
+        "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1775836408,
+        "narHash": "sha256-M6MOvLvM8HMy6bUR9e4vo1TASh4NZOyfy+4lvL1om8A=",
+        "owner": "project-llzk",
+        "repo": "llzk-rs",
+        "rev": "29367ba75d5b14ed9fb9d712117c8829740955e9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "project-llzk",
+        "ref": "main",
+        "repo": "llzk-rs",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1761656231,
+        "narHash": "sha256-EiED5k6gXTWoAIS8yQqi5mAX6ojnzpHwAQTS3ykeYMg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e99366c665bdd53b7b500ccdc5226675cfc51f45",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1744536153,
+        "narHash": "sha256-awS2zRgF4uTwrOKwwiJcByDzDOdo3Q1rPZbiHQg/N38=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "18dd725c29603f582cf1900e0d25f9f1063dbf11",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "pcl-mlir-pkg": {
+      "inputs": {
+        "flake-utils": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs",
+          "nixpkgs"
+        ],
+        "release-helpers": [
+          "llzk-rs-pkgs",
+          "release-helpers"
+        ],
+        "shared-pkgs": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1762544039,
+        "narHash": "sha256-Esd4SAzUt5G3esTa6fTmivKpRScEROwSME4nN/SAU4w=",
+        "owner": "Veridise",
+        "repo": "pcl-mlir",
+        "rev": "55cf619b032314198aacafc305871fb66b12b70e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Veridise",
+        "repo": "pcl-mlir",
+        "type": "github"
+      }
+    },
+    "release-helpers": {
+      "inputs": {
+        "flake-utils": [
+          "llzk-rs-pkgs",
+          "llzk-lib",
+          "llzk-pkgs",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "llzk-rs-pkgs",
+          "llzk-lib",
+          "llzk-pkgs",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1775793201,
+        "narHash": "sha256-q129kMo7c75Fgb+lMDOiYkkggoze0Z/6x7cV5uekVKg=",
+        "owner": "project-llzk",
+        "repo": "open-source-release-helpers",
+        "rev": "aeec44f1169dd1cedc37df750556177a937c4445",
+        "type": "github"
+      },
+      "original": {
+        "owner": "project-llzk",
+        "repo": "open-source-release-helpers",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": [
+          "llzk-pkgs",
+          "flake-utils"
+        ],
+        "llzk-lib": [
+          "llzk-rs-pkgs",
+          "llzk-lib"
+        ],
+        "llzk-pkgs": "llzk-pkgs",
+        "llzk-rs-pkgs": "llzk-rs-pkgs",
+        "nixpkgs": [
+          "llzk-pkgs",
+          "nixpkgs"
+        ],
+        "release-helpers": [
+          "llzk-lib",
+          "release-helpers"
+        ],
+        "rust-overlay": "rust-overlay_2"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "llzk-rs-pkgs",
+          "llzk-pkgs",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1773630837,
+        "narHash": "sha256-zJhgAGnbVKeBMJOb9ctZm4BGS/Rnrz+5lfSXTVah4HQ=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "f600ea449c7b5bb596fa1cf21c871cc5b9e31316",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_2": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1772507320,
+        "narHash": "sha256-GdGXniFvtIfRiakc+ncdQYnoQjKbTCv9Imjfl4ggquI=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "1775eafa1879ac098ee436849bc9c3d963206f89",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

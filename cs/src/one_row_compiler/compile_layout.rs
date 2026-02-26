@@ -24,7 +24,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         circuit_output: CircuitOutput<F>,
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
-        Self::compile_inner::<false>(self, circuit_output, trace_len_log2)
+        Self::compile_inner::<false>(self, circuit_output, trace_len_log2).0
     }
 
     pub fn compile_to_evaluate_delegations(
@@ -32,6 +32,24 @@ impl<F: PrimeField> OneRowCompiler<F> {
         circuit_output: CircuitOutput<F>,
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
+        Self::compile_inner::<true>(self, circuit_output, trace_len_log2).0
+    }
+
+    #[cfg(test)]
+    pub fn compile_output_for_chunked_memory_argument_and_protected_constraints(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        trace_len_log2: usize,
+    ) -> (CompiledCircuitArtifact<F>, ProtectedConstraintSnapshot<F>) {
+        Self::compile_inner::<false>(self, circuit_output, trace_len_log2)
+    }
+
+    #[cfg(test)]
+    pub fn compile_to_evaluate_delegations_and_protected_constraints(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        trace_len_log2: usize,
+    ) -> (CompiledCircuitArtifact<F>, ProtectedConstraintSnapshot<F>) {
         Self::compile_inner::<true>(self, circuit_output, trace_len_log2)
     }
 
@@ -39,7 +57,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
         &self,
         circuit_output: CircuitOutput<F>,
         trace_len_log2: usize,
-    ) -> CompiledCircuitArtifact<F> {
+    ) -> (CompiledCircuitArtifact<F>, ProtectedConstraintSnapshot<F>) {
         // our main purposes are:
         // - place variables in particular grid places
         // - select whether they go into witness subtree or memory subtree
@@ -63,6 +81,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            picus_extraction_metadata: _,
         } = circuit_output;
 
         assert!(trace_len_log2 > TIMESTAMP_COLUMNS_NUM_BITS as usize);
@@ -941,13 +960,32 @@ impl<F: PrimeField> OneRowCompiler<F> {
         // - can be expressed via linear constraint
         // - can be substituted into other places
 
-        let (optimized_out_variables, constraints) = optimize_out_linear_constraints(
-            &state_input,
-            &state_output,
-            &substitutions,
-            constraints,
-            &mut all_variables_to_place,
-        );
+        let protected_constraints_before_optimization: Vec<_> = constraints
+            .iter()
+            .filter_map(|(constraint, prevent_optimizations)| {
+                if *prevent_optimizations {
+                    Some(constraint.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let (optimized_out_variables, constraints) =
+            if state_input.is_empty() && state_output.is_empty() {
+                // Standalone chunked-memory circuits use the LLZK boundary as their public
+                // interface rather than executor-style state linkage. Preserve those variables by
+                // skipping linear elimination here, matching the stateless standalone path.
+                (Vec::new(), constraints)
+            } else {
+                optimize_out_linear_constraints(
+                    &state_input,
+                    &state_output,
+                    &substitutions,
+                    constraints,
+                    &mut all_variables_to_place,
+                )
+            };
 
         let scratch_space_size_for_witness_gen = optimized_out_variables.len();
 
@@ -960,6 +998,9 @@ impl<F: PrimeField> OneRowCompiler<F> {
             all_variables_to_place,
             &mut layout,
         );
+
+        let (protected_degree_2_constraints, protected_degree_1_constraints) =
+            compile_constraints_using_layout(protected_constraints_before_optimization, &layout);
 
         // we need only the following public inputs
         // - initial state variable at FIRST row
@@ -986,8 +1027,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         if FOR_DELEGATION {
             assert!(public_inputs.is_empty());
-        } else {
-            assert!(public_inputs.len() > 0);
         }
 
         // NOTE: we do not need to add lazy init into boundary constraints as we will handle them manually
@@ -1024,7 +1063,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
             })
             .collect();
 
-        assert!(range_check_16_columns.num_elements() % 2 == 0);
         let mut range_check_16_lookup_expressions = range_check_16_lookup_expressions;
         if range_check_16_lookup_expressions.len() % 2 != 0 {
             let last = range_check_16_lookup_expressions.last().unwrap().clone();
@@ -1176,6 +1214,11 @@ impl<F: PrimeField> OneRowCompiler<F> {
             total_tables_size,
         };
 
-        result
+        let protected_constraints = ProtectedConstraintSnapshot {
+            degree_2_constraints: protected_degree_2_constraints,
+            degree_1_constraints: protected_degree_1_constraints,
+        };
+
+        (result, protected_constraints)
     }
 }

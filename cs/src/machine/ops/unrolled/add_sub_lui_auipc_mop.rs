@@ -13,10 +13,10 @@ pub fn add_sub_lui_auipc_mop_table_driver_fn<F: PrimeField>(table_driver: &mut T
     let _ = table_driver;
 }
 
-fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> [Variable; crate::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] {
     let mut opt_ctx = OptimizationContext::new();
     let decoder = <AddSubLuiAuipcMopDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
         cs,
@@ -82,6 +82,16 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     let is_addmod = decoder.perform_addmod();
     let is_submod = decoder.perform_submod();
     let is_mulmod = decoder.perform_mulmod();
+    let decoded_mask_bits = [
+        is_add.get_variable().unwrap(),
+        is_addi.get_variable().unwrap(),
+        is_sub.get_variable().unwrap(),
+        is_lui.get_variable().unwrap(),
+        is_auipc.get_variable().unwrap(),
+        is_addmod.get_variable().unwrap(),
+        is_submod.get_variable().unwrap(),
+        is_mulmod.get_variable().unwrap(),
+    ];
 
     if is_add.get_value(cs).unwrap_or(false) {
         println!("ADD");
@@ -107,7 +117,7 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     if is_mulmod.get_value(cs).unwrap_or(false) {
         println!("MOP_MUL");
     }
-
+    println!("INDEXERS: {indexers:?}");
     // ADD
     let of_var = {
         opt_ctx.restore_indexers(indexers);
@@ -185,13 +195,15 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     // ADDMOD
     {
         opt_ctx.restore_indexers(indexers);
-        cs.add_constraint(
-            Constraint::from(is_addmod)
+        let cons = Constraint::from(is_addmod)
                 * ((Constraint::from(out_low) + shift * Term::from(out_high))
                     - (Constraint::from(rs1_reg_low)
                         + shift * Term::from(rs1_reg_high)
                         + Term::from(rs2_reg_low)
-                        + shift * Term::from(rs2_reg_high))),
+                        + shift * Term::from(rs2_reg_high)));
+        println!("ADD MOD CONS: {cons:?}");
+        cs.add_constraint(
+            cons
         );
         // of + out - modulus = tmp, and OF must be true
         let relation = AddSubRelation {
@@ -449,15 +461,25 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x))),
         Register(inputs.cycle_end_state.pc.map(|x| Num::Var(x))),
     );
-
+    
     opt_ctx.enforce_all(cs);
+    decoded_mask_bits
+}
+
+pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (OpcodeFamilyCircuitState<F>, [Variable; crate::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS]) {
+    let input: OpcodeFamilyCircuitState<F> = cs.allocate_execution_circuit_state::<true>();
+    (input, apply_add_sub_lui_auipc_mop(cs, input.clone()))
 }
 
 pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) {
-    let input = cs.allocate_execution_circuit_state::<true>();
-    apply_add_sub_lui_auipc_mop(cs, input);
+    let _ = add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits(cs);
 }
 
 #[cfg(test)]
@@ -465,7 +487,42 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::utils::serialize_to_file;
+    use crate::{
+        cs::cs_reference::BasicAssembly,
+        definitions::{
+            ColumnAddress, CompiledDegree1Constraint, TIMESTAMP_COLUMNS_NUM_BITS, TIMESTAMP_STEP,
+        },
+        utils::serialize_to_file,
+    };
+    use field::{Field, PrimeField};
+
+    fn equal_up_to_sign(
+        lhs: &CompiledDegree1Constraint<field::Mersenne31Field>,
+        rhs: &CompiledDegree1Constraint<field::Mersenne31Field>,
+    ) -> bool {
+        if lhs == rhs {
+            return true;
+        }
+
+        let mut neg_rhs = rhs.clone();
+        for (coeff, _) in neg_rhs.linear_terms.iter_mut() {
+            coeff.negate();
+        }
+        neg_rhs.constant_term.negate();
+        neg_rhs.normalize();
+
+        lhs == &neg_rhs
+    }
+
+    #[test]
+    fn compile_circuit_output() {
+        use ::field::Mersenne31Field;
+
+        let mut cs = BasicAssembly::<Mersenne31Field>::new();
+        add_sub_lui_auipc_mop_table_addition_fn(&mut cs);
+        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(&mut cs);
+        let (_, _) = cs.finalize();
+    }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_circuit() {
@@ -493,5 +550,75 @@ mod test {
             &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(cs),
         );
         serialize_to_file(&ssa_forms, "add_sub_lui_auipc_mop_preprocessed_ssa.json");
+    }
+
+    #[test]
+    fn compiled_add_sub_lui_auipc_mop_keeps_protected_timestamp_constraints() {
+        use ::field::Mersenne31Field;
+
+        let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
+            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(cs),
+            1 << 20,
+            24,
+        );
+
+        let machine_state = compiled
+            .memory_layout
+            .machine_state_layout
+            .expect("compiled add/sub family must contain machine state layout");
+        let intermediate_state = compiled
+            .memory_layout
+            .intermediate_state_layout
+            .expect("compiled add/sub family must contain intermediate state layout");
+        let carry = compiled
+            .executor_family_circuit_next_timestamp_aux_var
+            .expect("compiled add/sub family must expose timestamp carry aux var");
+        let next_timestamp_range = machine_state.timestamp.full_range();
+        let next_timestamp = [
+            ColumnAddress::MemorySubtree(next_timestamp_range.start),
+            ColumnAddress::MemorySubtree(next_timestamp_range.start + 1),
+        ];
+        let current_timestamp_range = intermediate_state.timestamp.full_range();
+        let current_timestamp = [
+            ColumnAddress::MemorySubtree(current_timestamp_range.start),
+            ColumnAddress::MemorySubtree(current_timestamp_range.start + 1),
+        ];
+
+        let mut expected_low = CompiledDegree1Constraint {
+            linear_terms: vec![
+                (Mersenne31Field::ONE, next_timestamp[0]),
+                (Mersenne31Field::MINUS_ONE, current_timestamp[0]),
+                (
+                    Mersenne31Field::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS),
+                    carry,
+                ),
+            ]
+            .into_boxed_slice(),
+            constant_term: Mersenne31Field::from_u64_with_reduction(
+                Mersenne31Field::CHARACTERISTICS - TIMESTAMP_STEP as u64,
+            ),
+        };
+        expected_low.normalize();
+
+        let mut expected_high = CompiledDegree1Constraint {
+            linear_terms: vec![
+                (Mersenne31Field::ONE, next_timestamp[1]),
+                (Mersenne31Field::MINUS_ONE, current_timestamp[1]),
+                (Mersenne31Field::MINUS_ONE, carry),
+            ]
+            .into_boxed_slice(),
+            constant_term: Mersenne31Field::ZERO,
+        };
+        expected_high.normalize();
+
+        assert!(compiled
+            .degree_1_constraints
+            .iter()
+            .any(|constraint| equal_up_to_sign(constraint, &expected_low)));
+        assert!(compiled
+            .degree_1_constraints
+            .iter()
+            .any(|constraint| equal_up_to_sign(constraint, &expected_high)));
     }
 }

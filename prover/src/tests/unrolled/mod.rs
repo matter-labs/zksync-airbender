@@ -506,7 +506,7 @@ pub(crate) unsafe fn parse_delegation_ram_accesses(
     }
 }
 
-pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
+pub fn parse_state_permutation_elements_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
     write_set: &mut BTreeSet<(u32, TimestampScalar)>,
@@ -525,7 +525,7 @@ pub(crate) fn parse_state_permutation_elements_from_full_trace<const N: usize>(
     }
 }
 
-pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
+pub fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationDataForExecutionFamily<N, Global>,
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -543,7 +543,7 @@ pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<const N: usize>(
     }
 }
 
-pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
+pub fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     witness: &WitnessEvaluationData<N, Global>,
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
@@ -561,7 +561,7 @@ pub(crate) fn parse_delegation_ram_accesses_from_full_trace<const N: usize>(
     }
 }
 
-pub(crate) fn ensure_memory_trace_consistency<const N: usize, const M: usize>(
+pub fn ensure_memory_trace_consistency<const N: usize, const M: usize>(
     memory_trace: &MemoryOnlyWitnessEvaluationDataForExecutionFamily<N, impl Allocator + Clone>,
     witness_trace: &WitnessEvaluationDataForExecutionFamily<M, impl Allocator + Clone>,
 ) {

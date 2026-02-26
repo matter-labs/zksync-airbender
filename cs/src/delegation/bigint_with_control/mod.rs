@@ -39,9 +39,61 @@ pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct BigintDelegationPicusMetadata {
+    pub a_words: Vec<[Variable; 2]>,
+    pub b_words: Vec<[Variable; 2]>,
+    pub control_mask: [Variable; REGISTER_SIZE],
+    pub output_state: Vec<[Variable; 2]>,
+    pub x12_write_vars: [Variable; REGISTER_SIZE],
+}
+
+pub fn define_u256_ops_extended_control_delegation_circuit_with_metadata<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (
+    Vec<[Variable; 2]>,
+    [Variable; REGISTER_SIZE],
+    BigintDelegationPicusMetadata,
+) {
+    let (output_state, x12_write_vars, metadata) =
+        define_u256_ops_extended_control_delegation_circuit_inner(cs);
+    (output_state, x12_write_vars, metadata)
+}
+
 pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> (Vec<[Variable; 2]>, [Variable; REGISTER_SIZE]) {
+    let (output_state, x12_write_vars, _) = define_u256_ops_extended_control_delegation_circuit_inner(cs);
+    (output_state, x12_write_vars)
+}
+
+/// VERIDISE: Wrapper for downstream translation code that only needs the side effects on `cs`.
+///
+/// Returning `()` avoids exposing the const-sized ABI tuple in crates that otherwise hit a
+/// predicate-normalization cycle when referencing `define_u256_ops_extended_control_delegation_circuit`
+/// directly.
+pub fn define_u256_ops_extended_control_delegation_circuit_for_translation<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    let _ = define_u256_ops_extended_control_delegation_circuit(cs);
+}
+
+fn define_u256_ops_extended_control_delegation_circuit_inner<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) -> (
+    Vec<[Variable; 2]>,
+    [Variable; REGISTER_SIZE],
+    BigintDelegationPicusMetadata,
+) {
     // add tables
     materialize_tables_into_cs(cs);
 
@@ -132,6 +184,10 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
         read_value
     };
+
+    let a_words_for_metadata = a_words.clone();
+    let b_words_for_metadata = b_words.clone();
+    let control_mask_for_metadata = control_mask;
 
     assert_eq!(a_words.len(), 8);
     assert_eq!(b_words.len(), 8);
@@ -829,7 +885,15 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         }
     }
 
-    (output_placeholder_state, x12_write_vars)
+    let metadata = BigintDelegationPicusMetadata {
+        a_words: a_words_for_metadata,
+        b_words: b_words_for_metadata,
+        control_mask: control_mask_for_metadata,
+        output_state: output_placeholder_state.clone(),
+        x12_write_vars,
+    };
+
+    (output_placeholder_state, x12_write_vars, metadata)
 }
 
 #[cfg(test)]
@@ -838,9 +902,30 @@ mod test {
 
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::one_row_compiler::{CompiledCircuitArtifact, OneRowCompiler, ProtectedConstraintSnapshot};
     use crate::utils::serialize_to_file;
     use field::Mersenne31Field;
+
+    fn assert_all_protected_constraints_are_present(
+        artifact: &CompiledCircuitArtifact<Mersenne31Field>,
+        protected: &ProtectedConstraintSnapshot<Mersenne31Field>,
+    ) {
+        for constraint in protected.degree_1_constraints.iter() {
+            assert!(
+                artifact.degree_1_constraints.contains(constraint),
+                "missing protected degree-1 constraint: {:?}",
+                constraint
+            );
+        }
+
+        for constraint in protected.degree_2_constraints.iter() {
+            assert!(
+                artifact.degree_2_constraints.contains(constraint),
+                "missing protected degree-2 constraint: {:?}",
+                constraint
+            );
+        }
+    }
 
     #[test]
     fn compile_u256_ops_extended_control() {

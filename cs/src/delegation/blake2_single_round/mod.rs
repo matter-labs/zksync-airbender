@@ -1365,4 +1365,5 @@ mod test {
         dbg!(circuit.witness_layout.total_width);
         dbg!(circuit.stage_2_layout.total_width);
     }
+
 }

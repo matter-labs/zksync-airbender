@@ -1,9 +1,11 @@
 use super::*;
 
 impl<F: PrimeField> OneRowCompiler<F> {
-    pub fn compile_decoder_circuit(
+    pub fn compile_stateless_circuit(
         &self,
         circuit_output: CircuitOutput<F>,
+        protected_inputs: &[Variable],
+        protected_outputs: &[Variable],
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
         // our main purposes are:
@@ -29,12 +31,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            picus_extraction_metadata: _,
         } = circuit_output;
 
         assert!(trace_len_log2 > TIMESTAMP_COLUMNS_NUM_BITS as usize);
 
-        // we compile decoder circuit that doesn't perform memory accesses,
-        // delegations, etc
+        // We compile a circuit that has no shuffle-RAM accesses, no delegation request, and no
+        // register/indirect memory access bookkeeping. This includes the dedicated decoder
+        // circuit, but also standalone stateless plain circuits such as the optimized decoder
+        // harness used by LLZK.
 
         assert!(state_input.is_empty());
         assert!(state_output.is_empty());
@@ -44,18 +49,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
         assert!(delegated_computation_requests.is_empty());
         assert!(register_and_indirect_memory_accesses.is_empty());
         assert!(executor_machine_state.is_none());
-        assert!(range_check_expressions.is_empty());
-
         for el in lookups.iter() {
-            let LookupQueryTableType::Constant(table_type) = el.table else {
-                panic!("all lookups must use fixed table IDx");
-            };
-            let t = table_driver.get_table(table_type);
-            assert!(
-                t.is_initialized(),
-                "trying to use table with ID {:?}, but it's not initialized in table driver",
-                table_type
-            );
+            if let LookupQueryTableType::Constant(table_type) = el.table {
+                let t = table_driver.get_table(table_type);
+                assert!(
+                    t.is_initialized(),
+                    "trying to use table with ID {:?}, but it's not initialized in table driver",
+                    table_type
+                );
+            }
         }
 
         let trace_len = 1usize << trace_len_log2;
@@ -68,9 +70,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
         }
 
         drop(linked_variables);
-
-        let decoder_machine_state =
-            decoder_machine_state.expect("must be present in decoder circuit");
 
         // we do NOT need timestamps in the setup anymore
         let setup_layout = SetupLayout::layout_for_lookup_size(
@@ -94,18 +93,21 @@ impl<F: PrimeField> OneRowCompiler<F> {
         // as a byproduct we will also create a map of witness generation functions
         let mut layout = BTreeMap::<Variable, ColumnAddress>::new();
 
-        // we do NOT bump timestamps in any form, so we do not need to layout anything about them here -
-        // we mainly need to layout the decoder machine state into memory columns,
-        // and then layout witness around it
-
-        let (machine_state, executor_state) = layout_decoder_state_into_memory(
-            &mut memory_tree_offset,
-            &mut all_variables_to_place,
-            &mut layout,
-            &decoder_machine_state,
-        );
-
-        // and that's it for memory layout here
+        // Stateless circuits do not need timestamp or shuffle-RAM placement. Some of them still
+        // carry a `decoder_machine_state`; if present, we preserve that layout in memory columns.
+        let has_decoder_part = decoder_machine_state.is_some();
+        let (machine_state_layout, executor_state_layout) =
+            if let Some(decoder_machine_state) = decoder_machine_state.as_ref() {
+                let (machine_state, executor_state) = layout_decoder_state_into_memory(
+                    &mut memory_tree_offset,
+                    &mut all_variables_to_place,
+                    &mut layout,
+                    decoder_machine_state,
+                );
+                (Some(machine_state), Some(executor_state))
+            } else {
+                (None, None)
+            };
 
         let memory_layout = MemorySubtree {
             shuffle_ram_inits_and_teardowns: Vec::new(),
@@ -114,12 +116,20 @@ impl<F: PrimeField> OneRowCompiler<F> {
             delegation_processor_layout: None,
             batched_ram_accesses: Vec::new(),
             register_and_indirect_accesses: Vec::new(),
-            machine_state_layout: Some(machine_state),
-            intermediate_state_layout: Some(executor_state),
+            machine_state_layout,
+            intermediate_state_layout: executor_state_layout,
             total_width: memory_tree_offset,
         };
 
         let mut witness_tree_offset = 0usize;
+
+        let multiplicities_columns_for_range_check_16 =
+            ColumnSet::layout_at(&mut witness_tree_offset, 1);
+
+        // Stateless circuits do not use executor timestamps, but they still need the slot so the
+        // compiled witness layout remains structurally compatible with shared consumers.
+        let multiplicities_columns_for_timestamp_range_check =
+            ColumnSet::layout_at(&mut witness_tree_offset, 1);
 
         // we do not have special-cased range checks, but have generic lookup
         let multiplicities_columns_for_generic_lookup = ColumnSet::layout_at(
@@ -187,9 +197,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &mut layout,
         );
 
-        // NOTE: we perform artificial range check for circuit family as coarse 8-bit
-
-        {
+        // Dedicated decoder circuits additionally range-check the coarse circuit-family selector.
+        if let Some(decoder_machine_state) = decoder_machine_state.as_ref() {
             let place = layout[&decoder_machine_state.decoder_data.circuit_family];
             let input_columns = [
                 LookupExpression::Variable(place),
@@ -206,15 +215,13 @@ impl<F: PrimeField> OneRowCompiler<F> {
         let total_generic_lookups = width_3_lookups.len() as u64 * trace_len as u64;
         assert!(total_generic_lookups < F::CHARACTERISTICS, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS);
 
-        let (optimized_out_variables, constraints) = optimize_out_linear_constraints(
-            &state_input,
-            &state_output,
-            &substitutions,
-            constraints,
-            &mut all_variables_to_place,
-        );
-
-        let scratch_space_size_for_witness_gen = optimized_out_variables.len();
+        // Keep stateless/plain circuits fully materialized in witness storage for now. The LLZK
+        // compiled backend only models private witness/memory columns, not the compiler's
+        // `OptimizedOut(..)` scratch-space addresses, so performing linear-elimination here would
+        // create compiled constraints that LLZK cannot represent yet.
+        let _ = (protected_inputs, protected_outputs, substitutions);
+        let optimized_out_variables = Vec::new();
+        let scratch_space_size_for_witness_gen = 0;
 
         let scratch_space_columns_range = layout_scratch_space(
             &mut compiled_quadratic_terms,
@@ -228,15 +235,21 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // there are no inputs or outputs, or linkage
 
+        let mut range_check_16_lookup_expressions = range_check_16_lookup_expressions;
+        if range_check_16_lookup_expressions.len() % 2 != 0 {
+            let last = range_check_16_lookup_expressions.last().unwrap().clone();
+            range_check_16_lookup_expressions.push(last);
+        }
+
         let witness_layout = WitnessSubtree {
-            multiplicities_columns_for_range_check_16: ColumnSet::empty(),
-            multiplicities_columns_for_timestamp_range_check: ColumnSet::empty(),
+            multiplicities_columns_for_range_check_16,
+            multiplicities_columns_for_timestamp_range_check,
             multiplicities_columns_for_decoder_in_executor_families: ColumnSet::empty(),
             multiplicities_columns_for_generic_lookup,
-            range_check_8_columns: ColumnSet::empty(),
-            range_check_16_columns: ColumnSet::empty(),
+            range_check_8_columns,
+            range_check_16_columns,
             width_3_lookups,
-            range_check_16_lookup_expressions: Vec::new(),
+            range_check_16_lookup_expressions,
             timestamp_range_check_lookup_expressions: Vec::new(),
             offset_for_special_shuffle_ram_timestamps_range_check_expressions: 0,
             boolean_vars_columns_range,
@@ -272,7 +285,7 @@ impl<F: PrimeField> OneRowCompiler<F> {
             &witness_layout,
             &memory_layout,
             &setup_layout,
-            true,
+            has_decoder_part,
             true,
         );
 
@@ -312,5 +325,17 @@ impl<F: PrimeField> OneRowCompiler<F> {
         };
 
         result
+    }
+
+    pub fn compile_decoder_circuit(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        trace_len_log2: usize,
+    ) -> CompiledCircuitArtifact<F> {
+        assert!(
+            circuit_output.decoder_machine_state.is_some(),
+            "decoder compilation requires decoder_machine_state"
+        );
+        self.compile_stateless_circuit(circuit_output, &[], &[], trace_len_log2)
     }
 }

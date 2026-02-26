@@ -80,7 +80,24 @@ pub fn reduced_machine_circuit_with_preprocessed_bytecode<
     cs: &mut CS,
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
-    apply_reduced_machine_circuit::<_, _, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
+    let _ = apply_reduced_machine_circuit::<_, _, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
+}
+
+pub fn reduced_machine_circuit_with_preprocessed_bytecode_with_decoded_bits<
+    F: PrimeField,
+    CS: Circuit<F>,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    cs: &mut CS,
+) -> (
+    OpcodeFamilyCircuitState<F>,
+    [Variable; crate::definitions::REDUCED_MACHINE_NUM_FLAGS],
+) {
+    let input = cs.allocate_execution_circuit_state::<true>();
+    let decoded_mask_bits =
+        apply_reduced_machine_circuit::<_, _, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
+
+    (input, decoded_mask_bits)
 }
 
 fn apply_reduced_machine_circuit<
@@ -90,9 +107,10 @@ fn apply_reduced_machine_circuit<
 >(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> [Variable; crate::definitions::REDUCED_MACHINE_NUM_FLAGS] {
     let (decoder_bits, decoder_output, memory_queries, start_pc) =
         get_initial_data_for_execution(cs, inputs);
+    let decoded_mask_bits = decoder_bits.as_variables();
 
     let flags_source = decoder_bits.get_flag_source();
 
@@ -299,6 +317,8 @@ fn apply_reduced_machine_circuit<
         decoder_output.pc_next,
         &opt_ctx,
     );
+
+    decoded_mask_bits
 }
 
 fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
