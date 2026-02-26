@@ -21,8 +21,8 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-      - name: Compile
-        run: cargo build --verbose
+      - name: Test
+        run: cargo test --release -p execution_utils -- --nocapture --exact unrolled::test::test_prove_unrolled_hashed_fibonacci
 
   formatting:
     name: cargo fmt
@@ -162,7 +162,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cli_with_verify_80
-          path: target/release/cli
+          path: |
+            target/release/cli
+            examples/basic_fibonacci/app.bin
+            examples/basic_fibonacci/app.text
 
   build_cli_with_verify_100:
     name: build_cli_with_verify_100
@@ -179,7 +182,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cli_with_verify_100
-          path: target/release/cli
+          path: |
+            target/release/cli
+            examples/basic_fibonacci/app.bin
+            examples/basic_fibonacci/app.text
 
   build_cli_no_verifiers_80:
     name: build_cli_no_verifiers_80
@@ -209,10 +215,9 @@ jobs:
 
   cli_smoke_80_base_verify:
     name: cli_smoke_80_base_verify
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_with_verify_80]
     steps:
-      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify_80
@@ -223,16 +228,15 @@ jobs:
       - name: Run
         run: ./cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
       - name: Prove
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --output-dir output --output-file proof.json
+        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
       - name: Verify
         run: ./cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
 
   cli_smoke_100_base_verify:
     name: cli_smoke_100_base_verify
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli_with_verify_100]
     steps:
-      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
           name: cli_with_verify_100
@@ -243,7 +247,7 @@ jobs:
       - name: Run
         run: ./cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
       - name: Prove
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --output-dir output --output-file proof.json
+        run: ./cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
       - name: Verify
         run: ./cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
 

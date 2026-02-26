@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
+          CUDAARCHS=89 CARGO_TARGET_DIR=./build \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-default-features --features gpu,${{ matrix.security }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
@@ -97,6 +97,8 @@ jobs:
           path: zksync-airbender-test-binary/
 
       - name: Run test binary
+        env:
+          ZKSYNC_AIRBENDER_LOW_VRAM_MODE: "1"
         run: |
           chmod +x zksync-airbender-test-binary/${{ matrix.package }}
           zksync-airbender-test-binary/${{ matrix.package }} --exact tests::test_local_prover_with_files --nocapture

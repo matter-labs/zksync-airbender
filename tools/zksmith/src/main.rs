@@ -6,13 +6,13 @@ use std::{
 
 use clap::Parser;
 use cli_lib::prover_utils::{
-    ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact, ProofTarget,
-    default_backend_for_build, u32_from_hex_string,
+    default_backend_for_build, u32_from_hex_string, ProgramProver, ProgramProverConfig,
+    ProgramSource, ProofArtifact, ProofTarget,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use serde_json::json;
+use serde_json::Value;
 use warp::Filter;
 
 // Anvil currently exposes ZKsync OS witness via this method name.
