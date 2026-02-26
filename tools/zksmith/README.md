@@ -7,7 +7,7 @@
 From workspace root:
 
 ```bash
-cargo run -p zksmith -- \
+cargo run --release -p zksmith -- \
   --anvil-url http://localhost:8011 \
   --zksync-os-bin-path examples/zksync_os/app.bin
 ```
@@ -24,7 +24,7 @@ Default features:
 Run with `security_100`:
 
 ```bash
-cargo run -p zksmith --no-default-features --features gpu,security_100 -- \
+cargo run --release -p zksmith --no-default-features --features gpu,security_100 -- \
   --anvil-url http://localhost:8011 \
   --zksync-os-bin-path examples/zksync_os/app.bin
 ```
@@ -32,7 +32,7 @@ cargo run -p zksmith --no-default-features --features gpu,security_100 -- \
 Run without GPU:
 
 ```bash
-cargo run -p zksmith --no-default-features --features security_80 -- \
+cargo run --release -p zksmith --no-default-features --features security_80 -- \
   --anvil-url http://localhost:8011 \
   --zksync-os-bin-path examples/zksync_os/app.bin
 ```

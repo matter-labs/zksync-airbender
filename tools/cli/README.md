@@ -48,7 +48,7 @@ cargo build -p cli --no-default-features --features gpu,security_80
 Base layer proof on CPU:
 
 ```bash
-cargo run -p cli -- prove \
+cargo run --release -p cli -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --target base \
   --backend cpu \
@@ -59,7 +59,7 @@ cargo run -p cli -- prove \
 Recursion-unified proof on CPU (`recursion-unified` is the default target):
 
 ```bash
-cargo run -p cli -- prove \
+cargo run --release -p cli -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --backend cpu \
   --output-dir output \
@@ -69,7 +69,7 @@ cargo run -p cli -- prove \
 Base layer proof on GPU:
 
 ```bash
-cargo run -p cli --no-default-features --features gpu,security_80 -- prove \
+cargo run --release -p cli --no-default-features --features gpu,security_80 -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --target base \
   --backend gpu \
@@ -80,7 +80,7 @@ cargo run -p cli --no-default-features --features gpu,security_80 -- prove \
 ## Verify
 
 ```bash
-cargo run -p cli --no-default-features --features include_verifiers_80 -- \
+cargo run --release -p cli --no-default-features --features include_verifiers_80 -- \
   verify \
   --proof output/proof.json \
   --bin examples/basic_fibonacci/app.bin
@@ -96,7 +96,7 @@ Verification checks:
 ## Prove Batch
 
 ```bash
-cargo run -p cli -- prove-batch \
+cargo run --release -p cli -- prove-batch \
   --bin examples/basic_fibonacci/app.bin \
   --input-file input/a.hex \
   --input-file input/b.hex \
@@ -107,7 +107,7 @@ cargo run -p cli -- prove-batch \
 ## Run
 
 ```bash
-cargo run -p cli -- run --bin examples/basic_fibonacci/app.bin --expected-results 144
+cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expected-results 144
 ```
 
 `run` machine options:
