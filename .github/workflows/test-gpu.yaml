@@ -17,6 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
+        # CUDA 13-compiled binaries are not runnable there.
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
         security: [ "security_80", "security_100" ]
@@ -75,6 +77,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep this aligned with the build matrix because runner driver support is
+        # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
         security: [ "security_80", "security_100" ]

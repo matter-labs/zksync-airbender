@@ -111,6 +111,21 @@ pub const RECURSION_UNIFIED_BIN: &[u8] =
 pub const RECURSION_UNIFIED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
 
+#[cfg(feature = "security_80")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
+#[cfg(feature = "security_100")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+#[cfg(feature = "security_80")]
+const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
+#[cfg(feature = "security_100")]
+const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
+
+fn unified_recursion_has_converged(iterations_done: usize, family_proof_count: usize) -> bool {
+    // Keep at least two unified iterations so artifact verification is self-contained.
+    iterations_done >= MIN_UNIFIED_RECURSION_ITERATIONS
+        && family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+}
+
 impl UnrolledProver {
     pub fn new(
         path_without_bin: &String,
@@ -364,7 +379,8 @@ impl UnrolledProver {
                 proof.debug_info()
             );
             let (family_proof_count, _, _) = proof.get_proof_counts();
-            if family_proof_count == 1 {
+            let iterations_done = unified_recursion_layer as usize + 1;
+            if unified_recursion_has_converged(iterations_done, family_proof_count) {
                 break;
             }
             unified_recursion_layer += 1;

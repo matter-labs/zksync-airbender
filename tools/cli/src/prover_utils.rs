@@ -64,6 +64,21 @@ pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
 #[cfg(feature = "security_100")]
 pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
 
+#[cfg(feature = "security_80")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
+#[cfg(feature = "security_100")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+#[cfg(feature = "security_80")]
+const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
+#[cfg(feature = "security_100")]
+const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
+
+fn unified_recursion_has_converged(iterations_done: usize, family_proof_count: usize) -> bool {
+    // Keep at least two unified iterations so artifact verification is self-contained.
+    iterations_done >= MIN_UNIFIED_RECURSION_ITERATIONS
+        && family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
 pub enum ProofTarget {
     Base,
@@ -504,7 +519,8 @@ impl ProgramProver {
             proof = new_proof;
 
             let (family_count, _, _) = proof.get_proof_counts();
-            if family_count == 1 {
+            let iterations_done = unified_level_idx + 1;
+            if unified_recursion_has_converged(iterations_done, family_count) {
                 break;
             }
 
@@ -616,7 +632,7 @@ pub fn verify_artifact(
                 verify_proof_in_unified_layer(
                     &artifact.proof,
                     &unrolled_level.setup,
-                    &unrolled_level.layouts,
+                    &unified_level.layouts,
                     true,
                 )
                 .map_err(|_| "recursion(unified over unrolled) verification failed".to_string())
