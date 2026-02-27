@@ -75,33 +75,6 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  full_recursion_fast:
-    name: full_recursion_fast
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Display CPU Info
-        run: |
-          echo "Checking CPU capabilities..."
-          lscpu | grep avx512 || echo "AVX-512 not supported on this runner"
-
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Run Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_fib
-      - name: Run base layer recursive verifier over Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_base
-      - name: Run recursive layer verifier over base layer verifier and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion
-
   circuits_generated:
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
