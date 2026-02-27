@@ -531,6 +531,7 @@ fn fast_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn fast_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     bincode::deserialize_from(src).unwrap()
@@ -552,6 +553,7 @@ fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
     (buffer, binary)
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_bigint_with_control_call() {
     use crate::cs::cs::cs_reference::BasicAssembly;

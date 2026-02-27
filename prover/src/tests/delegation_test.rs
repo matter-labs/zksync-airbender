@@ -479,6 +479,8 @@ pub fn run_basic_delegation_test_impl(
 }
 
 // #[ignore = "test has explicit panic inside"]
+#[cfg(feature = "legacy_tests")]
+#[serial_test::serial]
 #[test]
 fn run_basic_delegation_test() {
     run_basic_delegation_test_impl(None, None);

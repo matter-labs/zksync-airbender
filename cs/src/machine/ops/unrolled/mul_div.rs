@@ -427,7 +427,7 @@ pub fn mul_div_circuit_with_preprocessed_bytecode<
     apply_mul_div::<_, _, SUPPORT_SIGNED>(cs, input);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::utils::serialize_to_file;
@@ -446,6 +446,7 @@ mod test {
         serialize_to_file(&compiled, "mul_div_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_mul_div_witness_graph() {
         use ::field::Mersenne31Field;
@@ -471,6 +472,7 @@ mod test {
         serialize_to_file(&compiled, "mul_div_unsigned_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_mul_div_unsigned_witness_graph() {
         use ::field::Mersenne31Field;

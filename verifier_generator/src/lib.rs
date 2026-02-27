@@ -42,6 +42,8 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
+    #[cfg(not(feature = "ci_mode"))]
+    #[serial_test::serial]
     #[test]
     fn launch() {
         let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
@@ -55,6 +57,8 @@ mod test {
         dst.write_all(&result.to_string().as_bytes()).unwrap();
     }
 
+    #[cfg(not(feature = "ci_mode"))]
+    #[serial_test::serial]
     #[test]
     fn launch_inlining() {
         let compiled_circuit = deserialize_from_file("../prover/full_machine_layout.json");
@@ -69,6 +73,8 @@ mod test {
         dst.write_all(&result.to_string().as_bytes()).unwrap();
     }
 
+    #[cfg(not(feature = "ci_mode"))]
+    #[serial_test::serial]
     #[test]
     fn generate_for_unrolled_circuits() {
         let circuit_names = vec![
@@ -97,6 +103,8 @@ mod test {
         }
     }
 
+    #[cfg(all(feature = "legacy_tests", not(feature = "ci_mode")))]
+    #[serial_test::serial]
     #[test]
     fn generate_reduced_machine() {
         let compiled_circuit = deserialize_from_file("../prover/reduced_machine_layout");

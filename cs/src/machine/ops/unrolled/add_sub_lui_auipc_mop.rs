@@ -460,7 +460,7 @@ pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, C
     apply_add_sub_lui_auipc_mop(cs, input);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::utils::serialize_to_file;
@@ -479,6 +479,7 @@ mod test {
         serialize_to_file(&compiled, "add_sub_lui_auipc_mop_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_add_sub_lui_auipc_mop_witness_graph() {
         use ::field::Mersenne31Field;

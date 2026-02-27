@@ -19,7 +19,7 @@ type-map = "0.5"
 
 [dev-dependencies]
 criterion = "0.5"
-rand = { workspace = true, features = ["std", "std_rng"]}
+rand = { workspace = true, features = ["std", "std_rng", "thread_rng"]}
 
 [[bench]]
 name = "bitreverse"

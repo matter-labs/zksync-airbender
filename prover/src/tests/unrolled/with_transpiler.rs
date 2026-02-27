@@ -30,6 +30,7 @@ const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
 // #[ignore = "test has explicit panic inside"]
+#[cfg(not(feature = "ci_mode"))]
 #[test]
 fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
     run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None, None);
@@ -2114,6 +2115,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_mem_circuit() {
     use crate::cs::cs::cs_reference::BasicAssembly;

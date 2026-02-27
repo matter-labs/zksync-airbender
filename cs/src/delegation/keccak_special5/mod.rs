@@ -1718,7 +1718,7 @@ fn enforce_copies<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
@@ -1737,6 +1737,7 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn keccak_delegation_get_witness_graph() {
         let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
             define_keccak_special5_delegation_circuit::<_, _, false>,

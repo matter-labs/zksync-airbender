@@ -487,6 +487,7 @@ pub fn run_keccak_test_impl(
 }
 
 // use --features debug_satisfiable ?
+#[serial_test::serial]
 #[test]
 fn run_keccak_test() {
     run_keccak_test_impl(None, None);

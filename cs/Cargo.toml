@@ -29,6 +29,7 @@ type-map = { version = "0.5", optional = true }
 [dev-dependencies]
 disc-v = {git = "https://github.com/oxidecomputer/disc-v.git"}
 rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
+serial_test = "3"
 
 [features]
 definitions_only = []
@@ -38,6 +39,7 @@ debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 experimental_witness_eval = []
+ci_mode = []
 
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]

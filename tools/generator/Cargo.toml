@@ -18,3 +18,6 @@ verifier_generator = { workspace = true }
 setups = { workspace = true }
 witness_eval_generator = { workspace = true }
 gpu_witness_eval_generator = { workspace = true }
+
+[features]
+ci_mode = []

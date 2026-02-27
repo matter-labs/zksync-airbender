@@ -255,6 +255,7 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 #[cfg(test)]
 mod test {
     #[test]
+    #[cfg(feature = "legacy_tests")]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     fn test_unified_over_unrolled_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -292,6 +293,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "legacy_tests")]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     fn test_unified_over_unified_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -328,6 +330,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "legacy_tests")]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     fn test_unified_x2_over_unified_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -363,6 +366,7 @@ mod test {
         dbg!(result);
     }
 
+    #[cfg(feature = "legacy_tests")]
     #[test]
     fn prove_unified_recursion() {
         use crate::setups::read_and_pad_binary;

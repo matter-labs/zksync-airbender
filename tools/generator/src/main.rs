@@ -245,6 +245,7 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
+#[cfg(not(feature = "ci_mode"))]
 #[test]
 fn generate_verifier() {
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =

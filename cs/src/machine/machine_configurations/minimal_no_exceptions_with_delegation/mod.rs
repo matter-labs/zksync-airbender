@@ -102,7 +102,7 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
 
@@ -130,6 +130,7 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn reduced_machine_with_delegation_get_witness_graph() {
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
         let ssa_forms = dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS>(machine);

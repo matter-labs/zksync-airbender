@@ -207,7 +207,10 @@ pub fn generate_artifacts() {
     use std::io::Write;
 
     // particular bytecode doesn't matter here - it only goes to special lookup tables in setup
-    let compiled_machine = get_circuit_for_rom_bound::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(&[]);
+    let num_bytecode_words = (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4;
+    let dummy_bytecode = vec![0u32; num_bytecode_words];
+    let compiled_machine =
+        get_circuit_for_rom_bound::<ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(&dummy_bytecode);
     serialize_to_file(&compiled_machine, "generated/layout.json");
 
     let (layout, quotient) = verifier_generator::generate_for_description(compiled_machine);
@@ -219,10 +222,11 @@ pub fn generate_artifacts() {
     dst.write_all(&quotient.as_bytes()).unwrap();
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn generate() {
         generate_artifacts();

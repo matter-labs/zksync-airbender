@@ -2023,7 +2023,9 @@ fn prove_delegation_circuit_with_replayer_format<
 pub(crate) mod test {
     use super::*;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    #[cfg(not(feature = "ci_mode"))]
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+    #[cfg(not(feature = "ci_mode"))]
     use std::alloc::Global;
     use std::path::Path;
 
@@ -2121,6 +2123,8 @@ pub(crate) mod test {
     #[cfg(feature = "verifiers")]
     use verifiers_only::UnrolledProgramProof;
 
+    #[cfg(not(feature = "ci_mode"))]
+    #[serial_test::serial]
     #[test]
     fn test_prove_unrolled_fibonacci() {
         let (_, binary_image) =
@@ -2159,7 +2163,11 @@ pub(crate) mod test {
             register_final_state,
             (final_pc, final_timestamp),
             pow_challenge,
-        ) = prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
+        ) = prove_unrolled_execution_with_replayer::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+            Global,
+            { common_constants::rom::ROM_SECOND_WORD_BITS },
+        >(
             1 << 24,
             &binary_image,
             &text_section,
@@ -2185,6 +2193,7 @@ pub(crate) mod test {
     }
 
     #[cfg(feature = "verifiers")]
+    #[serial_test::serial]
     #[test]
     fn test_verify_simple_fib() {
         use crate::bincode_deserialize_from_file;

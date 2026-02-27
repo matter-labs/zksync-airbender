@@ -286,7 +286,7 @@ pub fn word_only_load_store_circuit_with_preprocessed_bytecode<
     apply_word_only_load_store::<F, CS, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::utils::serialize_to_file;
@@ -323,6 +323,7 @@ mod test {
         serialize_to_file(&compiled, "word_only_load_store_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_word_only_load_store_witness_graph() {
         use ::field::Mersenne31Field;

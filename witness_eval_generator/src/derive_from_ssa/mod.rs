@@ -441,7 +441,7 @@ pub fn derive_from_ssa(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use ::field::Mersenne31Field;
@@ -452,6 +452,7 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn launch() {
         // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
@@ -469,6 +470,7 @@ mod test {
             .unwrap();
     }
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn gen_for_prover_tests() {
         for prefix in [
@@ -490,6 +492,7 @@ mod test {
         }
     }
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn gen_for_unrolled_tests() {
         for prefix in [

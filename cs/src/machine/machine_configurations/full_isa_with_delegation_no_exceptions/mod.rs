@@ -106,7 +106,7 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineWithDelegationNoExceptionHandli
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
 
@@ -134,6 +134,7 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn full_machine_with_delegation_get_witness_graph() {
         let machine = FullIsaMachineWithDelegationNoExceptionHandling;
 

@@ -703,10 +703,11 @@ pub fn compute_and_save_params(
     serde_json::to_writer(file, &(setups, inits_setup)).expect("must serialize");
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn generate_all() {
         let description = generate_delegation_circuits_artifacts();
@@ -716,6 +717,7 @@ mod test {
         dst.write_all(&description.as_bytes()).unwrap();
     }
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn test_generate_unrolled_base() {
         compute_and_save_params(

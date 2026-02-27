@@ -324,7 +324,7 @@ impl Generator {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod tests {
     use crate::F;
     use cs::cs::witness_placer::graph_description::RawExpression;
@@ -354,6 +354,7 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(not(feature = "ci_mode"))]
     #[test]
     fn launch() {
         generate("bigint_delegation");

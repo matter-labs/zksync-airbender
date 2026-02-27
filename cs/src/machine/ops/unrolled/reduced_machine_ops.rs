@@ -563,7 +563,7 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::utils::serialize_to_file;
@@ -606,6 +606,7 @@ mod test {
         serialize_to_file(&compiled, "reduced_machine_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_reduced_machine_witness_graph() {
         use ::field::Mersenne31Field;

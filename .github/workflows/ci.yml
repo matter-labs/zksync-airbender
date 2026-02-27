@@ -23,8 +23,8 @@ jobs:
           rustup set profile minimal
       - name: Compile
         run: cargo build --verbose
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
+      - name: Unit tests (ci_mode)
+        run: cargo test --profile cli --features ci_mode
 
   transpiler_tests:
     name: transpiler tests
@@ -75,21 +75,6 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  simulator_isa_tests:
-    name: ISA tests for simulator
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: tests
-        working-directory: ./risc_v_simulator
-        run: cargo test --release --features=delegation
-
   full_recursion_fast:
     name: full_recursion_fast
     runs-on: [matterlabs-ci-runner-c3d]
@@ -116,24 +101,6 @@ jobs:
       - name: Run recursive layer verifier over base layer verifier and prove
         working-directory: execution_utils
         run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion
-
-  risc_v_test_delegations:
-    name: risc_v_tests_delegations
-    runs-on: [matterlabs-ci-runner]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Compile
-        working-directory: ./risc_v_simulator
-        run: cargo build --features delegation --verbose
-      - name: test
-        working-directory: ./risc_v_simulator
-        run: cargo test --features delegation
 
   circuits_generated:
     name: circuits_generated

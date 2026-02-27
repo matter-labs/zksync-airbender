@@ -16,7 +16,7 @@ pub fn inits_and_teardowns_table_driver_fn<F: PrimeField>(table_driver: &mut Tab
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::one_row_compiler::OneRowCompiler;
@@ -32,6 +32,7 @@ mod test {
         serialize_to_file(&compiled, "inits_and_teardowns_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_inits_and_teardowns_witness_graph() {
         use ::field::Mersenne31Field;

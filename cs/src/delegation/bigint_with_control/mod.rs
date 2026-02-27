@@ -832,7 +832,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     (output_placeholder_state, x12_write_vars)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
@@ -852,6 +852,7 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn bigint_delegation_get_witness_graph() {
         let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
             define_u256_ops_extended_control_delegation_circuit,

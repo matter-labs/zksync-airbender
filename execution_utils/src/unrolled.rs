@@ -504,15 +504,16 @@ mod test {
         let rom_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let proofs =
-            prove_unrolled_for_machine_configuration::<IMStandardIsaConfigWithUnsignedMulDiv>(
-                &binary_image,
-                &text_section,
-                cycles_bound,
-                non_determinism_source,
-                rom_bound,
-                &worker,
-            );
+        let proofs = prove_unrolled_with_replayer_for_machine_configuration::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
+            &binary_image,
+            &text_section,
+            cycles_bound,
+            non_determinism_source,
+            rom_bound,
+            &worker,
+        );
 
         println!("Proving completed, preparing to verify");
 
@@ -556,6 +557,7 @@ mod test {
         assert!(is_valid);
     }
 
+    #[allow(dead_code)]
     pub fn prove_unrolled_for_machine_configuration<C: MachineConfig>(
         binary_image: &[u32],
         text_section: &[u32],

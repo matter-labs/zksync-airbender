@@ -378,7 +378,7 @@ pub fn jump_branch_slt_circuit_with_preprocessed_bytecode<
     apply_jump_branch_slt::<F, CS, SUPPORT_SIGNED>(cs, input);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::utils::serialize_to_file;
@@ -397,6 +397,7 @@ mod test {
         serialize_to_file(&compiled, "jump_branch_slt_preprocessed_layout.json");
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_jump_branch_slt_witness_graph() {
         use ::field::Mersenne31Field;

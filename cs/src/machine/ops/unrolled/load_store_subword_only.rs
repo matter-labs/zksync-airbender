@@ -560,7 +560,7 @@ pub fn subword_only_load_store_circuit_with_preprocessed_bytecode<
     apply_subword_only_load_store::<F, CS, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
     use crate::machine::ops::unrolled::load_store::create_load_store_special_tables;
@@ -601,6 +601,7 @@ mod test {
         );
     }
 
+    #[serial_test::serial]
     #[test]
     fn compile_subword_only_load_store_witness_graph() {
         use ::field::Mersenne31Field;

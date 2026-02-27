@@ -16,3 +16,10 @@ syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
 proc-macro2 = "1"
 serde_json = "*"
+
+[dev-dependencies]
+serial_test = "3"
+
+[features]
+ci_mode = []
+legacy_tests = []
