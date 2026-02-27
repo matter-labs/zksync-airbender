@@ -58,7 +58,8 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
+          # Build for A100 (sm_80), L4 (sm_89), and H100 (sm_90).
+          CUDAARCHS="80;89;90" CARGO_TARGET_DIR=./build \
           cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-default-features --features gpu,${{ matrix.security }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
@@ -99,12 +100,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gpu_info="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
+          gpu_info="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader)"
+          min_full_vram_mib=32768
           low_vram_mode=0
-          while IFS=',' read -r name memory; do
-            name="$(echo "$name" | xargs)"
+          while IFS=',' read -r memory; do
             memory_mib="$(echo "$memory" | tr -dc '0-9')"
-            if [[ "$name" == *"L4"* ]] || [[ "$memory_mib" -le 24576 ]]; then
+            if [[ "$memory_mib" -lt "$min_full_vram_mib" ]]; then
               low_vram_mode=1
               break
             fi
