@@ -491,6 +491,7 @@ mod test {
     use risc_v_simulator::cycle::MachineConfig;
     use std::alloc::Global;
 
+    #[serial_test::serial]
     #[test]
     fn test_prove_unrolled_fibonacci() {
         let (_, binary_image) =
@@ -524,6 +525,7 @@ mod test {
         assert!(is_valid);
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_prove_unrolled_hashed_fibonacci() {
         let (_, binary_image) =
