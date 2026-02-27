@@ -1,7 +1,7 @@
 use core::mem::offset_of;
 
 use super::*;
-#[cfg(feature = "legacy_tests")]
+#[cfg(not(feature = "ci_mode"))]
 use prover::prover_stages::Proof;
 #[cfg(feature = "legacy_tests")]
 use verifier_common::proof_flattener::*;
@@ -21,7 +21,8 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
-#[cfg(feature = "legacy_tests")]
+#[cfg(not(feature = "ci_mode"))]
+#[ignore = "manual unified/delegation verifier fixture test"]
 #[test]
 fn test_unified_cycle_or_delegation() {
     // create an oracle to feed into verifier and look at the transcript values
