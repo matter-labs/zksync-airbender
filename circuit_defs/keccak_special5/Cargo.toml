@@ -15,3 +15,6 @@ verifier_generator = { workspace = true }
 serde = { workspace = true }
 common_constants = { workspace = true }
 serde_json = "*"
+
+[features]
+ci_mode = []

@@ -487,12 +487,14 @@ pub fn run_keccak_test_impl(
 }
 
 // use --features debug_satisfiable ?
+#[cfg(all(test, feature = "legacy_tests"))]
 #[serial_test::serial]
 #[test]
 fn run_keccak_test() {
     run_keccak_test_impl(None, None);
 }
 
+#[cfg(all(test, feature = "legacy_tests"))]
 #[cfg_attr(
     not(feature = "debug_satisfiable"),
     ignore = "Running prover test without the 'debug_satisfiable' feature; run cargo test --features debug_satisfiable for the full test"

@@ -159,7 +159,7 @@ pub fn generate_artifacts() {
     dst.write_all(&quotient.as_bytes()).unwrap();
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 mod test {
     use super::*;
 

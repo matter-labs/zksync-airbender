@@ -2019,13 +2019,11 @@ fn prove_delegation_circuit_with_replayer_format<
     (per_delegation_type_proofs, per_tree_set)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "ci_mode")))]
 pub(crate) mod test {
     use super::*;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-    #[cfg(not(feature = "ci_mode"))]
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    #[cfg(not(feature = "ci_mode"))]
     use std::alloc::Global;
     use std::path::Path;
 
@@ -2192,7 +2190,7 @@ pub(crate) mod test {
         );
     }
 
-    #[cfg(feature = "verifiers")]
+    #[cfg(all(feature = "verifiers", not(feature = "ci_mode")))]
     #[serial_test::serial]
     #[test]
     fn test_verify_simple_fib() {

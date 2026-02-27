@@ -2115,7 +2115,8 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
 }
 
-#[cfg(feature = "legacy_tests")]
+#[cfg(all(test, not(feature = "ci_mode")))]
+#[ignore = "requires local test_wit.bin fixture"]
 #[test]
 fn test_mem_circuit() {
     use crate::cs::cs::cs_reference::BasicAssembly;

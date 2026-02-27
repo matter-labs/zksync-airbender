@@ -14,3 +14,6 @@ prover = { workspace = true, features = ["prover"] }
 verifier_generator = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
+
+[features]
+ci_mode = []

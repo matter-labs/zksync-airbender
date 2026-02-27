@@ -29,7 +29,7 @@ pub mod reduced_machine {
 
     include!("../../../reduced_machine_preprocessed_generated.rs");
 
-    #[cfg(feature = "legacy_tests")]
+    #[cfg(all(test, not(feature = "ci_mode")))]
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
     ) {
@@ -41,7 +41,8 @@ pub mod reduced_machine {
     }
 }
 
-#[cfg(feature = "legacy_tests")]
+#[cfg(all(test, not(feature = "ci_mode")))]
+#[ignore = "manual reduced unrolled proving test"]
 #[test]
 fn run_unrolled_reduced_test() {
     run_unrolled_reduced_test_impl(None);
@@ -54,7 +55,7 @@ fn run_unrolled_reduced_test() {
         reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
     )
 )]
-#[cfg(feature = "legacy_tests")]
+#[cfg(all(test, not(feature = "ci_mode")))]
 pub fn run_unrolled_reduced_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {

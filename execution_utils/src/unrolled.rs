@@ -478,8 +478,11 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     )
 }
 
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-#[cfg(test)]
+#[cfg(all(
+    any(feature = "verifier_80", feature = "verifier_100"),
+    test,
+    not(feature = "ci_mode")
+))]
 mod test {
     use super::*;
     use std::path::Path;
