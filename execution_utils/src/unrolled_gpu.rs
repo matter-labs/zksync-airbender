@@ -115,15 +115,10 @@ pub const RECURSION_UNIFIED_TXT: &[u8] =
 const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
 #[cfg(feature = "security_100")]
 const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
-#[cfg(feature = "security_80")]
-const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
-#[cfg(feature = "security_100")]
-const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
 
-fn unified_recursion_has_converged(iterations_done: usize, family_proof_count: usize) -> bool {
-    // Keep at least two unified iterations so artifact verification is self-contained.
-    iterations_done >= MIN_UNIFIED_RECURSION_ITERATIONS
-        && family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
+    // Unified recursion converges once proof shape reaches target size.
+    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
 }
 
 impl UnrolledProver {
@@ -379,8 +374,7 @@ impl UnrolledProver {
                 proof.debug_info()
             );
             let (family_proof_count, _, _) = proof.get_proof_counts();
-            let iterations_done = unified_recursion_layer as usize + 1;
-            if unified_recursion_has_converged(iterations_done, family_proof_count) {
+            if unified_recursion_has_converged(family_proof_count) {
                 break;
             }
             unified_recursion_layer += 1;

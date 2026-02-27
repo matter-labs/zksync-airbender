@@ -68,15 +68,10 @@ pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
 const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
 #[cfg(feature = "security_100")]
 const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
-#[cfg(feature = "security_80")]
-const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
-#[cfg(feature = "security_100")]
-const MIN_UNIFIED_RECURSION_ITERATIONS: usize = 2;
 
-fn unified_recursion_has_converged(iterations_done: usize, family_proof_count: usize) -> bool {
-    // Keep at least two unified iterations so artifact verification is self-contained.
-    iterations_done >= MIN_UNIFIED_RECURSION_ITERATIONS
-        && family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
+    // Unified recursion converges once proof shape reaches target size.
+    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
@@ -519,8 +514,7 @@ impl ProgramProver {
             proof = new_proof;
 
             let (family_count, _, _) = proof.get_proof_counts();
-            let iterations_done = unified_level_idx + 1;
-            if unified_recursion_has_converged(iterations_done, family_count) {
+            if unified_recursion_has_converged(family_count) {
                 break;
             }
 
@@ -624,29 +618,15 @@ pub fn verify_artifact(
             let unrolled_level = make_unrolled_recursion_level_data(&base_level, &loaded_unrolled);
             let unified_level = make_unified_recursion_level_data(&unrolled_level, &loaded_unified);
 
-            let preimage = validate_recursion_chain(&artifact.proof)?;
-            let previous_end_params: [u32; 8] =
-                preimage[8..16].try_into().expect("slice with exact length");
+            validate_recursion_chain(&artifact.proof)?;
 
-            if previous_end_params == unrolled_level.setup.end_params {
-                verify_proof_in_unified_layer(
-                    &artifact.proof,
-                    &unrolled_level.setup,
-                    &unified_level.layouts,
-                    true,
-                )
-                .map_err(|_| "recursion(unified over unrolled) verification failed".to_string())
-            } else if previous_end_params == unified_level.setup.end_params {
-                verify_proof_in_unified_layer(
-                    &artifact.proof,
-                    &unified_level.setup,
-                    &unified_level.layouts,
-                    false,
-                )
-                .map_err(|_| "recursion(unified over unified) verification failed".to_string())
-            } else {
-                Err("unable to infer previous layer for recursion-unified proof".to_string())
-            }
+            verify_proof_in_unified_layer(
+                &artifact.proof,
+                &unified_level.setup,
+                &unified_level.layouts,
+                false,
+            )
+            .map_err(|_| "recursion(unified) verification failed".to_string())
         }
     }
 }
