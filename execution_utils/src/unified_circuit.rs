@@ -256,7 +256,7 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 mod test {
     #[cfg(not(feature = "ci_mode"))]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-    #[ignore = "requires pre-generated gpu_prover_test artifacts"]
+    #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unrolled_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -295,7 +295,7 @@ mod test {
 
     #[cfg(not(feature = "ci_mode"))]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-    #[ignore = "requires pre-generated gpu_prover_test artifacts"]
+    #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unified_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -333,7 +333,7 @@ mod test {
 
     #[cfg(not(feature = "ci_mode"))]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-    #[ignore = "requires pre-generated gpu_prover_test artifacts"]
+    #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_x2_over_unified_verifier() {
         use crate::setups::read_and_pad_binary;
@@ -370,7 +370,7 @@ mod test {
     }
 
     #[cfg(not(feature = "ci_mode"))]
-    #[ignore = "requires pre-generated gpu_prover_test artifacts"]
+    #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn prove_unified_recursion() {
         use crate::setups::read_and_pad_binary;
