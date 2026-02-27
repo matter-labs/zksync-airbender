@@ -85,14 +85,41 @@ pub struct UnrolledProver {
     pub prover: ExecutionProver,
 }
 
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.text");
+
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
+
+#[cfg(feature = "security_80")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
+#[cfg(feature = "security_100")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+
+fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
+    // Unified recursion converges once proof shape reaches target size.
+    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+}
 
 impl UnrolledProver {
     pub fn new(
@@ -347,7 +374,7 @@ impl UnrolledProver {
                 proof.debug_info()
             );
             let (family_proof_count, _, _) = proof.get_proof_counts();
-            if family_proof_count == 1 {
+            if unified_recursion_has_converged(family_proof_count) {
                 break;
             }
             unified_recursion_layer += 1;

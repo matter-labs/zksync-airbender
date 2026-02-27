@@ -15,9 +15,13 @@ jobs:
   zksync-airbender-build:
     runs-on: [ ubuntu-latest ]
     strategy:
+      fail-fast: false
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
+        # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
+        # CUDA 13-compiled binaries are not runnable there.
+        cuda: [ "12.9.1-devel-ubuntu22.04" ]
         package: [ "zksmith" ]
+        security: [ "security_80", "security_100" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
@@ -54,8 +58,9 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
-          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
+          # Build for A100 (sm_80), L4 (sm_89), and H100 (sm_90).
+          CUDAARCHS="80;89;90" CARGO_TARGET_DIR=./build \
+          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-default-features --features gpu,${{ matrix.security }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
           | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
             cp "$binary" artifacts/${{ matrix.package }}
@@ -64,19 +69,20 @@ jobs:
       - name: Upload test binary
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-${{ matrix.security }}-test-binary
           path: artifacts/${{ matrix.package }}
           if-no-files-found: error
 
   zksync-airbender-test:
-    # TODO(ci): Re-enable once tools/cli/src/prover_utils.rs:269 is implemented for zksmith test binary runs.
-    if: ${{ false }}
     runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
+      fail-fast: false
       matrix:
+        # Keep this aligned with the build matrix because runner driver support is
+        # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
-        # TODO: CUDA 13.0.0 is not yet supported by matterlabs-ci-gpu-runner.
         package: [ "zksmith" ]
+        security: [ "security_80", "security_100" ]
 
     needs: zksync-airbender-build
     steps:
@@ -90,13 +96,34 @@ jobs:
         run: |
           nvidia-smi
 
+      - name: Configure low VRAM mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpu_info="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader)"
+          min_full_vram_mib=32768
+          low_vram_mode=0
+          while IFS=',' read -r memory; do
+            memory_mib="$(echo "$memory" | tr -dc '0-9')"
+            if [[ "$memory_mib" -lt "$min_full_vram_mib" ]]; then
+              low_vram_mode=1
+              break
+            fi
+          done <<< "$gpu_info"
+          if [[ "$low_vram_mode" -eq 1 ]]; then
+            echo "ZKSYNC_AIRBENDER_LOW_VRAM_MODE=1" >> "$GITHUB_ENV"
+            echo "Enabled low VRAM mode"
+          else
+            echo "Low VRAM mode is not required"
+          fi
+
       - name: Download test binary
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-${{ matrix.security }}-test-binary
           path: zksync-airbender-test-binary/
 
       - name: Run test binary
         run: |
           chmod +x zksync-airbender-test-binary/${{ matrix.package }}
-          zksync-airbender-test-binary/${{ matrix.package }} --nocapture
+          zksync-airbender-test-binary/${{ matrix.package }} --exact tests::test_local_prover_with_files --nocapture

@@ -1,17 +1,43 @@
 # ZKSmith
 
-Stand-alone prover/watcher for anvil zksync.
+`zksmith` polls Anvil for ZKsync OS witness data, generates proofs, and serves a local dashboard.
 
-First - start anvil-zksync with boojum os **must be from boojumos-dev branch**
+## Run
 
-```
-RUST_BACKTRACE=1 cargo run -- --use-boojum --boojum-bin-path ../../zksync-airbender/examples/zksync_os/app.bin
-```
+From workspace root:
 
-Then run ZKSmith
-
-```shell
-cargo run -- --anvil-url http://localhost:8011 --zksync-os-bin-path ../../examples/zksync_os/app.bin
+```bash
+cargo run --release -p zksmith -- \
+  --anvil-url http://localhost:8011 \
+  --zksync-os-bin-path examples/zksync_os/app.bin
 ```
 
-Go to http://localhost:3030 - and see the progress.
+Open `http://127.0.0.1:3030`.
+
+## Features
+
+Default features:
+
+- `gpu`
+- `security_80`
+
+Run with `security_100`:
+
+```bash
+cargo run --release -p zksmith --no-default-features --features gpu,security_100 -- \
+  --anvil-url http://localhost:8011 \
+  --zksync-os-bin-path examples/zksync_os/app.bin
+```
+
+Run without GPU:
+
+```bash
+cargo run --release -p zksmith --no-default-features --features security_80 -- \
+  --anvil-url http://localhost:8011 \
+  --zksync-os-bin-path examples/zksync_os/app.bin
+```
+
+## Notes
+
+- `--host-port` overrides the default dashboard bind address (`127.0.0.1:3030`).
+- `--output-dir` is accepted by CLI and reserved for output handling extensions.

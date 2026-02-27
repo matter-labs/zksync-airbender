@@ -2,6 +2,13 @@
 #![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!("multiple security levels selected at the same time");
+#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
+compile_error!(
+    "one security level must be selected: enable either `security_80` or `security_100`"
+);
+
 use clap::ValueEnum;
 use risc_v_simulator::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
@@ -192,10 +199,31 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
 
 #[cfg(feature = "verifier_binaries")]
 pub mod verifier_binaries {
+    #[cfg(feature = "security_80")]
     pub const RECURSION_UNROLLED_BIN: &[u8] =
         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+    #[cfg(feature = "security_80")]
     pub const RECURSION_UNROLLED_TXT: &[u8] =
         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
+    #[cfg(feature = "security_80")]
+    pub const RECURSION_UNIFIED_BIN: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unified_layer.bin");
+    #[cfg(feature = "security_80")]
+    pub const RECURSION_UNIFIED_TXT: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unified_layer.text");
+
+    #[cfg(feature = "security_100")]
+    pub const RECURSION_UNROLLED_BIN: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin");
+    #[cfg(feature = "security_100")]
+    pub const RECURSION_UNROLLED_TXT: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text");
+    #[cfg(feature = "security_100")]
+    pub const RECURSION_UNIFIED_BIN: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
+    #[cfg(feature = "security_100")]
+    pub const RECURSION_UNIFIED_TXT: &[u8] =
+        include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
 }
 
 // #[cfg(feature = "verifier_binaries")]

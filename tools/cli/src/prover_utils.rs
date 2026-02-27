@@ -1,781 +1,841 @@
 use clap::ValueEnum;
-pub use execution_utils::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, Machine, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
+use execution_utils::setups::{
+    binary_u8_to_u32, get_unified_circuit_artifact_for_machine_type,
+    get_unrolled_circuits_artifacts_for_machine_type, pad_bytecode_bytes_for_proving,
+    pad_bytecode_for_proving, read_binary,
 };
-use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
-
-use prover::{
-    prover_stages::Proof,
-    risc_v_simulator::abstractions::non_determinism::QuasiUARTSource,
-    transcript::{Blake2sBufferingTranscript, Seed},
+#[cfg(any(
+    feature = "include_verifiers",
+    feature = "include_verifiers_80",
+    feature = "include_verifiers_100"
+))]
+use execution_utils::unified_circuit::verify_proof_in_unified_layer;
+use execution_utils::unified_circuit::{
+    compute_unified_setup_for_machine_configuration,
+    flatten_proof_into_responses_for_unified_recursion,
+    prove_unified_for_machine_configuration_into_program_proof,
 };
-use std::{alloc::Global, fs, io::Read, path::Path};
+#[cfg(any(
+    feature = "include_verifiers",
+    feature = "include_verifiers_80",
+    feature = "include_verifiers_100"
+))]
+use execution_utils::unrolled::verify_unrolled_layer_proof;
+use execution_utils::unrolled::{
+    compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
+    prove_unrolled_for_machine_configuration_into_program_proof, UnrolledProgramProof,
+    UnrolledProgramSetup,
+};
+#[cfg(feature = "gpu")]
+use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
+use execution_utils::verifier_binaries::{
+    RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT, RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT,
+};
+use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use prover::risc_v_simulator::cycle::{
+    IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
+};
+#[cfg(any(
+    feature = "include_verifiers",
+    feature = "include_verifiers_80",
+    feature = "include_verifiers_100"
+))]
+use prover::transcript::Blake2sBufferingTranscript;
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).expect(&format!("{filename}"));
-    serde_json::from_reader(src).unwrap()
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!("multiple security levels selected at the same time");
+#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
+compile_error!(
+    "one security level must be selected: enable either `security_80` or `security_100`"
+);
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SecurityLevel {
+    Security80,
+    Security100,
 }
+
+#[cfg(feature = "security_80")]
+pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
+#[cfg(feature = "security_100")]
+pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
+
+#[cfg(feature = "security_80")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
+#[cfg(feature = "security_100")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+
+fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
+    // Unified recursion converges once proof shape reaches target size.
+    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+pub enum ProofTarget {
+    Base,
+    RecursionUnrolled,
+    RecursionUnified,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+pub enum ProverBackend {
+    Cpu,
+    Gpu,
+}
+
+#[derive(Clone, Debug)]
+pub struct CpuConfig {
+    pub cycles_bound: usize,
+    pub ram_bound: usize,
+    pub worker_threads: Option<usize>,
+}
+
+impl Default for CpuConfig {
+    fn default() -> Self {
+        Self {
+            cycles_bound: 1 << 31,
+            ram_bound: 1 << 30,
+            worker_threads: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GpuConfig {
+    pub replay_worker_threads_count: usize,
+}
+
+impl Default for GpuConfig {
+    fn default() -> Self {
+        Self {
+            replay_worker_threads_count: 8,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProgramProverConfig {
+    pub target: ProofTarget,
+    pub backend: ProverBackend,
+    pub cpu: CpuConfig,
+    pub gpu: GpuConfig,
+}
+
+impl Default for ProgramProverConfig {
+    fn default() -> Self {
+        Self {
+            target: ProofTarget::RecursionUnified,
+            backend: default_backend_for_build(),
+            cpu: CpuConfig::default(),
+            gpu: GpuConfig::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProgramSource {
+    pub bin_path: String,
+    pub text_path: String,
+}
+
+impl ProgramSource {
+    pub fn from_paths(bin_path: String, text_path: Option<String>) -> Self {
+        let text_path = text_path.unwrap_or_else(|| derive_text_path(&bin_path));
+        Self {
+            bin_path,
+            text_path,
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    fn gpu_path_without_bin(&self) -> Result<String, String> {
+        let bin = Path::new(&self.bin_path);
+        let text = Path::new(&self.text_path);
+
+        let Some(stripped) = strip_bin_suffix(bin) else {
+            return Err(format!(
+                "GPU backend expects --bin to end with .bin for automatic pairing; got {}",
+                self.bin_path
+            ));
+        };
+
+        let expected_text = PathBuf::from(format!("{}.text", stripped.to_string_lossy()));
+        if expected_text != text {
+            return Err(format!(
+                "GPU backend currently requires --text to match {}. Use matching bin/text pair or CPU backend",
+                expected_text.display()
+            ));
+        }
+
+        Ok(stripped.to_string_lossy().to_string())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct ProofTimingsMs {
+    pub total_ms: u64,
+    pub base_ms: u64,
+    pub unrolled_recursion_ms: Vec<u64>,
+    pub unified_recursion_ms: Vec<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct ProofCounts {
+    pub family_proof_count: usize,
+    pub inits_and_teardowns_proof_count: usize,
+    pub delegation_proof_count: usize,
+    pub delegation_proof_count_by_type: Vec<(u32, usize)>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProofArtifact {
+    pub schema_version: u32,
+    pub security_level: SecurityLevel,
+    pub target: ProofTarget,
+    pub backend: ProverBackend,
+    pub batch_id: u64,
+    pub cycles: u64,
+    pub program_bin_keccak: [u8; 32],
+    pub program_text_keccak: [u8; 32],
+    pub timings_ms: ProofTimingsMs,
+    pub proof_counts: ProofCounts,
+    pub proof: UnrolledProgramProof,
+}
+
+#[derive(Clone)]
+struct LoadedProgram {
+    bin_bytes: Vec<u8>,
+    text_bytes: Vec<u8>,
+    padded_bin_bytes: Vec<u8>,
+    padded_text_bytes: Vec<u8>,
+    padded_bin_u32: Vec<u32>,
+    padded_text_u32: Vec<u32>,
+}
+
+#[derive(Clone)]
+struct EmbeddedProgram {
+    padded_bin_bytes: Vec<u8>,
+    padded_text_bytes: Vec<u8>,
+    padded_bin_u32: Vec<u32>,
+    padded_text_u32: Vec<u32>,
+}
+
+#[derive(Clone)]
+struct RecursionLevelData {
+    setup: UnrolledProgramSetup,
+    layouts: execution_utils::setups::CompiledCircuitsSet,
+    hash_chain: [u32; 8],
+    preimage: [u32; 16],
+}
+
+enum ProgramProverInner {
+    Cpu,
+    #[cfg(feature = "gpu")]
+    Gpu(UnrolledProver),
+}
+
+pub struct ProgramProver {
+    source: ProgramSource,
+    config: ProgramProverConfig,
+    inner: ProgramProverInner,
+}
+
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-/// Default amount of cycles, if no flag is set.
-pub const DEFAULT_CYCLES: usize = 32_000_000;
-
-// Determines when to stop proving.
-#[derive(Clone, Debug, ValueEnum)]
-pub enum ProvingLimit {
-    /// Does base + 1st recursion layer.
-    FinalRecursion,
-    /// Does base + both recursion layers.
-    FinalProof,
-    /// Also creates a final snark (requires zkos_wrapper)
-    Snark,
+pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src = std::fs::File::open(filename).expect(filename);
+    serde_json::from_reader(src).unwrap()
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
-    // Check the string length is a multiple of 8 (for valid u32 chunks)
     if hex_string.len() % 8 != 0 {
         panic!("Hex string length is not a multiple of 8");
     }
-    // Parse the string in chunks of 8 characters
-    let numbers: Vec<u32> = hex_string
+
+    hex_string
         .as_bytes()
         .chunks(8)
         .map(|chunk| {
             let chunk_str = std::str::from_utf8(chunk).expect("Invalid UTF-8");
             u32::from_str_radix(chunk_str, 16).expect("Invalid hex number")
         })
-        .collect();
-
-    numbers
+        .collect()
 }
 
-#[cfg(feature = "gpu")]
-pub fn multi_prove(_bin_path: &String, _input_files: Vec<Vec<u32>>) {
-    todo!();
-    /*
-    let binary = load_binary_from_path(bin_path);
-
-    // TODO: hardcoded for now.
-    let num_instances = 500;
-    // Let's use v23 circuits everywhere.
-    let recursion_mode = RecursionStrategy::UseReducedLog23MachineInBothLayers;
-
-    let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-    let mut gpu_state = Some(GpuSharedState::new(&binary, recursion_circuit_type));
-
-    let mut gpu_state = gpu_state.as_mut();
-
-    let mut final_results = vec![];
-
-    for (i, non_determinism_data) in input_files.into_iter().enumerate() {
-        let mut total_proof_time = Some(0f64);
-
-        let (proof_list, proof_metadata) = create_proofs_internal(
-            &binary,
-            non_determinism_data,
-            &Machine::Standard,
-            num_instances,
-            None,
-            &mut gpu_state,
-            &mut total_proof_time,
-        );
-
-        let (_recursion_proof_list, _recursion_proof_metadata) = create_recursion_proofs(
-            proof_list,
-            proof_metadata,
-            recursion_mode,
-            &None,
-            &mut gpu_state,
-            &mut total_proof_time,
-        );
-        // Currently we don't store the final proofs (as this is mostly for performance testing).
-        println!(
-            "**** {} Total time on production critical path {:.3}s ****",
-            i,
-            total_proof_time.unwrap(),
-        );
-        final_results.push(total_proof_time.unwrap());
+pub fn default_backend_for_build() -> ProverBackend {
+    #[cfg(feature = "gpu")]
+    {
+        ProverBackend::Gpu
     }
-
-    println!("**** Multi-prove summary ****");
-    for (i, time) in final_results.iter().enumerate() {
-        println!("Input {}: total proof time {:.3}s", i, time);
+    #[cfg(not(feature = "gpu"))]
+    {
+        ProverBackend::Cpu
     }
-    */
 }
 
-pub fn create_proofs(
-    bin_path: &String,
-    output_dir: &String,
-    input_data: Option<Vec<u32>>,
-    prev_metadata: &Option<String>,
-    machine: &Machine,
-    cycles: &Option<usize>,
-    until: &Option<ProvingLimit>,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    use_gpu: bool,
-) {
-    let prev_metadata: Option<ProofMetadata> = prev_metadata
-        .as_ref()
-        .map(|prev_metadata| deserialize_from_file(&prev_metadata));
+impl ProgramProver {
+    pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
+        let inner = match config.backend {
+            ProverBackend::Cpu => ProgramProverInner::Cpu,
+            ProverBackend::Gpu => {
+                #[cfg(feature = "gpu")]
+                {
+                    let path_without_bin = source.gpu_path_without_bin()?;
+                    let mut prover_configuration =
+                        gpu_prover::execution::prover::ExecutionProverConfiguration::default();
+                    prover_configuration.replay_worker_threads_count =
+                        config.gpu.replay_worker_threads_count;
 
-    let binary = load_binary_from_path(bin_path);
+                    let max_level = match config.target {
+                        ProofTarget::Base => UnrolledProverLevel::Base,
+                        ProofTarget::RecursionUnrolled => UnrolledProverLevel::RecursionUnrolled,
+                        ProofTarget::RecursionUnified => UnrolledProverLevel::RecursionUnified,
+                    };
 
-    let num_instances = (cycles.unwrap_or(DEFAULT_CYCLES) / risc_v_cycles::NUM_CYCLES) + 1;
-
-    println!(
-        "Will try proving now, with up to {} circuits.",
-        num_instances
-    );
-
-    let non_determinism_data = input_data.unwrap_or_default();
-
-    // Serialization and deserialization of artifacts
-    // (as requested by user arguments) can take a lot of time,
-    // and typically won't be needed in production.
-    // total_proof_time accumulates the actual time spent on
-    // the production critical path
-    // (tracing, witness generation, proving, recursion).
-    let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        // In this function we only use the GPU for the base and 1st recursion layer (reduced 2^22 machine).
-        // In order to use it for the 2nd recursion layer, you should call `create_final_proofs_from_program_proof`
-        #[cfg(feature = "gpu")]
-        {
-            (Some(GpuSharedState::new(&binary)), Some(0f64))
-        }
-        #[cfg(not(feature = "gpu"))]
-        {
-            panic!("Compiled without GPU support, but --use-gpu is set.");
-        }
-    } else {
-        (None, None)
-    };
-    let mut gpu_state = gpu_state.as_mut();
-
-    let (proof_list, proof_metadata) = create_proofs_internal(
-        &binary,
-        non_determinism_data,
-        machine,
-        num_instances,
-        prev_metadata.map(|x| x.create_prev_metadata()),
-        &mut gpu_state,
-        &mut total_proof_time,
-    );
-
-    // Now we finished 'basic' proving - check if there is a need for recursion.
-    if let Some(until) = until {
-        assert_eq!(
-            machine,
-            &Machine::Standard,
-            "Recursion is only supported after Standard machine"
-        );
-
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join("base");
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
+                    ProgramProverInner::Gpu(UnrolledProver::new(
+                        &path_without_bin,
+                        prover_configuration,
+                        max_level,
+                    ))
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    return Err(
+                        "CLI was compiled without `gpu` feature, but `--backend gpu` was requested"
+                            .to_string(),
+                    );
+                }
             }
-            proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&proof_metadata, &base_tmp_dir.join("metadata.json"))
-        }
-        let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
-            proof_list,
-            proof_metadata,
-            recursion_mode,
-            tmp_dir,
-            &mut gpu_state,
-            &mut total_proof_time,
-        );
-        match until {
-            ProvingLimit::FinalRecursion => {
-                recursion_proof_list.write_to_directory(Path::new(output_dir));
+        };
 
-                serialize_to_file(
-                    &recursion_proof_metadata,
-                    &Path::new(output_dir).join("metadata.json"),
-                );
-                let program_proof = ProgramProof::from_proof_list_and_metadata(
-                    &recursion_proof_list,
-                    &recursion_proof_metadata,
-                );
-                serialize_to_file(
-                    &program_proof,
-                    &Path::new(output_dir).join("recursion_program_proof.json"),
-                );
-            }
-            ProvingLimit::FinalProof => {
-                // Here we support only CPU proving, mostly for testing purposes.
-                // In order to use GPU for 2nd recursion layer, please call `create_final_proofs_from_program_proof`
-                let program_proof = create_final_proofs(
-                    recursion_proof_list,
-                    recursion_proof_metadata,
-                    recursion_mode,
-                    tmp_dir,
-                    &mut None,
-                    &mut None,
-                );
-
-                serialize_to_file(
-                    &program_proof,
-                    &Path::new(output_dir).join("final_program_proof.json"),
-                );
-            }
-            ProvingLimit::Snark => todo!(),
-        }
-    } else {
-        proof_list.write_to_directory(Path::new(output_dir));
-
-        serialize_to_file(
-            &proof_metadata,
-            &Path::new(output_dir).join("metadata.json"),
-        )
+        Ok(Self {
+            source,
+            config,
+            inner,
+        })
     }
 
-    if gpu_state.is_some() {
-        println!(
-            "**** Total time on production critical path {:.3}s ****",
-            total_proof_time.unwrap(),
-        );
+    pub fn prove_words(
+        &self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        match &self.inner {
+            ProgramProverInner::Cpu => self.prove_words_cpu(batch_id, input_words),
+            #[cfg(feature = "gpu")]
+            ProgramProverInner::Gpu(gpu_prover) => {
+                self.prove_words_gpu(gpu_prover, batch_id, input_words)
+            }
+        }
     }
-}
-
-pub fn load_binary_from_path(path: &String) -> Vec<u32> {
-    let mut file = std::fs::File::open(path).expect("must open provided file");
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).expect("must read the file");
-    get_padded_binary(&buffer)
-}
-
-// For now, we share the setup cache, only for GPU (as we really care for performance there).
-#[cfg(feature = "gpu")]
-pub struct GpuSharedState {
-    pub prover: gpu_prover::execution::prover::ExecutionProver,
-}
-
-#[cfg(feature = "gpu")]
-impl GpuSharedState {
-    #[expect(dead_code, reason = "reserved key for pending GPU implementation")]
-    const MAIN_BINARY_KEY: usize = 0;
-    #[expect(dead_code, reason = "reserved key for pending GPU implementation")]
-    const RECURSION_BINARY_KEY: usize = 1;
 
     #[cfg(feature = "gpu")]
-    pub fn new(_binary: &Vec<u32>) -> Self {
-        todo!()
-        // use execution_utils::verifier_binaries::UNIVERSAL_CIRCUIT_VERIFIER;
-        // use gpu_prover::execution::prover::ExecutionProver;
-        // use gpu_prover::execution::prover::ExecutionProverConfiguration;
-        //
-        // /*let main_binary = ExecutableBinary {
-        //     key: Self::MAIN_BINARY_KEY,
-        //     circuit_type: MainCircuitType::RiscVCycles,
-        //     bytecode: binary.clone(),
-        // };
-        // let recursion_binary = ExecutableBinary {
-        //     key: Self::RECURSION_BINARY_KEY,
-        //     circuit_type: recursion_circuit_type,
-        //     bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
-        // };*/
-        // let mut configuration = ExecutionProverConfiguration::default();
-        // configuration.replay_worker_threads_count = 8;
-        // let prover = ExecutionProver::with_configuration(configuration);
-        //
-        // Self { prover }
-    }
-}
+    fn prove_words_gpu(
+        &self,
+        prover: &UnrolledProver,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        let start = Instant::now();
+        let source = QuasiUARTSource::new_with_reads(input_words);
+        let (proof, cycles) = prover.prove(batch_id, source);
 
-#[cfg(not(feature = "gpu"))]
-pub struct GpuSharedState {}
+        let total_ms = elapsed_ms(start);
+        let timings = ProofTimingsMs {
+            total_ms,
+            base_ms: total_ms,
+            unrolled_recursion_ms: Vec::new(),
+            unified_recursion_ms: Vec::new(),
+        };
 
-#[cfg(not(feature = "gpu"))]
-impl GpuSharedState {
-    pub fn new(_binary: &Vec<u32>) -> Self {
-        Self {}
-    }
-}
-
-pub fn create_proofs_internal(
-    binary: &Vec<u32>,
-    non_determinism_data: Vec<u32>,
-    machine: &Machine,
-    num_instances: usize,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    _total_proof_time: &mut Option<f64>,
-) -> (ProofList, ProofMetadata) {
-    let worker = worker::Worker::new();
-
-    let mut non_determinism_source = QuasiUARTSource::default();
-
-    for entry in non_determinism_data {
-        non_determinism_source.oracle.push_back(entry);
+        let loaded = load_program(&self.source)?;
+        Ok(make_artifact(
+            self.config.target,
+            self.config.backend,
+            batch_id,
+            cycles,
+            &loaded,
+            timings,
+            proof,
+        ))
     }
 
-    let (proof_list, register_values, pow_challenge) = match machine {
-        Machine::Standard => {
-            if prev_end_params_output.is_some() {
-                panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
+    fn prove_words_cpu(
+        &self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        let loaded = load_program(&self.source)?;
+        let start_total = Instant::now();
+        let worker = if let Some(threads) = self.config.cpu.worker_threads {
+            worker::Worker::new_with_num_threads(threads)
+        } else {
+            worker::Worker::new()
+        };
+
+        let start_base = Instant::now();
+        let source = QuasiUARTSource::new_with_reads(input_words);
+        let mut proof = prove_unrolled_for_machine_configuration_into_program_proof::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
+            &loaded.padded_bin_u32,
+            &loaded.padded_text_u32,
+            self.config.cpu.cycles_bound,
+            source,
+            self.config.cpu.ram_bound,
+            &worker,
+        );
+        let base_ms = elapsed_ms(start_base);
+        let cycles = (proof.final_timestamp
+            - riscv_transpiler::common_constants::INITIAL_TIMESTAMP)
+            / riscv_transpiler::common_constants::TIMESTAMP_STEP;
+
+        let mut timings = ProofTimingsMs {
+            total_ms: 0,
+            base_ms,
+            unrolled_recursion_ms: Vec::new(),
+            unified_recursion_ms: Vec::new(),
+        };
+
+        if self.config.target == ProofTarget::Base {
+            timings.total_ms = elapsed_ms(start_total);
+            return Ok(make_artifact(
+                self.config.target,
+                self.config.backend,
+                batch_id,
+                cycles,
+                &loaded,
+                timings,
+                proof,
+            ));
+        }
+
+        let base_level = make_base_level_data(&loaded);
+        let recursion_unrolled =
+            load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+        let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+
+        let mut recursion_level = 0usize;
+        loop {
+            let previous_is_base = recursion_level == 0;
+            let previous_level = if previous_is_base {
+                &base_level
+            } else {
+                &unrolled_level
+            };
+
+            let witness = flatten_proof_into_responses_for_unrolled_recursion(
+                &proof,
+                &previous_level.setup,
+                &previous_level.layouts,
+                previous_is_base,
+            );
+            let source = QuasiUARTSource::new_with_reads(witness);
+
+            let start = Instant::now();
+            let mut new_proof = prove_unrolled_for_machine_configuration_into_program_proof::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(
+                &recursion_unrolled.padded_bin_u32,
+                &recursion_unrolled.padded_text_u32,
+                self.config.cpu.cycles_bound,
+                source,
+                self.config.cpu.ram_bound,
+                &worker,
+            );
+            timings.unrolled_recursion_ms.push(elapsed_ms(start));
+
+            new_proof.recursion_chain_hash = Some(previous_level.hash_chain);
+            new_proof.recursion_chain_preimage = Some(previous_level.preimage);
+            proof = new_proof;
+
+            let (_, _, delegation_count) = proof.get_proof_counts();
+            if delegation_count == 1 {
+                break;
             }
-            let (basic_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(_gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let _timer = std::time::Instant::now();
-                        /*let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::MAIN_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed,);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )*/
-                        todo!()
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
-
-                    prover_examples::prove_image_execution(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
-
-            (
-                ProofList {
-                    basic_proofs,
-                    reduced_proofs: vec![],
-                    reduced_log_23_proofs: vec![],
-                    delegation_proofs,
-                },
-                register_values,
-                pow_challenge,
-            )
+            recursion_level += 1;
         }
-        Machine::Reduced => {
-            let (reduced_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(_gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let _timer = std::time::Instant::now();
-                        /*let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::RECURSION_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )*/
-                        todo!()
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_reduced_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
 
-                    prover_examples::prove_image_execution_on_reduced_machine(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
-
-            (
-                ProofList {
-                    basic_proofs: vec![],
-                    reduced_proofs,
-                    reduced_log_23_proofs: vec![],
-                    delegation_proofs,
-                },
-                register_values,
-                pow_challenge,
-            )
+        if self.config.target == ProofTarget::RecursionUnrolled {
+            timings.total_ms = elapsed_ms(start_total);
+            return Ok(make_artifact(
+                self.config.target,
+                self.config.backend,
+                batch_id,
+                cycles,
+                &loaded,
+                timings,
+                proof,
+            ));
         }
-        Machine::ReducedLog23 => {
-            let (reduced_log_23_proofs, delegation_proofs, register_values, pow_challenge) =
-                if let Some(_gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let _timer = std::time::Instant::now();
-                        /*let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::RECURSION_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )*/
-                        todo!()
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_reduced_riscv_log_23_circuit_setup::<Global, Global>(
-                            &binary, &worker,
-                        );
 
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
+        let recursion_unified = load_embedded_program(RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT);
+        let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
 
-                    prover_examples::prove_image_execution_on_reduced_machine(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
+        let mut unified_level_idx = 0usize;
+        loop {
+            let previous_is_unrolled = unified_level_idx == 0;
+            let previous_level = if previous_is_unrolled {
+                &unrolled_level
+            } else {
+                &unified_level
+            };
 
-            (
-                ProofList {
-                    basic_proofs: vec![],
-                    reduced_proofs: vec![],
-                    reduced_log_23_proofs,
-                    delegation_proofs,
-                },
-                register_values,
-                pow_challenge,
-            )
+            let witness = flatten_proof_into_responses_for_unified_recursion(
+                &proof,
+                &previous_level.setup,
+                &previous_level.layouts,
+                previous_is_unrolled,
+            );
+            let source = QuasiUARTSource::new_with_reads(witness);
+
+            let start = Instant::now();
+            let mut new_proof = prove_unified_for_machine_configuration_into_program_proof::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(
+                &recursion_unified.padded_bin_u32,
+                &recursion_unified.padded_text_u32,
+                self.config.cpu.cycles_bound,
+                source,
+                self.config.cpu.ram_bound,
+                &worker,
+            );
+            timings.unified_recursion_ms.push(elapsed_ms(start));
+
+            new_proof.recursion_chain_hash = Some(previous_level.hash_chain);
+            new_proof.recursion_chain_preimage = Some(previous_level.preimage);
+            proof = new_proof;
+
+            let (family_count, _, _) = proof.get_proof_counts();
+            if unified_recursion_has_converged(family_count) {
+                break;
+            }
+
+            unified_level_idx += 1;
         }
+
+        timings.total_ms = elapsed_ms(start_total);
+        Ok(make_artifact(
+            self.config.target,
+            self.config.backend,
+            batch_id,
+            cycles,
+            &loaded,
+            timings,
+            proof,
+        ))
+    }
+}
+
+#[cfg(any(
+    feature = "include_verifiers",
+    feature = "include_verifiers_80",
+    feature = "include_verifiers_100"
+))]
+pub fn verify_artifact(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+) -> Result<[u32; 16], String> {
+    if artifact.security_level != COMPILED_SECURITY_LEVEL {
+        return Err(format!(
+            "proof security level ({:?}) does not match binary security level ({:?})",
+            artifact.security_level, COMPILED_SECURITY_LEVEL
+        ));
+    }
+
+    let loaded = load_program(source)?;
+    let actual_bin_keccak = keccak256(&loaded.bin_bytes);
+    if actual_bin_keccak != artifact.program_bin_keccak {
+        return Err(
+            "proof artifact program_bin_keccak does not match provided --bin file".to_string(),
+        );
+    }
+    let actual_text_keccak = keccak256(&loaded.text_bytes);
+    if actual_text_keccak != artifact.program_text_keccak {
+        return Err(
+            "proof artifact program_text_keccak does not match provided --text file".to_string(),
+        );
+    }
+
+    match artifact.target {
+        ProofTarget::Base => {
+            let base_level = make_base_level_data(&loaded);
+            verify_unrolled_layer_proof(
+                &artifact.proof,
+                &base_level.setup,
+                &base_level.layouts,
+                true,
+            )
+            .map_err(|_| "base proof verification failed".to_string())
+        }
+        ProofTarget::RecursionUnrolled => {
+            let base_level = make_base_level_data(&loaded);
+            let recursion_unrolled =
+                load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+            let unrolled_level =
+                make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+
+            let preimage = validate_recursion_chain(&artifact.proof)?;
+            let previous_end_params: [u32; 8] =
+                preimage[8..16].try_into().expect("slice with exact length");
+
+            if previous_end_params == base_level.setup.end_params {
+                verify_unrolled_layer_proof(
+                    &artifact.proof,
+                    &base_level.setup,
+                    &base_level.layouts,
+                    true,
+                )
+                .map_err(|_| "recursion(unrolled over base) verification failed".to_string())
+            } else if previous_end_params == unrolled_level.setup.end_params {
+                verify_unrolled_layer_proof(
+                    &artifact.proof,
+                    &unrolled_level.setup,
+                    &unrolled_level.layouts,
+                    false,
+                )
+                .map_err(|_| {
+                    "recursion(unrolled over recursion-unrolled) verification failed".to_string()
+                })
+            } else {
+                Err("unable to infer previous layer for recursion-unrolled proof".to_string())
+            }
+        }
+        ProofTarget::RecursionUnified => {
+            let loaded_unrolled =
+                load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+            let loaded_unified =
+                load_embedded_program(RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT);
+
+            let base_level = make_base_level_data(&loaded);
+            let unrolled_level = make_unrolled_recursion_level_data(&base_level, &loaded_unrolled);
+            let unified_level = make_unified_recursion_level_data(&unrolled_level, &loaded_unified);
+
+            validate_recursion_chain(&artifact.proof)?;
+
+            verify_proof_in_unified_layer(
+                &artifact.proof,
+                &unified_level.setup,
+                &unified_level.layouts,
+                false,
+            )
+            .map_err(|_| "recursion(unified) verification failed".to_string())
+        }
+    }
+}
+
+#[cfg(any(
+    feature = "include_verifiers",
+    feature = "include_verifiers_80",
+    feature = "include_verifiers_100"
+))]
+fn validate_recursion_chain(proof: &UnrolledProgramProof) -> Result<[u32; 16], String> {
+    let Some(preimage) = proof.recursion_chain_preimage else {
+        return Err("proof is missing recursion_chain_preimage".to_string());
+    };
+    let Some(hash) = proof.recursion_chain_hash else {
+        return Err("proof is missing recursion_chain_hash".to_string());
     };
 
-    let total_delegation_proofs: usize = proof_list
-        .delegation_proofs
-        .iter()
-        .map(|(_, x)| x.len())
-        .sum();
+    let mut hasher = Blake2sBufferingTranscript::new();
+    hasher.absorb(&preimage);
+    let expected_hash = hasher.finalize().0;
+    if expected_hash != hash {
+        return Err("recursion chain hash mismatch".to_string());
+    }
 
-    println!(
-        "Created {} basic proofs, {} reduced proofs, {} reduced (log23) proofs and {} delegation proofs.",
-        proof_list.basic_proofs.len(),
-        proof_list.reduced_proofs.len(),
-        proof_list.reduced_log_23_proofs.len(),
-        total_delegation_proofs,
-    );
-    let last_proof = proof_list.get_last_proof();
+    Ok(preimage)
+}
 
-    let (end_params, prev_end_params_output) =
-        get_end_params_output(last_proof, prev_end_params_output);
+fn make_artifact(
+    target: ProofTarget,
+    backend: ProverBackend,
+    batch_id: u64,
+    cycles: u64,
+    loaded: &LoadedProgram,
+    timings: ProofTimingsMs,
+    proof: UnrolledProgramProof,
+) -> ProofArtifact {
+    let (family_proof_count, inits_and_teardowns_proof_count, delegation_proof_count) =
+        proof.get_proof_counts();
 
-    let prev_end_params_output_hash = prev_end_params_output.map(|data| {
-        let mut tmp_hash = Blake2sBufferingTranscript::new();
-        tmp_hash.absorb(&data);
-        tmp_hash.finalize().0
-    });
-
-    let proof_metadata = ProofMetadata {
-        basic_proof_count: proof_list.basic_proofs.len(),
-        reduced_proof_count: proof_list.reduced_proofs.len(),
-        reduced_log_23_proof_count: proof_list.reduced_log_23_proofs.len(),
-        deprecated_final_proof_count: 0,
-        delegation_proof_count: proof_list
+    let proof_counts = ProofCounts {
+        family_proof_count,
+        inits_and_teardowns_proof_count,
+        delegation_proof_count,
+        delegation_proof_count_by_type: proof
             .delegation_proofs
             .iter()
-            .map(|(i, x)| (i.clone() as u32, x.len()))
-            .collect::<Vec<_>>(),
-        register_values,
-        end_params,
-        prev_end_params_output_hash,
-        prev_end_params_output,
-        pow_challenge,
+            .map(|(k, v)| (*k, v.len()))
+            .collect(),
     };
 
-    (proof_list, proof_metadata)
+    ProofArtifact {
+        schema_version: 1,
+        security_level: COMPILED_SECURITY_LEVEL,
+        target,
+        backend,
+        batch_id,
+        cycles,
+        program_bin_keccak: keccak256(&loaded.bin_bytes),
+        program_text_keccak: keccak256(&loaded.text_bytes),
+        timings_ms: timings,
+        proof_counts,
+        proof,
+    }
 }
 
-pub fn create_recursion_proofs(
-    _proof_list: ProofList,
-    _proof_metadata: ProofMetadata,
-    _recursion_mode: RecursionStrategy,
-    _tmp_dir: &Option<String>,
-    _gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    _total_proof_time: &mut Option<f64>,
-) -> (ProofList, ProofMetadata) {
-    todo!()
-    // assert!(
-    //     proof_metadata.basic_proof_count > 0,
-    //     "Recursion proofs can be created only for basic proofs.",
-    // );
-    // let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-    //
-    // let mut recursion_level = 0;
-    // let mut current_proof_list = proof_list;
-    // let mut current_proof_metadata = proof_metadata.clone();
-    //
-    // let machine = if recursion_mode == RecursionStrategy::UseReducedLog23MachineInBothLayers {
-    //     &Machine::ReducedLog23
-    // } else {
-    //     &Machine::Reduced
-    // };
-    //
-    // // Small sanity check, to make sure that GPU state matches the chosen machine.
-    // #[cfg(feature = "gpu")]
-    // if let Some(gpu_shared_state) = gpu_shared_state {}
-    //
-    // loop {
-    //     if recursion_mode.skip_first_layer() {
-    //         println!("Skipping recursion.");
-    //         break;
-    //     }
-    //
-    //     println!("*** Starting recursion level {} ***", recursion_level);
-    //     let non_determinism_data = generate_oracle_data_for_universal_verifier(
-    //         &current_proof_metadata,
-    //         &current_proof_list,
-    //     );
-    //
-    //     (current_proof_list, current_proof_metadata) = create_proofs_internal(
-    //         &binary,
-    //         non_determinism_data,
-    //         machine,
-    //         current_proof_metadata.total_proofs(),
-    //         Some(current_proof_metadata.create_prev_metadata()),
-    //         gpu_shared_state,
-    //         total_proof_time,
-    //     );
-    //
-    //     if let Some(tmp_dir) = tmp_dir {
-    //         let base_tmp_dir = Path::new(tmp_dir).join(format!("recursion_{}", recursion_level));
-    //         if !base_tmp_dir.exists() {
-    //             fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-    //         }
-    //         current_proof_list.write_to_directory(&base_tmp_dir);
-    //         serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-    //     }
-    //
-    //     recursion_level += 1;
-    //
-    //     if recursion_mode.switch_to_second_recursion_layer(&current_proof_metadata) {
-    //         println!("Stopping 1st recursion layer.");
-    //         break;
-    //     }
-    // }
-    // (current_proof_list, current_proof_metadata)
-}
+fn load_program(source: &ProgramSource) -> Result<LoadedProgram, String> {
+    let bin_path = Path::new(&source.bin_path);
+    let text_path = Path::new(&source.text_path);
 
-pub fn create_final_proofs_from_program_proof(
-    input: ProgramProof,
-    recursion_mode: RecursionStrategy,
-    use_gpu: bool,
-) -> ProgramProof {
-    let (proof_metadata, proof_list) = input.to_metadata_and_proof_list();
-
-    let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        #[cfg(feature = "gpu")]
-        {
-            todo!()
-            // // Here we use GPU for final recursion layer only.
-            // let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-            // (Some(GpuSharedState::new(&binary)), Some(0f64))
-        }
-
-        #[cfg(not(feature = "gpu"))]
-        {
-            panic!("GPU not enabled - please compile with --features gpu flag.")
-        }
-    } else {
-        (None, None)
-    };
-    let mut gpu_state = gpu_state.as_mut();
-
-    create_final_proofs(
-        proof_list,
-        proof_metadata,
-        recursion_mode,
-        &None,
-        &mut gpu_state,
-        &mut total_proof_time,
-    )
-}
-
-pub fn create_final_proofs(
-    _proof_list: ProofList,
-    _proof_metadata: ProofMetadata,
-    _recursion_mode: RecursionStrategy,
-    _tmp_dir: &Option<String>,
-    _gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    _total_proof_time: &mut Option<f64>,
-) -> ProgramProof {
-    todo!()
-    // let binary = recursion_mode.get_second_layer_binary();
-    // let machine = recursion_mode.get_second_layer_machine();
-    //
-    // let mut final_proof_level = 0;
-    // let mut current_proof_list = proof_list;
-    // let mut current_proof_metadata = proof_metadata.clone();
-    //
-    // loop {
-    //     println!("*** Starting final_proofs level {} ***", final_proof_level);
-    //     let non_determinism_data = generate_oracle_data_for_universal_verifier(
-    //         &current_proof_metadata,
-    //         &current_proof_list,
-    //     );
-    //     (current_proof_list, current_proof_metadata) = create_proofs_internal(
-    //         &binary,
-    //         non_determinism_data,
-    //         &machine,
-    //         current_proof_metadata.total_proofs(),
-    //         Some(current_proof_metadata.create_prev_metadata()),
-    //         gpu_shared_state,
-    //         total_proof_time,
-    //     );
-    //     if let Some(tmp_dir) = tmp_dir {
-    //         let base_tmp_dir = Path::new(tmp_dir).join(format!("final_{}", final_proof_level));
-    //         if !base_tmp_dir.exists() {
-    //             fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-    //         }
-    //         current_proof_list.write_to_directory(&base_tmp_dir);
-    //         serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-    //     }
-    //
-    //     if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level)
-    //     {
-    //         println!("Stopping 2nd recursion layer.");
-    //         break;
-    //     }
-    //
-    //     final_proof_level += 1;
-    // }
-    //
-    // ProgramProof::from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
-}
-
-pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<Seed> {
-    if last_proof.public_inputs.len() != 4 {
-        // We can compute this only for proofs with public inputs.
-        return None;
+    if !bin_path.exists() {
+        return Err(format!("binary not found: {}", source.bin_path));
+    }
+    if !text_path.exists() {
+        return Err(format!("text section not found: {}", source.text_path));
     }
 
-    let end_pc = parse_field_els_as_u32_from_u16_limbs_checked([
-        last_proof.public_inputs[2],
-        last_proof.public_inputs[3],
-    ]);
+    let (bin_bytes, mut bin_u32) = read_binary(bin_path);
+    let (text_bytes, mut text_u32) = read_binary(text_path);
 
-    // We have to compute the the hash of the final program counter, and program binary (setup tree).
-    let mut hasher = Blake2sBufferingTranscript::new();
-    hasher.absorb(&[end_pc]);
+    let mut padded_bin_bytes = bin_bytes.clone();
+    let mut padded_text_bytes = text_bytes.clone();
+    pad_bytecode_bytes_for_proving(&mut padded_bin_bytes);
+    pad_bytecode_bytes_for_proving(&mut padded_text_bytes);
 
-    for cap in &last_proof.setup_tree_caps {
-        for entry in cap.cap.iter() {
-            hasher.absorb(entry);
-        }
+    pad_bytecode_for_proving(&mut bin_u32);
+    pad_bytecode_for_proving(&mut text_u32);
+
+    Ok(LoadedProgram {
+        bin_bytes,
+        text_bytes,
+        padded_bin_bytes,
+        padded_text_bytes,
+        padded_bin_u32: bin_u32,
+        padded_text_u32: text_u32,
+    })
+}
+
+fn load_embedded_program(binary: &[u8], text: &[u8]) -> EmbeddedProgram {
+    let mut padded_bin_bytes = binary.to_vec();
+    let mut padded_text_bytes = text.to_vec();
+    pad_bytecode_bytes_for_proving(&mut padded_bin_bytes);
+    pad_bytecode_bytes_for_proving(&mut padded_text_bytes);
+
+    let mut padded_bin_u32 = binary_u8_to_u32(binary);
+    let mut padded_text_u32 = binary_u8_to_u32(text);
+    pad_bytecode_for_proving(&mut padded_bin_u32);
+    pad_bytecode_for_proving(&mut padded_text_u32);
+
+    EmbeddedProgram {
+        padded_bin_bytes,
+        padded_text_bytes,
+        padded_bin_u32,
+        padded_text_u32,
     }
-    Some(hasher.finalize_reset())
 }
 
-/// Returns end_params, prev params
-fn get_end_params_output(
-    last_proof: &Proof,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
-) -> ([u32; 8], Option<[u32; 16]>) {
-    // we need PC from the last proof.
-    let end_params_output_suffix = get_end_params_output_suffix_from_proof(last_proof).unwrap();
-    // This describes the binary that we run.
-    let end_params = end_params_output_suffix.0;
+fn make_base_level_data(loaded: &LoadedProgram) -> RecursionLevelData {
+    let setup = compute_setup_for_machine_configuration::<IMStandardIsaConfigWithUnsignedMulDiv>(
+        &loaded.padded_bin_bytes,
+        &loaded.padded_text_bytes,
+    );
+    let layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+        IMStandardIsaConfigWithUnsignedMulDiv,
+    >(&loaded.padded_bin_u32);
 
-    let new_preimage = match prev_end_params_output {
-        // This arm means, that we're in the recursion layer.
-        Some((prev_bin, prev_params)) => match prev_params {
-            // We know that this was the previous binary, and the parameters that it accepted.
-            Some(prev_params) => {
-                // Now there are 2 options - either the previous binary was proving its own code
-                // (if we're in the second stage of recursion). Then let's not change the prev params.
-                if prev_params[8..16] == prev_bin {
-                    Some(prev_params)
-                } else {
-                    // Or previous binary could be different - then we should update the chain,
-                    // by computing (hash(previous) || prev_bin).
-                    let mut end_params_output = [0u32; 16];
-                    let mut hasher = Blake2sBufferingTranscript::new();
-                    hasher.absorb(&prev_params);
-                    let prev_params_hash = hasher.finalize().0;
+    let (hash_chain, preimage) = UnrolledProgramSetup::begin_recursion_chain(&setup.end_params);
 
-                    for i in 0..8 {
-                        end_params_output[i] = prev_params_hash[i];
-                    }
-                    for i in 8..16 {
-                        end_params_output[i] = prev_bin[i - 8];
-                    }
-
-                    Some(end_params_output)
-                }
-            }
-            // This means that we're verifying the base layer.
-            None => {
-                let mut end_params_output = [0u32; 16];
-                for i in 8..16 {
-                    end_params_output[i] = prev_bin[i - 8];
-                }
-                Some(end_params_output)
-            }
-        },
-        // For base layer.
-        None => None,
-    };
-
-    return (end_params, new_preimage);
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
 }
 
-pub fn generate_oracle_data_from_metadata(metadata_path: &String) -> (ProofMetadata, Vec<u32>) {
-    // This will handle all the verifictations - we just have to pass it the data in the right format.
+fn make_unrolled_recursion_level_data(
+    previous: &RecursionLevelData,
+    loaded: &EmbeddedProgram,
+) -> RecursionLevelData {
+    let setup = compute_setup_for_machine_configuration::<IWithoutByteAccessIsaConfigWithDelegation>(
+        &loaded.padded_bin_bytes,
+        &loaded.padded_text_bytes,
+    );
+    let layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&loaded.padded_bin_u32);
 
-    let metadata: ProofMetadata = deserialize_from_file(&metadata_path);
-    let parent = Path::new(metadata_path).parent().unwrap();
-    println!("Guessing parent to be {:?}", parent);
+    let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+        &setup.end_params,
+        &previous.hash_chain,
+        &previous.preimage,
+    );
 
-    let proof_list =
-        ProofList::load_from_directory(&parent.to_str().unwrap().to_string(), &metadata);
-    let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
-    (metadata, oracle_data)
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
+}
+
+fn make_unified_recursion_level_data(
+    previous: &RecursionLevelData,
+    loaded: &EmbeddedProgram,
+) -> RecursionLevelData {
+    let setup = compute_unified_setup_for_machine_configuration::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&loaded.padded_bin_bytes, &loaded.padded_text_bytes);
+    let layouts = get_unified_circuit_artifact_for_machine_type::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&loaded.padded_bin_u32);
+
+    let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+        &setup.end_params,
+        &previous.hash_chain,
+        &previous.preimage,
+    );
+
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
+}
+
+fn derive_text_path(bin_path: &str) -> String {
+    let bin = Path::new(bin_path);
+    if let Some(stem_path) = strip_bin_suffix(bin) {
+        return format!("{}.text", stem_path.to_string_lossy());
+    }
+
+    let mut text_path = bin.to_path_buf();
+    text_path.set_extension("text");
+    text_path.to_string_lossy().to_string()
+}
+
+fn strip_bin_suffix(path: &Path) -> Option<PathBuf> {
+    let path_str = path.to_string_lossy();
+    let stripped = path_str.strip_suffix(".bin")?;
+    Some(PathBuf::from(stripped))
+}
+
+fn elapsed_ms(start: Instant) -> u64 {
+    start.elapsed().as_millis() as u64
+}
+
+fn keccak256(data: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(data);
+    hasher.finalize().into()
 }

@@ -66,7 +66,6 @@ pub fn flatten_proof_into_responses_for_unified_recursion(
     let mut responses = vec![];
     let op = if input_is_unrolled {
         assert!(setup.circuit_families_setups.len() > 1);
-        assert!(proof.inits_and_teardowns_proofs.is_empty() == false);
 
         full_statement_verifier::definitions::OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
     } else {

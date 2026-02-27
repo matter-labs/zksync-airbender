@@ -32,10 +32,30 @@ bincode = { version = "1.3" }
 prover_examples = { path = "../circuit_defs/prover_examples" }
 
 [features]
-security_80 = ["gpu_prover?/security_80"]
-security_100 = ["gpu_prover?/security_100"]
-verifier_80 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_80", "full_statement_verifier/replace_csr", "prover_examples/verifiers"]
-verifier_100 = ["full_statement_verifier/verifiers", "full_statement_verifier/security_100", "full_statement_verifier/replace_csr", "prover_examples/verifiers"]
+security_80 = [
+    "verifier_common/security_80",
+    "full_statement_verifier/security_80",
+    "prover_examples/security_80",
+    "gpu_prover?/security_80",
+]
+security_100 = [
+    "verifier_common/security_100",
+    "full_statement_verifier/security_100",
+    "prover_examples/security_100",
+    "gpu_prover?/security_100",
+]
+verifier_80 = [
+    "security_80",
+    "full_statement_verifier/verifiers",
+    "full_statement_verifier/replace_csr",
+    "prover_examples/verifiers",
+]
+verifier_100 = [
+    "security_100",
+    "full_statement_verifier/verifiers",
+    "full_statement_verifier/replace_csr",
+    "prover_examples/verifiers",
+]
 prover = ["prover_examples"]
 verifier_binaries = []
 # Will evaluate quotient on main domain for debug
