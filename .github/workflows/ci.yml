@@ -24,7 +24,25 @@ jobs:
       - name: Test
         env:
           RUST_MIN_STACK: 67108864
-        run: cargo test -p riscv_transpiler -- --nocapture
+        run: |
+          set -euo pipefail
+          TESTS=(
+            "jit::tests::test_few_instr"
+            "jit::tests::test_jit_simple_fibonacci"
+            "jit::tests::test_jit_recursive_verifier"
+            "jit::tests::test_ensure_proof_correctness"
+            "jit::tests::test_jit_full_block"
+            "jit::tests::test_reference_block_exec"
+            "jit::tests::run_and_compare"
+            "replayer::test::test_replay_keccak_f1600"
+            "vm::test::test_keccak_f1600"
+            "vm::test::test_reference_block_exec"
+            "vm::test::test_simple_fibonacci"
+          )
+          for test_name in "${TESTS[@]}"; do
+            echo "Running ${test_name}"
+            cargo test -p riscv_transpiler -- --nocapture --exact "${test_name}"
+          done
 
   formatting:
     name: cargo fmt
