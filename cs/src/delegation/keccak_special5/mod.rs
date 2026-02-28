@@ -1746,7 +1746,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "slow comprehensive test"]
     fn stress_test_compile_keccak_special5() {
         use crate::cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
         fn to_u16_chunks(x: u64) -> [u16; 4] {
