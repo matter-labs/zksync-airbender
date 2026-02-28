@@ -501,6 +501,7 @@ mod test {
     // }
 
     #[test]
+    #[serial_test::serial]
     fn test_replay_keccak_f1600() {
         let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));

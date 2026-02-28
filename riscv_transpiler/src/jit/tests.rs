@@ -9,6 +9,7 @@ use crate::{
 use std::{alloc::Global, io::Read, path::Path};
 
 #[test]
+#[serial_test::serial]
 fn test_jit_simple_fibonacci() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -26,6 +27,7 @@ fn test_jit_simple_fibonacci() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_jit_recursive_verifier() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -52,6 +54,7 @@ fn test_jit_recursive_verifier() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_ensure_proof_correctness() {
     use crate::ir::*;
 
@@ -100,6 +103,7 @@ fn test_ensure_proof_correctness() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_few_instr() {
     use std::collections::HashMap;
 
@@ -137,6 +141,7 @@ fn test_few_instr() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_jit_full_block() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -239,6 +244,7 @@ fn run_reference_for_num_cycles_with_snapshots(
 }
 
 #[test]
+#[serial_test::serial]
 fn test_reference_block_exec() {
     use crate::ir::*;
 
@@ -285,6 +291,7 @@ fn test_reference_block_exec() {
 }
 
 #[test]
+#[serial_test::serial]
 fn run_and_compare() {
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
@@ -490,7 +497,10 @@ fn run_and_compare() {
     }
 }
 
+#[cfg(not(feature = "ci_mode"))]
+#[ignore = "long-running manual consistency test"]
 #[test]
+#[serial_test::serial]
 fn run_recursion_and_compare() {
     let (_, binary) = read_binary(&Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
@@ -708,6 +718,7 @@ fn run_recursion_and_compare() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_perf_with_trace_keeping() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -744,6 +755,7 @@ fn test_perf_with_trace_keeping() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_replayer_over_jit() {
     use crate::ir::*;
     let path = std::env::current_dir().unwrap();

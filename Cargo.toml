@@ -89,6 +89,7 @@ default-members = [
     "prover",
     "reduced_keccak",
     "risc_v_simulator",
+    "riscv_transpiler",
     # "tools/cli",
     "tools/generator",
     "trace_holder",
