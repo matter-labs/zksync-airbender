@@ -717,6 +717,8 @@ fn run_recursion_and_compare() {
     }
 }
 
+#[cfg(not(feature = "ci_mode"))]
+#[ignore = "manual profiling smoke test"]
 #[test]
 #[serial_test::serial]
 fn test_perf_with_trace_keeping() {
