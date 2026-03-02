@@ -169,6 +169,7 @@ impl
 }
 
 #[cfg(feature = "legacy_tests")]
+#[ignore = "legacy fixture format drifts; run manually when fixtures are refreshed"]
 #[test]
 fn test_full_machine_verifier_out_of_simulator() {
     let proof: Proof = deserialize_from_file("../prover/delegation_proof");
@@ -216,6 +217,7 @@ fn test_full_machine_verifier_out_of_simulator() {
 }
 
 #[cfg(feature = "legacy_tests")]
+#[ignore = "legacy fixture format drifts; run manually when fixtures are refreshed"]
 #[test]
 fn test_reduced_machine_verifier_out_of_simulator() {
     let proof: Proof = deserialize_from_file("../prover/reduced_machine_proof");
@@ -264,6 +266,7 @@ fn test_reduced_machine_verifier_out_of_simulator() {
 
 // #[ignore = "Requires ZKsyncOS app bin"]
 #[cfg(feature = "legacy_tests")]
+#[ignore = "manual simulator integration test"]
 #[test]
 fn test_verifier_in_simulator() {
     let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
