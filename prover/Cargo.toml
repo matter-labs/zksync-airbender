@@ -57,7 +57,6 @@ cs_debug = ["cs/debug_evaluate_witness"]
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]
 default = ["prover", "cs_debug", "bincode"]
-ci_mode = []
 legacy_tests = []
 
 # Include test code for test in dependent crates

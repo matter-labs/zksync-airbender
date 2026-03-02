@@ -824,13 +824,37 @@ pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode<F: PrimeField, CS: C
     apply_shift_binop_csrrw(cs, input);
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use crate::utils::serialize_to_file;
 
     #[test]
     fn compile_shift_binop_csrrw_circuit() {
+        skip_if_ci!();
         use crate::machine::machine_configurations::create_csr_table_for_delegation;
         use ::field::Mersenne31Field;
 
@@ -856,9 +880,10 @@ mod test {
         serialize_to_file(&compiled, "shift_binop_csrrw_preprocessed_layout.json");
     }
 
-    #[serial_test::serial]
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_shift_binop_csrrw_witness_graph() {
+        skip_if_ci!();
         use crate::machine::machine_configurations::create_csr_table_for_delegation;
         use ::field::Mersenne31Field;
 

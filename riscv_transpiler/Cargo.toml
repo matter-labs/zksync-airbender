@@ -31,7 +31,6 @@ capstone = {version = "0.13", optional = true }
 [features]
 jit = ["dynasmrt", "riscv-decode", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
-ci_mode = []
 default = ["jit"]
 
 [dev-dependencies]

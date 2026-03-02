@@ -703,13 +703,37 @@ pub fn compute_and_save_params(
     serde_json::to_writer(file, &(setups, inits_setup)).expect("must serialize");
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn generate_all() {
+        skip_if_ci!();
         let description = generate_delegation_circuits_artifacts();
 
         let mut dst = std::fs::File::create("generated/all_delegation_circuits_params.rs").unwrap();
@@ -717,9 +741,10 @@ mod test {
         dst.write_all(&description.as_bytes()).unwrap();
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn test_generate_unrolled_base() {
+        skip_if_ci!();
         compute_and_save_params(
             Path::new("../../examples/basic_fibonacci/app.bin"),
             Path::new("../../examples/basic_fibonacci/app.text"),

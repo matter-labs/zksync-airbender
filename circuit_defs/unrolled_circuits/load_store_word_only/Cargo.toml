@@ -18,4 +18,3 @@ serde_json = "*"
 
 [features]
 witness_eval_fn = []
-ci_mode = []

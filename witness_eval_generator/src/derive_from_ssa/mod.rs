@@ -441,8 +441,31 @@ pub fn derive_from_ssa(
     }
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use ::field::Mersenne31Field;
     use std::io::Write;
@@ -452,9 +475,10 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn launch() {
+        skip_if_ci!();
         // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         //     deserialize_from_file("../cs/full_machine_with_delegation_layout.json");
         let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
@@ -470,9 +494,10 @@ mod test {
             .unwrap();
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn gen_for_prover_tests() {
+        skip_if_ci!();
         for prefix in [
             "full_machine_with_delegation",
             "minimal_machine_with_delegation",
@@ -492,9 +517,10 @@ mod test {
         }
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn gen_for_unrolled_tests() {
+        skip_if_ci!();
         for prefix in [
             "add_sub_lui_auipc_mop_preprocessed",
             "jump_branch_slt_preprocessed",

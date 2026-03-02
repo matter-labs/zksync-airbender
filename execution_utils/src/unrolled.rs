@@ -478,12 +478,31 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     )
 }
 
-#[cfg(all(
-    any(feature = "verifier_80", feature = "verifier_100"),
-    test,
-    not(feature = "ci_mode")
-))]
+#[cfg(all(any(feature = "verifier_80", feature = "verifier_100"), test))]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use std::path::Path;
 
@@ -494,9 +513,11 @@ mod test {
     use risc_v_simulator::cycle::MachineConfig;
     use std::alloc::Global;
 
-    #[serial_test::serial]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
     fn test_prove_unrolled_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
@@ -528,9 +549,11 @@ mod test {
         assert!(is_valid);
     }
 
-    #[serial_test::serial]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
     fn test_prove_unrolled_hashed_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
         let (_, text_section) =

@@ -1,5 +1,31 @@
 use super::*;
 
+#[cfg(test)]
+fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+#[cfg(test)]
+fn log_skip(path: &str) {
+    eprintln!("skipping {path} in CI");
+}
+
+#[cfg(test)]
+macro_rules! skip_if_ci {
+    () => {
+        if is_ci() {
+            log_skip(module_path!());
+            return;
+        }
+    };
+    ($ret:expr) => {
+        if is_ci() {
+            log_skip(module_path!());
+            return $ret;
+        }
+    };
+}
+
 use crate::unrolled::evaluate_witness_for_unified_executor;
 use crate::unrolled::UnifiedRiscvCircuitOracle;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
@@ -29,7 +55,7 @@ pub mod reduced_machine {
 
     include!("../../../reduced_machine_preprocessed_generated.rs");
 
-    #[cfg(all(test, not(feature = "ci_mode")))]
+    #[cfg(test)]
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
     ) {
@@ -41,10 +67,11 @@ pub mod reduced_machine {
     }
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 #[ignore = "manual reduced unrolled proving test"]
 #[test]
 fn run_unrolled_reduced_test() {
+    skip_if_ci!();
     run_unrolled_reduced_test_impl(None);
 }
 
@@ -55,7 +82,7 @@ fn run_unrolled_reduced_test() {
         reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
     )
 )]
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 pub fn run_unrolled_reduced_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {

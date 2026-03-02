@@ -21,5 +21,4 @@ serde_json = "*"
 serial_test = "3"
 
 [features]
-ci_mode = []
 legacy_tests = []

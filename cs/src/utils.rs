@@ -168,7 +168,6 @@ where
 }
 
 #[cfg(test)]
-#[cfg_attr(feature = "ci_mode", allow(dead_code))]
 pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();

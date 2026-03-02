@@ -1,7 +1,7 @@
 use core::mem::offset_of;
 
 use super::*;
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
 use prover::prover_stages::Proof;
 #[cfg(feature = "legacy_tests")]
 use verifier_common::proof_flattener::*;
@@ -21,10 +21,37 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
+fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+#[cfg(test)]
+fn log_skip(path: &str) {
+    eprintln!("skipping {path} in CI");
+}
+
+#[cfg(test)]
+macro_rules! skip_if_ci {
+    () => {
+        if is_ci() {
+            log_skip(module_path!());
+            return;
+        }
+    };
+    ($ret:expr) => {
+        if is_ci() {
+            log_skip(module_path!());
+            return $ret;
+        }
+    };
+}
+
+#[cfg(test)]
 #[ignore = "manual unified/delegation verifier fixture test"]
 #[test]
 fn test_unified_cycle_or_delegation() {
+    skip_if_ci!();
     // create an oracle to feed into verifier and look at the transcript values
 
     // let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
@@ -171,6 +198,7 @@ impl
 #[cfg(feature = "legacy_tests")]
 #[ignore = "legacy fixture format drifts; run manually when fixtures are refreshed"]
 #[test]
+// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
 fn test_full_machine_verifier_out_of_simulator() {
     let proof: Proof = deserialize_from_file("../prover/delegation_proof");
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
@@ -219,6 +247,7 @@ fn test_full_machine_verifier_out_of_simulator() {
 #[cfg(feature = "legacy_tests")]
 #[ignore = "legacy fixture format drifts; run manually when fixtures are refreshed"]
 #[test]
+// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
 fn test_reduced_machine_verifier_out_of_simulator() {
     let proof: Proof = deserialize_from_file("../prover/reduced_machine_proof");
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
@@ -268,6 +297,7 @@ fn test_reduced_machine_verifier_out_of_simulator() {
 #[cfg(feature = "legacy_tests")]
 #[ignore = "manual simulator integration test"]
 #[test]
+// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
 fn test_verifier_in_simulator() {
     let proof: Proof = deserialize_from_file("../../zksync-airbender/prover/delegation_proof");
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =

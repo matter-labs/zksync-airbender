@@ -324,8 +324,31 @@ impl Generator {
     }
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod tests {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use crate::F;
     use cs::cs::witness_placer::graph_description::RawExpression;
     use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -354,9 +377,10 @@ mod tests {
             .unwrap();
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[test]
     fn launch() {
+        skip_if_ci!();
         generate("bigint_delegation");
         generate("blake_delegation");
         generate("full_machine_with_delegation");

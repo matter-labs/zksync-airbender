@@ -8,6 +8,32 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(test)]
+fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+#[cfg(test)]
+fn log_skip(path: &str) {
+    eprintln!("skipping {path} in CI");
+}
+
+#[cfg(test)]
+macro_rules! skip_if_ci {
+    () => {
+        if is_ci() {
+            log_skip(module_path!());
+            return;
+        }
+    };
+    ($ret:expr) => {
+        if is_ci() {
+            log_skip(module_path!());
+            return $ret;
+        }
+    };
+}
+
 mod all_layouts;
 mod unrolled_layouts;
 
@@ -245,9 +271,10 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
 #[test]
 fn generate_verifier() {
+    skip_if_ci!();
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         deserialize_from_file("../../prover/full_machine_layout.json");
 

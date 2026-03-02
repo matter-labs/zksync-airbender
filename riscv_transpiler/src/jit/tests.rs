@@ -8,6 +8,32 @@ use crate::{
 };
 use std::{alloc::Global, io::Read, path::Path};
 
+#[cfg(test)]
+fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+#[cfg(test)]
+fn log_skip(path: &str) {
+    eprintln!("skipping {path} in CI");
+}
+
+#[cfg(test)]
+macro_rules! skip_if_ci {
+    () => {
+        if is_ci() {
+            log_skip(module_path!());
+            return;
+        }
+    };
+    ($ret:expr) => {
+        if is_ci() {
+            log_skip(module_path!());
+            return $ret;
+        }
+    };
+}
+
 #[test]
 #[serial_test::serial]
 fn test_jit_simple_fibonacci() {
@@ -497,11 +523,12 @@ fn run_and_compare() {
     }
 }
 
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
 #[ignore = "long-running manual consistency test"]
 #[test]
 #[serial_test::serial]
 fn run_recursion_and_compare() {
+    skip_if_ci!();
     let (_, binary) = read_binary(&Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
@@ -717,11 +744,12 @@ fn run_recursion_and_compare() {
     }
 }
 
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
 #[ignore = "manual profiling smoke test"]
 #[test]
 #[serial_test::serial]
 fn test_perf_with_trace_keeping() {
+    skip_if_ci!();
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 

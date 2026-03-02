@@ -555,6 +555,7 @@ fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
 
 #[cfg(feature = "legacy_tests")]
 #[test]
+// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
 fn test_bigint_with_control_call() {
     use crate::cs::cs::cs_reference::BasicAssembly;
     use crate::cs::delegation::bigint_with_control::*;

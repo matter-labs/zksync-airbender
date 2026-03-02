@@ -26,7 +26,7 @@ The most recent documentation can be found here:
 - Default local tests:
   - `cargo test --profile cli`
 - CI-oriented test lane (excludes codegen/legacy-only tests):
-  - `cargo test --profile cli --features ci_mode`
+  - `CI=1 cargo test --profile cli`
 - Legacy/manual test lane:
   - `cargo test --profile cli --features legacy_tests`
 

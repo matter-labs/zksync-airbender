@@ -460,13 +460,37 @@ pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, C
     apply_add_sub_lui_auipc_mop(cs, input);
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use crate::utils::serialize_to_file;
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_circuit() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
@@ -479,9 +503,10 @@ mod test {
         serialize_to_file(&compiled, "add_sub_lui_auipc_mop_preprocessed_layout.json");
     }
 
-    #[serial_test::serial]
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_add_sub_lui_auipc_mop_witness_graph() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let ssa_forms = dump_ssa_witness_eval_form_for_unrolled_circuit::<Mersenne31Field>(

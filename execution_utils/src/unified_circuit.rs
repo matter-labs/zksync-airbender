@@ -254,11 +254,35 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 
 #[cfg(test)]
 mod test {
-    #[cfg(not(feature = "ci_mode"))]
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
+    #[cfg(test)]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unrolled_verifier() {
+        skip_if_ci!();
         use crate::setups::read_and_pad_binary;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
@@ -293,11 +317,12 @@ mod test {
         dbg!(result);
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unified_verifier() {
+        skip_if_ci!();
         use crate::setups::read_and_pad_binary;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
@@ -331,11 +356,12 @@ mod test {
         dbg!(result);
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_x2_over_unified_verifier() {
+        skip_if_ci!();
         use crate::setups::read_and_pad_binary;
         use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
@@ -369,10 +395,11 @@ mod test {
         dbg!(result);
     }
 
-    #[cfg(not(feature = "ci_mode"))]
+    #[cfg(test)]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn prove_unified_recursion() {
+        skip_if_ci!();
         use crate::setups::read_and_pad_binary;
         use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
         use crate::unrolled::*;

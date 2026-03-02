@@ -16,14 +16,38 @@ pub fn inits_and_teardowns_table_driver_fn<F: PrimeField>(table_driver: &mut Tab
     }
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use crate::one_row_compiler::OneRowCompiler;
     use crate::utils::serialize_to_file;
 
     #[test]
     fn compile_inits_and_teardowns_circuit() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let compiler = OneRowCompiler::<Mersenne31Field>::default();
@@ -32,9 +56,10 @@ mod test {
         serialize_to_file(&compiled, "inits_and_teardowns_preprocessed_layout.json");
     }
 
-    #[serial_test::serial]
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_inits_and_teardowns_witness_graph() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let graph = WitnessGraphCreator::<Mersenne31Field>::new();

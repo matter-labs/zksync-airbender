@@ -785,6 +785,7 @@ mod test {
 
     #[cfg(feature = "legacy_tests")]
     #[test]
+    // TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
     fn test_prove_full_machine() {
         let num_instances = 1;
 

@@ -20,4 +20,3 @@ serde_json = { version = "*"  }
 bincode = { version = "1.3" }
 
 [features]
-ci_mode = []

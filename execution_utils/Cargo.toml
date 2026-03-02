@@ -63,7 +63,6 @@ verifier_binaries = []
 debug_satisfiable = ["prover_examples/debug_satisfiable"]
 # Will perform satisfiability tests on witness
 precheck_satisfied = ["prover_examples/precheck_satisfied"]
-ci_mode = []
 legacy_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
 default = ["verifier_80", "prover"]

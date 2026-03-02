@@ -39,7 +39,6 @@ debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 experimental_witness_eval = []
-ci_mode = []
 
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]

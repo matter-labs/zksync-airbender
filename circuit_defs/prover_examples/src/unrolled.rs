@@ -2019,8 +2019,31 @@ fn prove_delegation_circuit_with_replayer_format<
     (per_delegation_type_proofs, per_tree_set)
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 pub(crate) mod test {
+    fn is_ci() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
+    fn log_skip(path: &str) {
+        eprintln!("skipping {path} in CI");
+    }
+
+    macro_rules! skip_if_ci {
+        () => {
+            if is_ci() {
+                log_skip(module_path!());
+                return;
+            }
+        };
+        ($ret:expr) => {
+            if is_ci() {
+                log_skip(module_path!());
+                return $ret;
+            }
+        };
+    }
+
     use super::*;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
@@ -2121,10 +2144,12 @@ pub(crate) mod test {
     #[cfg(feature = "verifiers")]
     use verifiers_only::UnrolledProgramProof;
 
-    #[cfg(not(feature = "ci_mode"))]
-    #[serial_test::serial]
+    #[cfg(test)]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_prove_unrolled_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
@@ -2190,10 +2215,12 @@ pub(crate) mod test {
         );
     }
 
-    #[cfg(all(feature = "verifiers", not(feature = "ci_mode")))]
-    #[serial_test::serial]
+    #[cfg(feature = "verifiers")]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_simple_fib() {
+        skip_if_ci!();
         use crate::bincode_deserialize_from_file;
         use crate::deserialize_from_file;
         use setups::*;

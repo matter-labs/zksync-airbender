@@ -23,8 +23,10 @@ jobs:
           rustup set profile minimal
       - name: Compile
         run: cargo build --verbose
-      - name: Unit tests (ci_mode)
-        run: cargo test --profile cli --features ci_mode
+      - name: Unit tests (CI)
+        env:
+          CI: "true"
+        run: cargo test --profile cli --nocapture
 
   formatting:
     name: cargo fmt

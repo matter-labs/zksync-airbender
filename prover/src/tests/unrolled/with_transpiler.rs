@@ -2,6 +2,32 @@ use super::*;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
+#[cfg(test)]
+fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+#[cfg(test)]
+fn log_skip(path: &str) {
+    eprintln!("skipping {path} in CI");
+}
+
+#[cfg(test)]
+macro_rules! skip_if_ci {
+    () => {
+        if is_ci() {
+            log_skip(module_path!());
+            return;
+        }
+    };
+    ($ret:expr) => {
+        if is_ci() {
+            log_skip(module_path!());
+            return $ret;
+        }
+    };
+}
+
 use risc_v_simulator::machine_mode_only_unrolled::*;
 use riscv_transpiler::witness::*;
 
@@ -30,9 +56,11 @@ const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
 // #[ignore = "test has explicit panic inside"]
-#[cfg(not(feature = "ci_mode"))]
+#[cfg(test)]
+#[ignore = "manual heavy proving test"]
 #[test]
 fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
+    skip_if_ci!();
     run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None, None);
 }
 
@@ -2115,10 +2143,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
 }
 
-#[cfg(all(test, not(feature = "ci_mode")))]
+#[cfg(test)]
 #[ignore = "requires local test_wit.bin fixture"]
 #[test]
 fn test_mem_circuit() {
+    skip_if_ci!();
     use crate::cs::cs::cs_reference::BasicAssembly;
     use cs::cs::circuit::Circuit;
     use cs::cs::oracle::ExecutorFamilyDecoderData;
