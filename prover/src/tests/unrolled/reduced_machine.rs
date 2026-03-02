@@ -1,30 +1,7 @@
 use super::*;
 
 #[cfg(test)]
-fn is_ci() -> bool {
-    std::env::var_os("CI").is_some()
-}
-
-#[cfg(test)]
-fn log_skip(path: &str) {
-    eprintln!("skipping {path} in CI");
-}
-
-#[cfg(test)]
-macro_rules! skip_if_ci {
-    () => {
-        if is_ci() {
-            log_skip(module_path!());
-            return;
-        }
-    };
-    ($ret:expr) => {
-        if is_ci() {
-            log_skip(module_path!());
-            return $ret;
-        }
-    };
-}
+use test_utils::skip_if_ci;
 
 use crate::unrolled::evaluate_witness_for_unified_executor;
 use crate::unrolled::UnifiedRiscvCircuitOracle;

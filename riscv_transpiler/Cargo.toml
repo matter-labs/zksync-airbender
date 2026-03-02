@@ -34,6 +34,7 @@ flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 default = ["jit"]
 
 [dev-dependencies]
+test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 hex = "*"
 serial_test = "*"

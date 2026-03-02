@@ -595,7 +595,7 @@
     },
     "delegation_processing_aux_poly": null,
     "intermediate_polys_for_memory_init_teardown": {
-      "start": 80,
+      "start": 100,
       "num_elements": 0
     },
     "intermediate_polys_for_memory_argument": {
@@ -899,6 +899,28 @@
           2147483646,
           {
             "WitnessSubtree": 38
+          }
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          {
+            "MemorySubtree": 17
+          },
+          {
+            "MemorySubtree": 17
+          }
+        ]
+      ],
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "MemorySubtree": 17
           }
         ]
       ],
@@ -2135,6 +2157,52 @@
         ]
       ],
       "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          524288,
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 20
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 24
+          }
+        ]
+      ],
+      "constant_term": 2147483643
+    },
+    {
+      "linear_terms": [
+        [
+          2147483646,
+          {
+            "WitnessSubtree": 38
+          }
+        ],
+        [
+          2147483646,
+          {
+            "MemorySubtree": 21
+          }
+        ],
+        [
+          1,
+          {
+            "MemorySubtree": 25
+          }
+        ]
+      ],
+      "constant_term": 0
     }
   ],
   "state_linkage_constraints": [],
@@ -2421,8 +2489,8 @@
   "executor_family_circuit_next_timestamp_aux_var": {
     "WitnessSubtree": 38
   },
-  "executor_family_decoder_table_size": 524288,
-  "trace_len": 16777216,
+  "executor_family_decoder_table_size": 1048576,
+  "trace_len": 8388608,
   "table_offsets": [
     0,
     0,

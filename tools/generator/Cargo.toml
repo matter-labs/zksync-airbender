@@ -20,3 +20,6 @@ witness_eval_generator = { workspace = true }
 gpu_witness_eval_generator = { workspace = true }
 
 [features]
+
+[dev-dependencies]
+test_utils = { workspace = true }

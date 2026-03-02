@@ -32,6 +32,7 @@ legacy_tests = []
 default = ["security_80", "blake2_with_compression"]
 
 [dev-dependencies]
+test_utils = { workspace = true }
 serde = "1"
 serde_json = "*"
 prover = {workspace = true, default-features = true}

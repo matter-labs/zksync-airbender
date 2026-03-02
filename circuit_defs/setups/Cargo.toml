@@ -44,3 +44,6 @@ hex = "*"
 [features]
 defaut = ["witness_eval_fn"]
 witness_eval_fn = ["add_sub_lui_auipc_mop/witness_eval_fn", "jump_branch_slt/witness_eval_fn", "load_store_subword_only/witness_eval_fn", "load_store_word_only/witness_eval_fn", "mul_div/witness_eval_fn", "mul_div_unsigned/witness_eval_fn", "shift_binary_csr/witness_eval_fn", "unified_reduced_machine/witness_eval_fn"]
+
+[dev-dependencies]
+test_utils = { workspace = true }

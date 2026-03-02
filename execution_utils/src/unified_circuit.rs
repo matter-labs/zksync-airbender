@@ -254,28 +254,7 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 
 #[cfg(test)]
 mod test {
-    fn is_ci() -> bool {
-        std::env::var_os("CI").is_some()
-    }
-
-    fn log_skip(path: &str) {
-        eprintln!("skipping {path} in CI");
-    }
-
-    macro_rules! skip_if_ci {
-        () => {
-            if is_ci() {
-                log_skip(module_path!());
-                return;
-            }
-        };
-        ($ret:expr) => {
-            if is_ci() {
-                log_skip(module_path!());
-                return $ret;
-            }
-        };
-    }
+    use test_utils::skip_if_ci;
 
     #[cfg(test)]
     #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]

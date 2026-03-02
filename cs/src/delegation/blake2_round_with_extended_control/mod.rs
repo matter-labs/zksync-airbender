@@ -934,28 +934,7 @@ pub(crate) fn split_top_bit<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS:
 
 #[cfg(test)]
 mod test {
-    fn is_ci() -> bool {
-        std::env::var_os("CI").is_some()
-    }
-
-    fn log_skip(path: &str) {
-        eprintln!("skipping {path} in CI");
-    }
-
-    macro_rules! skip_if_ci {
-        () => {
-            if is_ci() {
-                log_skip(module_path!());
-                return;
-            }
-        };
-        ($ret:expr) => {
-            if is_ci() {
-                log_skip(module_path!());
-                return $ret;
-            }
-        };
-    }
+    use test_utils::skip_if_ci;
 
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
