@@ -8,18 +8,17 @@ use crate::gkr::PAR_THRESHOLD;
 use super::*;
 
 #[inline(always)]
-fn comptue_next_layer<E: Field>(
+fn compute_next_layer<E: Field>(
     prev: &[E],
     left: &mut [MaybeUninit<E>],
     right: &mut [MaybeUninit<E>],
-    f0: &E,
     f1: &E,
 ) {
     for (p, (left_dst, right_dst)) in prev.iter().zip(left.iter_mut().zip(right.iter_mut())) {
-        let mut left = *p;
         let mut right = *p;
-        left.mul_assign(f0);
         right.mul_assign(f1);
+        let mut left = *p;
+        left.sub_assign(&right);
 
         left_dst.write(left);
         right_dst.write(right);
@@ -55,8 +54,6 @@ pub fn make_eq_poly_impl<E: Field, const FULL: bool>(
         let previous_layer = result.last().expect("is present");
 
         let f1 = challenge;
-        let mut f0 = E::ONE;
-        f0.sub_assign(&challenge);
 
         assert_eq!(previous_layer.len(), half_size);
 
@@ -72,7 +69,7 @@ pub fn make_eq_poly_impl<E: Field, const FULL: bool>(
                 )
                 .for_each(|((idx, prev), (left_chunk, right_chunk))| {
                     Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                        comptue_next_layer(prev, left_chunk, right_chunk, &f0, &f1)
+                        compute_next_layer(prev, left_chunk, right_chunk, &f1)
                     });
                 })
         });
@@ -318,18 +315,16 @@ pub fn make_eq_poly_impl_serial<E: Field, const FULL: bool>(challenges: &[E]) ->
         let previous_layer = result.last().expect("is present");
 
         let f1 = challenge;
-        let mut f0 = E::ONE;
-        f0.sub_assign(&challenge);
 
         let half_size = size / 2;
 
         assert_eq!(previous_layer.len(), half_size);
 
         for index in 0..half_size {
-            let mut left = previous_layer[index];
-            let mut right = left;
-            left.mul_assign(&f0);
+            let mut right = previous_layer[index];
             right.mul_assign(&f1);
+            let mut left = previous_layer[index];
+            left.sub_assign(&right);
             layer[index].write(left);
             layer[index + half_size].write(right);
         }

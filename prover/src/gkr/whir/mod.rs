@@ -1404,15 +1404,13 @@ fn fold_evaluation_form_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> &'a mut [E] {
     assert!(input.len().is_power_of_two());
     let half_len = input.len() / 2;
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
     let f1_coeff = *challenge;
 
     let (first_half, second_half) = input.split_at_mut(half_len);
     for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
         let mut t = *b;
+        t.sub_assign(a);
         t.mul_assign(&f1_coeff);
-        a.mul_assign(&f0_coeff);
         a.add_assign(&t);
     }
 
@@ -1430,8 +1428,6 @@ fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
         return &mut input[..0];
     }
 
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
     let f1_coeff = *challenge;
 
     let (first_half, second_half) = input.split_at_mut(half_len);
@@ -1445,8 +1441,8 @@ fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
                 Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
                     for (a, b) in dst.iter_mut().zip(src.iter()) {
                         let mut t = *b;
+                        t.sub_assign(a);
                         t.mul_assign(&f1_coeff);
-                        a.mul_assign(&f0_coeff);
                         a.add_assign(&t);
                     }
                 });
@@ -1464,15 +1460,13 @@ fn fold_eq_poly_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     assert!(eq_poly.len().is_power_of_two());
     assert!(eq_poly.len() >= 2);
     let half_len = eq_poly.len() / 2;
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
     let f1_coeff = *challenge;
 
     let (first_half, second_half) = eq_poly.split_at_mut(half_len);
     for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
-        let mut t = f1_coeff;
-        t.mul_assign(b);
-        a.mul_assign(&f0_coeff);
+        let mut t = *b;
+        t.sub_assign(a);
+        t.mul_assign(&f1_coeff);
         a.add_assign(&t);
     }
 
@@ -1488,8 +1482,6 @@ fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     assert!(eq_poly.len() >= 2);
     let half_len = eq_poly.len() / 2;
 
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
     let f1_coeff = *challenge;
 
     let (first_half, second_half) = eq_poly.split_at_mut(half_len);
@@ -1502,9 +1494,9 @@ fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
             .for_each(|((idx, dst), src)| {
                 Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
                     for (a, b) in dst.iter_mut().zip(src.iter()) {
-                        let mut t = f1_coeff;
-                        t.mul_assign(b);
-                        a.mul_assign(&f0_coeff);
+                        let mut t = *b;
+                        t.sub_assign(a);
+                        t.mul_assign(&f1_coeff);
                         a.add_assign(&t);
                     }
                 });
