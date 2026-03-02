@@ -416,9 +416,10 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
         placer.assign_u16(next_pc_dst_vars[0], &pc_result_low);
         placer.assign_u16(next_pc_dst_vars[1], &pc_result_high);
     };
-    opt_ctx.enforce_all(cs);
     cs.set_values(value_fn);
+    opt_ctx.enforce_all(cs);
     decoded_mask_bits
+
 }
 
 pub fn jump_branch_slt_circuit_with_preprocessed_bytecode<
