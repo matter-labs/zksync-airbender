@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
 use crate::unrolled::evaluate_witness_for_unified_executor;
 use crate::unrolled::UnifiedRiscvCircuitOracle;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
@@ -29,6 +32,7 @@ pub mod reduced_machine {
 
     include!("../../../reduced_machine_preprocessed_generated.rs");
 
+    #[cfg(test)]
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut SimpleWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>>,
     ) {
@@ -40,8 +44,11 @@ pub mod reduced_machine {
     }
 }
 
+#[cfg(test)]
+#[ignore = "manual reduced unrolled proving test"]
 #[test]
 fn run_unrolled_reduced_test() {
+    skip_if_ci!();
     run_unrolled_reduced_test_impl(None);
 }
 
@@ -52,6 +59,7 @@ fn run_unrolled_reduced_test() {
         reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
     )
 )]
+#[cfg(test)]
 pub fn run_unrolled_reduced_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {

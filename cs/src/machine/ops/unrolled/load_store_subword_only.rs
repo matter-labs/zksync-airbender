@@ -578,6 +578,8 @@ pub fn subword_only_load_store_circuit_with_preprocessed_bytecode_with_decoded_b
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::machine::ops::unrolled::load_store::create_load_store_special_tables;
     use crate::utils::serialize_to_file;
@@ -585,7 +587,9 @@ mod test {
     const DUMMY_BYTECODE: &[u32] = &[UNIMP_OPCODE];
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_subword_only_load_store_circuit() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
@@ -618,7 +622,16 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_subword_only_load_store_witness_graph() {
+        skip_if_ci!();
+        if cfg!(feature = "debug_evaluate_witness") {
+            eprintln!(
+                "skipping {} with debug_evaluate_witness feature",
+                module_path!()
+            );
+            return;
+        }
         use ::field::Mersenne31Field;
 
         let ssa_forms = dump_ssa_witness_eval_form_for_unrolled_circuit::<Mersenne31Field>(

@@ -1,5 +1,5 @@
 [package]
-name = "risc_v_cycles"
+name = "test_utils"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,12 +10,3 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-prover = { workspace = true, features = ["prover"] }
-verifier_generator = { workspace = true }
-serde = { workspace = true }
-serde_json = "*"
-
-[features]
-
-[dev-dependencies]
-test_utils = { workspace = true }

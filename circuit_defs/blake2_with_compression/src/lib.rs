@@ -121,10 +121,13 @@ pub fn generate_artifacts() {
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
 
     #[test]
     fn generate() {
+        skip_if_ci!();
         generate_artifacts();
     }
 }

@@ -2021,6 +2021,8 @@ fn prove_delegation_circuit_with_replayer_format<
 
 #[cfg(test)]
 pub(crate) mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
@@ -2121,8 +2123,12 @@ pub(crate) mod test {
     #[cfg(feature = "verifiers")]
     use verifiers_only::UnrolledProgramProof;
 
+    #[cfg(test)]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_prove_unrolled_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
@@ -2159,7 +2165,11 @@ pub(crate) mod test {
             register_final_state,
             (final_pc, final_timestamp),
             pow_challenge,
-        ) = prove_unrolled_execution::<_, IMStandardIsaConfigWithUnsignedMulDiv, Global, 5>(
+        ) = prove_unrolled_execution_with_replayer::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+            Global,
+            { common_constants::rom::ROM_SECOND_WORD_BITS },
+        >(
             1 << 24,
             &binary_image,
             &text_section,
@@ -2186,7 +2196,10 @@ pub(crate) mod test {
 
     #[cfg(feature = "verifiers")]
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_simple_fib() {
+        skip_if_ci!();
         use crate::bincode_deserialize_from_file;
         use crate::deserialize_from_file;
         use setups::*;

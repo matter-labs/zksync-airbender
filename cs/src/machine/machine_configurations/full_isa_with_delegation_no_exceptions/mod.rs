@@ -108,6 +108,8 @@ impl<F: PrimeField> Machine<F> for FullIsaMachineWithDelegationNoExceptionHandli
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
 
     use crate::utils::serialize_to_file;
@@ -117,6 +119,7 @@ mod test {
 
     #[test]
     fn compile_full_machine_with_delegation() {
+        skip_if_ci!();
         let machine = FullIsaMachineWithDelegationNoExceptionHandling;
         let rom_table = create_table_for_rom_image::<_, SECOND_WORD_BITS>(
             &[],
@@ -134,7 +137,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn full_machine_with_delegation_get_witness_graph() {
+        skip_if_ci!();
         let machine = FullIsaMachineWithDelegationNoExceptionHandling;
 
         let ssa_forms = dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS>(machine);

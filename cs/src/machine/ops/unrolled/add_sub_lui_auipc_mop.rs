@@ -484,6 +484,8 @@ pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, C
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::{
         cs::cs_reference::BasicAssembly,
@@ -524,6 +526,7 @@ mod test {
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_circuit() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
@@ -537,7 +540,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_add_sub_lui_auipc_mop_witness_graph() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let ssa_forms = dump_ssa_witness_eval_form_for_unrolled_circuit::<Mersenne31Field>(

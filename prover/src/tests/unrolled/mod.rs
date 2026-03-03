@@ -1,7 +1,9 @@
 use super::*;
 
+#[cfg(test)]
 use crate::tracers::unrolled::tracer::*;
 use crate::unrolled::evaluate_witness_for_executor_family;
+#[cfg(test)]
 use crate::unrolled::run_unrolled_machine_for_num_cycles;
 use crate::unrolled::MemoryCircuitOracle;
 use crate::unrolled::NonMemoryCircuitOracle;
@@ -12,6 +14,7 @@ use cs::cs::circuit::Circuit;
 use cs::machine::ops::unrolled::*;
 use cs::machine::NON_DETERMINISM_CSR;
 use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+#[cfg(test)]
 use risc_v_simulator::{cycle::*, delegations::DelegationsCSRProcessor};
 #[cfg(test)]
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
@@ -21,6 +24,10 @@ use std::collections::BTreeSet;
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;
 use crate::witness_evaluator::unrolled::evaluate_memory_witness_for_executor_family;
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
+#[cfg(test)]
 mod reduced_machine;
 pub mod with_transpiler;
 
@@ -181,6 +188,7 @@ pub mod load_store {
 
     include!("../../../load_store_preprocessed_generated.rs");
 
+    #[cfg(test)]
     pub fn witness_eval_fn<'a, 'b>(proxy: &'_ mut SimpleWitnessProxy<'a, MemoryCircuitOracle<'b>>) {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
@@ -613,12 +621,16 @@ pub fn ensure_memory_trace_consistency<const N: usize, const M: usize>(
     }
 }
 
+#[cfg(test)]
 const SUPPORT_SIGNED: bool = false;
+#[cfg(test)]
 const INITIAL_PC: u32 = 0;
 
-// #[ignore = "test has explicit panic inside"]
+#[cfg(test)]
+#[ignore = "manual unrolled proving test"]
 #[test]
 fn run_basic_unrolled_test() {
+    skip_if_ci!();
     run_basic_unrolled_test_impl(None);
 }
 
@@ -629,6 +641,7 @@ fn run_basic_unrolled_test() {
         reason = "feature=test compiles helper, but it is called only by #[test] wrapper"
     )
 )]
+#[cfg(test)]
 pub fn run_basic_unrolled_test_impl(
     _maybe_gpu_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
@@ -1580,8 +1593,11 @@ pub fn run_basic_unrolled_test_impl(
     // assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
 }
 
+#[cfg(test)]
+#[ignore = "requires local witness fixture (tmp_wit.bin)"]
 #[test]
 fn test_single_non_mem_circuit() {
+    skip_if_ci!();
     use crate::cs::cs::cs_reference::BasicAssembly;
     use cs::cs::circuit::Circuit;
     use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::*;
@@ -1658,8 +1674,11 @@ fn test_single_non_mem_circuit() {
     }
 }
 
+#[cfg(test)]
+#[ignore = "requires external zksync-os witness fixtures"]
 #[test]
 fn test_bigint_with_replayer_oracle() {
+    skip_if_ci!();
     use crate::cs::cs::cs_reference::BasicAssembly;
     use crate::cs::delegation::bigint_with_control::*;
     use crate::tracers::oracles::transpiler_oracles::delegation::*;

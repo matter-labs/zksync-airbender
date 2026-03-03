@@ -705,10 +705,14 @@ pub fn compute_and_save_params(
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
 
+    #[cfg(test)]
     #[test]
     fn generate_all() {
+        skip_if_ci!();
         let description = generate_delegation_circuits_artifacts();
 
         let mut dst = std::fs::File::create("generated/all_delegation_circuits_params.rs").unwrap();
@@ -716,8 +720,10 @@ mod test {
         dst.write_all(&description.as_bytes()).unwrap();
     }
 
+    #[cfg(test)]
     #[test]
     fn test_generate_unrolled_base() {
+        skip_if_ci!();
         compute_and_save_params(
             Path::new("../../examples/basic_fibonacci/app.bin"),
             Path::new("../../examples/basic_fibonacci/app.text"),

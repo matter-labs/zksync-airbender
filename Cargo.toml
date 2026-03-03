@@ -10,6 +10,7 @@ members = [
     "trace_holder",
     "fft",
     "worker",
+    "test_utils",
     "transcript",
     "non_determinism_source",
     "risc_v_simulator",
@@ -89,6 +90,7 @@ default-members = [
     "prover",
     "reduced_keccak",
     "risc_v_simulator",
+    "riscv_transpiler",
     # "tools/cli",
     "tools/generator",
     "trace_holder",
@@ -128,6 +130,7 @@ common_constants = { path = "./common_constants" }
 riscv_common = { path = "./riscv_common", default-features = false }
 trace_holder = { path = "./trace_holder" }
 worker = { path = "./worker" }
+test_utils = { path = "./test_utils" }
 fft = { path = "./fft" }
 prover = { path = "./prover", default-features = false }
 cs = { path = "./cs", default-features = false }

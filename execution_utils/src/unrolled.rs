@@ -478,9 +478,10 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     )
 }
 
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
-#[cfg(test)]
+#[cfg(all(any(feature = "verifier_80", feature = "verifier_100"), test))]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use std::path::Path;
 
@@ -492,7 +493,10 @@ mod test {
     use std::alloc::Global;
 
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
     fn test_prove_unrolled_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
@@ -504,15 +508,16 @@ mod test {
         let rom_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let proofs =
-            prove_unrolled_for_machine_configuration::<IMStandardIsaConfigWithUnsignedMulDiv>(
-                &binary_image,
-                &text_section,
-                cycles_bound,
-                non_determinism_source,
-                rom_bound,
-                &worker,
-            );
+        let proofs = prove_unrolled_with_replayer_for_machine_configuration::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
+            &binary_image,
+            &text_section,
+            cycles_bound,
+            non_determinism_source,
+            rom_bound,
+            &worker,
+        );
 
         println!("Proving completed, preparing to verify");
 
@@ -524,7 +529,10 @@ mod test {
     }
 
     #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
     fn test_prove_unrolled_hashed_fibonacci() {
+        skip_if_ci!();
         let (_, binary_image) =
             setups::read_and_pad_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
         let (_, text_section) =
@@ -556,6 +564,7 @@ mod test {
         assert!(is_valid);
     }
 
+    #[allow(dead_code)]
     pub fn prove_unrolled_for_machine_configuration<C: MachineConfig>(
         binary_image: &[u32],
         text_section: &[u32],

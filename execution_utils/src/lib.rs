@@ -1038,7 +1038,7 @@ pub mod verifier_binaries {
 //         //     run_verifier_binary(binary, responses).is_some()
 //         // }
 
-//         #[cfg(feature = "extended_tests")]
+//         #[cfg(test)]
 //         #[test]
 //         fn debug_verification() {
 //             let mut src = std::fs::File::open("recursion_layer.json").unwrap();
@@ -1054,7 +1054,7 @@ pub mod verifier_binaries {
 //             let _ = full_statement_verifier::verify_recursion_layer();
 //         }
 
-//         #[cfg(feature = "extended_tests")]
+//         #[cfg(test)]
 //         #[test]
 //         fn debug_single_risc_v_proof_verification() {
 //             use std::mem::MaybeUninit;

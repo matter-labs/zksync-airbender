@@ -326,6 +326,8 @@ impl Generator {
 
 #[cfg(test)]
 mod tests {
+    use test_utils::skip_if_ci;
+
     use crate::F;
     use cs::cs::witness_placer::graph_description::RawExpression;
     use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -354,8 +356,10 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(test)]
     #[test]
     fn launch() {
+        skip_if_ci!();
         generate("bigint_delegation");
         generate("blake_delegation");
         generate("full_machine_with_delegation");

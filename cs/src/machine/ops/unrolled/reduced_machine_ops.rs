@@ -585,6 +585,8 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::utils::serialize_to_file;
 
@@ -592,7 +594,8 @@ mod test {
 
     #[test]
     fn compile_reduced_machine_circuit() {
-        use field::Mersenne31Field;
+        skip_if_ci!();
+        use ::field::Mersenne31Field;
 
         let compiled = compile_unified_circuit_state_transition::<Mersenne31Field>(
             &|cs| {
@@ -627,8 +630,10 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_reduced_machine_witness_graph() {
-        use field::Mersenne31Field;
+        skip_if_ci!();
+        use ::field::Mersenne31Field;
 
         let ssa_forms = dump_ssa_witness_eval_form_for_unrolled_circuit::<Mersenne31Field>(
             &|cs| {

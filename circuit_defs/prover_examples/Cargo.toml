@@ -29,8 +29,10 @@ nvtx = { version = "1", optional = true }
 cs = { workspace = true, optional = true }
 
 [dev-dependencies]
+test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
 full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr", "security_80"] }
+serial_test = "3"
 
 [features]
 security_80 = ["verifier_common/security_80"]
@@ -44,6 +46,7 @@ debug_satisfiable = ["prover/debug_satisfiable"]
 # Print logs related to timings only.
 timing_logs = []
 verifiers = ["full_statement_verifier/verifiers"]
+legacy_tests = []
 
 default = ["timing_logs", "security_80", "verifier_common/proof_utils"]
 

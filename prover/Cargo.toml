@@ -34,10 +34,12 @@ serde_json = { version = "*", optional = true }
 bincode = { version = "1.3", optional = true }
 
 [dev-dependencies]
+test_utils = { workspace = true }
 rand = { workspace = true, features = ["std", "std_rng"]}
 bincode = { version = "1.3" }
 criterion = "0.5"
 hex = "*"
+serial_test = "3"
 
 [[bench]]
 name = "pow_bench"
@@ -56,6 +58,7 @@ cs_debug = ["cs/debug_evaluate_witness"]
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]
 default = ["prover", "cs_debug", "bincode"]
+legacy_tests = []
 
 # Include test code for test in dependent crates
 test = []

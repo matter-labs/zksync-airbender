@@ -904,11 +904,14 @@ pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode_with_decoded_bits<
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::utils::serialize_to_file;
 
     #[test]
     fn compile_shift_binop_csrrw_circuit() {
+        skip_if_ci!();
         use crate::machine::machine_configurations::create_csr_table_for_delegation;
         use ::field::Mersenne31Field;
 
@@ -935,7 +938,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_shift_binop_csrrw_witness_graph() {
+        skip_if_ci!();
         use crate::machine::machine_configurations::create_csr_table_for_delegation;
         use ::field::Mersenne31Field;
 

@@ -21,6 +21,15 @@ The most recent documentation can be found here:
 - [CLI tool](./tools/cli/README.md)
 - [Examples](./examples/)
 
+## Test Modes
+
+- Default local tests:
+  - `cargo test --profile cli`
+- CI-oriented test lane (excludes codegen/legacy-only tests):
+  - `CI=1 cargo test --profile cli`
+- Legacy/manual test lane:
+  - `cargo test --profile cli --features legacy_tests`
+
 ## Policies
 
 - [Security policy](SECURITY.md)

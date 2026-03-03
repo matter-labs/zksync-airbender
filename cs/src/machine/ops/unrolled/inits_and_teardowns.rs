@@ -18,12 +18,15 @@ pub fn inits_and_teardowns_table_driver_fn<F: PrimeField>(table_driver: &mut Tab
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::one_row_compiler::OneRowCompiler;
     use crate::utils::serialize_to_file;
 
     #[test]
     fn compile_inits_and_teardowns_circuit() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let compiler = OneRowCompiler::<Mersenne31Field>::default();
@@ -33,7 +36,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn compile_inits_and_teardowns_witness_graph() {
+        skip_if_ci!();
         use ::field::Mersenne31Field;
 
         let graph = WitnessGraphCreator::<Mersenne31Field>::new();

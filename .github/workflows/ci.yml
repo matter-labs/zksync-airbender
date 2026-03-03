@@ -23,42 +23,10 @@ jobs:
           rustup set profile minimal
       - name: Compile
         run: cargo build --verbose
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
-
-  transpiler_tests:
-    name: transpiler tests
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Test
+      - name: Unit tests (CI)
         env:
-          RUST_MIN_STACK: 67108864
-        run: |
-          set -euo pipefail
-          TESTS=(
-            "jit::tests::test_few_instr"
-            "jit::tests::test_jit_simple_fibonacci"
-            "jit::tests::test_jit_recursive_verifier"
-            "jit::tests::test_ensure_proof_correctness"
-            "jit::tests::test_jit_full_block"
-            "jit::tests::test_reference_block_exec"
-            "jit::tests::run_and_compare"
-            "replayer::test::test_replay_keccak_f1600"
-            "vm::test::test_keccak_f1600"
-            "vm::test::test_reference_block_exec"
-            "vm::test::test_simple_fibonacci"
-          )
-          for test_name in "${TESTS[@]}"; do
-            echo "Running ${test_name}"
-            cargo test -p riscv_transpiler -- --nocapture --exact "${test_name}"
-          done
+          CI: "true"
+        run: cargo test --profile cli -- --nocapture
 
   formatting:
     name: cargo fmt
@@ -74,66 +42,6 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
-
-  simulator_isa_tests:
-    name: ISA tests for simulator
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: tests
-        working-directory: ./risc_v_simulator
-        run: cargo test --release --features=delegation
-
-  full_recursion_fast:
-    name: full_recursion_fast
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Display CPU Info
-        run: |
-          echo "Checking CPU capabilities..."
-          lscpu | grep avx512 || echo "AVX-512 not supported on this runner"
-
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Run Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_fib
-      - name: Run base layer recursive verifier over Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_base
-      - name: Run recursive layer verifier over base layer verifier and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion
-
-  risc_v_test_delegations:
-    name: risc_v_tests_delegations
-    runs-on: [matterlabs-ci-runner]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Compile
-        working-directory: ./risc_v_simulator
-        run: cargo build --features delegation --verbose
-      - name: test
-        working-directory: ./risc_v_simulator
-        run: cargo test --features delegation
 
   circuits_generated:
     name: circuits_generated

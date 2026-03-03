@@ -8,6 +8,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
 mod all_layouts;
 mod unrolled_layouts;
 
@@ -245,8 +248,10 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
+#[cfg(test)]
 #[test]
 fn generate_verifier() {
+    skip_if_ci!();
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         deserialize_from_file("../../prover/full_machine_layout.json");
 

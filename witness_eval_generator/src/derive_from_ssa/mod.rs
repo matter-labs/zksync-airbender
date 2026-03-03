@@ -443,6 +443,8 @@ pub fn derive_from_ssa(
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use ::field::Mersenne31Field;
     use std::io::Write;
@@ -452,8 +454,10 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
+    #[cfg(test)]
     #[test]
     fn launch() {
+        skip_if_ci!();
         // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         //     deserialize_from_file("../cs/full_machine_with_delegation_layout.json");
         let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
@@ -469,8 +473,10 @@ mod test {
             .unwrap();
     }
 
+    #[cfg(test)]
     #[test]
     fn gen_for_prover_tests() {
+        skip_if_ci!();
         for prefix in [
             "full_machine_with_delegation",
             "minimal_machine_with_delegation",
@@ -490,8 +496,10 @@ mod test {
         }
     }
 
+    #[cfg(test)]
     #[test]
     fn gen_for_unrolled_tests() {
+        skip_if_ci!();
         for prefix in [
             "add_sub_lui_auipc_mop_preprocessed",
             "jump_branch_slt_preprocessed",

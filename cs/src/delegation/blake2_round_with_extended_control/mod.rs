@@ -1000,6 +1000,8 @@ pub(crate) fn split_top_bit<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS:
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
     use crate::one_row_compiler::{CompiledCircuitArtifact, OneRowCompiler, ProtectedConstraintSnapshot};
@@ -1029,6 +1031,7 @@ mod test {
 
     #[test]
     fn compile_blake2_with_extended_control() {
+        skip_if_ci!();
         let mut cs = BasicAssembly::<Mersenne31Field>::new();
         define_blake2_with_extended_control_delegation_circuit(&mut cs);
         let (circuit_output, _) = cs.finalize();
@@ -1051,7 +1054,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn blake_delegation_get_witness_graph() {
+        skip_if_ci!();
         let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
             define_blake2_with_extended_control_delegation_circuit,
         );

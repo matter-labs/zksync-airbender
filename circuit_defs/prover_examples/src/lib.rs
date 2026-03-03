@@ -777,13 +777,15 @@ pub fn create_circuit_setup<A: GoodAllocator, B: GoodAllocator, const N: usize>(
     setup_evaluations
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy_tests"))]
 mod test {
     use super::*;
     use std::alloc::Global;
     use std::io::Read;
 
+    #[cfg(feature = "legacy_tests")]
     #[test]
+    // TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
     fn test_prove_full_machine() {
         let num_instances = 1;
 

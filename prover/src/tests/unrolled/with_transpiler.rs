@@ -2,6 +2,9 @@ use super::*;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
 use risc_v_simulator::machine_mode_only_unrolled::*;
 use riscv_transpiler::witness::*;
 
@@ -30,8 +33,11 @@ const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
 // #[ignore = "test has explicit panic inside"]
+#[cfg(test)]
+#[ignore = "manual heavy proving test"]
 #[test]
 fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
+    skip_if_ci!();
     run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(None, None);
 }
 
@@ -2114,8 +2120,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
     assert_eq!(delegation_argument_accumulator, Mersenne31Quartic::ZERO);
 }
 
+#[cfg(test)]
+#[ignore = "requires local test_wit.bin fixture"]
 #[test]
 fn test_mem_circuit() {
+    skip_if_ci!();
     use crate::cs::cs::cs_reference::BasicAssembly;
     use cs::cs::circuit::Circuit;
     use cs::cs::oracle::ExecutorFamilyDecoderData;

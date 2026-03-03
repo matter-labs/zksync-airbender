@@ -505,6 +505,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_simple_fibonacci() {
         let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
@@ -552,6 +553,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_keccak_f1600() {
         let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
@@ -609,6 +611,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_reference_block_exec() {
         use crate::ir::*;
         use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;

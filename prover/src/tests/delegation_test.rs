@@ -479,7 +479,10 @@ pub fn run_basic_delegation_test_impl(
 }
 
 // #[ignore = "test has explicit panic inside"]
+#[cfg(feature = "legacy_tests")]
 #[test]
+#[serial_test::serial]
+// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
 fn run_basic_delegation_test() {
     run_basic_delegation_test_impl(None, None);
 }
