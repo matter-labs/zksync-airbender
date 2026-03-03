@@ -71,6 +71,7 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+use crate::gkr::PAR_THRESHOLD;
 use crate::prover_stages::query_producer::assemble_query_index;
 use crate::{gkr::prover::apply_row_wise, merkle_trees::ColumnMajorMerkleTreeConstructor};
 use fft::{
@@ -81,7 +82,7 @@ use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use std::sync::Arc;
 use transcript::Seed;
-use worker::Worker;
+use worker::{IterableWithGeometry, Worker};
 
 pub mod hypercube_to_monomial;
 pub mod queries;
@@ -481,7 +482,7 @@ where
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
     // So we make EQ poly explicitly, and then we will update it after every step, and use naively
 
-    let mut eq_polys = make_eq_poly_in_full::<E>(&original_evaluation_point[..]); // TODO: parallelize
+    let mut eq_polys = make_eq_poly_in_full::<E>(&original_evaluation_point[..], worker);
     let mut eq_poly_box = eq_polys.pop().unwrap();
     let mut eq_poly = &mut eq_poly_box[..];
     drop(eq_polys);
@@ -650,7 +651,7 @@ where
                 ood_point,
                 sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
             );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows);
+            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -794,7 +795,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -811,6 +812,7 @@ where
             eq_poly,
             &contributions_to_eq_poly,
             &contributions_to_eq_poly_with_base_points,
+            worker,
         );
 
         // and remember new sumcheck claim
@@ -960,7 +962,7 @@ where
                 ood_point,
                 sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
             );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows);
+            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -1077,7 +1079,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1091,6 +1093,7 @@ where
             eq_poly,
             &contributions_to_eq_poly,
             &contributions_to_eq_poly_with_base_points,
+            worker,
         );
 
         // and remember new sumcheck claim
@@ -1255,7 +1258,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows);
+                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1332,7 +1335,45 @@ fn fold_monomial_form<E: Field>(
     challenge: &E,
     worker: &Worker,
 ) {
-    // TODO: parallelize
+    assert!(input.len().is_power_of_two());
+    assert!(buffer.capacity() >= input.len() / 2);
+    assert!(buffer.is_empty());
+
+    let work_size = input.len() / 2;
+    if work_size == 0 {
+        return;
+    }
+
+    let input_pairs = input.as_chunks::<2>().0;
+    let dst_uninit = &mut buffer.spare_capacity_mut()[..work_size];
+
+    worker.scope_with_threshold(work_size, PAR_THRESHOLD, |scope, geometry| {
+        input_pairs
+            .chunks_for_geometry(geometry)
+            .enumerate()
+            .zip(dst_uninit.chunks_for_geometry_mut(geometry))
+            .for_each(|((idx, src_chunk), dst_chunk)| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    for ([c0, c1], d) in src_chunk.iter().zip(dst_chunk.iter_mut()) {
+                        let mut result = *c1;
+                        result.mul_assign(challenge);
+                        result.add_assign(c0);
+                        d.write(result);
+                    }
+                });
+            })
+    });
+
+    unsafe {
+        buffer.set_len(work_size);
+    }
+
+    core::mem::swap(input, buffer);
+    buffer.clear();
+}
+
+#[cfg(test)]
+fn fold_monomial_form_serial<E: Field>(input: &mut Vec<E>, buffer: &mut Vec<E>, challenge: &E) {
     assert!(input.len().is_power_of_two());
     assert!(buffer.capacity() >= input.len() / 2);
     assert!(buffer.is_empty());
@@ -1356,31 +1397,80 @@ fn fold_monomial_form<E: Field>(
     buffer.clear();
 }
 
+#[cfg(test)]
+fn fold_evaluation_form_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+    input: &'a mut [E],
+    challenge: &E,
+) -> &'a mut [E] {
+    assert!(input.len().is_power_of_two());
+    let half_len = input.len() / 2;
+    let f1_coeff = *challenge;
+
+    let (first_half, second_half) = input.split_at_mut(half_len);
+    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
+        let mut t = *b;
+        t.sub_assign(a);
+        t.mul_assign(&f1_coeff);
+        a.add_assign(&t);
+    }
+
+    first_half
+}
+
 fn fold_evaluation_form<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     input: &'a mut [E],
     challenge: &E,
     worker: &Worker,
 ) -> &'a mut [E] {
-    // TODO: parallelize
     assert!(input.len().is_power_of_two());
     let half_len = input.len() / 2;
-    let stride = input.len() / 2;
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
-    let f1_coeff = challenge;
-
-    for i in 0..input.len() / 2 {
-        let mut f0 = input[i];
-        f0.mul_assign(&f0_coeff);
-        let mut f1 = input[i + stride];
-        f1.mul_assign(&f1_coeff);
-
-        f0.add_assign(&f1);
-
-        input[i] = f0;
+    if half_len == 0 {
+        return &mut input[..0];
     }
 
-    &mut input[..half_len]
+    let f1_coeff = *challenge;
+
+    let (first_half, second_half) = input.split_at_mut(half_len);
+
+    worker.scope_with_threshold(half_len, PAR_THRESHOLD, |scope, geometry| {
+        first_half
+            .chunks_for_geometry_mut(geometry)
+            .enumerate()
+            .zip(second_half.chunks_for_geometry(geometry))
+            .for_each(|((idx, dst), src)| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    for (a, b) in dst.iter_mut().zip(src.iter()) {
+                        let mut t = *b;
+                        t.sub_assign(a);
+                        t.mul_assign(&f1_coeff);
+                        a.add_assign(&t);
+                    }
+                });
+            })
+    });
+
+    first_half
+}
+
+#[cfg(test)]
+fn fold_eq_poly_serial<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+    eq_poly: &'a mut [E],
+    challenge: &E,
+) -> &'a mut [E] {
+    assert!(eq_poly.len().is_power_of_two());
+    assert!(eq_poly.len() >= 2);
+    let half_len = eq_poly.len() / 2;
+    let f1_coeff = *challenge;
+
+    let (first_half, second_half) = eq_poly.split_at_mut(half_len);
+    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
+        let mut t = *b;
+        t.sub_assign(a);
+        t.mul_assign(&f1_coeff);
+        a.add_assign(&t);
+    }
+
+    first_half
 }
 
 fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
@@ -1388,26 +1478,45 @@ fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     challenge: &E,
     worker: &Worker,
 ) -> &'a mut [E] {
-    // TODO: parallelize
     assert!(eq_poly.len().is_power_of_two());
     assert!(eq_poly.len() >= 2);
-    let stride = eq_poly.len() / 2;
-    let mut f0_coeff = E::ONE;
-    f0_coeff.sub_assign(challenge);
+    let half_len = eq_poly.len() / 2;
+
     let f1_coeff = *challenge;
 
-    for i in 0..eq_poly.len() / 2 {
-        // line is (1 - X) * f0 + X * F1
-        let mut a = f0_coeff;
-        a.mul_assign(&eq_poly[i]);
-        let mut b = f1_coeff;
-        b.mul_assign(&eq_poly[i + stride]);
-        a.add_assign(&b);
-        eq_poly[i] = a;
-    }
+    let (first_half, second_half) = eq_poly.split_at_mut(half_len);
 
-    let next_len = eq_poly.len() / 2;
-    &mut eq_poly[..next_len]
+    worker.scope_with_threshold(half_len, PAR_THRESHOLD, |scope, geometry| {
+        first_half
+            .chunks_for_geometry_mut(geometry)
+            .enumerate()
+            .zip(second_half.chunks_for_geometry(geometry))
+            .for_each(|((idx, dst), src)| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    for (a, b) in dst.iter_mut().zip(src.iter()) {
+                        let mut t = *b;
+                        t.sub_assign(a);
+                        t.mul_assign(&f1_coeff);
+                        a.add_assign(&t);
+                    }
+                });
+            })
+    });
+
+    first_half
+}
+
+#[cfg(test)]
+fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &[E]) -> E {
+    assert!(a.len() > 0);
+    assert_eq!(a.len(), b.len());
+    let mut result = E::ZERO;
+    for (a, b) in a.iter().zip(b.iter()) {
+        let mut t = *a;
+        t.mul_assign(b);
+        result.add_assign(&t);
+    }
+    result
 }
 
 fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -1415,19 +1524,80 @@ fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> E {
-    // TODO: parallelize
     assert!(a.len() > 0);
     assert_eq!(a.len(), b.len());
 
-    let mut result = E::ZERO;
+    let geometry = worker.get_geometry_with_threshold(a.len(), PAR_THRESHOLD);
+    let mut partial_results = vec![E::ZERO; geometry.len()];
 
-    for (a, b) in a.iter().zip(b.iter()) {
-        let mut t = *a;
-        t.mul_assign(b);
-        result.add_assign(&t);
+    worker.scope_with_threshold(a.len(), PAR_THRESHOLD, |scope, geometry| {
+        a.chunks_for_geometry(geometry)
+            .enumerate()
+            .zip(b.chunks_for_geometry(geometry))
+            .zip(partial_results.iter_mut())
+            .for_each(|(((idx, a_chunk), b_chunk), partial)| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    let mut acc = E::ZERO;
+                    for (a, b) in a_chunk.iter().zip(b_chunk.iter()) {
+                        let mut t = *a;
+                        t.mul_assign(b);
+                        acc.add_assign(&t);
+                    }
+                    *partial = acc;
+                });
+            });
+    });
+
+    partial_results.iter().fold(E::ZERO, |mut acc, p| {
+        acc.add_assign(p);
+        acc
+    })
+}
+
+// Accumulate partial [f0, f1, f_half] sums over aligned quadruples of slice elements.
+// a_low[i] = a[i], a_high[i] = a[i + half], same for b.  quart scaling is NOT applied here.
+#[inline(always)]
+fn three_point_partial<E: Field>(a_low: &[E], a_high: &[E], b_low: &[E], b_high: &[E]) -> [E; 3] {
+    let mut f0 = E::ZERO;
+    let mut f1 = E::ZERO;
+    let mut f_half = E::ZERO;
+    for ((a0, a1), (b0, b1)) in a_low
+        .iter()
+        .zip(a_high.iter())
+        .zip(b_low.iter().zip(b_high.iter()))
+    {
+        let mut t0 = *a0;
+        t0.mul_assign(b0);
+        f0.add_assign(&t0);
+
+        let mut t1 = *a1;
+        t1.mul_assign(b1);
+        f1.add_assign(&t1);
+
+        let mut tt = *a1;
+        tt.add_assign(a0);
+        let mut t_half = *b1;
+        t_half.add_assign(b0);
+        t_half.mul_assign(&tt);
+        f_half.add_assign(&t_half);
     }
+    [f0, f1, f_half]
+}
 
-    result
+#[cfg(test)]
+fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
+    a: &[E],
+    b: &[E],
+) -> (E, E, E) {
+    assert!(a.len() > 0);
+    assert_eq!(a.len(), b.len());
+    let quart = F::from_u32_unchecked(4).inverse().unwrap();
+    let half = a.len() / 2;
+    let (a_low, a_high) = a.split_at(half);
+    let (b_low, b_high) = b.split_at(half);
+    let [f0, f1, mut f_half] = three_point_partial(a_low, a_high, b_low, b_high);
+    f_half.mul_assign_by_base(&quart);
+    (f0, f1, f_half)
 }
 
 fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -1435,59 +1605,133 @@ fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> (E, E, E) {
-    // TODO: parallelize
     assert!(a.len() > 0);
     assert_eq!(a.len(), b.len());
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
+    let half = a.len() / 2;
+    let (a_low, a_high) = a.split_at(half);
+    let (b_low, b_high) = b.split_at(half);
 
-    let mut f0 = E::ZERO;
-    let mut f1 = E::ZERO;
-    let mut f_half = E::ZERO;
-    let stride = a.len() / 2;
+    // Each thread accumulates partial [f0, f1, f_half] over its chunk of pairs,
+    // then we reduce across threads.  When half < PAR_THRESHOLD the geometry has
+    // one chunk and smart_spawn runs on the calling thread.
+    let mut partial_results = vec![
+        [E::ZERO; 3];
+        worker
+            .get_geometry_with_threshold(half, PAR_THRESHOLD)
+            .len()
+    ];
 
-    for i in 0..a.len() / 2 {
-        // line is f0 * (1 - X) + f1 * X
+    let [f0, f1, mut f_half] = {
+        worker.scope_with_threshold(half, PAR_THRESHOLD, |scope, geometry| {
+            a_low
+                .chunks_for_geometry(geometry)
+                .enumerate()
+                .zip(
+                    a_high
+                        .chunks_for_geometry(geometry)
+                        .zip(b_low.chunks_for_geometry(geometry))
+                        .zip(b_high.chunks_for_geometry(geometry)),
+                )
+                .zip(partial_results.iter_mut())
+                .for_each(|(((idx, al), ((ah, bl), bh)), partial)| {
+                    Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                        *partial = three_point_partial(al, ah, bl, bh);
+                    });
+                });
+        });
 
-        let a0 = a[i];
-        let a1 = a[i + stride];
-        let b0 = b[i];
-        let b1 = b[i + stride];
+        partial_results
+            .iter()
+            .fold([E::ZERO; 3], |mut acc, partial| {
+                acc[0].add_assign(&partial[0]);
+                acc[1].add_assign(&partial[1]);
+                acc[2].add_assign(&partial[2]);
+                acc
+            })
+    };
 
-        let mut t0 = a0;
-        t0.mul_assign(&b0);
-        f0.add_assign(&t0);
-
-        let mut t1 = a1;
-        t1.mul_assign(&b1);
-        f1.add_assign(&t1);
-
-        let mut tt = a1;
-        tt.add_assign(&a0);
-        let mut t_half = b1;
-        t_half.add_assign(&b0);
-        t_half.mul_assign(&tt);
-        f_half.add_assign(&t_half);
-    }
-
+    // quart scaling is applied once after the full reduction, not per-thread
     f_half.mul_assign_by_base(&quart);
-
     (f0, f1, f_half)
 }
 
-fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) -> E {
-    // TODO: parallelize
-
+#[cfg(test)]
+fn evaluate_monomial_form_serial<E: Field>(coeffs: &[E], point: &E) -> E {
     let mut result = E::ZERO;
     let mut c = E::ONE;
-
     for a in coeffs.iter() {
         let mut t = *a;
         t.mul_assign(&c);
         c.mul_assign(point);
         result.add_assign(&t);
     }
+    result
+}
 
+fn evaluate_monomial_form<E: Field>(coeffs: &[E], point: &E, worker: &Worker) -> E {
+    if coeffs.is_empty() {
+        return E::ZERO;
+    }
+
+    let geometry = worker.get_geometry_with_threshold(coeffs.len(), PAR_THRESHOLD);
+    let num_chunks = geometry.len();
+    let chunk_size = geometry.ordinary_chunk_size;
+
+    // point^chunk_size via binary exponentiation
+    let chunk_power = {
+        let mut result = E::ONE;
+        let mut base = *point;
+        let mut exp = chunk_size;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                result.mul_assign(&base);
+            }
+            base.square();
+            exp >>= 1;
+        }
+        result
+    };
+
+    // offset_powers[j] = point^(j * chunk_size) = chunk_power^j
+    let mut offset_powers = Vec::with_capacity(num_chunks);
+    let mut current = E::ONE;
+    for _ in 0..num_chunks {
+        offset_powers.push(current);
+        current.mul_assign(&chunk_power);
+    }
+
+    let mut partial_results = vec![E::ZERO; num_chunks];
+
+    worker.scope_with_threshold(coeffs.len(), PAR_THRESHOLD, |scope, geometry| {
+        coeffs
+            .chunks_for_geometry(geometry)
+            .enumerate()
+            .zip(partial_results.iter_mut())
+            .for_each(|((idx, chunk), partial)| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    // Horner within chunk, starting at relative power point^0
+                    let mut acc = E::ZERO;
+                    let mut c = E::ONE;
+                    for a in chunk.iter() {
+                        let mut t = *a;
+                        t.mul_assign(&c);
+                        c.mul_assign(point);
+                        acc.add_assign(&t);
+                    }
+                    *partial = acc;
+                });
+            });
+    });
+
+    // result = sum_j offset_powers[j] * partial_results[j]
+    let mut result = E::ZERO;
+    for (offset, partial) in offset_powers.iter().zip(partial_results.iter()) {
+        let mut t = *partial;
+        t.mul_assign(offset);
+        result.add_assign(&t);
+    }
     result
 }
 
@@ -1582,12 +1826,13 @@ fn update_eq_poly<F: PrimeField, E: FieldExtension<F> + Field>(
     eq_poly: &mut [E],
     ood_samples: &[(E, E)],
     in_domain_samples: &[(F, E)],
+    worker: &Worker,
 ) {
     assert!(eq_poly.len().is_power_of_two());
     assert_eq!(ood_samples.len(), 1);
     for (point, challenge) in ood_samples.iter() {
         let pows = make_pows(*point, eq_poly.len().trailing_zeros() as usize);
-        let eq_polys = make_eq_poly_in_full::<E>(&pows);
+        let eq_polys = make_eq_poly_in_full::<E>(&pows, worker);
         for (dst, src) in eq_poly.iter_mut().zip(eq_polys.last().unwrap().iter()) {
             let mut t = *challenge;
             t.mul_assign(src);
@@ -1596,7 +1841,7 @@ fn update_eq_poly<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     for (point, challenge) in in_domain_samples.iter() {
         let pows = make_pows(*point, eq_poly.len().trailing_zeros() as usize);
-        let eq_polys = make_eq_poly_in_full::<F>(&pows);
+        let eq_polys = make_eq_poly_in_full::<F>(&pows, worker);
         for (dst, src) in eq_poly.iter_mut().zip(eq_polys.last().unwrap().iter()) {
             let mut t = *challenge;
             t.mul_assign_by_base(src);
@@ -1608,8 +1853,9 @@ fn update_eq_poly<F: PrimeField, E: FieldExtension<F> + Field>(
 fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[F],
     point: &[E],
+    worker: &Worker,
 ) -> E {
-    let mut eqs = make_eq_poly_in_full::<E>(point);
+    let mut eqs = make_eq_poly_in_full::<E>(point, worker);
     let eq = eqs.pop().unwrap();
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
@@ -1621,8 +1867,8 @@ fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
-fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E]) -> E {
-    let mut eqs = make_eq_poly_in_full::<E>(point);
+fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
+    let mut eqs = make_eq_poly_in_full::<E>(point, worker);
     let eq = eqs.pop().unwrap();
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
@@ -1637,8 +1883,9 @@ fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E]) -> E {
 fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[E],
     point: &[F],
+    worker: &Worker,
 ) -> E {
-    let mut eqs = make_eq_poly_in_full::<F>(point);
+    let mut eqs = make_eq_poly_in_full::<F>(point, worker);
     let eq = eqs.pop().unwrap();
     assert_eq!(eq.len(), evals.len());
     let mut result = E::ZERO;
@@ -1728,18 +1975,50 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
     use super::*;
-    use crate::gkr::prover::stages::stage1::*;
     use crate::{
-        gkr::sumcheck::eq_poly::make_eq_poly_in_full,
+        field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
         merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap,
     };
-    use fft::materialize_powers_parallel_starting_with_one;
-    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::FieldExtension;
+    use rand::{rngs::ThreadRng, RngCore};
+
     type F = BabyBearField;
     type E = BabyBearExt4;
+
+    fn random_e(rng: &mut ThreadRng) -> E
+    where
+        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
+    {
+        let coefs = [(); <E as FieldExtension<F>>::DEGREE]
+            .map(|_| F::from_u32_with_reduction(rng.next_u32()));
+        
+        <E as FieldExtension<F>>::from_coeffs(coefs)
+    }
+
+    #[test]
+    fn test_fold_monomial_form() {
+        let mut rng = rand::rng();
+        let size = 1 << 13;
+        let input: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let challenge = random_e(&mut rng);
+
+        let mut input_ser = input.clone();
+        let mut buffer_ser: Vec<E> = Vec::with_capacity(size / 2);
+        fold_monomial_form_serial(&mut input_ser, &mut buffer_ser, &challenge);
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let mut input_par = input.clone();
+            let mut buffer_par: Vec<E> = Vec::with_capacity(size / 2);
+            fold_monomial_form(&mut input_par, &mut buffer_par, &challenge, &worker);
+            assert_eq!(
+                input_par, input_ser,
+                "fold_monomial_form mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
 
     // fn make_base_oracle(
     //     size: usize,
@@ -1818,6 +2097,223 @@ mod test {
     }
 
     #[test]
+    fn test_fold_evaluation_form() {
+        let mut rng = rand::rng();
+        let size = 1 << 13;
+        let input: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let challenge = random_e(&mut rng);
+
+        let mut input_ser = input.clone();
+        let expected = fold_evaluation_form_serial::<F, E>(&mut input_ser, &challenge);
+        let expected = expected.to_vec();
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let mut input_par = input.clone();
+            let got = fold_evaluation_form::<F, E>(&mut input_par, &challenge, &worker);
+            assert_eq!(
+                got,
+                expected.as_slice(),
+                "fold_evaluation_form mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
+
+    #[test]
+    fn test_fold_eq_poly() {
+        let mut rng = rand::rng();
+        let size = 1 << 13;
+        let eq: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let challenge = random_e(&mut rng);
+
+        let mut eq_ser = eq.clone();
+        let expected = fold_eq_poly_serial::<F, E>(&mut eq_ser, &challenge);
+        let expected = expected.to_vec();
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let mut eq_par = eq.clone();
+            let got = fold_eq_poly::<F, E>(&mut eq_par, &challenge, &worker);
+            assert_eq!(
+                got,
+                expected.as_slice(),
+                "fold_eq_poly mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
+
+    #[test]
+    fn test_special_three_point_eval() {
+        let mut rng = rand::rng();
+        let size = 1 << 12;
+        let a: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let b: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+
+        let (e_f0, e_f1, e_fh) = special_three_point_eval_serial::<F, E>(&a, &b);
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let (f0, f1, fh) = special_three_point_eval::<F, E>(&a, &b, &worker);
+            assert_eq!(
+                (f0, f1, fh),
+                (e_f0, e_f1, e_fh),
+                "special_three_point_eval mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
+
+    #[test]
+    fn test_dot_product() {
+        let mut rng = rand::rng();
+        let size = 1 << 13;
+        let a: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let b: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+
+        let expected = dot_product_serial::<F, E>(&a, &b);
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let got = dot_product::<F, E>(&a, &b, &worker);
+            assert_eq!(
+                got, expected,
+                "dot_product mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
+
+    #[test]
+    fn test_evaluate_monomial_form() {
+        let mut rng = rand::rng();
+        let size = 1 << 13;
+        let coeffs: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+        let point = random_e(&mut rng);
+
+        let expected = evaluate_monomial_form_serial(&coeffs, &point);
+
+        for num_threads in [1, 2, 4, 8] {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let got = evaluate_monomial_form(&coeffs, &point, &worker);
+            assert_eq!(
+                got, expected,
+                "evaluate_monomial_form mismatch with {} threads",
+                num_threads
+            );
+        }
+    }
+
+    #[test]
+    fn test_special_three_point_eval_correctness() {
+        let mut rng = rand::rng();
+        let worker = Worker::new_with_num_threads(8);
+        let quart_inv = F::from_u32_unchecked(4).inverse().unwrap();
+
+        for size_log2 in [3u32, 13] {
+            let size = 1 << size_log2;
+            let a: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+            let b: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+            let half = size / 2;
+
+            // f(0) = dot(a[0..half], b[0..half])
+            let expected_f0 = (0..half).fold(E::ZERO, |mut acc, i| {
+                let mut t = a[i];
+                t.mul_assign(&b[i]);
+                acc.add_assign(&t);
+                acc
+            });
+            // f(1) = dot(a[half..], b[half..])
+            let expected_f1 = (0..half).fold(E::ZERO, |mut acc, i| {
+                let mut t = a[i + half];
+                t.mul_assign(&b[i + half]);
+                acc.add_assign(&t);
+                acc
+            });
+            // f(1/2) = 1/4 * sum_i (a[i]+a[i+half]) * (b[i]+b[i+half])
+            let mut expected_fh = (0..half).fold(E::ZERO, |mut acc, i| {
+                let mut ta = a[i];
+                ta.add_assign(&a[i + half]);
+                let mut tb = b[i];
+                tb.add_assign(&b[i + half]);
+                ta.mul_assign(&tb);
+                acc.add_assign(&ta);
+                acc
+            });
+            expected_fh.mul_assign_by_base(&quart_inv);
+
+            let full_dot = (0..size).fold(E::ZERO, |mut acc, i| {
+                let mut t = a[i];
+                t.mul_assign(&b[i]);
+                acc.add_assign(&t);
+                acc
+            });
+            let mut f0_plus_f1 = expected_f0;
+            f0_plus_f1.add_assign(&expected_f1);
+            assert_eq!(f0_plus_f1, full_dot, "sanity: f(0)+f(1) == dot(a,b)");
+
+            let (f0, f1, fh) = special_three_point_eval::<F, E>(&a, &b, &worker);
+            assert_eq!(f0, expected_f0, "f(0) wrong at size 2^{}", size_log2);
+            assert_eq!(f1, expected_f1, "f(1) wrong at size 2^{}", size_log2);
+            assert_eq!(fh, expected_fh, "f(1/2) wrong at size 2^{}", size_log2);
+        }
+    }
+    #[test]
+    fn test_evaluate_monomial_form_correctness() {
+        let mut rng = rand::rng();
+        let worker = Worker::new_with_num_threads(8);
+
+        // f(x) = 3 + 5x  at  x = 2  →  3 + 10 = 13
+        {
+            let c0 = E::from_base(F::from_u32_unchecked(3));
+            let c1 = E::from_base(F::from_u32_unchecked(5));
+            let x = E::from_base(F::from_u32_unchecked(2));
+            let mut expected = c1;
+            expected.mul_assign(&x);
+            expected.add_assign(&c0);
+            assert_eq!(evaluate_monomial_form(&[c0, c1], &x, &worker), expected);
+        }
+
+        {
+            let n = 2048usize;
+            let p = E::from_base(F::from_u32_unchecked(3));
+            let mut coeffs = vec![E::ZERO; n];
+            *coeffs.last_mut().unwrap() = E::ONE;
+            let expected = (0..n - 1).fold(E::ONE, |mut acc, _| {
+                acc.mul_assign(&p);
+                acc
+            });
+            assert_eq!(evaluate_monomial_form(&coeffs, &p, &worker), expected);
+        }
+
+        for size_log2 in [3u32, 13] {
+            let size = 1 << size_log2;
+            let coeffs: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
+            let p = random_e(&mut rng);
+
+            let expected = {
+                let mut acc = E::ZERO;
+                let mut pow = E::ONE;
+                for c in coeffs.iter() {
+                    let mut t = *c;
+                    t.mul_assign(&pow);
+                    acc.add_assign(&t);
+                    pow.mul_assign(&p);
+                }
+                acc
+            };
+
+            let got = evaluate_monomial_form(&coeffs, &p, &worker);
+            assert_eq!(
+                got, expected,
+                "evaluate_monomial_form wrong at size 2^{}",
+                size_log2
+            );
+        }
+    }
+
+    #[test]
     fn test_domain_hypercube_evals() {
         let worker = Worker::new_with_num_threads(1);
         let size: usize = 4;
@@ -1867,7 +2363,7 @@ mod test {
                 let mut t = el.to_vec();
                 bitreverse_enumeration_inplace(&mut t);
                 multivariate_coeffs_into_hypercube_evals(&mut t, size.trailing_zeros());
-                let eval = evaluate_base_multivariate(&t, &original_evaluation_point);
+                let eval = evaluate_base_multivariate(&t, &original_evaluation_point, &worker);
 
                 vec![eval]
             })

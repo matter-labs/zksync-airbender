@@ -475,6 +475,36 @@ impl Worker {
         self.pool.in_place_scope(|scope| f(scope, work_geometry))
     }
 
+    /// Like [`scope`], but returns a single-chunk geometry when `work_size < threshold`,
+    /// causing `smart_spawn` to run the body on the calling thread with no spawning overhead.
+    #[track_caller]
+    pub fn scope_with_threshold<'a, F, R>(&self, work_size: usize, threshold: usize, f: F) -> R
+    where
+        F: FnOnce(&rayon::Scope<'a>, WorkerGeometry) -> R,
+    {
+        let work_geometry = self.get_geometry_with_threshold(work_size, threshold);
+        self.pool.in_place_scope(|scope| f(scope, work_geometry))
+    }
+
+    /// Returns a single-chunk geometry when `work_size < threshold`; otherwise behaves
+    /// identically to [`get_geometry`].
+    #[track_caller]
+    pub fn get_geometry_with_threshold(
+        &self,
+        work_size: usize,
+        threshold: usize,
+    ) -> WorkerGeometry {
+        if work_size < threshold {
+            WorkerGeometry {
+                num_chunks: 1,
+                ordinary_chunk_size: work_size,
+                remainder: 0,
+            }
+        } else {
+            self.get_geometry(work_size)
+        }
+    }
+
     pub fn smart_spawn<'scope, BODY>(scope: &rayon::Scope<'scope>, is_last_thread: bool, body: BODY)
     where
         BODY: FnOnce(&rayon::Scope<'scope>) + Send + 'scope,

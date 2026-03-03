@@ -60,6 +60,30 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
 #[serde(
     bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
 )]
+pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> + Field> {
+    pub sumcheck_num_rounds: usize,
+    pub internal_round_coefficients: Vec<[E; 4]>, // max quadratic gates
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub final_step_evaluations: BTreeMap<GKRAddress, Vec<E>>,
+    pub _marker: core::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValues<F, E> {
+    pub fn estimate_size(&self) -> usize {
+        self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
+            + self
+                .final_step_evaluations
+                .iter()
+                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .sum::<usize>()
+    }
+}
+
+#[serde_with::serde_as]
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(
+    bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
+)]
 pub struct GKRProof<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -88,30 +112,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
                 .map(|(_, v)| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
-    }
-}
-
-#[serde_with::serde_as]
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(
-    bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
-)]
-pub struct SumcheckIntermediateProofValues<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub sumcheck_num_rounds: usize,
-    pub internal_round_coefficients: Vec<[E; 4]>, // max quadratic gates
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub final_step_evaluations: BTreeMap<GKRAddress, Vec<E>>,
-    pub _marker: core::marker::PhantomData<F>,
-}
-
-impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValues<F, E> {
-    pub fn estimate_size(&self) -> usize {
-        self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
-            + self
-                .final_step_evaluations
-                .iter()
-                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
-                .sum::<usize>()
     }
 }
 
@@ -294,8 +294,8 @@ where
 
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ... + additive_part)
     let (
-        _preprocessed_range_check_16,
-        _preprocessed_timestamp_range_checks,
+        preprocessed_range_check_16,
+        preprocessed_timestamp_range_checks,
         preprocessed_generic_lookup,
     ) = setup.preprocess_lookups(
         compiled_circuit,
@@ -398,6 +398,7 @@ where
         &gkr_storage,
         &evaluation_point,
         &dimension_reducing_inputs[&initial_layer_for_sumcheck],
+        worker,
     );
 
     // let (
@@ -503,7 +504,7 @@ where
         .expect("must have base layer point");
 
     use crate::gkr::sumcheck::eq_poly::*;
-    let eq_precomputed = make_eq_poly_in_full::<E>(base_layer_z);
+    let eq_precomputed = make_eq_poly_in_full(base_layer_z, worker);
     let eq_at_z = eq_precomputed.last().unwrap();
 
     let layer_desc = &compiled_circuit.layers[0];
@@ -546,6 +547,8 @@ where
         external_challenges,
     ));
 
+    drop(preprocessed_range_check_16);
+    drop(preprocessed_timestamp_range_checks);
     drop(preprocessed_generic_lookup);
 
     let mut mem_polys_claims = Vec::with_capacity(compiled_circuit.memory_layout.total_width);

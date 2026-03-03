@@ -56,7 +56,7 @@ where
     assert!(folding_steps >= 2, "need at least 2 folding steps");
 
     // Precompute eq polynomial evaluations over the boolean hypercube
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges);
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, &worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -109,7 +109,7 @@ where
 
     // we have evaluations of some poly f(r1, r2, ...., 0/1, 0/1) - in total of 4 values;
 
-    let eq_polys = make_eq_poly_in_full(&[r_before_last, r_last]);
+    let eq_polys = make_eq_poly_in_full(&[r_before_last, r_last], &worker);
 
     let new_claims: BTreeMap<_, _> = last_evaluations
         .iter()
@@ -122,8 +122,8 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges);
-        for (k, v) in &new_claims {
+        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
+        for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
@@ -190,7 +190,7 @@ where
     let folding_steps = trace_len.trailing_zeros() as usize;
     assert!(folding_steps >= 4, "need at least 4 folding steps");
 
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges);
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -255,8 +255,8 @@ where
     // self-check
     #[cfg(feature = "gkr_self_checks")]
     {
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges);
-        for (k, v) in &new_claims {
+        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
+        for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
@@ -333,8 +333,11 @@ where
 
         assert_eq!(eq.len(), acc_size);
 
-        let [c0, c2] =
-            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(&accumulator, eq);
+        let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
+            &accumulator,
+            eq,
+            worker,
+        );
 
         let mut normalized_claim = claim;
         normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));

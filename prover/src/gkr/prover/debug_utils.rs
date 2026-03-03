@@ -104,10 +104,11 @@ pub(crate) fn mock_output_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     gkr_storage: &GKRStorage<F, E>,
     trace_len: usize,
+    worker: &Worker,
 ) -> ((E, E, E, E, E, E, E, E), Vec<E>) {
     let challenges =
         vec![E::from_base(F::from_u32_unchecked(42)); trace_len.trailing_zeros() as usize];
-    let eq_precomputed = make_eq_poly_in_full::<E>(&challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&challenges, worker);
     let eq = eq_precomputed.last().unwrap();
 
     let mut evals = vec![];
@@ -147,8 +148,9 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
     gkr_storage: &GKRStorage<F, E>,
     eval_point: &[E],
     output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+    worker: &Worker,
 ) -> (E, E, E, E, E, E, E, E) {
-    let eq_precomputed = make_eq_poly_in_full::<E>(&eval_point);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&eval_point, worker);
     let eq = eq_precomputed.last().unwrap();
 
     let mut evals = vec![];
