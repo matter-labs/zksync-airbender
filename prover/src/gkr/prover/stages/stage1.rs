@@ -2,9 +2,8 @@ use super::*;
 use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE};
 use fft::Twiddles;
 use fft::{
-    bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
-    domain_generator_for_size, materialize_powers_serial_starting_with_one,
-    parallel_bitreverse_enumeration_inplace, GoodAllocator,
+    bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
+    materialize_powers_serial_starting_with_one, GoodAllocator,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::sync::Arc;
@@ -27,19 +26,14 @@ pub fn compute_column_major_lde_from_main_domain<
     twiddles: &Twiddles<F, A>,
     // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
-    worker: &Worker,
 ) -> Vec<ColumnMajorCosetBoundTracePart<F, E>> {
     let mut result = Vec::with_capacity(lde_factor);
     result.push(ColumnMajorCosetBoundTracePart {
         column: Arc::clone(&source_domain),
         offset: F::ONE,
     });
-    let other_domains = compute_column_major_lde_from_main_domain_inner(
-        &source_domain[..],
-        twiddles,
-        lde_factor,
-        worker,
-    );
+    let other_domains =
+        compute_column_major_lde_from_main_domain_inner(&source_domain[..], twiddles, lde_factor);
     result.extend(other_domains.into_iter().map(|(column, offset)| {
         ColumnMajorCosetBoundTracePart {
             column: Arc::new(column),
@@ -59,7 +53,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
     twiddles: &Twiddles<F, A>,
     // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
-    worker: &Worker,
 ) -> Vec<(Box<[E]>, F)> {
     assert!(lde_factor.is_power_of_two());
 
@@ -96,11 +89,12 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
         } else {
             ifft.as_ref().unwrap().clone()
         };
+        // TODO: very stupid and slow...
+        bitreverse_enumeration_inplace(&mut source[..]);
+        // normalize by 1/N
         let offset = roots[i];
-        parallel_bitreverse_enumeration_inplace(&mut source[..], worker);
-        // normalize by 1/N and shift by coset offset
-        distribute_powers_parallel(&mut source[..], size_inv, offset, worker);
-        parallel_bitreverse_enumeration_inplace(&mut source[..], worker);
+        distribute_powers_serial(&mut source[..], size_inv, offset);
+        bitreverse_enumeration_inplace(&mut source[..]);
         fft::naive::serial_ct_ntt_bitreversed_to_natural(
             &mut source[..],
             trace_len_log2,
@@ -126,7 +120,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
     twiddles: &Twiddles<F, A>,
     // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
-    worker: &Worker,
 ) -> (Vec<(Box<[E]>, F)>, Vec<E>) {
     assert!(lde_factor.is_power_of_two());
 
@@ -146,7 +139,7 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
     for el in ifft.iter_mut() {
         el.mul_assign_by_base(&size_inv);
     }
-    parallel_bitreverse_enumeration_inplace(&mut ifft[..], worker);
+    bitreverse_enumeration_inplace(&mut ifft[..]);
 
     let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
     let root_powers =
@@ -158,8 +151,9 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
     {
         let offset = root_powers[0];
         let mut source = ifft.clone();
-        distribute_powers_parallel(&mut source[..], F::ONE, offset, worker);
-        parallel_bitreverse_enumeration_inplace(&mut source[..], worker);
+        // TODO: very stupid and slow...
+        distribute_powers_serial(&mut source[..], F::ONE, offset);
+        bitreverse_enumeration_inplace(&mut source[..]);
         fft::naive::serial_ct_ntt_bitreversed_to_natural(
             &mut source[..],
             trace_len_log2,
@@ -174,9 +168,10 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
     let now = std::time::Instant::now();
     for i in 0..(lde_factor - 1) {
         let mut source = ifft.clone();
+        // TODO: very stupid and slow...
         let offset = roots[i];
-        distribute_powers_parallel(&mut source[..], F::ONE, offset, worker);
-        parallel_bitreverse_enumeration_inplace(&mut source[..], worker);
+        distribute_powers_serial(&mut source[..], F::ONE, offset);
+        bitreverse_enumeration_inplace(&mut source[..]);
         fft::naive::serial_ct_ntt_bitreversed_to_natural(
             &mut source[..],
             trace_len_log2,
