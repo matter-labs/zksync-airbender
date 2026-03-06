@@ -24,6 +24,8 @@ use transcript::Seed;
 
 mod kernel_collector;
 
+/// # Panics
+/// Panics if claims or challenge points for the output layer are missing from storage.
 pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -38,14 +40,8 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExt
 where
     [(); E::DEGREE]: Sized,
 {
-    println!(
-        "Evaluating layer {} (dimension reducing) in sumcheck direction",
-        layer_idx
-    );
-    println!(
-        "Trace length of reduced poly is {}",
-        trace_len_after_reduction
-    );
+    println!("Evaluating layer {layer_idx} (dimension reducing) in sumcheck direction");
+    println!("Trace length of reduced poly is {trace_len_after_reduction}");
     let output_layer_idx = layer_idx + 1;
 
     let output_claims = claims_storage
@@ -60,7 +56,7 @@ where
     assert!(folding_steps >= 2, "need at least 2 folding steps");
 
     // Precompute eq polynomial evaluations over the boolean hypercube
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges);
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, &worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -70,7 +66,7 @@ where
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations) =
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
         run_sumcheck_loop::<F, E, 4>(
             &collector,
             claim,
@@ -82,7 +78,14 @@ where
             seed,
         );
 
-    // TODO: re-evaluate kernels over last evaluations
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        let recomputed = collector.compute_last_step_accumulator_from_evals(&last_evaluations);
+        assert_eq!(
+            recomputed, final_accumulator,
+            "last_evaluations inconsistent with final accumulator"
+        );
+    }
 
     let transcript_inputs: Vec<E> = last_evaluations
         .iter()
@@ -106,7 +109,7 @@ where
 
     // we have evaluations of some poly f(r1, r2, ...., 0/1, 0/1) - in total of 4 values;
 
-    let eq_polys = make_eq_poly_in_full(&[r_before_last, r_last]);
+    let eq_polys = make_eq_poly_in_full(&[r_before_last, r_last], &worker);
 
     let new_claims: BTreeMap<_, _> = last_evaluations
         .iter()
@@ -119,19 +122,17 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges);
+        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
-                assert_eq!(eval, *v, "claim diverged for poly {:?}", k);
+                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
+            } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
+                let eval =
+                    evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
+                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else {
-                if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                    let eval =
-                        evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
-                    assert_eq!(eval, *v, "claim diverged for poly {:?}", k);
-                } else {
-                    unreachable!()
-                }
+                unreachable!()
             }
         }
     }
@@ -147,13 +148,16 @@ where
     SumcheckIntermediateProofValues {
         sumcheck_num_rounds: folding_steps,
         internal_round_coefficients,
-        final_step_evaluations: BTreeMap::from_iter(
-            last_evaluations.into_iter().map(|(k, v)| (k, v.to_vec())),
-        ),
+        final_step_evaluations: last_evaluations
+            .into_iter()
+            .map(|(k, v)| (k, v.to_vec()))
+            .collect(),
         _marker: core::marker::PhantomData,
     }
 }
 
+/// # Panics
+/// Panics if claims or challenge points for the output layer are missing from storage.
 pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
@@ -171,7 +175,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 where
     [(); E::DEGREE]: Sized,
 {
-    println!("Evaluating layer {} in sumcheck direction", layer_idx);
+    println!("Evaluating layer {layer_idx} in sumcheck direction");
 
     let output_layer_idx = layer_idx + 1;
 
@@ -186,7 +190,7 @@ where
     let folding_steps = trace_len.trailing_zeros() as usize;
     assert!(folding_steps >= 4, "need at least 4 folding steps");
 
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges);
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -205,7 +209,7 @@ where
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations) =
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
         run_sumcheck_loop::<F, E, 2>(
             &collector,
             claim,
@@ -217,7 +221,14 @@ where
             seed,
         );
 
-    // TODO: re-evaluate kernels over last evaluations
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        let recomputed = collector.compute_last_step_accumulator_from_evals(&last_evaluations);
+        assert_eq!(
+            recomputed, final_accumulator,
+            "last_evaluations inconsistent with final accumulator"
+        );
+    }
 
     // After sumcheck completes, extract claims for the input layer
     let transcript_inputs: Vec<E> = last_evaluations
@@ -244,19 +255,17 @@ where
     // self-check
     #[cfg(feature = "gkr_self_checks")]
     {
-        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges);
+        let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
-                assert_eq!(eval, *v, "claim diverged for poly {:?}", k);
+                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
+            } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
+                let eval =
+                    evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
+                assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else {
-                if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                    let eval =
-                        evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
-                    assert_eq!(eval, *v, "claim diverged for poly {:?}", k);
-                } else {
-                    unreachable!()
-                }
+                unreachable!()
             }
         }
     }
@@ -272,9 +281,10 @@ where
     SumcheckIntermediateProofValues {
         sumcheck_num_rounds: folding_steps,
         internal_round_coefficients,
-        final_step_evaluations: BTreeMap::from_iter(
-            last_evaluations.into_iter().map(|(k, v)| (k, v.to_vec())),
-        ),
+        final_step_evaluations: last_evaluations
+            .into_iter()
+            .map(|(k, v)| (k, v.to_vec()))
+            .collect(),
         _marker: core::marker::PhantomData,
     }
 }
@@ -288,7 +298,7 @@ fn run_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field, const N: usize
     folding_steps: usize,
     worker: &Worker,
     seed: &mut Seed,
-) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>)
+) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, [E; 2])
 where
     [(); E::DEGREE]: Sized,
 {
@@ -323,8 +333,11 @@ where
 
         assert_eq!(eq.len(), acc_size);
 
-        let [c0, c2] =
-            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(&accumulator, eq);
+        let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
+            &accumulator,
+            eq,
+            worker,
+        );
 
         let mut normalized_claim = claim;
         normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
@@ -396,7 +409,7 @@ where
         }
     }
 
-    (folding_challenges, intermediate_coeffs, last_evaluations)
+    (folding_challenges, intermediate_coeffs, last_evaluations, accumulator_buffer[0])
 }
 
 #[inline(always)]

@@ -38,10 +38,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         trace_len: usize,
         worker: &Worker,
     ) {
-        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E> {
-            lookup_additive_challenge: self.lookup_additive_challenge,
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
+            self.lookup_additive_challenge,
+        );
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
         forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs(
             &kernel,
@@ -68,10 +67,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             batch_challenges.len(),
             <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
         );
-        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E> {
-            lookup_additive_challenge: self.lookup_additive_challenge,
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
+            self.lookup_additive_challenge,
+        );
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
 
         // println!(
@@ -102,6 +100,17 @@ pub struct LookupBaseMinusMultiplicityByBaseGKRRelationKernel<
 > {
     pub lookup_additive_challenge: E,
     _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    LookupBaseMinusMultiplicityByBaseGKRRelationKernel<F, E>
+{
+    pub(crate) fn new(lookup_additive_challenge: E) -> Self {
+        Self {
+            lookup_additive_challenge,
+            _marker: core::marker::PhantomData,
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>

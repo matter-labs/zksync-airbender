@@ -59,7 +59,7 @@ fn test_sumcheck_loop_product() {
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges, &worker);
     let eq_last = eq_precomputed.last().unwrap();
 
     let output_claim = evaluate_with_precomputed_eq_ext::<E>(&output, eq_last);
@@ -121,7 +121,7 @@ fn test_sumcheck_loop_product() {
         "Should have correct number of challenges"
     );
 
-    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges);
+    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges, &worker);
     let eq_claims_last = eq_for_claims.last().unwrap();
 
     let expected_a = evaluate_with_precomputed_eq_ext::<E>(&a, eq_claims_last);
@@ -210,7 +210,7 @@ fn test_sumcheck_loop_multiple_gates() {
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges, &worker);
     let eq_last = eq_precomputed.last().unwrap();
 
     let copy_claim = evaluate_with_precomputed_eq_ext::<E>(&copy_out, eq_last);
@@ -254,7 +254,7 @@ fn test_sumcheck_loop_multiple_gates() {
     assert!(layer_0_claims.contains_key(&addr_prod_a));
     assert!(layer_0_claims.contains_key(&addr_prod_b));
 
-    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges);
+    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges, &worker);
     let eq_claims_last = eq_for_claims.last().unwrap();
 
     let expected_copy = evaluate_with_precomputed_eq_ext::<E>(&copy_in, eq_claims_last);
