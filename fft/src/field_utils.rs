@@ -38,7 +38,8 @@ pub fn distribute_powers_parallel<F: Field, E: FieldExtension<F>>(
             current.mul_assign(&ordinary_step);
         }
 
-        input.chunks_for_geometry_mut(geometry)
+        input
+            .chunks_for_geometry_mut(geometry)
             .enumerate()
             .for_each(|(idx, chunk)| {
                 let chunk_start = chunk_starts[idx];
@@ -308,8 +309,8 @@ pub fn batch_inverse_inplace_parallel<F: Field>(
 mod tests {
     use super::*;
     use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-    use worker::Worker;
     use rand::{rngs::ThreadRng, RngCore};
+    use worker::Worker;
 
     type F = BabyBearField;
     type E = BabyBearExt4;
