@@ -7,12 +7,10 @@ if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL
 endif ()
 add_library(gpu_prover_native STATIC
         common.cuh
-        field.cuh
-        memory.cuh
-        ptx.cuh
 )
 add_subdirectory(bench)
 add_subdirectory(ops)
+add_subdirectory(primitives)
 add_subdirectory(witness)
 set_target_properties(gpu_prover_native PROPERTIES CUDA_STANDARD 20)
 set_target_properties(gpu_prover_native PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
