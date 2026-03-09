@@ -6,12 +6,12 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
-use crate::device_structures::{
+use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStrideWrappingMatrix,
     PtrAndStrideWrappingMatrix,
 };
-use crate::field::{BF, E2, E4, E6};
-use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub fn set_to_zero<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaResult<()> {
     memory_set_async(unsafe { result.transmute_mut() }, 0, stream)
@@ -727,10 +727,10 @@ binary_ops_impl!(E6, E6, E6);
 
 #[cfg(test)]
 mod tests {
-    use crate::field::{BF, E2, E4, E6};
     use crate::ops::simple::{
         Add, BinaryOp, Dbl, Inv, Mul, Neg, SetByRef, SetByVal, Sqr, Sub, UnaryOp,
     };
+    use crate::primitives::field::{BF, E2, E4, E6};
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use era_cudart::result::CudaResult;
     use era_cudart::slice::DeviceSlice;

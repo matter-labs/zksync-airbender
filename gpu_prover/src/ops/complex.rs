@@ -7,13 +7,13 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
-// use crate::device_context::CIRCLE_GROUP_LOG_ORDER;
-use crate::device_structures::{
+// use crate::primitives::device_context::CIRCLE_GROUP_LOG_ORDER;
+use crate::ops::blake2s::DG;
+use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
-use crate::field::*;
-use crate::ops::blake2s::DG;
-use crate::utils::{
+use crate::primitives::field::*;
+use crate::primitives::utils::{
     get_grid_block_dims_for_threads_count, GetChunksCount, LOG_WARP_SIZE, WARP_SIZE,
 };
 
@@ -466,8 +466,8 @@ mod tests {
     use std::fmt::Debug;
 
     use super::*;
-    use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use crate::ops::blake2s::DG;
+    use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use field::Rand;
