@@ -4,7 +4,7 @@ use crate::allocator::device::{
 };
 use crate::allocator::host::{ConcurrentStaticHostAllocator, NonConcurrentStaticHostAllocator};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::device_context::DeviceContext;
+use crate::primitives::device_context::DeviceContext;
 use era_cudart::device::{device_get_attribute, get_device, set_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;

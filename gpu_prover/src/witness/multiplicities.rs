@@ -1,15 +1,15 @@
 use super::NoFieldLinearRelation;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::device_structures::{
-    DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl, MutPtrAndStride,
-    PtrAndStride,
-};
-use crate::field::BF;
 use crate::ops::cub::device_radix_sort::{get_sort_keys_temp_storage_bytes, sort_keys};
 use crate::ops::cub::device_run_length_encode::{encode, get_encode_temp_storage_bytes};
 use crate::ops::simple::set_to_zero;
-use crate::prover::context::ProverContext;
-use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::context::ProverContext;
+use crate::primitives::device_structures::{
+    DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl, MutPtrAndStride,
+    PtrAndStride,
+};
+use crate::primitives::field::BF;
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::cuda_kernel;
@@ -160,10 +160,8 @@ pub fn generate_range_check_multiplicities(
         witness_layout.range_check_16_lookup_expressions.len() * trace_len,
         AllocationPlacement::BestFit,
     )?;
-    let mut range_check_16_lookup_mapping = DeviceMatrixMut::new(
-        &mut range_check_16_lookup_mapping_allocation,
-        trace_len,
-    );
+    let mut range_check_16_lookup_mapping =
+        DeviceMatrixMut::new(&mut range_check_16_lookup_mapping_allocation, trace_len);
     let mut range_check_timestamp_lookup_mapping_allocation = context.alloc(
         witness_layout
             .timestamp_range_check_lookup_expressions

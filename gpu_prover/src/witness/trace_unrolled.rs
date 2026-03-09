@@ -1,6 +1,6 @@
 use super::option::u8::Option;
-use crate::field::BF;
-use crate::prover::context::DeviceAllocation;
+use crate::primitives::context::DeviceAllocation;
+use crate::primitives::field::BF;
 use crate::witness::trace::ChunkedTraceHolder;
 use cs::definitions::split_timestamp;
 use cs::one_row_compiler::CompiledCircuitArtifact;

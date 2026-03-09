@@ -1,4 +1,4 @@
-use crate::prover::context::DeviceAllocation;
+use crate::primitives::context::DeviceAllocation;
 use crate::witness::trace::ChunkedTraceHolder;
 
 pub struct DelegationTraceDevice<T> {

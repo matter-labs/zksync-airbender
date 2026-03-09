@@ -1,8 +1,7 @@
-use std::ops::Deref;
-use crate::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
-use crate::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
-use crate::field::BF;
-use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
+use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
+use crate::primitives::field::BF;
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
 use crate::witness::trace_unrolled::{
@@ -18,6 +17,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use std::ops::Deref;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -169,7 +169,7 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
 
 // pub const SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH: usize =
 //     REGISTER_SIZE * 2 + NUM_TIMESTAMP_COLUMNS_FOR_RAM;
-// 
+//
 // #[repr(C)]
 // #[derive(Clone, Copy, Default, Debug)]
 // pub struct ShuffleRamInitAndTeardownLayout {
@@ -177,7 +177,7 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
 //     pub lazy_teardown_values_columns: [u32; REGISTER_SIZE],
 //     pub lazy_teardown_timestamps_columns: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 // }
-// 
+//
 // pub const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
 //
 // #[repr(C)]

@@ -1,9 +1,9 @@
-use crate::device_structures::{
+use crate::ops::complex::bit_reverse_in_place;
+use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
-use crate::field::BF;
-use crate::ops::complex::bit_reverse_in_place;
-use crate::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
+use crate::primitives::field::BF;
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -317,9 +317,9 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use crate::ops::simple::set_to_zero;
-    use crate::utils::GetChunksCount;
+    use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use crate::primitives::utils::GetChunksCount;
 
     const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
 

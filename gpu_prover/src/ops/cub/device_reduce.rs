@@ -6,11 +6,11 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t};
 
-use crate::device_structures::{
+use crate::primitives::context::DeviceProperties;
+use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceVectorChunkImpl, PtrAndStride,
 };
-use crate::field::{BF, E2, E4, E6};
-use crate::prover::context::DeviceProperties;
+use crate::primitives::field::{BF, E2, E4, E6};
 
 #[derive(Copy, Clone)]
 pub enum ReduceOperation {
@@ -400,8 +400,8 @@ mod tests {
     use itertools::Itertools;
     use rand::rng;
 
-    use crate::device_structures::DeviceMatrix;
     use crate::ops::cub::device_reduce::{Reduce, ReduceOperation};
+    use crate::primitives::device_structures::DeviceMatrix;
 
     type HostFunction<F> = fn(F, F) -> F;
 

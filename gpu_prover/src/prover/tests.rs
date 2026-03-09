@@ -1,8 +1,8 @@
 use crate::allocator::tracker::AllocationPlacement;
-use crate::circuit_type::UnrolledNonMemoryCircuitType;
-use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
-use crate::field::{BF, E4};
-use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
+use crate::primitives::context::{ProverContext, ProverContextConfig};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::field::{BF, E4};
 use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_non_memory,
     generate_memory_values_unrolled_non_memory,
@@ -58,8 +58,16 @@ use std::ops::{Deref, DerefMut};
 use worker::Worker;
 
 fn ensure_memory_trace_consistency<F: PrimeField>(
-    memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl std::alloc::Allocator + Clone, impl std::alloc::Allocator + Clone>,
-    witness_trace: &GKRFullWitnessTrace<F, impl std::alloc::Allocator + Clone, impl std::alloc::Allocator + Clone>,
+    memory_trace: &GKRMemoryOnlyWitnessTrace<
+        F,
+        impl std::alloc::Allocator + Clone,
+        impl std::alloc::Allocator + Clone,
+    >,
+    witness_trace: &GKRFullWitnessTrace<
+        F,
+        impl std::alloc::Allocator + Clone,
+        impl std::alloc::Allocator + Clone,
+    >,
 ) {
     assert_eq!(
         memory_trace.column_major_trace.len(),
@@ -602,21 +610,21 @@ fn run_basic_unrolled_test() {
 
 #[allow(unused_imports)]
 mod add_sub_lui_auipc_mod {
-    use crate::field::BF;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
+    use crate::primitives::field::BF;
+    use cs::cs::placeholder::Placeholder;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::cs::witness_placer::WitnessTypeSet;
+    use cs::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
         WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
         WitnessComputationalU8, WitnessMask,
     };
-    use ::field::baby_bear::base::BabyBearField;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use prover::unrolled::NonMemoryCircuitOracle;
     use prover::witness_proxy::WitnessProxy;
 
-    include!("../../prover/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs");
+    include!("../../../prover/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
