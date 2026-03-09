@@ -1,6 +1,6 @@
-use super::context::ProverContext;
-use super::transfer::Transfer;
 use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::context::ProverContext;
+use crate::primitives::transfer::Transfer;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_unrolled::{
     ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsHost, UnrolledMemoryTraceDevice,

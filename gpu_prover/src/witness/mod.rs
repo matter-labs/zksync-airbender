@@ -9,7 +9,7 @@ mod option;
 mod placeholder;
 mod ram_access;
 pub mod trace;
-// pub mod trace_delegation;
+pub(crate) mod trace_delegation;
 pub mod trace_unrolled;
 // pub mod witness_delegation;
 pub mod witness_unrolled;

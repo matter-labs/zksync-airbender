@@ -125,28 +125,28 @@ pub(crate) struct UnrolledUnifiedOracle {
     pub decoder_table: *const ExecutorFamilyDecoderData,
 }
 
-// pub struct ShuffleRamInitsAndTeardownsDevice {
-//     pub inits_and_teardowns: DeviceAllocation<LazyInitAndTeardown>,
-// }
-//
-// #[repr(C)]
-// #[derive(Default)]
-// pub(crate) struct ShuffleRamInitsAndTeardownsRaw {
-//     pub count: u32,
-//     pub inits_and_teardowns: *const LazyInitAndTeardown,
-// }
-//
-// impl From<&ShuffleRamInitsAndTeardownsDevice> for ShuffleRamInitsAndTeardownsRaw {
-//     fn from(value: &ShuffleRamInitsAndTeardownsDevice) -> Self {
-//         Self {
-//             count: value.inits_and_teardowns.len() as u32,
-//             inits_and_teardowns: value.inits_and_teardowns.as_ptr(),
-//         }
-//     }
-// }
-//
-// pub(crate) type ShuffleRamInitsAndTeardownsHost<A> = ChunkedTraceHolder<LazyInitAndTeardown, A>;
-//
+pub struct ShuffleRamInitsAndTeardownsDevice {
+    pub inits_and_teardowns: DeviceAllocation<LazyInitAndTeardown>,
+}
+
+#[repr(C)]
+#[derive(Default)]
+pub(crate) struct ShuffleRamInitsAndTeardownsRaw {
+    pub count: u32,
+    pub inits_and_teardowns: *const LazyInitAndTeardown,
+}
+
+impl From<&ShuffleRamInitsAndTeardownsDevice> for ShuffleRamInitsAndTeardownsRaw {
+    fn from(value: &ShuffleRamInitsAndTeardownsDevice) -> Self {
+        Self {
+            count: value.inits_and_teardowns.len() as u32,
+            inits_and_teardowns: value.inits_and_teardowns.as_ptr(),
+        }
+    }
+}
+
+pub(crate) type ShuffleRamInitsAndTeardownsHost<A> = ChunkedTraceHolder<LazyInitAndTeardown, A>;
+
 // pub(crate) fn get_aux_arguments_boundary_values(
 //     compiled_circuit: &CompiledCircuitArtifact<BF>,
 //     inits_and_teardowns: &ShuffleRamInitsAndTeardownsHost<impl GoodAllocator>,
