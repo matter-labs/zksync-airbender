@@ -27,6 +27,7 @@ era_cudart_sys = "0.154"
 
 itertools = "*"
 log = "0.4.29"
+nvtx = "1"
 rayon = "*"
 
 [features]

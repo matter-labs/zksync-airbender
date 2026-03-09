@@ -5,7 +5,7 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t, cuda_fn_and_stub};
 
-use crate::field::BaseField;
+use crate::primitives::field::BaseField;
 
 cuda_fn_and_stub! {
     fn ab_encode_u32(
