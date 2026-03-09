@@ -1,9 +1,11 @@
 #pragma once
-#include "common.cuh"
+#include "../common.cuh"
 #include "memory.cuh"
 #include "ptx.cuh"
 
-namespace airbender::field {
+namespace airbender::primitives::field {
+
+using namespace ptx;
 
 #define bf base_field
 #define e2 ext2_field
@@ -624,4 +626,4 @@ template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER =
 struct e6_matrix_getter_setter : matrix_getter_setter<e6, LD_MODIFIER, ST_MODIFIER> {
   explicit e6_matrix_getter_setter(size_t stride) : matrix_getter_setter<e6, LD_MODIFIER, ST_MODIFIER>(stride) {}
 };
-} // namespace airbender::field
+} // namespace airbender::primitives::field
