@@ -1,6 +1,8 @@
 #pragma once
 
-#include "common.cuh"
+#include "../common.cuh"
+
+namespace airbender::primitives::ptx {
 
 /*****
  * u32
@@ -147,3 +149,5 @@ DEVICE_FORCEINLINE u64 addc(u64 a, u64 b) {
   asm volatile("addc.u64 %0, %1, %2;" : "=l"(r): "l"(a), "l"(b));
   return r;
 }
+
+} // namespace airbender::primitives::ptx
