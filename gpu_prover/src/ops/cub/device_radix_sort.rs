@@ -1,6 +1,6 @@
 use std::ptr::null_mut;
 
-use crate::field::BF;
+use crate::primitives::field::BF;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
