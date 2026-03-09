@@ -17,6 +17,7 @@ members = [
     "verifier_generator",
     "witness_eval_generator",
     "gpu_witness_eval_generator",
+    "gpu_witness_eval_generator_old",
     "verifier",
     "full_statement_verifier",
 
@@ -85,6 +86,7 @@ default-members = [
     "worker",
     "witness_eval_generator",
     "gpu_witness_eval_generator",
+    "gpu_witness_eval_generator_old",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
@@ -149,6 +151,7 @@ riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator", default-features = false }
+gpu_witness_eval_generator_old = { path = "./gpu_witness_eval_generator_old", default-features = false }
 gpu_prover = { path = "./gpu_prover", default-features = false }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
