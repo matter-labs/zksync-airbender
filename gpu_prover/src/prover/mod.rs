@@ -1,1 +1,5 @@
-pub(crate) mod context;
+pub(crate) mod decoder;
+mod pow;
+
+#[cfg(test)]
+mod tests;
