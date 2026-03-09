@@ -1,12 +1,12 @@
 #pragma once
 
-#include "../../field.cuh"
-#include "../../memory.cuh"
+#include "../../primitives/memory.cuh"
+#include "../../primitives/field.cuh"
 #include <cub/cub.cuh>
 
 using namespace ::cub;
-using namespace ::airbender::field;
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::field;
+using namespace ::airbender::primitives::memory;
 
 namespace airbender::ops::cub {
 
