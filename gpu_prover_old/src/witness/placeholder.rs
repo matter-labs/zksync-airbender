@@ -227,8 +227,8 @@ impl From<CSPlaceholder> for Placeholder {
                 Placeholder::DelegationIndirectAccessVariableOffset {
                     variable_index: variable_index as u32,
                 }
-            },
-            cs::cs::placeholder::Placeholder::ExecutorFamilyMaskBit { .. } => todo!()
+            }
+            cs::cs::placeholder::Placeholder::ExecutorFamilyMaskBit { .. } => todo!(),
         }
     }
 }

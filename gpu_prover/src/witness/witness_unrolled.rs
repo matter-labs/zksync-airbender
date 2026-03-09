@@ -1,9 +1,9 @@
-use crate::circuit_type::{
+use crate::primitives::circuit_type::{
     UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
-use crate::field::BF;
-use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
+use crate::primitives::field::BF;
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::witness::trace_unrolled::{
     UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryTraceDevice,
     UnrolledNonMemoryTraceRaw, UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
