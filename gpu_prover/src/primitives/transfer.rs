@@ -1,0 +1,107 @@
+use super::callbacks::Callbacks;
+use super::context::ProverContext;
+use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
+use era_cudart::memory::memory_copy_async;
+use era_cudart::result::CudaResult;
+use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
+use era_cudart::stream::CudaStreamWaitEventFlags;
+use std::sync::Arc;
+
+pub struct Transfer<'a> {
+    pub(crate) allocated: CudaEvent,
+    pub(crate) transferred: CudaEvent,
+    pub(crate) callbacks: Callbacks<'a>,
+}
+
+impl<'a> Transfer<'a> {
+    pub(crate) fn new() -> CudaResult<Self> {
+        Ok(Self {
+            allocated: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
+            transferred: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
+            callbacks: Callbacks::new(),
+        })
+    }
+
+    pub(crate) fn record_allocated(&self, context: &ProverContext) -> CudaResult<()> {
+        self.allocated.record(context.get_exec_stream())
+    }
+
+    pub(crate) fn ensure_allocated(&self, context: &ProverContext) -> CudaResult<()> {
+        context
+            .get_h2d_stream()
+            .wait_event(&self.allocated, CudaStreamWaitEventFlags::DEFAULT)
+    }
+
+    pub fn schedule<T>(
+        &mut self,
+        src: Arc<impl CudaSlice<T> + Send + Sync + ?Sized + 'a>,
+        dst: &mut (impl CudaSliceMut<T> + ?Sized),
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert_eq!(src.len(), dst.len());
+        self.ensure_allocated(context)?;
+        let stream = context.get_h2d_stream();
+        memory_copy_async(dst, src.as_ref(), stream)?;
+        let src = src.clone();
+        let f = move || {
+            let _ = src;
+        };
+        self.callbacks.schedule(f, stream)
+    }
+
+    pub fn schedule_multiple<T>(
+        &mut self,
+        srcs: &[Arc<impl CudaSlice<T> + Send + Sync + ?Sized + 'a>],
+        dst: &mut (impl CudaSliceMut<T> + ?Sized),
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert_eq!(srcs.iter().map(|s| s.len()).sum::<usize>(), dst.len());
+        self.ensure_allocated(context)?;
+        let stream = context.get_h2d_stream();
+        let mut offset = 0;
+        for src in srcs.iter() {
+            let dst = unsafe {
+                let slice = &mut dst.as_mut_slice()[offset..offset + src.len()];
+                DeviceSlice::from_mut_slice(slice)
+            };
+            memory_copy_async(dst, src.as_ref(), stream)?;
+            offset += src.len();
+        }
+        let srcs = srcs.to_vec();
+        let f = move || {
+            let _ = srcs;
+        };
+        self.callbacks.schedule(f, stream)
+    }
+
+    pub(crate) fn record_transferred(&self, context: &ProverContext) -> CudaResult<()> {
+        self.transferred.record(context.get_h2d_stream())
+    }
+
+    pub fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
+        context
+            .get_exec_stream()
+            .wait_event(&self.transferred, CudaStreamWaitEventFlags::DEFAULT)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::context::{ProverContext, ProverContextConfig};
+    use super::Transfer;
+    use crate::allocator::tracker::AllocationPlacement;
+    use era_cudart::result::CudaResult;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_transfer() -> CudaResult<()> {
+        let context = ProverContext::new(&ProverContextConfig::default())?;
+        let src = Arc::new(vec![0; 1024]);
+        let mut transfer = Transfer::new()?;
+        let mut dst = context.alloc(1024, AllocationPlacement::BestFit)?;
+        transfer.record_allocated(&context)?;
+        transfer.schedule(src, &mut dst, &context)?;
+        transfer.record_transferred(&context)?;
+        Ok(())
+    }
+}

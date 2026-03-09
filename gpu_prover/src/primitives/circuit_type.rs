@@ -1,4 +1,4 @@
-use crate::machine_type::MachineType;
+use crate::primitives::machine_type::MachineType;
 use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
 use prover::prover_stages::ProofSecurityConfig;
 use setups::{
