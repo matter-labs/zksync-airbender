@@ -5,15 +5,14 @@
 #![feature(pointer_is_aligned_to)]
 
 pub(crate) mod allocator;
-pub(crate) mod circuit_type;
-pub(crate) mod device_context;
-pub(crate) mod device_structures;
-pub mod field;
-pub(crate) mod machine_type;
 pub(crate) mod ops;
+pub mod primitives;
 pub(crate) mod prover;
-pub(crate) mod utils;
 pub(crate) mod witness;
 
-#[cfg(test)]
-mod tests;
+pub use primitives::circuit_type;
+pub use primitives::device_context;
+pub use primitives::device_structures;
+pub use primitives::field;
+pub use primitives::machine_type;
+pub use primitives::utils;

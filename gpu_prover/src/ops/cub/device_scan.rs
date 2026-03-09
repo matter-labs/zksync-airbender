@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::{CudaStream, CudaStreamCreateFlags, CudaStreamWaitEventFlags};
 use era_cudart_sys::{cudaError_t, cudaStream_t};
 
-use crate::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E2, E4, E6};
 
 macro_rules! scan_fn {
     ($i_or_e:ident, $function:ident, $type:ty) => {
@@ -439,7 +439,7 @@ mod tests {
     use std::convert::identity;
 
     use super::{get_scan_temp_storage_bytes, Scan, ScanOperation};
-    use crate::field::BF;
+    use crate::primitives::field::BF;
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use era_cudart::stream::CudaStream;
     use field::Field;
