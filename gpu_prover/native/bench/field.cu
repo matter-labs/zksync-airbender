@@ -1,6 +1,6 @@
-#include "../field.cuh"
+#include "../primitives/field.cuh"
 
-namespace airbender::field {
+namespace airbender::primitives::field {
 
 template <typename T> using binary_op = T (*)(T, T);
 
@@ -61,4 +61,4 @@ EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e6_bench_kernel(bf *val
 }
 
 
-} // namespace airbender::field
+} // namespace airbender::primitives::field
