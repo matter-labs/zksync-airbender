@@ -26,8 +26,6 @@ members = [
     "circuit_defs/trace_and_split",
     "circuit_defs/setups",
     "circuit_defs/prover_examples",
-    # "circuit_defs/opcode_tests",
-
     "circuit_defs/risc_v_cycles",
     "circuit_defs/machine_without_signed_mul_div",
     "circuit_defs/reduced_risc_v_machine",

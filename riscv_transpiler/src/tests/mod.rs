@@ -2,6 +2,8 @@ use crate::ir::*;
 use crate::vm::*;
 use std::collections::HashMap;
 
+mod test_vector;
+
 mod add;
 mod addi;
 // mod beq;

@@ -60,10 +60,6 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
     - trables.rs - code that contains the definition of almost all our lookup tables
     - *.json - files used to serialise parameters and circuit information for the gpu
 
-## Testcases
-- circuit_defs/
-    - opcode_tests/ - code that embeds the entirety of the standard official RiscV testcases and runs them through our circuits, to provide a basic foundation for safety and consistency
-
 most of the circuits are also hand audited by multiple members of the crypto team. we also have realistic and complex testcases which simulate real proving scenarios and complex bytecode, providing an even more complete testing surface. sometimes we employ SMT solver scripts to validate our optimisations.
 
 Testing the prover itself is of course not required, due to the nature of Zero-Knowledge proofs, since it is sufficient to ensure that the verifier and the circuits are secure.
