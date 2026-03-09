@@ -57,6 +57,12 @@ enum MachineTarget {
     FullSigned,
 }
 
+#[derive(Clone, Copy)]
+enum RejectStage {
+    Decode,
+    Execute,
+}
+
 struct ExpectedOutcome {
     final_pc: u32,
     register_checks: Vec<(usize, u32)>,
@@ -66,6 +72,7 @@ struct ExpectedOutcome {
 enum OpcodePlan {
     Reject {
         target: MachineTarget,
+        stage: RejectStage,
     },
     Execute {
         target: MachineTarget,
@@ -164,23 +171,24 @@ fn run_test_vector_opcode(
     let program = build_program(instruction, alternative_instruction_bytecode);
 
     match plan_test_vector_opcode(instruction, &program, &initial_registers, final_register) {
-        OpcodePlan::Reject { target } => {
-            let result = catch_unwind(AssertUnwindSafe(|| match target {
-                MachineTarget::FullUnsigned => {
-                    probe_execution::<FullUnsignedMachineDecoderConfig>(
-                        &program,
-                        initial_registers,
-                    );
-                }
-                MachineTarget::FullSigned => {
-                    probe_execution::<FullMachineDecoderConfig>(&program, initial_registers);
-                }
-            }));
-            assert!(
-                result.is_err(),
-                "expected `{instruction}` to be rejected by the transpiler path",
-            );
-        }
+        OpcodePlan::Reject { target, stage } => match (target, stage) {
+            (MachineTarget::FullUnsigned, RejectStage::Decode) => {
+                run_decode_rejection::<FullUnsignedMachineDecoderConfig>(&program, instruction);
+            }
+            (MachineTarget::FullSigned, RejectStage::Decode) => {
+                run_decode_rejection::<FullMachineDecoderConfig>(&program, instruction);
+            }
+            (MachineTarget::FullUnsigned, RejectStage::Execute) => {
+                run_rejection::<FullUnsignedMachineDecoderConfig>(
+                    &program,
+                    initial_registers,
+                    instruction,
+                );
+            }
+            (MachineTarget::FullSigned, RejectStage::Execute) => {
+                run_rejection::<FullMachineDecoderConfig>(&program, initial_registers, instruction);
+            }
+        },
         OpcodePlan::Execute { target, expected } => match target {
             MachineTarget::FullUnsigned => {
                 execute_case::<FullUnsignedMachineDecoderConfig>(
@@ -266,17 +274,16 @@ fn assert_touched_words(touched_words: &TouchedWords, expected_words: &[(u32, u3
     }
 }
 
-fn finalize_state_with_snapshot<D: ir::DecodingOptions>(
+fn finalize_state_with_snapshot(
     program: &[u32],
+    tape: &SimpleTape,
     initial_registers: [u32; 32],
+    collect_memory_checks: bool,
 ) -> (
     State<DelegationsAndFamiliesCounters>,
     SimpleSnapshotter<DelegationsAndFamiliesCounters, { ROM_SECOND_WORD_BITS }>,
-    TouchedWords,
+    Option<TouchedWords>,
 ) {
-    let worker = worker();
-    let instructions = ir::preprocess_bytecode::<D>(program);
-    let tape = SimpleTape::new(&instructions);
     let mut state = initial_state(initial_registers);
     let mut snapshotter: SimpleSnapshotter<_, { ROM_SECOND_WORD_BITS }> =
         SimpleSnapshotter::new_with_cycle_limit(SINGLE_STEP_CYCLE_BOUND, state);
@@ -287,7 +294,7 @@ fn finalize_state_with_snapshot<D: ir::DecodingOptions>(
         &mut state,
         &mut ram,
         &mut snapshotter,
-        &tape,
+        tape,
         SINGLE_STEP_CYCLE_BOUND,
         &mut (),
     );
@@ -295,7 +302,10 @@ fn finalize_state_with_snapshot<D: ir::DecodingOptions>(
         snapshotter.take_final_snapshot(&state);
     }
 
-    let touched_words = ram.collect_inits_and_teardowns(&worker, Global);
+    let touched_words = collect_memory_checks.then(|| {
+        let worker = worker();
+        ram.collect_inits_and_teardowns(&worker, Global)
+    });
 
     (state, snapshotter, touched_words)
 }
@@ -307,12 +317,18 @@ fn execute_case<D: ir::DecodingOptions>(
 ) {
     let instructions = ir::preprocess_bytecode::<D>(program);
     let tape = SimpleTape::new(&instructions);
-    let (state, snapshotter, touched_words) =
-        finalize_state_with_snapshot::<D>(program, initial_registers);
+    let (state, snapshotter, touched_words) = finalize_state_with_snapshot(
+        program,
+        &tape,
+        initial_registers,
+        !expected.memory_checks.is_empty(),
+    );
 
     assert_eq!(state.pc, expected.final_pc);
     assert_registers(&state, &expected.register_checks);
-    assert_touched_words(&touched_words, &expected.memory_checks);
+    if let Some(touched_words) = touched_words.as_ref() {
+        assert_touched_words(touched_words, &expected.memory_checks);
+    }
 
     let mut replay_state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
@@ -334,20 +350,38 @@ fn execute_case<D: ir::DecodingOptions>(
     assert_replay_matches(&state, &replay_state);
 }
 
-fn probe_execution<D: ir::DecodingOptions>(program: &[u32], initial_registers: [u32; 32]) {
+fn run_decode_rejection<D: ir::DecodingOptions>(program: &[u32], instruction: &str) {
+    let result = catch_unwind(AssertUnwindSafe(|| ir::preprocess_bytecode::<D>(program)));
+    assert!(
+        result.is_err(),
+        "expected `{instruction}` to be rejected during transpiler preprocessing",
+    );
+}
+
+fn run_rejection<D: ir::DecodingOptions>(
+    program: &[u32],
+    initial_registers: [u32; 32],
+    instruction: &str,
+) {
     let instructions = ir::preprocess_bytecode::<D>(program);
     let tape = SimpleTape::new(&instructions);
     let mut state = initial_state(initial_registers);
     let mut ram =
         RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(program, RAM_BOUND_BYTES);
 
-    let _ = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
-        &mut state,
-        &mut ram,
-        &mut (),
-        &tape,
-        SINGLE_STEP_CYCLE_BOUND,
-        &mut (),
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _ = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
+            &mut state,
+            &mut ram,
+            &mut (),
+            &tape,
+            SINGLE_STEP_CYCLE_BOUND,
+            &mut (),
+        );
+    }));
+    assert!(
+        result.is_err(),
+        "expected `{instruction}` to be rejected during VM execution",
     );
 }
 
@@ -500,6 +534,7 @@ fn plan_test_vector_opcode(
         | "ebreak" | "fadd.s" => {
             return OpcodePlan::Reject {
                 target: MachineTarget::FullUnsigned,
+                stage: RejectStage::Decode,
             };
         }
         _ => false,
@@ -511,6 +546,7 @@ fn plan_test_vector_opcode(
                 "div" | "rem" | "mulh" | "mulhsu" => MachineTarget::FullSigned,
                 _ => MachineTarget::FullUnsigned,
             },
+            stage: RejectStage::Execute,
         };
     }
 
