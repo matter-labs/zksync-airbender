@@ -1,8 +1,8 @@
 #pragma once
 
-#include "common.cuh"
+#include "../common.cuh"
 
-namespace airbender::memory {
+namespace airbender::primitives::memory {
 
 using namespace std;
 
@@ -535,4 +535,4 @@ template <typename T> struct wrapping_matrix_getter_setter : wrapping_matrix_acc
     this->internal.set(row % this->rows, col % this->cols, value);
   }
 };
-} // namespace airbender::memory
+} // namespace airbender::primitives::memory

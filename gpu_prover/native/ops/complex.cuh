@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../field.cuh"
+#include "../primitives/field.cuh"
 
-using namespace ::airbender::field;
+using namespace ::airbender::primitives::field;
 
 namespace airbender::ops::complex {
 

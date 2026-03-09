@@ -8,12 +8,10 @@ endif ()
 option(AB_DETERMINISTIC_POW "Enable deterministic PoW search" OFF)
 add_library(gpu_prover_native STATIC
         common.cuh
-        field.cuh
-        memory.cuh
-        ptx.cuh
 )
 add_subdirectory(bench)
 add_subdirectory(ops)
+add_subdirectory(primitives)
 add_subdirectory(witness)
 set_target_properties(gpu_prover_native PROPERTIES CUDA_STANDARD 20)
 set_target_properties(gpu_prover_native PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

@@ -7,7 +7,7 @@ using namespace ::airbender::witness::tables;
 
 namespace airbender::witness::generation {
 
-using namespace field;
+using namespace ::airbender::primitives::field;
 
 struct wrapped_f {
   bf inner;

@@ -1,7 +1,7 @@
-#include "../field.cuh"
+#include "../primitives/field.cuh"
 
-using namespace ::airbender::field;
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::field;
+using namespace ::airbender::primitives::memory;
 
 namespace airbender::ops::simple {
 

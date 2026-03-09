@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../memory.cuh"
+#include "../primitives/memory.cuh"
 #include "ram_access.cuh"
 #include "trace.cuh"
 
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::memory;
 using namespace ::airbender::witness::ram_access;
 using namespace ::airbender::witness::trace;
 

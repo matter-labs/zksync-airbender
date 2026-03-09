@@ -1,8 +1,8 @@
 #include "complex.cuh"
 // #include "context.cuh"
 
-using namespace ::airbender::field;
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::field;
+using namespace ::airbender::primitives::memory;
 
 namespace airbender::ops::complex {
 

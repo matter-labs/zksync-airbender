@@ -1,8 +1,8 @@
-#include "../memory.cuh"
+#include "../primitives/memory.cuh"
 #include "common.cuh"
 #include "memory.cuh"
 
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::memory;
 using namespace ::airbender::witness::memory;
 
 namespace airbender::witness::multiplicities {
