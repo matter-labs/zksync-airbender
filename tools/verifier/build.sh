@@ -77,6 +77,3 @@ for artifact in "${artifact_names[@]}"; do
 done
 
 wait
-
-# now update verification keys.
-# ./build_vk.sh

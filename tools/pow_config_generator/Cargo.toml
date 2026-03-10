@@ -11,11 +11,6 @@ proc-macro2 = "1"
 prover = { workspace = true, features = ["prover"] }
 verifier_common = { workspace = true, features = ["proof_utils", "worst_case_config_generation"] }
 
-risc_v_cycles_verifier = {path = "../../circuit_defs/risc_v_cycles/verifier", features = ["worst_case_config_generation"]}
-reduced_risc_v_machine_verifier = {path = "../../circuit_defs/reduced_risc_v_machine/verifier", features = ["worst_case_config_generation"]}
-reduced_risc_v_log_23_machine_verifier = {path = "../../circuit_defs/reduced_risc_v_log_23_machine/verifier", features = ["worst_case_config_generation"]}
-final_reduced_risc_v_machine_verifier = {path = "../../circuit_defs/final_reduced_risc_v_machine/verifier", features = ["worst_case_config_generation"]}
-
 blake2_with_compression_verifier = {path = "../../circuit_defs/blake2_with_compression/verifier", features = ["worst_case_config_generation"]}
 bigint_with_control_verifier = {path = "../../circuit_defs/bigint_with_control/verifier", features = ["worst_case_config_generation"]}
 keccak_special5_verifier = {path = "../../circuit_defs/keccak_special5/verifier", features = ["worst_case_config_generation"]}

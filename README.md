@@ -27,7 +27,7 @@ The most recent documentation can be found here:
   - `cargo test --profile cli`
 - CI-oriented test lane (excludes codegen/legacy-only tests):
   - `CI=1 cargo test --profile cli`
-- Legacy/manual test lane:
+- Manual regression lane (includes verifier/codegen coverage kept out of the default lane):
   - `cargo test --profile cli --features legacy_tests`
 
 ## Policies

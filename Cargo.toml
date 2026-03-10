@@ -26,11 +26,6 @@ members = [
     "circuit_defs/trace_and_split",
     "circuit_defs/setups",
     "circuit_defs/prover_examples",
-    "circuit_defs/risc_v_cycles",
-    "circuit_defs/machine_without_signed_mul_div",
-    "circuit_defs/reduced_risc_v_machine",
-    "circuit_defs/reduced_risc_v_log_23_machine",
-    "circuit_defs/final_reduced_risc_v_machine",
 
     "execution_utils",
 
@@ -70,11 +65,7 @@ default-members = [
     "circuit_defs/blake2_with_compression",
     "circuit_defs/circuit_common",
     "circuit_defs/prover_examples",
-    "circuit_defs/reduced_risc_v_machine",
-    "circuit_defs/reduced_risc_v_log_23_machine",
-    "circuit_defs/final_reduced_risc_v_machine",
     "circuit_defs/keccak_special5",
-    "circuit_defs/risc_v_cycles",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cs",
@@ -137,12 +128,6 @@ verifier_generator = { path = "./verifier_generator" }
 verifier_common = { path = "./verifier_common", default-features = false }
 
 circuit_common = { path = "./circuit_defs/circuit_common" }
-
-risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
-machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
-reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }
-reduced_risc_v_log_23_machine = { path = "./circuit_defs/reduced_risc_v_log_23_machine" }
-final_reduced_risc_v_machine = {path = "./circuit_defs/final_reduced_risc_v_machine"}
 
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }

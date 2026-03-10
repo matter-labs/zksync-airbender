@@ -115,15 +115,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "final_reduced_risc_v_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
 name = "full_statement_verifier"
 version = "0.1.0"
 dependencies = [
@@ -131,7 +122,6 @@ dependencies = [
  "bigint_with_control_verifier",
  "blake2_with_compression_verifier",
  "common_constants",
- "final_reduced_risc_v_machine_verifier",
  "inits_and_teardowns_verifier",
  "jump_branch_slt_verifier",
  "keccak_special5_verifier",
@@ -139,9 +129,6 @@ dependencies = [
  "load_store_word_only_verifier",
  "mul_div_unsigned_verifier",
  "mul_div_verifier",
- "reduced_risc_v_log_23_machine_verifier",
- "reduced_risc_v_machine_verifier",
- "risc_v_cycles_verifier",
  "shift_binary_csr_verifier",
  "unified_reduced_machine_verifier",
  "verifier_common",
@@ -363,24 +350,6 @@ name = "reduced_keccak"
 version = "0.1.0"
 
 [[package]]
-name = "reduced_risc_v_log_23_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "reduced_risc_v_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -408,15 +377,6 @@ name = "regex-syntax"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
-
-[[package]]
-name = "risc_v_cycles_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "unroll",
- "verifier_common",
-]
 
 [[package]]
 name = "riscv_common"
