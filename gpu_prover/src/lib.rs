@@ -5,6 +5,7 @@
 #![feature(pointer_is_aligned_to)]
 
 pub(crate) mod allocator;
+pub(crate) mod ntt;
 pub(crate) mod ops;
 pub mod primitives;
 pub(crate) mod prover;
