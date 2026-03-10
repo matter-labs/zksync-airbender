@@ -39,6 +39,10 @@ DEVICE_FORCEINLINE void initialize(u32 state[STATE_SIZE]) {
   state[0] ^= IV_0_TWIST;
 }
 
+DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
+  return num_bits == 0 ? 0 : (__brev(value) >> (32 - num_bits));
+}
+
 template <bool IS_FINAL_BLOCK> DEVICE_FORCEINLINE void compress(u32 state[STATE_SIZE], u32 &t, const u32 m[BLOCK_SIZE], const unsigned block_size) {
   IV_DEF;
   SIGMAS_DEF;
@@ -74,13 +78,14 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
-  values += gid << log_rows_count;
   results += gid * STATE_SIZE;
   const unsigned row_mask = (1u << log_rows_count) - 1;
+  const unsigned domain_size = count << log_rows_count;
   auto read = [=](const unsigned offset) {
-    const unsigned row = offset & row_mask;
+    const unsigned row_slot = offset & row_mask;
     const unsigned col = offset >> log_rows_count;
-    return col < cols_count ? bf::into_raw_u32(load_cs(values + row + (col * count << log_rows_count))) : 0;
+    const unsigned row = gid + bitreverse_low_bits(row_slot, log_rows_count) * count;
+    return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
   };
   u32 state[STATE_SIZE];
   u32 block[BLOCK_SIZE];
@@ -147,7 +152,8 @@ EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const
     return;
   const unsigned i = indexes[idx];
   const unsigned leaf_index = bit_reverse_indexes ? __brev(i) >> (32 - log_leaves_count) : i;
-  const unsigned src_row = (leaf_index << log_rows_per_leaf) + threadIdx.x;
+  const unsigned leaves_count = 1u << log_leaves_count;
+  const unsigned src_row = leaf_index + bitreverse_low_bits(threadIdx.x, log_rows_per_leaf) * leaves_count;
   const unsigned dst_row = (idx << log_rows_per_leaf) + threadIdx.x;
   const unsigned col = blockIdx.y;
   const bf result = values.get(src_row, col);
@@ -190,12 +196,13 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
   const bool is_output_lane = query_index == index_lane;
   const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
   const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
-  const bf *leaf_values_src = values + (leaf_index << log_rows_per_leaf);
+  const unsigned leaves_count = 1u << log_total_leaves_count;
   merkle_paths += idx * STATE_SIZE;
   auto read = [=](const unsigned offset) {
-    const unsigned row = offset & ((1u << log_rows_per_leaf) - 1);
+    const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
     const unsigned col = offset >> log_rows_per_leaf;
-    const auto address = leaf_values_src + row + (col << log_rows_count);
+    const unsigned row = leaf_index + bitreverse_low_bits(row_slot, log_rows_per_leaf) * leaves_count;
+    const auto address = values + row + (col << log_rows_count);
     return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
   };
   u32 state[STATE_SIZE];

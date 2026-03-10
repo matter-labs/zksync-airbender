@@ -413,22 +413,43 @@ mod tests {
 
     const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
 
+    fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+        if num_bits == 0 {
+            0
+        } else {
+            index.reverse_bits() >> (usize::BITS - num_bits)
+        }
+    }
+
+    fn leaf_source_row(
+        leaf_index: usize,
+        row_slot: usize,
+        log_rows_per_hash: u32,
+        leaves_count: usize,
+    ) -> usize {
+        leaf_index + bitreverse_index(row_slot, log_rows_per_hash) * leaves_count
+    }
+
     fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
-        let count = results.len();
+        let leaves_count = results.len();
         let values_len = values.len();
-        assert_eq!(values_len % (count << log_rows_per_hash), 0);
-        let cols_count = values_len / (count << log_rows_per_hash);
+        assert_eq!(values_len % (leaves_count << log_rows_per_hash), 0);
+        let cols_count = values_len / (leaves_count << log_rows_per_hash);
         let rows_count = 1 << log_rows_per_hash;
-        for i in 0..count {
+        let domain_size = leaves_count << log_rows_per_hash;
+        for leaf_index in 0..leaves_count {
             let mut input = vec![];
             for col in 0..cols_count {
-                let offset = (i << log_rows_per_hash) + col * rows_count * count;
-                input.extend_from_slice(&values[offset..offset + rows_count]);
+                for row_slot in 0..rows_count {
+                    let row =
+                        leaf_source_row(leaf_index, row_slot, log_rows_per_hash, leaves_count);
+                    input.push(values[col * domain_size + row]);
+                }
             }
             let blocks_count = input.len().get_chunks_count(BLOCK_SIZE);
             let mut state = Blake2sState::new();
             let mut expected = Digest::default();
-            for (i, chunk) in input.iter().chunks(BLOCK_SIZE).into_iter().enumerate() {
+            for (block_index, chunk) in input.iter().chunks(BLOCK_SIZE).into_iter().enumerate() {
                 let chunk = chunk.cloned().collect_vec();
                 let block_len = chunk.len();
                 let mut block = [0; BLOCK_SIZE];
@@ -439,7 +460,7 @@ mod tests {
                     .take(BLOCK_SIZE)
                     .collect_vec();
                 block.copy_from_slice(&chunk);
-                if i == blocks_count - 1 {
+                if block_index == blocks_count - 1 {
                     state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
                         &block,
                         block_len,
@@ -449,7 +470,7 @@ mod tests {
                     state.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
                 }
             }
-            let actual = results[i];
+            let actual = results[leaf_index];
             assert_eq!(expected, actual);
         }
     }
@@ -630,7 +651,7 @@ mod tests {
         const SRC_LOG_ROWS: usize = 12;
         const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
         const COLS: usize = 16;
-        const LOG_ROWS_PER_LEAF: usize = 1;
+        const LOG_ROWS_PER_LEAF: usize = 2;
         const LEAVES_COUNT: usize = SRC_ROWS >> LOG_ROWS_PER_LEAF;
         const INDEXES_COUNT: usize = 42;
         const DST_ROWS: usize = INDEXES_COUNT << LOG_ROWS_PER_LEAF;
@@ -648,7 +669,7 @@ mod tests {
         memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
         super::gather_leaf_rows(
             &indexes_device,
-            true,
+            false,
             LOG_ROWS_PER_LEAF as u32,
             &DeviceMatrix::new(&values_device, SRC_ROWS),
             &mut DeviceMatrixMut::new(&mut results_device, DST_ROWS),
@@ -658,12 +679,10 @@ mod tests {
         memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
         stream.synchronize().unwrap();
         for (i, index) in indexes_host.into_iter().enumerate() {
-            let src_leaf =
-                index.reverse_bits() >> (u32::BITS - (SRC_LOG_ROWS - LOG_ROWS_PER_LEAF) as u32);
-            let src_row_base = (src_leaf as usize) << LOG_ROWS_PER_LEAF;
+            let src_leaf = index as usize;
             let dst_row_base = i << LOG_ROWS_PER_LEAF;
             for j in 0..(1 << LOG_ROWS_PER_LEAF) {
-                let src_row = src_row_base + j;
+                let src_row = leaf_source_row(src_leaf, j, LOG_ROWS_PER_LEAF as u32, LEAVES_COUNT);
                 let dst_row = dst_row_base + j;
                 for k in 0..COLS {
                     let expected = values_host[(k << SRC_LOG_ROWS) + src_row];

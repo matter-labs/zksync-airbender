@@ -124,9 +124,10 @@ impl<T> TraceHolder<T> {
 
     pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
         let tree_caps_accessors = self.get_tree_caps_accessors();
+        let log_lde_factor = self.log_lde_factor;
         let seed_accessor = seed.get_mut_accessor();
         move || unsafe {
-            let input = flatten_tree_caps(&tree_caps_accessors).collect_vec();
+            let input = flatten_tree_caps_in_stage1_order(&tree_caps_accessors, log_lde_factor);
             Transcript::commit_with_seed(seed_accessor.get_mut(), &input);
         }
     }
@@ -301,11 +302,12 @@ impl TraceHolder<BF> {
         let mut d_merkle_paths = context.alloc(digests_len, AllocationPlacement::BestFit)?;
         match &self.trees {
             TreesHolder::Full(trees) => {
-                // Full-tree queries still need leaf-aware row extraction, but they can read all
-                // Merkle layers directly from the cached tree without the fused partial-tree path.
+                // Full-tree queries work in the natural per-coset leaf index space. They still
+                // need leaf-aware row extraction, but can read all Merkle layers directly from the
+                // cached tree without the fused partial-tree path.
                 gather_leaf_rows(
                     indexes,
-                    true,
+                    false,
                     log_rows_per_index,
                     &values_matrix,
                     &mut leafs_matrix,
@@ -324,7 +326,7 @@ impl TraceHolder<BF> {
                 let tree_bottom = &trees[coset_index];
                 gather_rows_and_merkle_paths(
                     indexes,
-                    true,
+                    false,
                     values,
                     log_rows_per_index,
                     &mut leafs_matrix,
@@ -337,7 +339,7 @@ impl TraceHolder<BF> {
             TreesHolder::None => {
                 gather_leaf_rows(
                     indexes,
-                    true,
+                    false,
                     log_rows_per_index,
                     &values_matrix,
                     &mut leafs_matrix,
@@ -351,7 +353,7 @@ impl TraceHolder<BF> {
                     log_rows_per_index,
                     stream,
                     layers_count,
-                    true,
+                    false,
                 )?;
                 gather_merkle_paths_device(
                     indexes,
@@ -475,7 +477,7 @@ pub(crate) fn commit_trace(
         log_rows_per_leaf,
         stream,
         layers_count,
-        true,
+        false,
     )
 }
 
@@ -507,7 +509,7 @@ pub(crate) fn commit_trace_with_partial_tree(
         log_rows_per_leaf,
         stream,
         PARTIAL_TREE_REDUCTION_LAYERS,
-        true,
+        false,
     )?;
     let bottom_layers_count = log_domain_size + 1
         - log_rows_per_leaf
@@ -546,6 +548,53 @@ pub(crate) fn get_tree_caps(accessors: &[UnsafeAccessor<[Digest]>]) -> Vec<Merkl
         .collect_vec()
 }
 
+fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+    if num_bits == 0 {
+        0
+    } else {
+        index.reverse_bits() >> (usize::BITS - num_bits)
+    }
+}
+
+pub(crate) fn flatten_tree_caps_in_stage1_order(
+    accessors: &[UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) -> Vec<u32> {
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(accessors.len(), lde_factor);
+    let mut result = Vec::with_capacity(
+        accessors
+            .iter()
+            .map(|accessor| unsafe {
+                accessor.get().len() * core::mem::size_of::<Digest>() / core::mem::size_of::<u32>()
+            })
+            .sum(),
+    );
+    for stage1_pos in 0..lde_factor {
+        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+        for digest in unsafe { accessors[natural_coset_index].get() }.iter() {
+            result.extend_from_slice(digest);
+        }
+    }
+
+    result
+}
+
+pub(crate) fn get_tree_caps_in_stage1_order(
+    accessors: &[UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) -> Vec<MerkleTreeCapVarLength> {
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(accessors.len(), lde_factor);
+    (0..lde_factor)
+        .map(|stage1_pos| {
+            let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+            let cap = unsafe { accessors[natural_coset_index].get().to_vec() };
+            MerkleTreeCapVarLength { cap }
+        })
+        .collect_vec()
+}
+
 #[cfg(test)]
 mod test {
     use std::alloc::Global;
@@ -554,6 +603,8 @@ mod test {
     use era_cudart::memory::memory_copy;
     use field::{Field, PrimeField};
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use serial_test::serial;
     use worker::Worker;
 
@@ -587,87 +638,14 @@ mod test {
         result
     }
 
-    fn cpu_merkle_cap_for_coset(
-        columns: &[&[BF]],
-        rows_per_leaf: usize,
-        cap_size: usize,
-    ) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]> {
-        assert!(!columns.is_empty());
-        let trace_len = columns[0].len();
-        let leaves_count = trace_len / rows_per_leaf;
-        let leaf_width = columns.len() * rows_per_leaf;
-        let num_full_rounds = leaf_width / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        let remainder = leaf_width % BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        let only_full_rounds = remainder == 0;
-
-        let mut leaf_hashes = Vec::with_capacity(leaves_count);
-        let mut buffer = Vec::with_capacity(leaf_width);
-        for leaf_idx in 0..leaves_count {
-            buffer.clear();
-            let row_start = leaf_idx * rows_per_leaf;
-            for column in columns {
-                buffer.extend(
-                    column[row_start..row_start + rows_per_leaf]
-                        .iter()
-                        .map(|value| value.as_u32_raw_repr_reduced()),
-                );
-            }
-
-            let (chunks, tail) = buffer.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
-            let mut state = Blake2sState::new();
-            let mut digest = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-            for (round_idx, block) in chunks.iter().enumerate() {
-                let is_last_round = round_idx + 1 == num_full_rounds;
-                if is_last_round && only_full_rounds {
-                    state.absorb_final_block::<true>(
-                        block,
-                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
-                        &mut digest,
-                    );
-                } else {
-                    state.absorb::<true>(block);
-                }
-            }
-            if !only_full_rounds {
-                let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-                block[..tail.len()].copy_from_slice(tail);
-                state.absorb_final_block::<true>(&block, tail.len(), &mut digest);
-            }
-
-            leaf_hashes.push(digest);
-        }
-
-        fft::bitreverse_enumeration_inplace(&mut leaf_hashes);
-
-        let mut current = leaf_hashes;
-        while current.len() > cap_size {
-            let mut next = Vec::with_capacity(current.len() / 2);
-            for pair in current.chunks_exact(2) {
-                let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-                block[..BLAKE2S_DIGEST_SIZE_U32_WORDS].copy_from_slice(&pair[0]);
-                block[BLAKE2S_DIGEST_SIZE_U32_WORDS..].copy_from_slice(&pair[1]);
-                let mut digest = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-                Blake2sState::compress_two_to_one::<true>(&block, &mut digest);
-                next.push(digest);
-            }
-            current = next;
-        }
-
-        current
-    }
-
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn trace_holder_materialization_matches_cpu() {
-        let worker = Worker::new();
-        let context = make_context();
-        let log_domain_size = 4u32;
-        let log_lde_factor = 2u32;
+    fn make_source_host_and_cpu_cosets(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        columns_count: usize,
+        worker: &Worker,
+    ) -> (Vec<BF>, Vec<Vec<BF>>) {
         let domain_size = 1usize << log_domain_size;
-        let columns_count = 3usize;
         let lde_factor = 1usize << log_lde_factor;
-
         let mut cpu_columns = Vec::with_capacity(columns_count);
         let mut source_host = vec![BF::ZERO; columns_count * domain_size];
         for column in 0..columns_count {
@@ -676,13 +654,156 @@ mod test {
                 .collect_vec();
             let mut source_column = coeffs.clone();
             multivariate_coeffs_into_hypercube_evals(&mut source_column, log_domain_size);
-            // `multivariate_hypercube_evals_into_coeffs` consumes bitreversed hypercube values, so
-            // this input ordering is the bitreversal of the forward helper output.
             fft::bitreverse_enumeration_inplace(&mut source_column);
             source_host[column * domain_size..(column + 1) * domain_size]
                 .copy_from_slice(&source_column);
             cpu_columns.push(coeffs);
         }
+
+        let mut cpu_cosets = vec![vec![BF::ZERO; columns_count * domain_size]; lde_factor];
+        for (column_idx, coeffs) in cpu_columns.iter().enumerate() {
+            for (coset_idx, coset) in cpu_all_cosets(coeffs, log_lde_factor, worker)
+                .into_iter()
+                .enumerate()
+            {
+                cpu_cosets[coset_idx][column_idx * domain_size..(column_idx + 1) * domain_size]
+                    .copy_from_slice(&coset);
+            }
+        }
+
+        (source_host, cpu_cosets)
+    }
+
+    fn stage1_caps_from_cpu_cosets(
+        cpu_cosets: &[Vec<BF>],
+        domain_size: usize,
+        columns_count: usize,
+        rows_per_leaf: usize,
+        total_cap_size: usize,
+        log_lde_factor: u32,
+        worker: &Worker,
+    ) -> Vec<MerkleTreeCapVarLength> {
+        let source_storage: Vec<Vec<&[BF]>> = cpu_cosets
+            .iter()
+            .map(|coset| {
+                (0..columns_count)
+                    .map(|column| &coset[column * domain_size..(column + 1) * domain_size])
+                    .collect_vec()
+            })
+            .collect_vec();
+        let source_refs = source_storage
+            .iter()
+            .map(|columns| columns.as_slice())
+            .collect_vec();
+        let tree = <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            BF,
+        >>::construct_from_cosets::<BF, Global>(
+            &source_refs,
+            rows_per_leaf,
+            total_cap_size,
+            true,
+            true,
+            false,
+            worker,
+        );
+        let subcap_size = total_cap_size >> log_lde_factor;
+        <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+            &tree,
+        )
+        .cap
+        .chunks_exact(subcap_size)
+        .map(|chunk| MerkleTreeCapVarLength {
+            cap: chunk.to_vec(),
+        })
+        .collect_vec()
+    }
+
+    fn hash_leaf_words(words: &[u32]) -> Digest {
+        let num_full_rounds = words.len() / BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let remainder = words.len() % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let only_full_rounds = remainder == 0;
+        let (chunks, tail) = words.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+        let mut state = Blake2sState::new();
+        let mut digest = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+        for (round_idx, block) in chunks.iter().enumerate() {
+            let is_last_round = round_idx + 1 == num_full_rounds;
+            if is_last_round && only_full_rounds {
+                state.absorb_final_block::<true>(block, BLAKE2S_BLOCK_SIZE_U32_WORDS, &mut digest);
+            } else {
+                state.absorb::<true>(block);
+            }
+        }
+        if !only_full_rounds {
+            let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            block[..tail.len()].copy_from_slice(tail);
+            state.absorb_final_block::<true>(&block, tail.len(), &mut digest);
+        }
+
+        digest
+    }
+
+    fn extract_query_leaf_words(
+        leafs: &[BF],
+        query_index: usize,
+        queries_count: usize,
+        rows_per_leaf: usize,
+    ) -> Vec<u32> {
+        let values_per_column_count = queries_count * rows_per_leaf;
+        assert_eq!(leafs.len() % values_per_column_count, 0);
+        let columns_count = leafs.len() / values_per_column_count;
+        let mut result = Vec::with_capacity(columns_count * rows_per_leaf);
+        for column in 0..columns_count {
+            let start = column * values_per_column_count + query_index * rows_per_leaf;
+            result.extend(
+                leafs[start..start + rows_per_leaf]
+                    .iter()
+                    .map(|value| value.as_u32_raw_repr_reduced()),
+            );
+        }
+
+        result
+    }
+
+    fn verify_query_against_stage1_caps(
+        leaf_words: &[u32],
+        merkle_path: &[Digest],
+        natural_leaf_index: usize,
+        natural_coset_index: usize,
+        stage1_caps: &[MerkleTreeCapVarLength],
+        log_lde_factor: u32,
+    ) {
+        let mut current = hash_leaf_words(leaf_words);
+        let mut index = natural_leaf_index;
+        for sibling in merkle_path.iter() {
+            let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            if index & 1 == 0 {
+                block[..BLAKE2S_DIGEST_SIZE_U32_WORDS].copy_from_slice(&current);
+                block[BLAKE2S_DIGEST_SIZE_U32_WORDS..].copy_from_slice(sibling);
+            } else {
+                block[..BLAKE2S_DIGEST_SIZE_U32_WORDS].copy_from_slice(sibling);
+                block[BLAKE2S_DIGEST_SIZE_U32_WORDS..].copy_from_slice(&current);
+            }
+            Blake2sState::compress_two_to_one::<true>(&block, &mut current);
+            index >>= 1;
+        }
+
+        let stage1_coset_index = super::bitreverse_index(natural_coset_index, log_lde_factor);
+        assert_eq!(current, stage1_caps[stage1_coset_index].cap[index]);
+    }
+
+    fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32) {
+        let worker = Worker::new();
+        let context = make_context();
+        let log_domain_size = 4u32;
+        let log_lde_factor = 2u32;
+        let domain_size = 1usize << log_domain_size;
+        let columns_count = 3usize;
+        let (source_host, cpu_cosets) = make_source_host_and_cpu_cosets(
+            log_domain_size,
+            log_lde_factor,
+            columns_count,
+            &worker,
+        );
 
         let mut source_device = context
             .alloc(source_host.len(), AllocationPlacement::BestFit)
@@ -692,7 +813,7 @@ mod test {
         let mut trace_holder = TraceHolder::<BF>::new(
             log_domain_size,
             log_lde_factor,
-            1,
+            log_rows_per_leaf,
             log_lde_factor + 1,
             columns_count,
             TreesCacheMode::CacheFull,
@@ -702,17 +823,6 @@ mod test {
         trace_holder
             .materialize_from_hypercube_evals(&source_device, &context)
             .unwrap();
-
-        let mut cpu_cosets = vec![vec![BF::ZERO; columns_count * domain_size]; lde_factor];
-        for (column_idx, coeffs) in cpu_columns.iter().enumerate() {
-            for (coset_idx, coset) in cpu_all_cosets(coeffs, log_lde_factor, &worker)
-                .into_iter()
-                .enumerate()
-            {
-                cpu_cosets[coset_idx][column_idx * domain_size..(column_idx + 1) * domain_size]
-                    .copy_from_slice(&coset);
-            }
-        }
 
         match &trace_holder.cosets {
             CosetsHolder::Full(cosets) => {
@@ -726,48 +836,56 @@ mod test {
 
         trace_holder.commit_all(&context).unwrap();
         context.get_exec_stream().synchronize().unwrap();
-        let gpu_caps = get_tree_caps(&trace_holder.get_tree_caps_accessors());
-        assert_eq!(gpu_caps.len(), lde_factor);
-        for (coset_idx, gpu_cap) in gpu_caps.into_iter().enumerate() {
-            let columns = (0..columns_count)
-                .map(|column| {
-                    &cpu_cosets[coset_idx][column * domain_size..(column + 1) * domain_size]
-                })
-                .collect_vec();
-            let cpu_cap = cpu_merkle_cap_for_coset(
-                &columns,
-                1 << trace_holder.log_rows_per_leaf,
-                1 << (trace_holder.log_tree_cap_size - trace_holder.log_lde_factor),
-            );
-            assert_eq!(gpu_cap.cap, cpu_cap, "coset {}", coset_idx);
-        }
+
+        let gpu_caps = get_tree_caps_in_stage1_order(
+            &trace_holder.get_tree_caps_accessors(),
+            trace_holder.log_lde_factor,
+        );
+        let cpu_caps = stage1_caps_from_cpu_cosets(
+            &cpu_cosets,
+            domain_size,
+            columns_count,
+            1 << log_rows_per_leaf,
+            1 << trace_holder.log_tree_cap_size,
+            log_lde_factor,
+            &worker,
+        );
+        assert_eq!(gpu_caps, cpu_caps);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn trace_holder_materialization_matches_cpu_for_single_row_leafs() {
+        assert_trace_holder_materialization_and_caps_match_cpu(0);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn trace_holder_materialization_matches_stage1_caps_for_grouped_leafs() {
+        assert_trace_holder_materialization_and_caps_match_cpu(2);
     }
 
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
     fn trace_holder_queries_match_across_tree_cache_modes() {
+        let worker = Worker::new();
         let context = make_context();
-        let log_domain_size = 8u32;
+        let log_domain_size = 9u32;
         let log_lde_factor = 2u32;
-        let log_rows_per_leaf = 1u32;
+        let log_rows_per_leaf = 2u32;
         let log_tree_cap_size = 3u32;
         let domain_size = 1usize << log_domain_size;
         let columns_count = 3usize;
-
-        let mut source_host = vec![BF::ZERO; columns_count * domain_size];
-        for column in 0..columns_count {
-            let coeffs = (0..domain_size)
-                .map(|idx| BF::new((1 + column * domain_size + idx) as u32))
-                .collect_vec();
-            let mut source_column = coeffs;
-            multivariate_coeffs_into_hypercube_evals(&mut source_column, log_domain_size);
-            // Match the bitreversed input ordering rather than the helper's direct hypercube
-            // enumeration.
-            fft::bitreverse_enumeration_inplace(&mut source_column);
-            source_host[column * domain_size..(column + 1) * domain_size]
-                .copy_from_slice(&source_column);
-        }
+        let rows_per_leaf = 1usize << log_rows_per_leaf;
+        let (source_host, cpu_cosets) = make_source_host_and_cpu_cosets(
+            log_domain_size,
+            log_lde_factor,
+            columns_count,
+            &worker,
+        );
 
         let mut source_device = context
             .alloc(source_host.len(), AllocationPlacement::BestFit)
@@ -816,7 +934,7 @@ mod test {
             .materialize_and_commit_from_hypercube_evals(&source_device, &context)
             .unwrap();
 
-        let query_indexes = vec![0u32, 1, 17, 42, 63];
+        let query_indexes = vec![0u32, 1, 7, 13, 42];
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
@@ -844,5 +962,40 @@ mod test {
         let none_paths = unsafe { none.merkle_paths.get_accessor().get().to_vec() };
         assert_eq!(partial_paths, full_paths);
         assert_eq!(none_paths, full_paths);
+
+        let stage1_caps =
+            get_tree_caps_in_stage1_order(&full_holder.get_tree_caps_accessors(), log_lde_factor);
+        let cpu_caps = stage1_caps_from_cpu_cosets(
+            &cpu_cosets,
+            domain_size,
+            columns_count,
+            rows_per_leaf,
+            1 << log_tree_cap_size,
+            log_lde_factor,
+            &worker,
+        );
+        assert_eq!(stage1_caps, cpu_caps);
+
+        let path_len =
+            (log_domain_size - log_rows_per_leaf - (log_tree_cap_size - log_lde_factor)) as usize;
+        for (query_slot, &leaf_index) in query_indexes.iter().enumerate() {
+            let leaf_words = extract_query_leaf_words(
+                &full_leafs,
+                query_slot,
+                query_indexes.len(),
+                rows_per_leaf,
+            );
+            let merkle_path = (0..path_len)
+                .map(|layer| full_paths[query_slot + layer * query_indexes.len()])
+                .collect_vec();
+            verify_query_against_stage1_caps(
+                &leaf_words,
+                &merkle_path,
+                leaf_index as usize,
+                1,
+                &stage1_caps,
+                log_lde_factor,
+            );
+        }
     }
 }
