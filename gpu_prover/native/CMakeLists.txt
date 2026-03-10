@@ -10,6 +10,7 @@ add_library(gpu_prover_native STATIC
         common.cuh
 )
 add_subdirectory(bench)
+add_subdirectory(ntt)
 add_subdirectory(ops)
 add_subdirectory(primitives)
 add_subdirectory(witness)

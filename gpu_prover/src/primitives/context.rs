@@ -62,6 +62,7 @@ pub type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
 pub type HostAllocator = NonConcurrentStaticHostAllocator;
 
 pub struct ProverContext {
+    // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
     host_allocator: HostAllocator,
