@@ -39,17 +39,16 @@ fn characterize_cpu_hypercube_ordering() {
     let mut hypercube_evals = coeffs.clone();
     multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, 3);
 
-    let mut stage1_input_evals = hypercube_evals.clone();
-    fft::bitreverse_enumeration_inplace(&mut stage1_input_evals);
-
+    let mut bitreversed_input_evals = hypercube_evals.clone();
+    fft::bitreverse_enumeration_inplace(&mut bitreversed_input_evals);
     let mut bitreversed_coeffs = coeffs.clone();
     fft::bitreverse_enumeration_inplace(&mut bitreversed_coeffs);
 
-    let mut recovered_bitreversed = stage1_input_evals.clone();
+    let mut recovered_bitreversed = bitreversed_input_evals.clone();
     multivariate_hypercube_evals_into_coeffs(&mut recovered_bitreversed, 3);
     assert_eq!(recovered_bitreversed, bitreversed_coeffs);
 
-    let mut recovered_natural = stage1_input_evals;
+    let mut recovered_natural = bitreversed_input_evals;
     fft::bitreverse_enumeration_inplace(&mut recovered_natural);
     multivariate_hypercube_evals_into_coeffs(&mut recovered_natural, 3);
     assert_eq!(recovered_natural, coeffs);
