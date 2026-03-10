@@ -130,15 +130,15 @@ pub fn build_merkle_tree(
 }
 
 cuda_kernel!(
-    GatherRows,
-    ab_gather_rows_kernel(
-        indexes: *const u32,
-        indexes_count: u32,
-        bit_reversed_indexes: bool,
-        log_rows_count: u32,
-        values: PtrAndStride<BF>,
-        results: MutPtrAndStride<BF>,
-    )
+GatherRows,
+ab_gather_rows_kernel(
+    indexes: *const u32,
+    indexes_count: u32,
+    bit_reversed_indexes: bool,
+    log_rows_count: u32,
+    values: PtrAndStride<BF>,
+    results: MutPtrAndStride<BF>,
+)
 );
 
 pub fn gather_rows(
@@ -188,6 +188,68 @@ pub fn gather_rows(
 }
 
 cuda_kernel!(
+    GatherLeafRows,
+    ab_gather_leaf_rows_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reversed_indexes: bool,
+        log_leaves_count: u32,
+        log_rows_per_leaf: u32,
+        values: PtrAndStride<BF>,
+        results: MutPtrAndStride<BF>,
+    )
+);
+
+pub fn gather_leaf_rows(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    log_rows_per_leaf: u32,
+    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    result: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_len = indexes.len();
+    let values_cols = values.cols();
+    let values_rows = values.rows();
+    assert!(values_rows.is_power_of_two());
+    let log_rows_count = values_rows.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
+    let log_leaves_count = log_rows_count - log_rows_per_leaf;
+    let result_rows = result.rows();
+    let result_cols = result.cols();
+    let rows_per_leaf = 1 << log_rows_per_leaf;
+    assert_eq!(result_cols, values_cols);
+    assert_eq!(result_rows, indexes_len << log_rows_per_leaf);
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
+        get_grid_block_dims_for_threads_count(
+            1 << (LOG_WARP_SIZE - log_rows_per_leaf),
+            indexes_count,
+        )
+    } else {
+        (indexes_count.into(), 1.into())
+    };
+    let block_dim = (rows_per_leaf, block_dim.x);
+    assert!(result_cols <= u32::MAX as usize);
+    grid_dim.y = result_cols as u32;
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr_and_stride();
+    let result = result.as_mut_ptr_and_stride();
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeafRowsArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        log_leaves_count,
+        log_rows_per_leaf,
+        values,
+        result,
+    );
+    GatherLeafRowsFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     GatherMerklePaths,
     ab_gather_merkle_paths_kernel(
         indexes: *const u32,
@@ -228,41 +290,69 @@ pub fn gather_merkle_paths_device(
     GatherMerklePathsFunction::default().launch(&config, &args)
 }
 
-pub fn gather_merkle_paths_host(
-    indexes: &[u32],
-    values: &[DG],
-    results: &mut [DG],
+cuda_kernel!(
+    GatherRowsAndMerklePaths,
+    ab_gather_rows_and_merkle_paths_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reverse_indexes: bool,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        leaf_values: MutPtrAndStride<BF>,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        merkle_paths: *mut Digest,
+    )
+);
+
+pub fn gather_rows_and_merkle_paths(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    values: &DeviceSlice<BF>,
+    log_rows_per_leaf: u32,
+    leaf_values: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    tree_bottom: &DeviceSlice<Digest>,
+    merkle_paths: &mut DeviceSlice<Digest>,
     layers_count: u32,
-) {
-    assert!(indexes.len() <= u32::MAX as usize);
-    let indexes_count = indexes.len() as u32;
-    let values_count = values.len();
-    assert!(values_count.is_power_of_two());
-    let log_values_count = values_count.trailing_zeros();
-    assert_ne!(log_values_count, 0);
-    let log_leaves_count = log_values_count - 1;
-    assert!(layers_count < log_leaves_count);
-    assert_eq!(indexes.len() * layers_count as usize, results.len());
-    for layer_index in 0..layers_count {
-        let layer_offset =
-            (1 << (log_leaves_count + 1)) - (1 << (log_leaves_count + 1 - layer_index));
-        for (idx, &leaf_index) in indexes.iter().enumerate() {
-            let hash_offset = ((leaf_index >> layer_index) ^ 1) as usize;
-            let dst_index = idx + (layer_index * indexes_count) as usize;
-            let src_index = layer_offset + hash_offset;
-            results[dst_index] = values[src_index];
-        }
-    }
-    /*
-     const unsigned leaf_index = indexes[idx];
-     const unsigned layer_index = blockIdx.y;
-     const unsigned layer_offset = ((1u << log_leaves_count + 1) - (1u << log_leaves_count + 1 - layer_index)) * STATE_SIZE;
-     const unsigned hash_offset = (leaf_index >> layer_index ^ 1) * STATE_SIZE;
-     const unsigned element_offset = threadIdx.x;
-     const unsigned src_index = layer_offset + hash_offset + element_offset;
-     const unsigned dst_index = layer_index * indexes_count * STATE_SIZE + idx * STATE_SIZE + element_offset;
-     results[dst_index] = values[src_index];
-    */
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_len = indexes.len();
+    let values_len = values.len();
+    let cols_count = leaf_values.cols();
+    assert_eq!(values_len % cols_count, 0);
+    let log_rows_count = (values_len / cols_count).trailing_zeros();
+    assert_eq!(leaf_values.rows(), indexes_len << log_rows_per_leaf);
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert_eq!(indexes_len * layers_count as usize, merkle_paths.len());
+    assert!(cols_count <= u32::MAX as usize);
+    let cols_count = cols_count as u32;
+    let log_total_leaves_count = log_rows_count as u32 - log_rows_per_leaf;
+    // The fused path is only used for partial-tree queries: it hashes queried leaves, emits the
+    // first LOG_WARP_SIZE sibling layers from warp-local reductions, then resumes from tree_bottom.
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr();
+    let leaf_values = leaf_values.as_mut_ptr_and_stride();
+    let tree_bottom = tree_bottom.as_ptr();
+    let merkle_paths = merkle_paths.as_mut_ptr();
+    let args = GatherRowsAndMerklePathsArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        values,
+        log_rows_per_leaf,
+        cols_count,
+        log_total_leaves_count,
+        leaf_values,
+        tree_bottom,
+        layers_count,
+        merkle_paths,
+    );
+    GatherRowsAndMerklePathsFunction::default().launch(&config, &args)
 }
 
 pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &DeviceSlice<DG> {
@@ -529,6 +619,55 @@ mod tests {
                 for k in 0..COLS {
                     let expected = values_host[(k << SRC_LOG_ROWS) + src_index];
                     let actual = results_host[(k * DST_ROWS) + dst_index];
+                    assert_eq!(expected, actual);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gather_leaf_rows() {
+        const SRC_LOG_ROWS: usize = 12;
+        const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
+        const COLS: usize = 16;
+        const LOG_ROWS_PER_LEAF: usize = 1;
+        const LEAVES_COUNT: usize = SRC_ROWS >> LOG_ROWS_PER_LEAF;
+        const INDEXES_COUNT: usize = 42;
+        const DST_ROWS: usize = INDEXES_COUNT << LOG_ROWS_PER_LEAF;
+        let mut rng = rand::rng();
+        let mut indexes_host = vec![0; INDEXES_COUNT];
+        indexes_host.fill_with(|| rng.random_range(0..LEAVES_COUNT as u32));
+        let mut values_host = vec![BF::ZERO; SRC_ROWS * COLS];
+        values_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
+        let mut results_host = vec![BF::ZERO; DST_ROWS * COLS];
+        let stream = CudaStream::default();
+        let mut indexes_device = DeviceAllocation::<u32>::alloc(indexes_host.len()).unwrap();
+        let mut values_device = DeviceAllocation::<BF>::alloc(values_host.len()).unwrap();
+        let mut results_device = DeviceAllocation::<BF>::alloc(results_host.len()).unwrap();
+        memory_copy_async(&mut indexes_device, &indexes_host, &stream).unwrap();
+        memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
+        super::gather_leaf_rows(
+            &indexes_device,
+            true,
+            LOG_ROWS_PER_LEAF as u32,
+            &DeviceMatrix::new(&values_device, SRC_ROWS),
+            &mut DeviceMatrixMut::new(&mut results_device, DST_ROWS),
+            &stream,
+        )
+        .unwrap();
+        memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for (i, index) in indexes_host.into_iter().enumerate() {
+            let src_leaf =
+                index.reverse_bits() >> (u32::BITS - (SRC_LOG_ROWS - LOG_ROWS_PER_LEAF) as u32);
+            let src_row_base = (src_leaf as usize) << LOG_ROWS_PER_LEAF;
+            let dst_row_base = i << LOG_ROWS_PER_LEAF;
+            for j in 0..(1 << LOG_ROWS_PER_LEAF) {
+                let src_row = src_row_base + j;
+                let dst_row = dst_row_base + j;
+                for k in 0..COLS {
+                    let expected = values_host[(k << SRC_LOG_ROWS) + src_row];
+                    let actual = results_host[(k * DST_ROWS) + dst_row];
                     assert_eq!(expected, actual);
                 }
             }
