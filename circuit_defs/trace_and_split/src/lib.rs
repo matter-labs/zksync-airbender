@@ -1136,15 +1136,6 @@ pub fn run_and_split_for_gpu<
     Vec<FinalRegisterValue>,
     Vec<Vec<(u32, (TimestampScalar, u32))>>,
 ) {
-    assert_eq!(
-        setups::risc_v_cycles::ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
-        setups::reduced_risc_v_machine::ROM_ADDRESS_SPACE_SECOND_WORD_BITS
-    );
-    assert_eq!(
-        setups::risc_v_cycles::ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
-        setups::final_reduced_risc_v_machine::ROM_ADDRESS_SPACE_SECOND_WORD_BITS
-    );
-
     let (
         final_pc,
         main_circuit_traces,
@@ -1155,7 +1146,7 @@ pub fn run_and_split_for_gpu<
         ND,
         C,
         A,
-        { setups::risc_v_cycles::ROM_ADDRESS_SPACE_SECOND_WORD_BITS },
+        { common_constants::rom::ROM_SECOND_WORD_BITS },
     >(
         num_cycles_upper_bound,
         domain_size,

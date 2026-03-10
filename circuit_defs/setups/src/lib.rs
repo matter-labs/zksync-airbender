@@ -35,13 +35,8 @@ use worker::Worker;
 
 pub use bigint_with_control;
 pub use blake2_with_compression;
-pub use final_reduced_risc_v_machine;
 pub use keccak_special5;
-pub use machine_without_signed_mul_div;
 pub use prover;
-pub use reduced_risc_v_log_23_machine;
-pub use reduced_risc_v_machine;
-pub use risc_v_cycles;
 
 pub mod circuits;
 pub mod unrolled_circuits;

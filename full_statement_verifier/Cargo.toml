@@ -13,11 +13,6 @@ categories.workspace = true
 common_constants = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
 
-risc_v_cycles_verifier = {path = "../circuit_defs/risc_v_cycles/verifier", default-features = false, optional = true }
-reduced_risc_v_machine_verifier = {path = "../circuit_defs/reduced_risc_v_machine/verifier", default-features = false, optional = true }
-reduced_risc_v_log_23_machine_verifier = {path = "../circuit_defs/reduced_risc_v_log_23_machine/verifier", default-features = false, optional = true }
-final_reduced_risc_v_machine_verifier = {path = "../circuit_defs/final_reduced_risc_v_machine/verifier", default-features = false, optional = true }
-
 blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compression/verifier", default-features = false, optional = true }
 bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false, optional = true }
 keccak_special5_verifier = {path = "../circuit_defs/keccak_special5/verifier", default-features = false, optional = true }
@@ -70,10 +65,10 @@ unified_verifier_only_security_80 = [
     "unified_reduced_machine_verifier/security_80"
 ]
 
-security_80 = ["verifiers", "verifier_common/security_80", "risc_v_cycles_verifier/security_80", "reduced_risc_v_machine_verifier/security_80", "reduced_risc_v_log_23_machine_verifier/security_80", "final_reduced_risc_v_machine_verifier/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
-security_100 = ["verifiers", "verifier_common/security_100", "risc_v_cycles_verifier/security_100", "reduced_risc_v_machine_verifier/security_100", "reduced_risc_v_log_23_machine_verifier/security_100", "final_reduced_risc_v_machine_verifier/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
-blake2_with_compression = ["verifier_common/blake2_with_compression", "risc_v_cycles_verifier/blake2_with_compression", "reduced_risc_v_machine_verifier/blake2_with_compression", "reduced_risc_v_log_23_machine_verifier/blake2_with_compression", "final_reduced_risc_v_machine_verifier/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression", "keccak_special5_verifier/blake2_with_compression"]
-modular_ops = ["verifier_common/modular_ops", "risc_v_cycles_verifier/modular_ops", "reduced_risc_v_machine_verifier/modular_ops", "reduced_risc_v_log_23_machine_verifier/modular_ops", "final_reduced_risc_v_machine_verifier/modular_ops", "blake2_with_compression_verifier/modular_ops", "bigint_with_control_verifier/modular_ops", "keccak_special5_verifier/modular_ops"]
+security_80 = ["verifiers", "verifier_common/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
+security_100 = ["verifiers", "verifier_common/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
+blake2_with_compression = ["verifier_common/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression", "keccak_special5_verifier/blake2_with_compression"]
+modular_ops = ["verifier_common/modular_ops", "blake2_with_compression_verifier/modular_ops", "bigint_with_control_verifier/modular_ops", "keccak_special5_verifier/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
 default = ["security_80", "replace_csr", "verifiers"]

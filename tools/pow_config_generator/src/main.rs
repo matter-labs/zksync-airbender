@@ -17,9 +17,6 @@ fn main() {
     let pow_bits_for_queries_for_100 = verifier_common::POW_BITS_FOR_100_SECURITY_BITS;
 
     let max_trace_len_log2 = *[
-        risc_v_cycles_verifier::concrete::size_constants::TRACE_LEN_LOG2,
-        reduced_risc_v_machine_verifier::concrete::size_constants::TRACE_LEN_LOG2,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         blake2_with_compression_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         bigint_with_control_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         keccak_special5_verifier::concrete::size_constants::TRACE_LEN_LOG2,
@@ -38,9 +35,6 @@ fn main() {
     .unwrap();
 
     let max_fri_factor_log2 = *[
-        risc_v_cycles_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
-        reduced_risc_v_machine_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         blake2_with_compression_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         bigint_with_control_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         keccak_special5_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
@@ -59,18 +53,6 @@ fn main() {
     .unwrap();
 
     let max_number_of_columns = *[
-        risc_v_cycles_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
-            + risc_v_cycles_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
-            + risc_v_cycles_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
-            + risc_v_cycles_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
-        reduced_risc_v_machine_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
-            + reduced_risc_v_machine_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
-            + reduced_risc_v_machine_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
-            + reduced_risc_v_machine_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
-            + reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
-            + reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
-            + reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
         blake2_with_compression_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
             + blake2_with_compression_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
             + blake2_with_compression_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
@@ -125,9 +107,6 @@ fn main() {
     .unwrap();
 
     let max_num_quotient_terms = *[
-        risc_v_cycles_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
-        reduced_risc_v_machine_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         blake2_with_compression_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         bigint_with_control_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         keccak_special5_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
@@ -146,9 +125,6 @@ fn main() {
     .unwrap();
 
     let max_num_openings_at_z = *[
-        risc_v_cycles_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
-        reduced_risc_v_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         blake2_with_compression_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         bigint_with_control_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         keccak_special5_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
@@ -167,9 +143,6 @@ fn main() {
     .unwrap();
 
     let max_num_openings_at_z_omega = *[
-        risc_v_cycles_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
-        reduced_risc_v_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         blake2_with_compression_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         bigint_with_control_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         keccak_special5_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
@@ -188,18 +161,6 @@ fn main() {
     .unwrap();
 
     let max_fri_folding_factors_log2 = **[
-        risc_v_cycles_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
-            .iter()
-            .max()
-            .unwrap(),
-        reduced_risc_v_machine_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
-            .iter()
-            .max()
-            .unwrap(),
-        reduced_risc_v_log_23_machine_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
-            .iter()
-            .max()
-            .unwrap(),
         blake2_with_compression_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
             .iter()
             .max()
