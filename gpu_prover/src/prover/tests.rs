@@ -1,3 +1,4 @@
+use super::trace_holder::{TraceHolder, TreesCacheMode};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
@@ -37,7 +38,9 @@ use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
-use prover::merkle_trees::DefaultTreeConstructor;
+use prover::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
+};
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
@@ -440,15 +443,63 @@ fn run_basic_unrolled_test() {
         trace_len,
         &add_sub_circuit,
     );
+    let whir_first_fold_step_log2 = 1usize;
 
     let setup_commitment = setup.commit(
         &twiddles,
         lde_factor,
-        1,
+        whir_first_fold_step_log2,
         tree_cap_size,
         trace_len.trailing_zeros() as usize,
         &worker,
     );
+
+    {
+        let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
+        let columns_count = setup.hypercube_evals.len();
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let log_rows_per_leaf = whir_first_fold_step_log2 as u32;
+        let log_tree_cap_size = tree_cap_size.trailing_zeros();
+        let subcap_size = tree_cap_size / lde_factor;
+
+        let mut d_setup_hypercube = context
+            .alloc(columns_count * trace_len, AllocationPlacement::BestFit)
+            .unwrap();
+        for (h, d) in setup
+            .hypercube_evals
+            .iter()
+            .zip(d_setup_hypercube.chunks_mut(trace_len))
+        {
+            memory_copy(d, &h[..]).unwrap();
+        }
+
+        let mut trace_holder = TraceHolder::<BF>::new(
+            TRACE_LEN_LOG2 as u32,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            TreesCacheMode::CacheFull,
+            &context,
+        )
+        .unwrap();
+        trace_holder
+            .materialize_and_commit_from_hypercube_evals(&d_setup_hypercube, &context)
+            .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let trace_holder_caps = trace_holder.get_tree_caps();
+        let setup_caps = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+            &setup_commitment.tree,
+        )
+        .cap
+        .chunks_exact(subcap_size)
+        .map(|chunk| MerkleTreeCapVarLength {
+            cap: chunk.to_vec(),
+        })
+        .collect_vec();
+        assert_eq!(trace_holder_caps, setup_caps);
+    }
 
     {
         let circuit_type = UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop;
