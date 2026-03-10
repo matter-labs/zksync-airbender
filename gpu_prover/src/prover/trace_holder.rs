@@ -122,14 +122,20 @@ impl<T> TraceHolder<T> {
             .collect_vec()
     }
 
-    pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
+    pub(crate) fn get_tree_caps(&self) -> Vec<MerkleTreeCapVarLength> {
         let tree_caps_accessors = self.get_tree_caps_accessors();
-        let log_lde_factor = self.log_lde_factor;
+        get_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
+    }
+
+    fn flatten_tree_caps(&self) -> Vec<u32> {
+        let tree_caps_accessors = self.get_tree_caps_accessors();
+        flatten_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
+    }
+
+    pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
         let seed_accessor = seed.get_mut_accessor();
-        move || unsafe {
-            let input = flatten_tree_caps_in_stage1_order(&tree_caps_accessors, log_lde_factor);
-            Transcript::commit_with_seed(seed_accessor.get_mut(), &input);
-        }
+        let input = self.flatten_tree_caps();
+        move || unsafe { Transcript::commit_with_seed(seed_accessor.get_mut(), &input) }
     }
 
     pub(crate) fn get_coset_evaluations(&self, coset_index: usize) -> &DeviceSlice<T> {
@@ -531,23 +537,6 @@ pub(crate) fn transfer_tree_cap(
     memory_copy_async(unsafe { cap.get_mut_accessor().get_mut() }, d_cap, stream)
 }
 
-pub(crate) fn flatten_tree_caps(
-    accessors: &[UnsafeAccessor<[Digest]>],
-) -> impl Iterator<Item = u32> + use<'_> {
-    accessors
-        .iter()
-        .flat_map(|accessor| unsafe { accessor.get().to_vec() })
-        .flatten()
-}
-
-pub(crate) fn get_tree_caps(accessors: &[UnsafeAccessor<[Digest]>]) -> Vec<MerkleTreeCapVarLength> {
-    accessors
-        .iter()
-        .map(|accessor| unsafe { accessor.get().to_vec() })
-        .map(|cap| MerkleTreeCapVarLength { cap })
-        .collect_vec()
-}
-
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0
@@ -556,7 +545,7 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     }
 }
 
-pub(crate) fn flatten_tree_caps_in_stage1_order(
+fn flatten_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
 ) -> Vec<u32> {
@@ -580,7 +569,7 @@ pub(crate) fn flatten_tree_caps_in_stage1_order(
     result
 }
 
-pub(crate) fn get_tree_caps_in_stage1_order(
+fn get_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
 ) -> Vec<MerkleTreeCapVarLength> {
@@ -837,10 +826,7 @@ mod test {
         trace_holder.commit_all(&context).unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
-        let gpu_caps = get_tree_caps_in_stage1_order(
-            &trace_holder.get_tree_caps_accessors(),
-            trace_holder.log_lde_factor,
-        );
+        let gpu_caps = trace_holder.get_tree_caps();
         let cpu_caps = stage1_caps_from_cpu_cosets(
             &cpu_cosets,
             domain_size,
@@ -963,8 +949,7 @@ mod test {
         assert_eq!(partial_paths, full_paths);
         assert_eq!(none_paths, full_paths);
 
-        let stage1_caps =
-            get_tree_caps_in_stage1_order(&full_holder.get_tree_caps_accessors(), log_lde_factor);
+        let stage1_caps = full_holder.get_tree_caps();
         let cpu_caps = stage1_caps_from_cpu_cosets(
             &cpu_cosets,
             domain_size,
