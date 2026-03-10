@@ -113,8 +113,8 @@ pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
         return Ok(());
     }
 
-    // Match the CPU setup convention: run the inverse-hypercube butterflies directly on the
-    // source slice and land in bitreversed monomial order without any extra permutation pass.
+    // Run the inverse-hypercube butterflies directly on the source slice and land in
+    // bitreversed monomial order without any extra permutation pass.
     for stage in (0..log_n).rev() {
         launch_hypercube_stage(dst, log_n, stage, stream)?;
     }
