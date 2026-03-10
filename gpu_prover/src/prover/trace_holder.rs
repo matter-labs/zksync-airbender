@@ -676,6 +676,8 @@ mod test {
                 .collect_vec();
             let mut source_column = coeffs.clone();
             multivariate_coeffs_into_hypercube_evals(&mut source_column, log_domain_size);
+            // `multivariate_hypercube_evals_into_coeffs` consumes bitreversed hypercube values, so
+            // this input ordering is the bitreversal of the forward helper output.
             fft::bitreverse_enumeration_inplace(&mut source_column);
             source_host[column * domain_size..(column + 1) * domain_size]
                 .copy_from_slice(&source_column);
@@ -760,6 +762,8 @@ mod test {
                 .collect_vec();
             let mut source_column = coeffs;
             multivariate_coeffs_into_hypercube_evals(&mut source_column, log_domain_size);
+            // Match the bitreversed input ordering rather than the helper's direct hypercube
+            // enumeration.
             fft::bitreverse_enumeration_inplace(&mut source_column);
             source_host[column * domain_size..(column + 1) * domain_size]
                 .copy_from_slice(&source_column);
