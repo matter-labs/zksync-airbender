@@ -32,11 +32,14 @@ rayon = "*"
 
 [features]
 default = ["security_80"]
+bench = []
 deterministic_pow = ["prover/deterministic_pow"]
+gpu_prover_full_tests = []
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
+test_no_inline = ["field/no_inline"]
 
 [build-dependencies]
 cmake = "0.1"
@@ -51,15 +54,7 @@ rand = "0.9"
 serial_test = "3"
 blake2s_u32 = { workspace = true }
 
-[features]
-default = ["security_80"]
-log_gpu_mem_usage = []
-log_gpu_stages_timings = []
-security_80 = ["verifier_common/security_80"]
-security_100 = ["verifier_common/security_100"]
-test_no_inline = ["field/no_inline"]
-gpu_prover_full_tests = []
-
 [[bench]]
 name = "field"
 harness = false
+required-features = ["bench"]
