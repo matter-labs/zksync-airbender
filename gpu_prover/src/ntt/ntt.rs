@@ -12,7 +12,7 @@ use crate::device_structures::{
     MutPtrAndStride, PtrAndStride,
 };
 use crate::field::BaseField;
-use crate::prover::context::DeviceProperties;
+use crate::primitives::context::DeviceProperties;
 use crate::utils::GetChunksCount;
 
 use std::mem::size_of;
@@ -122,7 +122,7 @@ pub(crate) fn evals_to_monomials_3_pass(
             );
             let mut grid_dim: Dim3 = (blocks_per_exchg_region as u32).into();
             grid_dim.y = num_exchg_regions as u32;
-            let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
+            let config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
             let input = if i == 0 {
                 input_matrix
             } else {
@@ -141,7 +141,7 @@ pub(crate) fn evals_to_monomials_3_pass(
         let threads = 256;
         let bf_vals_per_block = 1 << 13; // 8192
         let blocks = n.get_chunks_count(bf_vals_per_block);
-        let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
+        let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
         let args = ContiguousChunksStagesArguments::new(
             output_matrix_const,
             output_matrix_mut,
@@ -300,7 +300,7 @@ pub(crate) fn monomials_to_evals_3_pass(
         let threads = 256;
         let bf_vals_per_block = 1 << 13; // 8192
         let blocks = n.get_chunks_count(bf_vals_per_block);
-        let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
+        let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
         let args = ContiguousChunksStagesArguments::new(
             input_matrix,
             output_matrix_mut,
@@ -331,7 +331,7 @@ pub(crate) fn monomials_to_evals_3_pass(
             );
             let mut grid_dim: Dim3 = (blocks_per_exchg_region as u32).into();
             grid_dim.y = num_block_exchg_regions as u32;
-            let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
+            let config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
             let args = StridedTilesStagesArguments::new(
                 output_matrix_const,
                 output_matrix_mut,

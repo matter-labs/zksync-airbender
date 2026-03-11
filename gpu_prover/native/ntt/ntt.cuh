@@ -1,10 +1,7 @@
-#include "../context.cuh"
-#include "../field.cuh"
-#include "../memory.cuh"
+#include "context.cuh"
+#include "../primitives/field.cuh"
+#include "../primitives/memory.cuh"
 #include <cuda_pipeline.h>
-
-using namespace ::airbender::field;
-using namespace ::airbender::memory;
 
 namespace airbender::ntt {
 
