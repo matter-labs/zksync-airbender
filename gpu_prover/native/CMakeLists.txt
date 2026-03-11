@@ -8,7 +8,10 @@ endif ()
 add_library(gpu_prover_native STATIC
         common.cuh
 )
-add_subdirectory(bench)
+option(GPU_PROVER_BUILD_BENCH "Build bench kernels" OFF)
+if (GPU_PROVER_BUILD_BENCH)
+    add_subdirectory(bench)
+endif ()
 add_subdirectory(ntt)
 add_subdirectory(ops)
 add_subdirectory(primitives)

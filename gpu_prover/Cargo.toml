@@ -45,6 +45,7 @@ blake2s_u32 = { workspace = true }
 
 [features]
 default = ["security_80"]
+bench = []
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
 security_80 = ["verifier_common/security_80"]
@@ -55,3 +56,4 @@ gpu_prover_full_tests = []
 [[bench]]
 name = "field"
 harness = false
+required-features = ["bench"]

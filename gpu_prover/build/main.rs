@@ -4,6 +4,7 @@ use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_me
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BENCH");
     if is_no_cuda() {
         println!("cargo::warning={}", no_cuda_message!());
         println!("cargo::rustc-cfg=no_cuda");
@@ -15,9 +16,15 @@ fn main() {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
         let cudaarchs = var("CUDAARCHS").unwrap_or("native".to_string());
+        let build_bench = if var("CARGO_FEATURE_BENCH").is_ok() {
+            "ON"
+        } else {
+            "OFF"
+        };
         let dst = cmake::Config::new("native")
             .profile("Release")
             .define("CMAKE_CUDA_ARCHITECTURES", cudaarchs)
+            .define("GPU_PROVER_BUILD_BENCH", build_bench)
             .build();
         let gpu_prover_native_path = dst.to_str().unwrap();
         println!("cargo:rustc-link-search=native={gpu_prover_native_path}");
