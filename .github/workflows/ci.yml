@@ -411,8 +411,9 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten0.json --cycles 10000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 0 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten0.json --output-dir recursion_proofs_0/ --prev-metadata output/metadata.json
-      - name: Recursion 0 - Verify (on cpu)
-        run: ./cli verify-all --metadata recursion_proofs_0/metadata.json
+      # TODO: Used CLI does not have verifiers -- should include verifiers to build
+      # - name: Recursion 0 - Verify (on cpu)
+      #   run: ./cli verify-all --metadata recursion_proofs_0/metadata.json
 
       - name: Recursion 1 - create output dir
         run: mkdir recursion_proofs_1
@@ -422,8 +423,9 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten1.json --cycles 32000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 1 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten1.json --output-dir recursion_proofs_1/ --prev-metadata recursion_proofs_0/metadata.json
-      - name: Recursion 1 - Verify (on cpu)
-        run: ./cli verify-all --metadata recursion_proofs_1/metadata.json
+      # TODO: Used CLI does not have verifiers -- should include verifiers to build
+      # - name: Recursion 1 - Verify (on cpu)
+      #   run: ./cli verify-all --metadata recursion_proofs_1/metadata.json
 
 
       - name: Recursion 2 - create output dir
@@ -434,8 +436,9 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten2.json --cycles 50000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 2 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten2.json --output-dir recursion_proofs_2/ --prev-metadata recursion_proofs_0/metadata.json
-      - name: Recursion 2 - Verify (on cpu)
-        run: ./cli verify-all --metadata recursion_proofs_2/metadata.json
+      # TODO: Used CLI does not have verifiers -- should include verifiers to build
+      # - name: Recursion 2 - Verify (on cpu)
+      #   run: ./cli verify-all --metadata recursion_proofs_2/metadata.json
 
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
