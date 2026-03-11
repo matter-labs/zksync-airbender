@@ -501,8 +501,7 @@ mod test {
     }
 
     fn load_test_program(binary_path: &str, text_path: &str) -> TestProgram {
-        let (binary_image, binary_image_u32) =
-            setups::read_and_pad_binary(&Path::new(binary_path));
+        let (binary_image, binary_image_u32) = setups::read_and_pad_binary(&Path::new(binary_path));
         let (text_section, text_section_u32) = setups::read_and_pad_binary(&Path::new(text_path));
 
         TestProgram {
@@ -520,9 +519,10 @@ mod test {
             &program.binary_image,
             &program.text_section,
         );
-        let compiled_layouts = setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<
-            C,
-        >(&program.binary_image_u32);
+        let compiled_layouts =
+            setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<C>(
+                &program.binary_image_u32,
+            );
 
         (program_setup, compiled_layouts)
     }
@@ -586,9 +586,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let program_proof = prove_unrolled_test_program::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
@@ -623,9 +621,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let program_proof = prove_unrolled_test_program::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
@@ -660,9 +656,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let program_proof = prove_unrolled_test_program::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
@@ -705,9 +699,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let program_proof = prove_unrolled_test_program::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
@@ -742,9 +734,7 @@ mod test {
 
         let (base_program_setup, base_compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&base_program);
-        let base_program_proof = prove_unrolled_test_program::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
+        let base_program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &base_program,
             base_cycles_bound,
             base_non_determinism_source,
@@ -767,10 +757,9 @@ mod test {
             true,
         );
         let recursion_non_determinism_source = QuasiUARTSource::new_with_reads(recursion_input);
-        let (recursion_program_setup, recursion_compiled_layouts) =
-            prepare_unrolled_program::<IWithoutByteAccessIsaConfigWithDelegation>(
-                &recursion_program,
-            );
+        let (recursion_program_setup, recursion_compiled_layouts) = prepare_unrolled_program::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&recursion_program);
         let expected_base_output = verify_unrolled_test_program(
             &base_program_proof,
             &base_program_setup,
@@ -785,15 +774,14 @@ mod test {
             &previous_chain_preimage,
         );
 
-        let mut recursion_program_proof = prove_unrolled_test_program::<
-            IWithoutByteAccessIsaConfigWithDelegation,
-        >(
-            &recursion_program,
-            recursion_cycles_bound,
-            recursion_non_determinism_source,
-            recursion_ram_bound,
-            &worker,
-        );
+        let mut recursion_program_proof =
+            prove_unrolled_test_program::<IWithoutByteAccessIsaConfigWithDelegation>(
+                &recursion_program,
+                recursion_cycles_bound,
+                recursion_non_determinism_source,
+                recursion_ram_bound,
+                &worker,
+            );
         recursion_program_proof.recursion_chain_hash = Some(previous_chain_hash);
         recursion_program_proof.recursion_chain_preimage = Some(previous_chain_preimage);
 
@@ -809,69 +797,4 @@ mod test {
 
         assert_eq!(result, expected_result);
     }
-
-    #[allow(dead_code)]
-    pub fn prove_unrolled_for_machine_configuration<C: MachineConfig>(
-        binary_image: &[u32],
-        text_section: &[u32],
-        cycles_bound: usize,
-        non_determinism: impl NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-        ram_bound: usize,
-        worker: &prover::worker::Worker,
-    ) -> (
-        BTreeMap<u8, Vec<UnrolledModeProof>>,
-        Vec<UnrolledModeProof>,
-        Vec<(u32, Vec<Proof>)>,
-        [FinalRegisterValue; 32],
-        (u32, TimestampScalar),
-        u64,
-    ) {
-        println!("Performing precomputations for circuit families");
-        let families_precomps =
-            setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
-                C,
-                Global,
-                Global,
-            >(binary_image, &text_section, &worker);
-
-        println!("Performing precomputations for inits and teardowns");
-        let inits_and_teardowns_precomps =
-            setups::unrolled_circuits::inits_and_teardowns_circuit_setup(
-                &binary_image,
-                &text_section,
-                worker,
-            );
-
-        println!("Performing precomputations for delegation circuits");
-        let delegation_precomputations = setups::all_delegation_circuits_precomputations(worker);
-
-        let (
-            main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs,
-            register_final_state,
-            (final_pc, final_timestamp),
-            pow_challenge,
-        ) = prover_examples::unrolled::prove_unrolled_execution::<_, C, Global, 5>(
-            cycles_bound,
-            &binary_image,
-            &text_section,
-            non_determinism,
-            &families_precomps,
-            &inits_and_teardowns_precomps,
-            &delegation_precomputations,
-            ram_bound,
-            worker,
-        );
-
-        (
-            main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs,
-            register_final_state,
-            (final_pc, final_timestamp),
-            pow_challenge,
-        )
-    }
-
 }

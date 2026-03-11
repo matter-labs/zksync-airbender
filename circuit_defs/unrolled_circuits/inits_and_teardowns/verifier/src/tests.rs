@@ -143,7 +143,6 @@ fn test_unrolled_circuit() {
     }
 }
 
-
 #[test]
 fn test_query_values_offsets() {
     // Create a dummy QueryValuesInstance to test pointer arithmetic
