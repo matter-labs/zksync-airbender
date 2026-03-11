@@ -11,15 +11,16 @@ impl Blake2sTranscript {
         let (initial_state, base_input) = Self::prepare_pow_search(seed);
 
         if pow_bits <= BLAKE2S_ROUNDS_PER_INVOCAITON.trailing_zeros() {
-            return Self::search_pow_serial_from_prepared(
-                seed,
-                pow_bits,
-                initial_state,
-                base_input,
-            );
+            return Self::search_pow_serial_from_prepared(seed, pow_bits, initial_state, base_input);
         }
 
-        Self::search_pow_parallel_from_prepared(seed, pow_bits, worker, initial_state, base_input)
+        Self::search_pow_parallel_from_prepared(
+            seed,
+            pow_bits,
+            worker,
+            initial_state,
+            base_input,
+        )
     }
 
     fn prepare_pow_search(
@@ -59,9 +60,10 @@ impl Blake2sTranscript {
         initial_state: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
         base_input: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
     ) -> (Seed, u64) {
+        let threshold = u32::MAX.checked_shr(pow_bits).unwrap_or(0);
         let mut input = base_input;
         for challenge in 0u64..(BLAKE2S_NO_RESULT - 1) {
-            if Self::pow_challenge_matches(&mut input, &initial_state, challenge, pow_bits) {
+            if Self::pow_challenge_matches(&mut input, &initial_state, challenge, threshold) {
                 return Self::finalize_pow_result(seed, challenge, pow_bits);
             }
         }
@@ -80,6 +82,7 @@ impl Blake2sTranscript {
         use std::sync::atomic::Ordering;
 
         let result = std::sync::Arc::new(AtomicU64::new(BLAKE2S_NO_RESULT));
+        let threshold = u32::MAX.checked_shr(pow_bits).unwrap_or(0);
         let pow_rounds_per_invocation = BLAKE2S_ROUNDS_PER_INVOCAITON as u64;
         let num_workers = worker.num_cores as u64;
 
@@ -88,19 +91,14 @@ impl Blake2sTranscript {
                 let mut input = base_input;
                 let result = std::sync::Arc::clone(&result);
                 Worker::smart_spawn(scope, worker_idx == num_workers - 1, move |_| {
-                    let mut round_idx = 0u64;
-                    loop {
-                        let Some(base) = Self::pow_round_base(
-                            worker_idx,
-                            round_idx,
-                            num_workers,
-                            pow_rounds_per_invocation,
-                        ) else {
-                            break;
-                        };
+                    for round_idx in
+                        0..((BLAKE2S_NO_RESULT - 1) / num_workers / pow_rounds_per_invocation)
+                    {
+                        let base =
+                            (worker_idx + round_idx * num_workers) * pow_rounds_per_invocation;
 
                         #[cfg(feature = "deterministic_pow")]
-                        if result.load(Ordering::Acquire) <= base {
+                        if result.load(Ordering::Relaxed) <= base {
                             break;
                         }
                         #[cfg(not(feature = "deterministic_pow"))]
@@ -116,59 +114,35 @@ impl Blake2sTranscript {
                                 &mut input,
                                 &initial_state,
                                 challenge_u64,
-                                pow_bits,
+                                threshold,
                             ) {
                                 #[cfg(feature = "deterministic_pow")]
-                                result.fetch_min(challenge_u64, Ordering::AcqRel);
+                                result.fetch_min(challenge_u64, Ordering::Relaxed);
                                 #[cfg(not(feature = "deterministic_pow"))]
-                                {
-                                    let _ = result.compare_exchange(
-                                        BLAKE2S_NO_RESULT,
-                                        challenge_u64,
-                                        Ordering::Acquire,
-                                        Ordering::Relaxed,
-                                    );
-                                    return;
-                                }
-                            }
-
-                            #[cfg(feature = "deterministic_pow")]
-                            if result.load(Ordering::Acquire) <= challenge_u64 {
+                                let _ = result.compare_exchange(
+                                    BLAKE2S_NO_RESULT,
+                                    challenge_u64,
+                                    Ordering::Relaxed,
+                                    Ordering::Relaxed,
+                                );
                                 return;
                             }
                         }
-                        round_idx += 1;
                     }
                 })
             }
         });
 
-        let challenge_u64 = result.load(Ordering::SeqCst);
+        let challenge_u64 = result.load(Ordering::Relaxed);
         Self::finalize_pow_result(seed, challenge_u64, pow_bits)
     }
 
-    fn pow_round_base(
-        worker_idx: u64,
-        round_idx: u64,
-        num_workers: u64,
-        pow_rounds_per_invocation: u64,
-    ) -> Option<u64> {
-        let schedule_slot = round_idx
-            .checked_mul(num_workers)?
-            .checked_add(worker_idx)?;
-        let base = schedule_slot.checked_mul(pow_rounds_per_invocation)?;
-        if base >= BLAKE2S_NO_RESULT - 1 {
-            None
-        } else {
-            Some(base)
-        }
-    }
-
+    #[inline(always)]
     fn pow_challenge_matches(
         input: &mut [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
         initial_state: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
         challenge_u64: u64,
-        pow_bits: u32,
+        threshold: u32,
     ) -> bool {
         input[BLAKE2S_DIGEST_SIZE_U32_WORDS] = challenge_u64 as u32;
         input[BLAKE2S_DIGEST_SIZE_U32_WORDS + 1] = (challenge_u64 >> 32) as u32;
@@ -180,7 +154,7 @@ impl Blake2sTranscript {
         }
 
         let word_to_test = CONFIGURED_IV[0] ^ state[0] ^ state[8];
-        word_to_test <= (0xffffffff >> pow_bits)
+        word_to_test <= threshold
     }
 
     fn finalize_pow_result(seed: &Seed, challenge_u64: u64, pow_bits: u32) -> (Seed, u64) {
