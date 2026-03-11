@@ -11,16 +11,15 @@ impl Blake2sTranscript {
         let (initial_state, base_input) = Self::prepare_pow_search(seed);
 
         if pow_bits <= BLAKE2S_ROUNDS_PER_INVOCAITON.trailing_zeros() {
-            return Self::search_pow_serial_from_prepared(seed, pow_bits, initial_state, base_input);
+            return Self::search_pow_serial_from_prepared(
+                seed,
+                pow_bits,
+                initial_state,
+                base_input,
+            );
         }
 
-        Self::search_pow_parallel_from_prepared(
-            seed,
-            pow_bits,
-            worker,
-            initial_state,
-            base_input,
-        )
+        Self::search_pow_parallel_from_prepared(seed, pow_bits, worker, initial_state, base_input)
     }
 
     fn prepare_pow_search(
