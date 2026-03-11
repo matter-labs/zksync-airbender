@@ -478,15 +478,6 @@ pub fn run_basic_delegation_test_impl(
     assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
 }
 
-// #[ignore = "test has explicit panic inside"]
-#[cfg(feature = "legacy_tests")]
-#[test]
-#[serial_test::serial]
-// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
-fn run_basic_delegation_test() {
-    run_basic_delegation_test_impl(None, None);
-}
-
 // commented out until we get new inputs
 
 // #[test]

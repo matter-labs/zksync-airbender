@@ -486,24 +486,6 @@ pub fn run_keccak_test_impl(
     assert_eq!(sum_over_delegation_poly, Mersenne31Quartic::ZERO);
 }
 
-// use --features debug_satisfiable ?
-#[cfg(all(test, feature = "legacy_tests"))]
-#[test]
-#[serial_test::serial]
-// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
-fn run_keccak_test() {
-    run_keccak_test_impl(None, None);
-}
-
-#[cfg(all(test, feature = "legacy_tests"))]
-#[cfg_attr(
-    not(feature = "debug_satisfiable"),
-    ignore = "Running prover test without the 'debug_satisfiable' feature; run cargo test --features debug_satisfiable for the full test"
-)]
-#[test]
-// TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
-fn run_keccak_test_info() {}
-
 #[allow(unused)]
 const APP_KECCAK_SIMPLE_BIN: &[u8] = include_bytes!("../../app_keccak_simple.bin");
 
