@@ -4,6 +4,7 @@ use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_me
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
+    let deterministic_pow = std::env::var_os("CARGO_FEATURE_DETERMINISTIC_POW").is_some();
     if is_no_cuda() {
         println!("cargo::warning={}", no_cuda_message!());
         println!("cargo::rustc-cfg=no_cuda");
@@ -15,10 +16,13 @@ fn main() {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
         let cudaarchs = var("CUDAARCHS").unwrap_or("native".to_string());
-        let dst = cmake::Config::new("native")
-            .profile("Release")
-            .define("CMAKE_CUDA_ARCHITECTURES", cudaarchs)
-            .build();
+        let mut config = cmake::Config::new("native");
+        config.profile("Release");
+        config.define("CMAKE_CUDA_ARCHITECTURES", cudaarchs);
+        if deterministic_pow {
+            config.define("AB_DETERMINISTIC_POW", "ON");
+        }
+        let dst = config.build();
         let gpu_prover_native_path = dst.to_str().unwrap();
         println!("cargo:rustc-link-search=native={gpu_prover_native_path}");
         println!("cargo:rustc-link-lib=static=gpu_prover_native");

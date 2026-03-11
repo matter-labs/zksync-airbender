@@ -642,5 +642,19 @@ mod tests {
         let mut digest = Digest::default();
         state.absorb_final_block::<true>(&block, STATE_SIZE + 2, &mut digest);
         assert!(digest[0].leading_zeros() >= BITS_COUNT);
+
+        #[cfg(feature = "deterministic_pow")]
+        {
+            use prover::transcript::{Blake2sTranscript, Seed};
+            use worker::Worker;
+
+            let expected_worker = Worker::new_with_num_threads(1);
+            let expected =
+                Blake2sTranscript::search_pow(&Seed(h_seed), BITS_COUNT, &expected_worker);
+            let worker = Worker::new_with_num_threads(4);
+            let actual = Blake2sTranscript::search_pow(&Seed(h_seed), BITS_COUNT, &worker);
+            assert_eq!(actual, expected);
+            assert_eq!(h_result[0], expected.1);
+        }
     }
 }
