@@ -5,6 +5,8 @@ use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_me
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
     let deterministic_pow = std::env::var_os("CARGO_FEATURE_DETERMINISTIC_POW").is_some();
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BENCH");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DETERMINISTIC_POW");
     if is_no_cuda() {
         println!("cargo::warning={}", no_cuda_message!());
         println!("cargo::rustc-cfg=no_cuda");
@@ -19,6 +21,12 @@ fn main() {
         let mut config = cmake::Config::new("native");
         config.profile("Release");
         config.define("CMAKE_CUDA_ARCHITECTURES", cudaarchs);
+        let build_bench = if var("CARGO_FEATURE_BENCH").is_ok() {
+            "ON"
+        } else {
+            "OFF"
+        };
+        config.define("GPU_PROVER_BUILD_BENCH", build_bench);
         if deterministic_pow {
             config.define("AB_DETERMINISTIC_POW", "ON");
         }
