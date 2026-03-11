@@ -9,8 +9,8 @@ on:
 permissions: read-all
 
 jobs:
-  tests:
-    name: tests
+  build:
+    name: build
     runs-on: [matterlabs-ci-runner-highmem]
     steps:
       - uses: actions/checkout@v3
@@ -22,8 +22,6 @@ jobs:
           rustup set profile minimal
       - name: Compile 
         run: cargo build --verbose
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
 
   formatting:
     name: cargo fmt
@@ -54,10 +52,8 @@ jobs:
       - name: tests 
         working-directory: ./risc_v_simulator
         run: cargo test --release --features=delegation
-        # run: cargo test --release
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
 
+  # TODO: Must be restored
   # isa_tests:
   #   name: ISA tests
   #   runs-on: [matterlabs-ci-runner-highmem]
@@ -97,15 +93,12 @@ jobs:
       - name: Run Blake(fibonacci) and prove
         working-directory: execution_utils
         run: cargo test --release -- --nocapture --exact test_prove_fib 
-        # run: cargo test --release -- --nocapture --ignored test_prove_fib 
       - name: Run base layer recursive verifier over Blake(fibonacci) and prove
         working-directory: execution_utils
         run: cargo test --release -- --nocapture --exact test_prove_recursion_over_base
-        # run: cargo test --release -- --nocapture --ignored test_prove_recursion_over_base
       - name: Run recursive layer verifier over base layer verifier and prove
         working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion 
-        # run: cargo test --release -- --nocapture --ignored test_prove_recursion_over_recursion 
+        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion
 
   risc_v_test_delegations:
     name: risc_v_tests_delegations
@@ -149,34 +142,25 @@ jobs:
             echo "No files were modified."
           fi
 
-  # verifier_binaries_generated:
-  #   name: verifier_binaries_generated
-  #   runs-on: [matterlabs-ci-runner-highmem]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         rustflags: ""
-  #     - name: Setup
-  #       run: |
-  #         rustup set profile minimal
-  #         rustup target add riscv32i-unknown-none-elf
-  #         cargo install cargo-binutils
-  #         rustup component add llvm-tools-preview
-  #         rustup component add rust-src
-  #     - name: Regenerate verifiers
-  #       working-directory: ./tools/verifier
-  #       run: ./build.sh
-  #     - name: Check if anything has changed
-  #       run: |
-  #         MODIFIED_FILES=$(git status --porcelain)
-  #         if [ -n "$MODIFIED_FILES" ]; then
-  #           echo "The following files were modified - did you run ./tools/verifier/build.sh? "
-  #           echo "$MODIFIED_FILES"
-  #           exit 1
-  #         else
-  #           echo "No files were modified."
-  #         fi
+  check_verifiers:
+    name: check_verifiers
+    runs-on: [matterlabs-ci-runner-highmem]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Build fresh verifiers
+        run: |
+          tools/reproduce/reproduce.sh
+
+      - name: Fail if any files were modified
+        run: |
+          git status --porcelain
+          git diff --name-only
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh?:"
+            git diff --name-only
+            exit 1
+          fi
 
   build_cli_with_verify: 
     runs-on: [matterlabs-ci-runner-c3d]
@@ -427,8 +411,8 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten0.json --cycles 10000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 0 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten0.json --output-dir recursion_proofs_0/ --prev-metadata output/metadata.json
-      #- name: Recursion 0 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_0/metadata.json
+      - name: Recursion 0 - Verify (on cpu)
+        run: ./cli verify-all --metadata recursion_proofs_0/metadata.json
 
       - name: Recursion 1 - create output dir
         run: mkdir recursion_proofs_1
@@ -438,8 +422,8 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten1.json --cycles 32000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 1 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten1.json --output-dir recursion_proofs_1/ --prev-metadata recursion_proofs_0/metadata.json
-      #- name: Recursion 1 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_1/metadata.json
+      - name: Recursion 1 - Verify (on cpu)
+        run: ./cli verify-all --metadata recursion_proofs_1/metadata.json
 
 
       - name: Recursion 2 - create output dir
@@ -450,5 +434,35 @@ jobs:
         run: ./cli run --bin app.bin --input-file  output/proof_flatten2.json --cycles 50000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
       - name: Recursion 2 - Prove
         run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten2.json --output-dir recursion_proofs_2/ --prev-metadata recursion_proofs_0/metadata.json
-      #- name: Recursion 2 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_2/metadata.json
+      - name: Recursion 2 - Verify (on cpu)
+        run: ./cli verify-all --metadata recursion_proofs_2/metadata.json
+
+  # Keep branch protection tied to one stable check name even as the
+  # underlying CI fan-out changes over time.
+  pr-checks:
+    name: pr-checks
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - build
+      - formatting
+      - simulator_isa_tests
+      - full_recursion_fast
+      - risc_v_test_delegations
+      - circuits_generated
+      - check_verifiers
+      - build_cli_with_verify
+      - build_cli_no_verifiers
+      - build_cli_no_verifiers_512
+      - build_verifier
+      - basic_example
+      - large_example
+      - delegation_example
+      - verification_example
+      - oh_bender
+      - full_recursion
+    steps:
+      - name: Decide on PR checks
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}
