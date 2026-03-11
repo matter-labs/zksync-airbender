@@ -5,6 +5,8 @@
 #![feature(pointer_is_aligned_to)]
 
 pub(crate) mod allocator;
+#[cfg(feature = "bench")]
+pub mod bench;
 pub(crate) mod ntt;
 pub(crate) mod ops;
 pub mod primitives;
