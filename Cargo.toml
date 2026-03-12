@@ -37,7 +37,6 @@ members = [
 
     "tools/cli",
     "tools/generator",
-    "tools/zksmith",
     "tools/pow_config_generator",
 
 
