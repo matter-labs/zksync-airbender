@@ -2,9 +2,11 @@ use super::gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
-use crate::primitives::context::{ProverContext, ProverContextConfig};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut, DeviceVectorChunkImpl};
+use crate::primitives::context::ProverContext;
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
+use crate::prover::test_utils::make_test_context;
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
 use crate::witness::memory_unrolled::generate_memory_and_witness_values_unrolled_non_memory;
 use crate::witness::multiplicities::{
     generate_generic_lookup_multiplicities, generate_range_check_multiplicities,
@@ -12,6 +14,7 @@ use crate::witness::multiplicities::{
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
 use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memory;
 use cs::definitions::*;
+use cs::gkr_compiler::OutputType;
 use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::{
     add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
     add_sub_lui_auipc_mop_table_addition_fn,
@@ -28,11 +31,19 @@ use era_cudart::stream::CudaStream;
 use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
-use field::{Field, PrimeField};
+use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
+use prover::definitions::Transcript;
+use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
+use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::setup::GKRSetup;
-use prover::gkr::prover::{prove_configured_with_gkr, GKRExternalChallenges, WhirSchedule};
+use prover::gkr::prover::stages::stage1;
+use prover::gkr::prover::sumcheck_loop;
+use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::gkr::sumcheck::access_and_fold::GKRStorage;
+use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
+use prover::gkr::whir::whir_fold;
 use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
@@ -40,11 +51,11 @@ use prover::gkr::witness_gen::family_circuits::{
 use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
 };
+use prover::prover_stages::flatten_merkle_caps_iter_into;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::unrolled::NonMemoryCircuitOracle;
-use prover::RamShuffleMemStateRecord;
 use riscv_transpiler::ir::{preprocess_bytecode, FullUnsignedMachineDecoderConfig, Instruction};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
@@ -55,7 +66,7 @@ use riscv_transpiler::witness::NonMemDestinationHolder;
 use serial_test::serial;
 use setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 use std::alloc::Global;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -92,6 +103,117 @@ fn ensure_memory_trace_consistency<F: PrimeField>(
     }
 }
 
+fn evaluate_ext_poly_with_eq<E: Field>(values: &[E], eq: &[E]) -> E {
+    assert_eq!(values.len(), eq.len());
+    let mut result = E::ZERO;
+    for (value, eq_value) in values.iter().zip(eq.iter()) {
+        let mut term = *value;
+        term.mul_assign(eq_value);
+        result.add_assign(&term);
+    }
+    result
+}
+
+fn evaluate_base_poly_with_eq<F: PrimeField, E: FieldExtension<F> + Field>(
+    values: &[F],
+    eq: &[E],
+) -> E {
+    assert_eq!(values.len(), eq.len());
+    let mut result = E::ZERO;
+    for (value, eq_value) in values.iter().zip(eq.iter()) {
+        let mut term = *eq_value;
+        term.mul_assign_by_base(value);
+        result.add_assign(&term);
+    }
+    result
+}
+
+fn compute_initial_sumcheck_claims_for_test<F: PrimeField, E: FieldExtension<F> + Field>(
+    gkr_storage: &GKRStorage<F, E>,
+    eval_point: &[E],
+    output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+    worker: &Worker,
+) -> [E; 8] {
+    let eq_precomputed = make_eq_poly_in_full::<E>(eval_point, worker);
+    let eq = eq_precomputed.last().unwrap();
+
+    let mut evals = vec![];
+    for key in [
+        OutputType::PermutationProduct,
+        OutputType::Lookup16Bits,
+        OutputType::LookupTimestamps,
+        OutputType::GenericLookup,
+    ] {
+        let addresses = &output_layer[&key];
+        for address in addresses.output.iter() {
+            let poly = gkr_storage.get_ext_poly(*address);
+            evals.push(evaluate_ext_poly_with_eq(poly, &eq[..]));
+        }
+    }
+
+    evals.try_into().unwrap()
+}
+
+fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
+    tree: &T,
+    subcap_size: usize,
+) -> Vec<MerkleTreeCapVarLength> {
+    tree.get_cap()
+        .cap
+        .chunks_exact(subcap_size)
+        .map(|chunk| MerkleTreeCapVarLength {
+            cap: chunk.to_vec(),
+        })
+        .collect_vec()
+}
+
+fn gpu_trace_caps_from_flat_columns(
+    values: &[BF],
+    columns_count: usize,
+    trace_len: usize,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    context: &ProverContext,
+) -> Vec<MerkleTreeCapVarLength> {
+    let mut source_device = context
+        .alloc(values.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy(&mut source_device, values).unwrap();
+    let mut trace_holder = TraceHolder::<BF>::new(
+        trace_len.trailing_zeros(),
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        columns_count,
+        TreesCacheMode::CachePartial,
+        context,
+    )
+    .unwrap();
+    trace_holder
+        .materialize_and_commit_from_hypercube_evals(&source_device, context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    trace_holder.get_tree_caps()
+}
+
+fn assert_flat_columns_match_cpu_trace<Column: AsRef<[BF]>>(
+    gpu_flat_columns: &[BF],
+    cpu_columns: &[Column],
+    trace_len: usize,
+) {
+    assert_eq!(gpu_flat_columns.len(), cpu_columns.len() * trace_len);
+    for (column_idx, cpu_column) in cpu_columns.iter().enumerate() {
+        let gpu_column = &gpu_flat_columns[column_idx * trace_len..(column_idx + 1) * trace_len];
+        assert_eq!(
+            gpu_column,
+            cpu_column.as_ref(),
+            "column {} diverged",
+            column_idx
+        );
+    }
+}
+
 #[test]
 #[serial]
 fn run_basic_unrolled_test() {
@@ -104,9 +226,6 @@ fn run_basic_unrolled_test() {
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let lde_factor = 2;
-    let tree_cap_size = 32;
-
     let worker = Worker::new_with_num_threads(8);
     // load binary
 
@@ -162,22 +281,9 @@ fn run_basic_unrolled_test() {
     );
     assert!(is_program_finished); // check that we reached looping state (ie. end state for our vm)
 
-    dbg!(state.counters);
-
-    let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-
-    println!("Passed exactly {} cycles", exact_cycles_passed);
-
     let counters = snapshotter.snapshots.last().unwrap().state.counters;
 
     let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
-
-    let total_unique_teardowns: usize = shuffle_ram_touched_addresses
-        .iter()
-        .map(|el| el.len())
-        .sum();
-
-    println!("Touched {} unique addresses", total_unique_teardowns);
 
     let (num_trivial, _inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global, _>(
         1,
@@ -192,21 +298,8 @@ fn run_basic_unrolled_test() {
     //     .flatten()
     //     .collect();
 
-    println!("Finished at PC = 0x{:08x}", state.pc);
-    for (reg_idx, reg) in state.registers.iter().enumerate() {
-        println!("x{} = {}", reg_idx, reg.value);
-    }
-
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
-
-    let final_pc = state.pc;
-    let final_timestamp = state.timestamp;
-
-    let register_final_state = state.registers.map(|el| RamShuffleMemStateRecord {
-        last_access_timestamp: el.timestamp,
-        current_value: el.value,
-    });
 
     let memory_argument_alpha =
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
@@ -240,50 +333,6 @@ fn run_basic_unrolled_test() {
         ],
     );
 
-    // let mut permutation_argument_accumulator = produce_pc_into_permutation_accumulator_raw(
-    //     INITIAL_PC,
-    //     split_timestamp(INITIAL_TIMESTAMP),
-    //     final_pc,
-    //     split_timestamp(final_timestamp),
-    //     &external_challenges
-    //         .machine_state_permutation_argument
-    //         .as_ref()
-    //         .unwrap()
-    //         .linearization_challenges,
-    //     &external_challenges
-    //         .machine_state_permutation_argument
-    //         .as_ref()
-    //         .unwrap()
-    //         .additive_term,
-    // );
-    // let t = produce_register_contribution_into_memory_accumulator(
-    //     &register_final_state,
-    //     external_challenges
-    //         .memory_argument
-    //         .memory_argument_linearization_challenges,
-    //     external_challenges.memory_argument.memory_argument_gamma,
-    // );
-    // permutation_argument_accumulator.mul_assign(&t);
-
-    let mut write_set = BTreeSet::<(u32, TimestampScalar)>::new();
-    let mut read_set = BTreeSet::<(u32, TimestampScalar)>::new();
-
-    write_set.insert((INITIAL_PC, INITIAL_TIMESTAMP));
-    read_set.insert((final_pc, final_timestamp));
-
-    let mut memory_read_set = BTreeSet::new();
-    let mut memory_write_set = BTreeSet::new();
-
-    for i in 0..32 {
-        memory_write_set.insert((true, i as u32, 0, 0));
-        memory_read_set.insert((
-            true,
-            i as u32,
-            register_final_state[i].last_access_timestamp,
-            register_final_state[i].current_value,
-        ));
-    }
-
     assert!(
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>()
             < NUM_CYCLES_PER_CHUNK
@@ -308,8 +357,6 @@ fn run_basic_unrolled_test() {
             < NUM_CYCLES_PER_CHUNK
     );
 
-    println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
-
     let add_sub_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
@@ -319,7 +366,6 @@ fn run_basic_unrolled_test() {
 
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
-    dbg!(num_calls);
 
     let mut state = snapshotter.initial_snapshot.state;
 
@@ -356,7 +402,6 @@ fn run_basic_unrolled_test() {
         default_pc_value_in_padding: 4,
     };
 
-    println!("Computing memory trace");
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &add_sub_circuit,
         NUM_CYCLES_PER_CHUNK,
@@ -366,53 +411,6 @@ fn run_basic_unrolled_test() {
         Global,
     );
 
-    // {
-    //     let memory_layout = &add_sub_circuit.memory_layout;
-    //     let aux_layout_data = &add_sub_circuit.aux_layout_data;
-    //     let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
-    //     let h_decoder_table = witness_gen_data
-    //         .iter()
-    //         .copied()
-    //         .map(|d| d.into())
-    //         .collect_vec();
-    //     let mut d_decoder_table = context
-    //         .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-    //         .unwrap();
-    //     memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
-    //     let mut d_trace = context
-    //         .alloc(buffer.len(), AllocationPlacement::BestFit)
-    //         .unwrap();
-    //     memory_copy(&mut d_trace, &buffer[..]).unwrap();
-    //     let d_trace = UnrolledNonMemoryTraceDevice {
-    //         tracing_data: d_trace,
-    //     };
-    //     let mut d_memory =
-    //         DeviceAllocation::alloc(memory_layout.total_width * NUM_CYCLES_PER_CHUNK).unwrap();
-    //     generate_memory_values_unrolled_non_memory(
-    //         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-    //         memory_layout,
-    //         &d_decoder_table,
-    //         &d_trace,
-    //         &mut DeviceMatrixMut::new(&mut d_memory, NUM_CYCLES_PER_CHUNK),
-    //         &CudaStream::DEFAULT,
-    //     )
-    //     .unwrap();
-    //     let mut h_memory = vec![BF::ZERO; memory_layout.total_width * NUM_CYCLES_PER_CHUNK];
-    //     memory_copy(&mut h_memory, &d_memory).unwrap();
-    //     for row in 0..NUM_CYCLES_PER_CHUNK {
-    //         let mut cpu_row = vec![];
-    //         let mut gpu_row = vec![];
-    //         for col in 0..memory_layout.total_width {
-    //             let cpu_col = &_memory_trace.column_major_trace[col];
-    //             let gpu_col = &h_memory[col * NUM_CYCLES_PER_CHUNK..][..NUM_CYCLES_PER_CHUNK];
-    //             cpu_row.push(cpu_col[row]);
-    //             gpu_row.push(gpu_col[row]);
-    //         }
-    //         assert_eq!(cpu_row, gpu_row, "row {} is not equal", row);
-    //     }
-    // }
-
-    println!("Computing full trace");
     let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
         &add_sub_circuit,
         add_sub_lui_auipc_mod::witness_eval_fn,
@@ -425,29 +423,10 @@ fn run_basic_unrolled_test() {
     );
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-    // parse_state_permutation_elements_from_full_trace(
-    //     &add_sub_circuit,
-    //     &full_trace,
-    //     &mut write_set,
-    //     &mut read_set,
-    // );
-    // parse_shuffle_ram_accesses_from_full_trace(
-    //     &add_sub_circuit,
-    //     &full_trace,
-    //     &mut memory_write_set,
-    //     &mut memory_read_set,
-    // );
-
-    // println!("Will check constraints satisfiability");
-    // let is_satisfied = check_satisfied(&add_sub_circuit, &full_trace);
-    // assert!(is_satisfied);
-
-    println!("Preparing twiddles");
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     let whir_schedule = WhirSchedule::default_for_tests_80_bits();
-    // let lde_precomputations =
-    //     LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-    println!("Preparing setup");
+    let base_lde_factor = whir_schedule.base_lde_factor;
+    let tree_cap_size = whir_schedule.cap_size;
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
@@ -458,19 +437,19 @@ fn run_basic_unrolled_test() {
 
     let setup_commitment = setup.commit(
         &twiddles,
-        lde_factor,
+        base_lde_factor,
         whir_first_fold_step_log2,
         tree_cap_size,
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-    let log_lde_factor = lde_factor.trailing_zeros();
+    let log_lde_factor = base_lde_factor.trailing_zeros();
     let log_rows_per_leaf = whir_first_fold_step_log2 as u32;
     let log_tree_cap_size = tree_cap_size.trailing_zeros();
-    let subcap_size = tree_cap_size / lde_factor;
-    let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
+    let subcap_size = tree_cap_size / base_lde_factor;
+    let context = make_test_context(20 * 1024, 1024);
     let gpu_setup_host = Arc::new(
-        GpuGKRSetupHost::from_cpu_setup(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
             log_lde_factor,
             log_rows_per_leaf,
@@ -479,27 +458,12 @@ fn run_basic_unrolled_test() {
         )
         .unwrap(),
     );
+    let mut gpu_setup_transfer =
+        GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    context.get_h2d_stream().synchronize().unwrap();
 
-    {
-        let mut gpu_setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-        gpu_setup_transfer.schedule_transfer(&context).unwrap();
-        context.get_h2d_stream().synchronize().unwrap();
-
-        let trace_holder_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
-        let setup_caps = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-            &setup_commitment.tree,
-        )
-        .cap
-        .chunks_exact(subcap_size)
-        .map(|chunk| MerkleTreeCapVarLength {
-            cap: chunk.to_vec(),
-        })
-        .collect_vec();
-        assert_eq!(trace_holder_caps, setup_caps);
-    }
-
-    {
+    let (h_memory, h_witness) = {
         let circuit_type = UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop;
         let memory_layout = &add_sub_circuit.memory_layout;
         let witness_layout = &add_sub_circuit.witness_layout;
@@ -513,13 +477,6 @@ fn run_basic_unrolled_test() {
             .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
             .unwrap();
         memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
-        let mut d_trace = context
-            .alloc(buffer.len(), AllocationPlacement::BestFit)
-            .unwrap();
-        memory_copy(&mut d_trace, &buffer[..]).unwrap();
-        let d_trace = UnrolledNonMemoryTraceDevice {
-            tracing_data: d_trace,
-        };
         let mut d_memory =
             DeviceAllocation::alloc(memory_layout.total_width * NUM_CYCLES_PER_CHUNK).unwrap();
         let generic_lookups_count = {
@@ -552,70 +509,8 @@ fn run_basic_unrolled_test() {
         let d_trace = UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,
         };
-        let mut gpu_setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-        gpu_setup_transfer.schedule_transfer(&context).unwrap();
-        context.get_h2d_stream().synchronize().unwrap();
         let d_setup = gpu_setup_transfer.trace_holder.get_hypercube_evals();
         let d_generic_lookup_tables = &d_setup[2 * NUM_CYCLES_PER_CHUNK..];
-        let lookup_alpha =
-            E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
-        let lookup_gamma =
-            E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
-        let mut lookup_challenges = unsafe { context.alloc_host_uninit_slice(2) };
-        unsafe {
-            lookup_challenges
-                .get_mut_accessor()
-                .get_mut()
-                .copy_from_slice(&[lookup_alpha, lookup_gamma]);
-        }
-        let mut callbacks = Callbacks::new();
-        let mut gpu_lookup_precomputations = gpu_setup_transfer
-            .prepare_lookup_precomputations(&add_sub_circuit, &context)
-            .unwrap();
-        gpu_setup_transfer
-            .schedule_lookup_precomputations(
-                &mut gpu_lookup_precomputations,
-                lookup_challenges.get_accessor(),
-                &mut callbacks,
-                &context,
-            )
-            .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        let gpu_vectorized_lookup_setup = gpu_lookup_precomputations.vectorized_lookup_setup_poly();
-        let mut cpu_gkr_storage = GKRStorage::<BF, E4>::default();
-        let (cpu_range, cpu_timestamp, cpu_generic) = setup.preprocess_lookups(
-            &add_sub_circuit,
-            lookup_alpha,
-            lookup_gamma,
-            trace_len,
-            &mut cpu_gkr_storage,
-            &worker,
-        );
-        let mut gpu_range = vec![E4::ZERO; gpu_lookup_precomputations.range_check_16.len()];
-        memory_copy(&mut gpu_range, &gpu_lookup_precomputations.range_check_16).unwrap();
-        assert_eq!(gpu_range, cpu_range.as_ref());
-        let mut gpu_timestamp =
-            vec![E4::ZERO; gpu_lookup_precomputations.timestamp_range_check.len()];
-        memory_copy(
-            &mut gpu_timestamp,
-            &gpu_lookup_precomputations.timestamp_range_check,
-        )
-        .unwrap();
-        assert_eq!(gpu_timestamp, cpu_timestamp.as_ref());
-        let mut gpu_generic = vec![E4::ZERO; gpu_lookup_precomputations.generic_lookup.len()];
-        memory_copy(&mut gpu_generic, &gpu_lookup_precomputations.generic_lookup).unwrap();
-        assert_eq!(gpu_generic, cpu_generic.as_ref());
-        let mut gpu_vectorized_host = vec![E4::ZERO; gpu_vectorized_lookup_setup.len()];
-        let gpu_vectorized_chunk = gpu_vectorized_lookup_setup.as_device_chunk();
-        memory_copy(&mut gpu_vectorized_host, gpu_vectorized_chunk.slice()).unwrap();
-        assert_eq!(
-            &gpu_vectorized_host[..cpu_generic.len()],
-            cpu_generic.as_ref()
-        );
-        assert!(gpu_vectorized_host[cpu_generic.len()..]
-            .iter()
-            .all(|value| *value == lookup_gamma));
         let mut d_witness = context
             .alloc(
                 witness_layout.total_width * NUM_CYCLES_PER_CHUNK,
@@ -665,48 +560,427 @@ fn run_basic_unrolled_test() {
         .unwrap();
         let mut h_memory = vec![BF::ZERO; memory_layout.total_width * NUM_CYCLES_PER_CHUNK];
         memory_copy(&mut h_memory, &d_memory).unwrap();
-        for row in 0..NUM_CYCLES_PER_CHUNK {
-            let mut cpu_row = vec![];
-            let mut gpu_row = vec![];
-            for col in 0..memory_layout.total_width {
-                let cpu_col = &full_trace.column_major_memory_trace[col];
-                let gpu_col = &h_memory[col * NUM_CYCLES_PER_CHUNK..][..NUM_CYCLES_PER_CHUNK];
-                cpu_row.push(cpu_col[row]);
-                gpu_row.push(gpu_col[row]);
-            }
-            assert_eq!(cpu_row, gpu_row, "row {} is not equal", row);
-        }
+        assert_flat_columns_match_cpu_trace(
+            &h_memory,
+            &full_trace.column_major_memory_trace,
+            NUM_CYCLES_PER_CHUNK,
+        );
         let mut h_witness = vec![BF::ZERO; witness_layout.total_width * NUM_CYCLES_PER_CHUNK];
         memory_copy(&mut h_witness, &d_witness).unwrap();
-        for row in 0..NUM_CYCLES_PER_CHUNK {
-            let mut cpu_row = vec![];
-            let mut gpu_row = vec![];
-            for col in 0..witness_layout.total_width {
-                let cpu_col = &full_trace.column_major_witness_trace[col];
-                let gpu_col = &h_witness[col * NUM_CYCLES_PER_CHUNK..][..NUM_CYCLES_PER_CHUNK];
-                cpu_row.push(cpu_col[row]);
-                gpu_row.push(gpu_col[row]);
+        assert_flat_columns_match_cpu_trace(
+            &h_witness,
+            &full_trace.column_major_witness_trace,
+            NUM_CYCLES_PER_CHUNK,
+        );
+        (h_memory, h_witness)
+    };
+
+    let now = std::time::Instant::now();
+    assert_eq!(add_sub_circuit.trace_len, trace_len);
+    assert_eq!(full_trace.column_major_memory_trace[0].len(), trace_len);
+
+    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
+        &full_trace,
+        &twiddles,
+        whir_schedule.base_lde_factor,
+        whir_schedule.whir_steps_schedule[0],
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+
+    let trace_holder_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
+    assert_eq!(trace_holder_caps, setup_caps);
+
+    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    let gpu_memory_caps = gpu_trace_caps_from_flat_columns(
+        &h_memory,
+        add_sub_circuit.memory_layout.total_width,
+        trace_len,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        &context,
+    );
+    assert_eq!(gpu_memory_caps, memory_caps);
+
+    let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    let gpu_witness_caps = gpu_trace_caps_from_flat_columns(
+        &h_witness,
+        add_sub_circuit.witness_layout.total_width,
+        trace_len,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        &context,
+    );
+    assert_eq!(gpu_witness_caps, witness_caps);
+
+    let mut transcript_input = vec![];
+    external_challenges.flatten_into_buffer(&mut transcript_input);
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &setup_commitment.tree,
+            ),
+        )
+        .into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &mem_oracle.tree,
+            ),
+        )
+        .into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &wit_oracle.tree,
+            ),
+        )
+        .into_iter(),
+        &mut transcript_input,
+    );
+
+    let mut seed = Transcript::commit_initial(&transcript_input);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
+
+    let mut lookup_challenges = unsafe { context.alloc_host_uninit_slice(2) };
+    unsafe {
+        lookup_challenges
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[lookup_alpha, lookup_additive_part]);
+    }
+    let mut callbacks = Callbacks::new();
+    let mut gpu_lookup_runtime_data = gpu_setup_transfer
+        .prepare_lookup_runtime_data(&add_sub_circuit, &context)
+        .unwrap();
+    gpu_setup_transfer
+        .schedule_lookup_runtime_data(
+            &mut gpu_lookup_runtime_data,
+            lookup_challenges.get_accessor(),
+            &mut callbacks,
+            &context,
+        )
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut gkr_storage = GKRStorage::<BF, E4>::default();
+    let (
+        preprocessed_range_check_16,
+        preprocessed_timestamp_range_checks,
+        preprocessed_generic_lookup,
+    ) = setup.preprocess_lookups(
+        &add_sub_circuit,
+        lookup_alpha,
+        lookup_additive_part,
+        trace_len,
+        &mut gkr_storage,
+        &worker,
+    );
+
+    let mut gpu_range = vec![E4::ZERO; gpu_lookup_runtime_data.range_check_16.len()];
+    memory_copy(&mut gpu_range, &gpu_lookup_runtime_data.range_check_16).unwrap();
+    assert_eq!(gpu_range, preprocessed_range_check_16.as_ref());
+
+    let mut gpu_timestamp = vec![E4::ZERO; gpu_lookup_runtime_data.timestamp_range_check.len()];
+    memory_copy(
+        &mut gpu_timestamp,
+        &gpu_lookup_runtime_data.timestamp_range_check,
+    )
+    .unwrap();
+    assert_eq!(gpu_timestamp, preprocessed_timestamp_range_checks.as_ref());
+
+    let mut gpu_generic = vec![E4::ZERO; gpu_lookup_runtime_data.generic_lookup.len()];
+    memory_copy(&mut gpu_generic, &gpu_lookup_runtime_data.generic_lookup).unwrap();
+    assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
+
+    let gpu_vectorized_lookup_setup = gpu_lookup_runtime_data.vectorized_lookup_setup_poly();
+    let mut gpu_vectorized_host = vec![E4::ZERO; gpu_vectorized_lookup_setup.len()];
+    memory_copy(&mut gpu_vectorized_host, gpu_vectorized_lookup_setup).unwrap();
+    assert_eq!(
+        &gpu_vectorized_host[..preprocessed_generic_lookup.len()],
+        preprocessed_generic_lookup.as_ref()
+    );
+    assert!(gpu_vectorized_host[preprocessed_generic_lookup.len()..]
+        .iter()
+        .all(|value| *value == lookup_additive_part));
+
+    let mut witness_eval_data = full_trace;
+    for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate() {
+        forward_loop::evaluate_layer(
+            layer_idx,
+            layer,
+            &mut gkr_storage,
+            &add_sub_circuit,
+            &external_challenges,
+            &mut witness_eval_data,
+            trace_len,
+            &preprocessed_generic_lookup,
+            lookup_additive_part,
+            constraints_batch_challenge,
+            &worker,
+        );
+    }
+
+    let final_trace_size_log_2 = 4;
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
+        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+            &mut gkr_storage,
+            &add_sub_circuit,
+            trace_len.trailing_zeros() as usize,
+            final_trace_size_log_2,
+            &worker,
+        );
+
+    let mut final_explicit_evaluations = BTreeMap::new();
+    let mut evals_flattened = vec![];
+    for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
+        match *k {
+            OutputType::PermutationProduct => {
+                let mut final_evals: [Vec<E4>; 2] = std::array::from_fn(|_| Vec::new());
+                for (i, addr) in v.output.iter().enumerate() {
+                    let poly = gkr_storage.get_ext_poly(*addr);
+                    assert_eq!(poly.len(), 1 << final_trace_size_log_2);
+                    evals_flattened.extend_from_slice(poly);
+                    final_evals[i] = poly.to_vec();
+                }
+                final_explicit_evaluations.insert(*k, final_evals);
             }
-            assert_eq!(cpu_row, gpu_row, "row {} is not equal", row);
+            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
+                let [num, den] = v.output.clone().try_into().unwrap();
+                let num = gkr_storage.get_ext_poly(num);
+                evals_flattened.extend_from_slice(num);
+                let den = gkr_storage.get_ext_poly(den);
+                evals_flattened.extend_from_slice(den);
+                final_explicit_evaluations.insert(*k, [num.to_vec(), den.to_vec()]);
+            }
+        }
+    }
+    commit_field_els::<BF, E4>(&mut seed, &evals_flattened);
+
+    let num_challenges = final_trace_size_log_2 + 1;
+    let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
+    let batching_challenge = challenges.pop().unwrap();
+
+    let evaluation_point = challenges;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        compute_initial_sumcheck_claims_for_test(
+            &gkr_storage,
+            &evaluation_point,
+            &dimension_reducing_inputs[&initial_layer_for_sumcheck],
+            &worker,
+        );
+
+    let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
+    let mut top_layer_claims: BTreeMap<GKRAddress, E4> = BTreeMap::new();
+    top_layer_claims.insert(
+        output_map[&OutputType::PermutationProduct].output[0],
+        claim_readset,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::PermutationProduct].output[1],
+        claim_writeset,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::Lookup16Bits].output[0],
+        claim_rangechecknum,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::Lookup16Bits].output[1],
+        claim_rangecheckden,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::LookupTimestamps].output[0],
+        claim_timechecknum,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::LookupTimestamps].output[1],
+        claim_timecheckden,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::GenericLookup].output[0],
+        claim_lookupnum,
+    );
+    top_layer_claims.insert(
+        output_map[&OutputType::GenericLookup].output[1],
+        claim_lookupden,
+    );
+
+    let mut claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E4>> = BTreeMap::new();
+    let mut points_for_claims_at_layer = BTreeMap::new();
+    claims_for_layers.insert(initial_layer_for_sumcheck + 1, top_layer_claims);
+    points_for_claims_at_layer.insert(initial_layer_for_sumcheck + 1, evaluation_point);
+
+    let mut sumcheck_intermediate_values = BTreeMap::new();
+    let mut sumcheck_batching_challenge = batching_challenge;
+    let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
+        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+            layer_idx,
+            &layer,
+            &mut points_for_claims_at_layer,
+            &mut claims_for_layers,
+            &mut gkr_storage,
+            &mut sumcheck_batching_challenge,
+            &mut seed,
+            1 << reduced_trace_size_log_2,
+            &worker,
+        );
+        sumcheck_intermediate_values.insert(layer_idx, proof);
+        reduced_trace_size_log_2 += 1;
+    }
+
+    assert_eq!(1 << reduced_trace_size_log_2, trace_len);
+
+    for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate().rev() {
+        let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+            layer_idx,
+            layer,
+            &mut points_for_claims_at_layer,
+            &mut claims_for_layers,
+            &mut gkr_storage,
+            &mut sumcheck_batching_challenge,
+            &add_sub_circuit,
+            trace_len,
+            lookup_additive_part,
+            constraints_batch_challenge,
+            &mut seed,
+            &worker,
+        );
+        sumcheck_intermediate_values.insert(layer_idx, proof);
+    }
+
+    let base_layer_z = points_for_claims_at_layer
+        .get(&0)
+        .expect("must have base layer point");
+    let eq_precomputed = make_eq_poly_in_full(base_layer_z, &worker);
+    let eq_at_z = eq_precomputed.last().unwrap();
+
+    let layer_desc = &add_sub_circuit.layers[0];
+    let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
+    for (cached_addr, relation) in layer_desc.cached_relations.iter() {
+        debug_assert!(
+            base_layer_claims.contains_key(cached_addr),
+            "Missing claim for cached address {:?}",
+            cached_addr
+        );
+
+        for dep in relation.dependencies() {
+            if base_layer_claims.contains_key(&dep) {
+                continue;
+            }
+            match dep {
+                GKRAddress::BaseLayerWitness(_)
+                | GKRAddress::BaseLayerMemory(_)
+                | GKRAddress::Setup(_) => {
+                    let values = gkr_storage.get_base_layer(dep);
+                    let evaluation = evaluate_base_poly_with_eq::<BF, E4>(values, &eq_at_z[..]);
+                    base_layer_claims.insert(dep, evaluation);
+                }
+                _ => {
+                    panic!(
+                        "Unexpected dependency address {:?} for cached relation {:?}",
+                        dep, cached_addr
+                    );
+                }
+            }
         }
     }
 
-    println!("Trying to prove");
+    drop(preprocessed_range_check_16);
+    drop(preprocessed_timestamp_range_checks);
+    drop(preprocessed_generic_lookup);
 
-    let now = std::time::Instant::now();
-    let _proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        &add_sub_circuit,
-        &external_challenges,
-        full_trace,
-        &setup,
+    let mut mem_polys_claims = Vec::with_capacity(add_sub_circuit.memory_layout.total_width);
+    for i in 0..add_sub_circuit.memory_layout.total_width {
+        let key = GKRAddress::BaseLayerMemory(i);
+        let value = claims_for_layers[&0]
+            .get(&key)
+            .copied()
+            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
+        mem_polys_claims.push(value);
+    }
+
+    let mut wit_polys_claims = Vec::with_capacity(add_sub_circuit.witness_layout.total_width);
+    for i in 0..add_sub_circuit.witness_layout.total_width {
+        let key = GKRAddress::BaseLayerWitness(i);
+        let value = claims_for_layers[&0]
+            .get(&key)
+            .copied()
+            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
+        wit_polys_claims.push(value);
+    }
+
+    let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
+    for i in 0..setup.hypercube_evals.len() {
+        let key = GKRAddress::Setup(i);
+        let value = claims_for_layers[&0]
+            .get(&key)
+            .copied()
+            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
+        let evaluation =
+            evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
+        assert_eq!(evaluation, value, "diverged for {:?}", key);
+        setup_polys_claims.push(value);
+    }
+
+    drop(gkr_storage);
+
+    let whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+    let whir_schedule = whir_schedule.clone();
+    let whir_proof = whir_fold(
+        mem_oracle,
+        mem_polys_claims,
+        wit_oracle,
+        wit_polys_claims,
         &setup_commitment,
+        setup_polys_claims,
+        base_layer_z.clone(),
+        whir_schedule.base_lde_factor,
+        whir_batching_challenge,
+        whir_schedule.whir_steps_schedule,
+        whir_schedule.whir_queries_schedule,
+        whir_schedule.whir_steps_lde_factors,
+        whir_schedule.whir_pow_schedule,
         &twiddles,
-        &whir_schedule,
-        None,
-        trace_len,
+        seed,
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
         &worker,
     );
-    println!("Proving time is {:?}", now.elapsed());
+
+    let [read_set_computed, write_set_computed] = final_explicit_evaluations
+        .get(&OutputType::PermutationProduct)
+        .expect("must be present")
+        .clone()
+        .map(|els| {
+            let mut result = E4::ONE;
+            for el in els.iter() {
+                result.mul_assign(el);
+            }
+            result
+        });
+    let mut grand_product_accumulator_computed = read_set_computed;
+    grand_product_accumulator_computed
+        .mul_assign(&write_set_computed.inverse().expect("must not be zero"));
+
+    let _proof = GKRProof::<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+        external_challenges,
+        final_explicit_evaluations,
+        sumcheck_intermediate_values,
+        whir_proof,
+        grand_product_accumulator_computed,
+    };
+    let _elapsed = now.elapsed();
 }
 
 #[allow(unused_imports)]
