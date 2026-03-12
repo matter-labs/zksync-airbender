@@ -1994,7 +1994,7 @@ mod test {
     {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
-        
+
         <E as FieldExtension<F>>::from_coeffs(coefs)
     }
 

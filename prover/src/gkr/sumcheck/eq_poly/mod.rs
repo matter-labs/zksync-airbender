@@ -370,12 +370,7 @@ mod tests {
         let size = 1 << 10;
         let eq: Vec<E> = (0..size).map(|_| random_in_ext(&mut rng)).collect();
         let values: Vec<[E; 2]> = (0..size)
-            .map(|_| {
-                [
-                    random_in_ext(&mut rng),
-                    random_in_ext(&mut rng),
-                ]
-            })
+            .map(|_| [random_in_ext(&mut rng), random_in_ext(&mut rng)])
             .collect();
 
         let expected =

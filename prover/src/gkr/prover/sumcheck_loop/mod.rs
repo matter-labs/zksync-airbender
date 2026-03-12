@@ -128,8 +128,7 @@ where
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                let eval =
-                    evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
+                let eval = evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else {
                 unreachable!()
@@ -261,8 +260,7 @@ where
                 let eval = evaluate_with_precomputed_eq(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else if let Some(poly) = gkr_storage.try_get_ext_poly(*k) {
-                let eval =
-                    evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
+                let eval = evaluate_with_precomputed_eq_ext(poly, &eq_polys.last().unwrap()[..]);
                 assert_eq!(eval, *v, "claim diverged for poly {k:?}");
             } else {
                 unreachable!()
@@ -409,7 +407,12 @@ where
         }
     }
 
-    (folding_challenges, intermediate_coeffs, last_evaluations, accumulator_buffer[0])
+    (
+        folding_challenges,
+        intermediate_coeffs,
+        last_evaluations,
+        accumulator_buffer[0],
+    )
 }
 
 #[inline(always)]
