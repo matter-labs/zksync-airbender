@@ -48,7 +48,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
-    pub(crate) fn get_base_layer(&self, address: GKRAddress) -> &[F] {
+    pub fn get_base_layer(&self, address: GKRAddress) -> &[F] {
         unsafe {
             debug_assert!(self.layers.len() > 0);
             let layer = self.layers.get_unchecked(0);
@@ -61,7 +61,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
-    pub(crate) fn try_get_base_poly(&self, address: GKRAddress) -> Option<&[F]> {
+    pub fn try_get_base_poly(&self, address: GKRAddress) -> Option<&[F]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
                 let source = &self.layers[layer];
@@ -85,7 +85,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
-    pub(crate) fn try_get_ext_poly(&self, address: GKRAddress) -> Option<&[E]> {
+    pub fn try_get_ext_poly(&self, address: GKRAddress) -> Option<&[E]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
                 let source = &self.layers[layer];
@@ -109,7 +109,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         self.layers.truncate(layer + 1);
     }
 
-    pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &[E] {
+    pub fn get_ext_poly(&self, address: GKRAddress) -> &[E] {
         match address {
             GKRAddress::InnerLayer { layer, .. } => {
                 let source = &self.layers[layer];
