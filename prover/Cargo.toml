@@ -47,6 +47,7 @@ harness = false
 
 [features]
 prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow",  "risc_v_simulator", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "itertools"]
+deterministic_pow = ["transcript/deterministic_pow"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.
 timing_logs = []
