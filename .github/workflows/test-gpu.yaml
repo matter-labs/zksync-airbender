@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   zksync-airbender-build:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ matterlabs-ci-runner-highmem ]
     strategy:
       fail-fast: false
       matrix:
