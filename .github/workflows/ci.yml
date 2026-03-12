@@ -67,33 +67,39 @@ jobs:
             echo "No files were modified."
           fi
 
-  build_verifier:
+  check_verifiers:
+    name: check_verifiers
     runs-on: [matterlabs-ci-runner-c3d]
-    name: build_verifier
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        working-directory: tools/verifier
-        run: |
-          rustup set profile minimal
-          rustup target add riscv32i-unknown-none-elf
-          cargo install cargo-binutils
-          rustup component add llvm-tools-preview
-          rustup component add rust-src
-      - name: ObjCopy
-        working-directory: tools/verifier
-        run: cargo objcopy --release  -Z build-std=core,panic_abort,alloc -- -O binary app.bin
-      - uses: actions/upload-artifact@v4
-        with:
-          name: verifier
-          path: tools/verifier/app.bin
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
 
-  build_cli_with_verify_80:
-    name: build_cli_with_verify_80
+      - name: Build fresh verifiers
+        run: |
+          tools/reproduce/reproduce.sh
+
+      - name: Fail if any files were modified
+        run: |
+          git status --porcelain
+          git diff --name-only
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh?:"
+            git diff --name-only
+            exit 1
+          fi
+
+  build_cli:
+    name: build_cli (${{ matrix.security_label }})
     runs-on: [matterlabs-ci-runner-c3d]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - security_label: security_80
+            artifact_name: cli_80
+            build_command: cargo build --release -p cli
+          - security_label: security_100
+            artifact_name: cli_100
+            build_command: cargo build --release -p cli --no-default-features --features security_100
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -102,129 +108,59 @@ jobs:
       - name: Setup
         run: rustup set profile minimal
       - name: Compile
-        run: cargo build --release -p cli --no-default-features --features include_verifiers_80
+        run: ${{ matrix.build_command }}
       - uses: actions/upload-artifact@v4
         with:
-          name: cli_with_verify_80
+          name: ${{ matrix.artifact_name }}
           path: |
             target/release/cli
             examples/basic_fibonacci/app.bin
             examples/basic_fibonacci/app.text
 
-  build_cli_with_verify_100:
-    name: build_cli_with_verify_100
+  cli_smoke_verify:
+    name: cli_smoke_verify (${{ matrix.security_label }})
     runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: rustup set profile minimal
-      - name: Compile
-        run: cargo build --release -p cli --no-default-features --features include_verifiers_100
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli_with_verify_100
-          path: |
-            target/release/cli
-            examples/basic_fibonacci/app.bin
-            examples/basic_fibonacci/app.text
-
-  build_cli_no_verifiers_80:
-    name: build_cli_no_verifiers_80
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: rustup set profile minimal
-      - name: Compile
-        run: cargo build --release -p cli --no-default-features --features security_80
-
-  build_cli_no_verifiers_100:
-    name: build_cli_no_verifiers_100
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: rustup set profile minimal
-      - name: Compile
-        run: cargo build --release -p cli --no-default-features --features security_100
-
-  cli_smoke_80_base_verify:
-    name: cli_smoke_80_base_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_with_verify_80]
+    needs: [build_cli]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - security_label: security_80
+            artifact_name: cli_80
+          - security_label: security_100
+            artifact_name: cli_100
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: cli_with_verify_80
+          name: ${{ matrix.artifact_name }}
       - name: Setup
         run: |
           chmod +x ./target/release/cli
           mkdir -p output
-      - name: Run
-        run: ./target/release/cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
-      - name: Prove
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
-      - name: Verify
-        run: ./target/release/cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
-
-  cli_smoke_100_base_verify:
-    name: cli_smoke_100_base_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_with_verify_100]
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify_100
-      - name: Setup
-        run: |
-          chmod +x ./target/release/cli
-          mkdir -p output
-      - name: Run
-        run: ./target/release/cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
-      - name: Prove
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file proof.json
-      - name: Verify
-        run: ./target/release/cli verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
-
-  cli_smoke_80_recursion_unified_verify:
-    name: cli_smoke_80_recursion_unified_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_with_verify_80]
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify_80
-      - name: Setup
-        run: |
-          chmod +x ./target/release/cli
-          mkdir -p output
-      - name: Prove recursion unified
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
+      - name: Prove base
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+      - name: Verify base
+        run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
+      - name: Continue to recursion unified
+        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
 
-  cli_smoke_100_recursion_unified_verify:
-    name: cli_smoke_100_recursion_unified_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_with_verify_100]
+  # Keep branch protection tied to one stable check name even as the
+  # underlying CI fan-out changes over time.
+  pr-checks:
+    name: pr-checks
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - tests
+      - formatting
+      - circuits_generated
+      - check_verifiers
+      - build_cli
+      - cli_smoke_verify
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Decide on PR checks
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
-          name: cli_with_verify_100
-      - name: Setup
-        run: |
-          chmod +x ./target/release/cli
-          mkdir -p output
-      - name: Prove recursion unified
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target recursion-unified --backend cpu --output-dir output --output-file recursion_unified.json
-      - name: Verify recursion unified
-        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+          jobs: ${{ toJSON(needs) }}

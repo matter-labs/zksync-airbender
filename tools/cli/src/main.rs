@@ -5,15 +5,10 @@
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use cli_lib::prover_utils::{
-    default_backend_for_build, serialize_to_file, u32_from_hex_string, CpuConfig, GpuConfig,
-    ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget, ProverBackend,
+    default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
+    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
+    ProofTarget, ProverBackend,
 };
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
-use cli_lib::prover_utils::{deserialize_from_file, ProofArtifact};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
@@ -127,6 +122,27 @@ enum Commands {
 
         #[arg(long, default_value_t = 8)]
         gpu_replay_threads: usize,
+    },
+    /// Continue staged proving from an existing proof artifact.
+    ContinueProof {
+        #[arg(short, long)]
+        proof: String,
+        #[arg(short, long)]
+        bin: String,
+        #[arg(long)]
+        text: Option<String>,
+        #[arg(long, default_value = "output")]
+        output_dir: String,
+        #[arg(long, default_value = "proof.json")]
+        output_file: String,
+        #[arg(long, value_enum, default_value = "recursion-unified")]
+        target: ProofTarget,
+        #[arg(long, default_value_t = 1 << 31)]
+        cpu_cycles_bound: usize,
+        #[arg(long, default_value_t = 1 << 30)]
+        cpu_ram_bound: usize,
+        #[arg(long)]
+        cpu_worker_threads: Option<usize>,
     },
     /// Verify a single proof artifact.
     Verify {
@@ -242,6 +258,15 @@ fn make_prover_config(
     }
 }
 
+fn write_artifact(artifact: &ProofArtifact, output_dir: &str, output_file: &str) {
+    let output_path = Path::new(output_dir).join(output_file);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create output directory");
+    }
+    serialize_to_file(artifact, &output_path);
+    println!("Proof artifact written to {}", output_path.display());
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
@@ -286,12 +311,7 @@ fn main() {
                 .prove_words(batch_id, input_words)
                 .unwrap_or_else(|e| panic!("Proving failed: {}", e));
 
-            let output_path = Path::new(&output_dir).join(output_file);
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent).expect("Failed to create output directory");
-            }
-            serialize_to_file(&artifact, &output_path);
-            println!("Proof artifact written to {}", output_path.display());
+            write_artifact(&artifact, &output_dir, &output_file);
         }
         Commands::ProveBatch {
             bin,
@@ -354,32 +374,42 @@ fn main() {
             serialize_to_file(&summary, &summary_path);
             println!("Batch summary written to {}", summary_path.display());
         }
+        Commands::ContinueProof {
+            proof,
+            bin,
+            text,
+            output_dir,
+            output_file,
+            target,
+            cpu_cycles_bound,
+            cpu_ram_bound,
+            cpu_worker_threads,
+        } => {
+            let input_artifact: ProofArtifact = deserialize_from_file(&proof);
+            let source = ProgramSource::from_paths(bin, text);
+            let prover_config = make_prover_config(
+                target,
+                Some(ProverBackend::Cpu),
+                cpu_cycles_bound,
+                cpu_ram_bound,
+                cpu_worker_threads,
+                8,
+            );
+
+            let prover = ProgramProver::new(source, prover_config)
+                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let artifact = prover
+                .continue_artifact(input_artifact)
+                .unwrap_or_else(|e| panic!("Continuation failed: {}", e));
+
+            write_artifact(&artifact, &output_dir, &output_file);
+        }
         Commands::Verify { proof, bin, text } => {
-            #[cfg(any(
-                feature = "include_verifiers",
-                feature = "include_verifiers_80",
-                feature = "include_verifiers_100"
-            ))]
-            {
-                let artifact: ProofArtifact = deserialize_from_file(&proof);
-                let source = ProgramSource::from_paths(bin, text);
-                let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
-                    .unwrap_or_else(|e| panic!("Verification failed: {}", e));
-                println!("PROOF IS VALID. output={:?}", output);
-            }
-            #[cfg(not(any(
-                feature = "include_verifiers",
-                feature = "include_verifiers_80",
-                feature = "include_verifiers_100"
-            )))]
-            {
-                let _ = proof;
-                let _ = bin;
-                let _ = text;
-                panic!(
-                    "Verify command is not available: compile with include_verifiers_80 or include_verifiers_100"
-                );
-            }
+            let artifact: ProofArtifact = deserialize_from_file(&proof);
+            let source = ProgramSource::from_paths(bin, text);
+            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
+                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            println!("PROOF IS VALID. output={:?}", output);
         }
         Commands::Run {
             bin,
