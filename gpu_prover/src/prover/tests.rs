@@ -1,15 +1,13 @@
-use super::trace_holder::{TraceHolder, TreesCacheMode};
+use super::gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
 use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut, DeviceVectorChunkImpl};
 use crate::primitives::field::{BF, E4};
-use crate::witness::memory_unrolled::{
-    generate_memory_and_witness_values_unrolled_non_memory,
-    generate_memory_values_unrolled_non_memory,
-};
+use crate::witness::memory_unrolled::generate_memory_and_witness_values_unrolled_non_memory;
 use crate::witness::multiplicities::{
-    generate_generic_lookup_multiplicities, generate_range_check_multiplicities, LookupExpressions,
+    generate_generic_lookup_multiplicities, generate_range_check_multiplicities,
 };
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
 use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memory;
@@ -34,6 +32,7 @@ use field::{Field, PrimeField};
 use itertools::Itertools;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{prove_configured_with_gkr, GKRExternalChallenges, WhirSchedule};
+use prover::gkr::sumcheck::access_and_fold::GKRStorage;
 use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
@@ -57,8 +56,16 @@ use serial_test::serial;
 use setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 use std::alloc::Global;
 use std::collections::BTreeSet;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
+use std::path::PathBuf;
+use std::sync::Arc;
 use worker::Worker;
+
+fn test_artifact_path(relative_path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(relative_path)
+}
 
 fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<
@@ -103,9 +110,9 @@ fn run_basic_unrolled_test() {
     let worker = Worker::new_with_num_threads(8);
     // load binary
 
-    // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    // let binary = std::fs::read(test_artifact_path("examples/basic_fibonacci/app.bin")).unwrap();
+    let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
+    // let binary = std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.bin")).unwrap();
     assert_eq!(binary.len() % 4, 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -114,9 +121,13 @@ fn run_basic_unrolled_test() {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    // let text_section =
+    //     std::fs::read(test_artifact_path("examples/basic_fibonacci/app.text")).unwrap();
+    let text_section =
+        std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
+    // let text_section =
+    //     std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.text"))
+    //         .unwrap();
     assert_eq!(text_section.len() % 4, 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -453,42 +464,29 @@ fn run_basic_unrolled_test() {
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-
-    {
-        let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
-        let columns_count = setup.hypercube_evals.len();
-        let log_lde_factor = lde_factor.trailing_zeros();
-        let log_rows_per_leaf = whir_first_fold_step_log2 as u32;
-        let log_tree_cap_size = tree_cap_size.trailing_zeros();
-        let subcap_size = tree_cap_size / lde_factor;
-
-        let mut d_setup_hypercube = context
-            .alloc(columns_count * trace_len, AllocationPlacement::BestFit)
-            .unwrap();
-        for (h, d) in setup
-            .hypercube_evals
-            .iter()
-            .zip(d_setup_hypercube.chunks_mut(trace_len))
-        {
-            memory_copy(d, &h[..]).unwrap();
-        }
-
-        let mut trace_holder = TraceHolder::<BF>::new(
-            TRACE_LEN_LOG2 as u32,
+    let log_lde_factor = lde_factor.trailing_zeros();
+    let log_rows_per_leaf = whir_first_fold_step_log2 as u32;
+    let log_tree_cap_size = tree_cap_size.trailing_zeros();
+    let subcap_size = tree_cap_size / lde_factor;
+    let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::from_cpu_setup(
+            &setup,
             log_lde_factor,
             log_rows_per_leaf,
             log_tree_cap_size,
-            columns_count,
-            TreesCacheMode::CacheFull,
             &context,
         )
-        .unwrap();
-        trace_holder
-            .materialize_and_commit_from_hypercube_evals(&d_setup_hypercube, &context)
-            .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
+        .unwrap(),
+    );
 
-        let trace_holder_caps = trace_holder.get_tree_caps();
+    {
+        let mut gpu_setup_transfer =
+            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        gpu_setup_transfer.schedule_transfer(&context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+
+        let trace_holder_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
         let setup_caps = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
             &setup_commitment.tree,
         )
@@ -506,7 +504,6 @@ fn run_basic_unrolled_test() {
         let memory_layout = &add_sub_circuit.memory_layout;
         let witness_layout = &add_sub_circuit.witness_layout;
         let aux_layout_data = &add_sub_circuit.aux_layout_data;
-        let context = ProverContext::new(&ProverContextConfig::default()).unwrap();
         let h_decoder_table = witness_gen_data
             .iter()
             .copied()
@@ -555,17 +552,70 @@ fn run_basic_unrolled_test() {
         let d_trace = UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,
         };
-        let h_setup = &setup.hypercube_evals;
-        let mut d_setup = context
-            .alloc(
-                h_setup.len() * NUM_CYCLES_PER_CHUNK,
-                AllocationPlacement::BestFit,
+        let mut gpu_setup_transfer =
+            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        gpu_setup_transfer.schedule_transfer(&context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+        let d_setup = gpu_setup_transfer.trace_holder.get_hypercube_evals();
+        let d_generic_lookup_tables = &d_setup[2 * NUM_CYCLES_PER_CHUNK..];
+        let lookup_alpha =
+            E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
+        let lookup_gamma =
+            E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
+        let mut lookup_challenges = unsafe { context.alloc_host_uninit_slice(2) };
+        unsafe {
+            lookup_challenges
+                .get_mut_accessor()
+                .get_mut()
+                .copy_from_slice(&[lookup_alpha, lookup_gamma]);
+        }
+        let mut callbacks = Callbacks::new();
+        let mut gpu_lookup_precomputations = gpu_setup_transfer
+            .prepare_lookup_precomputations(&add_sub_circuit, &context)
+            .unwrap();
+        gpu_setup_transfer
+            .schedule_lookup_precomputations(
+                &mut gpu_lookup_precomputations,
+                lookup_challenges.get_accessor(),
+                &mut callbacks,
+                &context,
             )
             .unwrap();
-        for (h, d) in h_setup.iter().zip(d_setup.chunks_mut(NUM_CYCLES_PER_CHUNK)) {
-            memory_copy(d, &h[..]).unwrap();
-        }
-        let d_generic_lookup_tables = &d_setup[2 * NUM_CYCLES_PER_CHUNK..];
+        context.get_exec_stream().synchronize().unwrap();
+        let gpu_vectorized_lookup_setup = gpu_lookup_precomputations.vectorized_lookup_setup_poly();
+        let mut cpu_gkr_storage = GKRStorage::<BF, E4>::default();
+        let (cpu_range, cpu_timestamp, cpu_generic) = setup.preprocess_lookups(
+            &add_sub_circuit,
+            lookup_alpha,
+            lookup_gamma,
+            trace_len,
+            &mut cpu_gkr_storage,
+            &worker,
+        );
+        let mut gpu_range = vec![E4::ZERO; gpu_lookup_precomputations.range_check_16.len()];
+        memory_copy(&mut gpu_range, &gpu_lookup_precomputations.range_check_16).unwrap();
+        assert_eq!(gpu_range, cpu_range.as_ref());
+        let mut gpu_timestamp =
+            vec![E4::ZERO; gpu_lookup_precomputations.timestamp_range_check.len()];
+        memory_copy(
+            &mut gpu_timestamp,
+            &gpu_lookup_precomputations.timestamp_range_check,
+        )
+        .unwrap();
+        assert_eq!(gpu_timestamp, cpu_timestamp.as_ref());
+        let mut gpu_generic = vec![E4::ZERO; gpu_lookup_precomputations.generic_lookup.len()];
+        memory_copy(&mut gpu_generic, &gpu_lookup_precomputations.generic_lookup).unwrap();
+        assert_eq!(gpu_generic, cpu_generic.as_ref());
+        let mut gpu_vectorized_host = vec![E4::ZERO; gpu_vectorized_lookup_setup.len()];
+        let gpu_vectorized_chunk = gpu_vectorized_lookup_setup.as_device_chunk();
+        memory_copy(&mut gpu_vectorized_host, gpu_vectorized_chunk.slice()).unwrap();
+        assert_eq!(
+            &gpu_vectorized_host[..cpu_generic.len()],
+            cpu_generic.as_ref()
+        );
+        assert!(gpu_vectorized_host[cpu_generic.len()..]
+            .iter()
+            .all(|value| *value == lookup_gamma));
         let mut d_witness = context
             .alloc(
                 witness_layout.total_width * NUM_CYCLES_PER_CHUNK,
