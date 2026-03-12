@@ -4,7 +4,7 @@
 
 ## Build
 
-Default build (`security_80`):
+Default build (`security_80`, verification included):
 
 ```bash
 cargo build -p cli
@@ -16,25 +16,17 @@ Build with `security_100`:
 cargo build -p cli --no-default-features --features security_100
 ```
 
-Build with verification support:
-
-```bash
-cargo build -p cli --no-default-features --features include_verifiers_80
-cargo build -p cli --no-default-features --features include_verifiers_100
-```
-
 Build with GPU proving support:
 
 ```bash
-cargo build -p cli --no-default-features --features gpu,security_80
+cargo build -p cli --features gpu
 ```
-
-`include_verifiers` is an alias for `include_verifiers_80`.
 
 ## Commands
 
 - `prove`
 - `prove-batch`
+- `continue-proof`
 - `verify`
 - `run`
 
@@ -69,7 +61,7 @@ cargo run --release -p cli -- prove \
 Base layer proof on GPU:
 
 ```bash
-cargo run --release -p cli --no-default-features --features gpu,security_80 -- prove \
+cargo run --release -p cli --features gpu -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --target base \
   --backend gpu \
@@ -80,7 +72,7 @@ cargo run --release -p cli --no-default-features --features gpu,security_80 -- p
 ## Verify
 
 ```bash
-cargo run --release -p cli --no-default-features --features include_verifiers_80 -- \
+cargo run --release -p cli -- \
   verify \
   --proof output/proof.json \
   --bin examples/basic_fibonacci/app.bin
@@ -92,6 +84,34 @@ Verification checks:
 - program hash binding (`program_bin_keccak`, `program_text_keccak`),
 - recursion chain hash consistency (for recursion targets),
 - proof validity in the selected layer.
+
+## Continue Proof
+
+Use staged proving when you want to keep the base proof artifact, validate it,
+and only then continue into recursion:
+
+```bash
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --target base \
+  --output-dir output \
+  --output-file base.json
+
+cargo run --release -p cli -- verify \
+  --proof output/base.json \
+  --bin examples/basic_fibonacci/app.bin
+
+cargo run --release -p cli -- continue-proof \
+  --proof output/base.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target recursion-unified \
+  --output-dir output \
+  --output-file recursion_unified.json
+
+cargo run --release -p cli -- verify \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin
+```
 
 ## Prove Batch
 
