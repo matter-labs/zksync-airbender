@@ -5,15 +5,10 @@
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use cli_lib::prover_utils::{
-    default_backend_for_build, serialize_to_file, u32_from_hex_string, CpuConfig, GpuConfig,
-    ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget, ProverBackend,
+    default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
+    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
+    ProofTarget, ProverBackend,
 };
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
-use cli_lib::prover_utils::{deserialize_from_file, ProofArtifact};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
@@ -355,31 +350,11 @@ fn main() {
             println!("Batch summary written to {}", summary_path.display());
         }
         Commands::Verify { proof, bin, text } => {
-            #[cfg(any(
-                feature = "include_verifiers",
-                feature = "include_verifiers_80",
-                feature = "include_verifiers_100"
-            ))]
-            {
-                let artifact: ProofArtifact = deserialize_from_file(&proof);
-                let source = ProgramSource::from_paths(bin, text);
-                let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
-                    .unwrap_or_else(|e| panic!("Verification failed: {}", e));
-                println!("PROOF IS VALID. output={:?}", output);
-            }
-            #[cfg(not(any(
-                feature = "include_verifiers",
-                feature = "include_verifiers_80",
-                feature = "include_verifiers_100"
-            )))]
-            {
-                let _ = proof;
-                let _ = bin;
-                let _ = text;
-                panic!(
-                    "Verify command is not available: compile with include_verifiers_80 or include_verifiers_100"
-                );
-            }
+            let artifact: ProofArtifact = deserialize_from_file(&proof);
+            let source = ProgramSource::from_paths(bin, text);
+            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
+                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            println!("PROOF IS VALID. output={:?}", output);
         }
         Commands::Run {
             bin,

@@ -4,22 +4,12 @@ use execution_utils::setups::{
     get_unrolled_circuits_artifacts_for_machine_type, pad_bytecode_bytes_for_proving,
     pad_bytecode_for_proving, read_binary,
 };
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
 use execution_utils::unified_circuit::verify_proof_in_unified_layer;
 use execution_utils::unified_circuit::{
     compute_unified_setup_for_machine_configuration,
     flatten_proof_into_responses_for_unified_recursion,
     prove_unified_for_machine_configuration_into_program_proof,
 };
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
 use execution_utils::unrolled::verify_unrolled_layer_proof;
 use execution_utils::unrolled::{
     compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
@@ -35,11 +25,6 @@ use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::cycle::{
     IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
 };
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
 use prover::transcript::Blake2sBufferingTranscript;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
@@ -534,11 +519,6 @@ impl ProgramProver {
     }
 }
 
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
 pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
@@ -631,11 +611,6 @@ pub fn verify_artifact(
     }
 }
 
-#[cfg(any(
-    feature = "include_verifiers",
-    feature = "include_verifiers_80",
-    feature = "include_verifiers_100"
-))]
 fn validate_recursion_chain(proof: &UnrolledProgramProof) -> Result<[u32; 16], String> {
     let Some(preimage) = proof.recursion_chain_preimage else {
         return Err("proof is missing recursion_chain_preimage".to_string());

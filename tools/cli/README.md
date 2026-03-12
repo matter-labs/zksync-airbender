@@ -4,7 +4,7 @@
 
 ## Build
 
-Default build (`security_80`):
+Default build (`security_80`, verification included):
 
 ```bash
 cargo build -p cli
@@ -16,20 +16,11 @@ Build with `security_100`:
 cargo build -p cli --no-default-features --features security_100
 ```
 
-Build with verification support:
-
-```bash
-cargo build -p cli --no-default-features --features include_verifiers_80
-cargo build -p cli --no-default-features --features include_verifiers_100
-```
-
 Build with GPU proving support:
 
 ```bash
-cargo build -p cli --no-default-features --features gpu,security_80
+cargo build -p cli --features gpu
 ```
-
-`include_verifiers` is an alias for `include_verifiers_80`.
 
 ## Commands
 
@@ -69,7 +60,7 @@ cargo run --release -p cli -- prove \
 Base layer proof on GPU:
 
 ```bash
-cargo run --release -p cli --no-default-features --features gpu,security_80 -- prove \
+cargo run --release -p cli --features gpu -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --target base \
   --backend gpu \
@@ -80,7 +71,7 @@ cargo run --release -p cli --no-default-features --features gpu,security_80 -- p
 ## Verify
 
 ```bash
-cargo run --release -p cli --no-default-features --features include_verifiers_80 -- \
+cargo run --release -p cli -- \
   verify \
   --proof output/proof.json \
   --bin examples/basic_fibonacci/app.bin
