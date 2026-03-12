@@ -430,6 +430,7 @@ pub(crate) struct GpuSumcheckRound0DeviceLaunchDescriptors<B, E> {
 }
 
 pub(crate) struct GpuSumcheckRound0ScheduledLaunchDescriptors<B, E> {
+    #[allow(dead_code)] // Keeps pinned host descriptors alive until queued uploads complete.
     pub(crate) host: GpuSumcheckRound0HostLaunchDescriptors<B, E>,
     pub(crate) device: GpuSumcheckRound0DeviceLaunchDescriptors<B, E>,
 }
@@ -626,50 +627,73 @@ fn alloc_device_and_schedule_upload<T: Copy>(
     Ok(device)
 }
 
+fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
+    context: &ProverContext,
+    len: usize,
+    callbacks: &mut Callbacks<'a>,
+    fill: impl Fn(&mut [T]) + Send + Sync + 'a,
+) -> CudaResult<(HostAllocation<[T]>, DeviceAllocation<T>)> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
+    let host_accessor = host.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe { fill(host_accessor.get_mut()) },
+        context.get_exec_stream(),
+    )?;
+    let device = alloc_device_and_schedule_upload(context, &host)?;
+    Ok((host, device))
+}
+
 impl<B, E> GpuGKRStorage<B, E> {
+    fn base_poly_layer(address: GKRAddress) -> Option<usize> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => Some(layer),
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..) => Some(0),
+            GKRAddress::OptimizedOut(..) => None,
+        }
+    }
+
+    fn ext_poly_layer(address: GKRAddress) -> Option<usize> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => Some(layer),
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..)
+            | GKRAddress::OptimizedOut(..) => None,
+        }
+    }
+
+    fn get_base_poly_for_address(&self, address: GKRAddress) -> Option<&GpuBaseFieldPoly<B>> {
+        let layer = Self::base_poly_layer(address)?;
+        self.layers.get(layer)?.base_field_inputs.get(&address)
+    }
+
+    fn get_ext_poly_for_address(&self, address: GKRAddress) -> Option<&GpuExtensionFieldPoly<E>> {
+        let layer = Self::ext_poly_layer(address)?;
+        self.layers.get(layer)?.extension_field_inputs.get(&address)
+    }
+
+    #[cfg(test)]
     pub(crate) fn get_base_layer_mem(&self, offset: usize) -> &GpuBaseFieldPoly<B> {
-        debug_assert!(!self.layers.is_empty());
-        let layer = self.layers.first().expect("must have base layer");
-        layer
-            .base_field_inputs
-            .get(&GKRAddress::BaseLayerMemory(offset))
+        self.get_base_poly_for_address(GKRAddress::BaseLayerMemory(offset))
             .expect("base layer memory poly must exist")
     }
 
     pub(crate) fn get_base_layer(&self, address: GKRAddress) -> &GpuBaseFieldPoly<B> {
-        debug_assert!(!self.layers.is_empty());
-        let layer = self.layers.first().expect("must have base layer");
-        layer
-            .base_field_inputs
-            .get(&address)
+        self.get_base_poly_for_address(address)
             .expect("base layer poly must exist")
     }
 
     pub(crate) fn try_get_base_poly(&self, address: GKRAddress) -> Option<&GpuBaseFieldPoly<B>> {
-        match address {
-            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                self.layers.get(layer)?.base_field_inputs.get(&address)
-            }
-            GKRAddress::BaseLayerMemory(..)
-            | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => self.layers.first()?.base_field_inputs.get(&address),
-            a => unreachable!("trying to get base poly for address {:?}", a),
-        }
+        self.get_base_poly_for_address(address)
     }
 
     pub(crate) fn try_get_ext_poly(
         &self,
         address: GKRAddress,
     ) -> Option<&GpuExtensionFieldPoly<E>> {
-        match address {
-            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                self.layers.get(layer)?.extension_field_inputs.get(&address)
-            }
-            GKRAddress::BaseLayerMemory(..)
-            | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => unreachable!("base layer is only in base field"),
-            a => unreachable!("trying to get extension poly for address {:?}", a),
-        }
+        self.get_ext_poly_for_address(address)
     }
 
     pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
@@ -677,16 +701,8 @@ impl<B, E> GpuGKRStorage<B, E> {
     }
 
     pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &GpuExtensionFieldPoly<E> {
-        match address {
-            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => self
-                .layers
-                .get(layer)
-                .expect("source layer must exist")
-                .extension_field_inputs
-                .get(&address)
-                .expect("extension poly must exist"),
-            a => unreachable!("trying to get extension poly for address {:?}", a),
-        }
+        self.get_ext_poly_for_address(address)
+            .expect("extension poly must exist")
     }
 
     pub(crate) fn insert_base_field_at_layer(
@@ -756,25 +772,11 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
         }
     }
 
-    fn storage_layer_for_poly(address: GKRAddress) -> usize {
-        match address {
-            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
-            GKRAddress::BaseLayerMemory(..)
-            | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => 0,
-            GKRAddress::OptimizedOut(..) => unreachable!(),
-        }
-    }
-
     fn plan_base_source_for_round_1(
         &self,
         poly: GKRAddress,
     ) -> GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
-        let layer = Self::storage_layer_for_poly(poly);
-        let poly = self.layers[layer]
-            .base_field_inputs
-            .get(&poly)
-            .expect("must exist");
+        let poly = self.get_base_poly_for_address(poly).expect("must exist");
 
         GpuBaseFieldPolySourceAfterOneFoldingPlan {
             base_layer_half_size: poly.len() / 2,
@@ -788,13 +790,10 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
         poly: GKRAddress,
         context: &ProverContext,
     ) -> CudaResult<GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E>> {
-        let layer = Self::storage_layer_for_poly(poly);
+        let layer = Self::base_poly_layer(poly).expect("must exist");
         let sumcheck_step = 2;
         let (base_poly_len, base_poly_ptr) = {
-            let poly = self.layers[layer]
-                .base_field_inputs
-                .get(&poly)
-                .expect("must exist");
+            let poly = self.get_base_poly_for_address(poly).expect("must exist");
             (poly.len(), poly.as_ptr())
         };
 
@@ -842,7 +841,7 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
     ) -> GpuExtensionFieldPolyContinuingSourcePlan<E> {
         assert!(sumcheck_step >= 3);
 
-        let layer = Self::storage_layer_for_poly(poly);
+        let layer = Self::base_poly_layer(poly).expect("must be present");
         let (last_used_for_layer, buffer) = self.layers[layer]
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
@@ -877,11 +876,7 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
     ) -> CudaResult<GpuExtensionFieldPolyContinuingSourcePlan<E>> {
         assert!(sumcheck_step >= 1);
 
-        let layer = match poly {
-            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
-            GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) => 0,
-            _ => unreachable!(),
-        };
+        let layer = Self::ext_poly_layer(poly).expect("must be present");
 
         if sumcheck_step == 1
             && !self.layers[layer]
@@ -1145,7 +1140,6 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
         sumcheck_step: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuSumcheckRound3AndBeyondPreparedStorage<E>> {
-        let _ = context;
         assert!(sumcheck_step >= 3);
 
         let mut storage = GpuSumcheckRound3AndBeyondPreparedStorage {
@@ -1195,30 +1189,22 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
         B: 'a,
         E: 'a,
     {
-        let mut base_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.base_field_inputs.len()) };
-        let mut extension_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.extension_field_inputs.len()) };
-
-        let base_field_inputs_accessor = base_field_inputs.get_mut_accessor();
-        let extension_field_inputs_accessor = extension_field_inputs.get_mut_accessor();
         let base_field_inputs_plan = self.base_field_inputs.clone();
         let extension_field_inputs_plan = self.extension_field_inputs.clone();
         let sumcheck_step = self.sumcheck_step;
 
-        callbacks.schedule(
-            move || unsafe {
+        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
+            context,
+            self.base_field_inputs.len(),
+            callbacks,
+            move |dst: &mut [GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E>]| unsafe {
                 let folding_challenges = folding_challenges.get();
                 assert_eq!(folding_challenges.len(), sumcheck_step);
                 let folding_challenge = folding_challenges[0];
                 let mut challenge_squared = folding_challenge;
                 challenge_squared.square();
 
-                for (dst, plan) in base_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(base_field_inputs_plan.iter().copied())
-                {
+                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
                     *dst = GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                         base_layer_half_size: plan.base_layer_half_size,
                         next_layer_size: plan.next_layer_size,
@@ -1226,30 +1212,36 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
                         first_folding_challenge_and_squared: (folding_challenge, challenge_squared),
                     };
                 }
-
-                for (dst, plan) in extension_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(extension_field_inputs_plan.iter().copied())
-                {
-                    *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                        previous_layer_start: plan.previous_layer_start,
-                        this_layer_start: plan.this_layer_start,
-                        this_layer_size: plan.this_layer_size,
-                        next_layer_size: plan.next_layer_size,
-                        folding_challenge,
-                        first_access: plan.first_access,
-                    };
-                }
             },
-            context.get_exec_stream(),
         )?;
-        let device = GpuSumcheckRound1DeviceLaunchDescriptors {
-            base_field_inputs: alloc_device_and_schedule_upload(context, &base_field_inputs)?,
-            extension_field_inputs: alloc_device_and_schedule_upload(
+        let (extension_field_inputs, extension_field_inputs_device) =
+            schedule_callback_populated_upload(
                 context,
-                &extension_field_inputs,
-            )?,
+                self.extension_field_inputs.len(),
+                callbacks,
+                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
+                    let folding_challenges = folding_challenges.get();
+                    assert_eq!(folding_challenges.len(), sumcheck_step);
+                    let folding_challenge = folding_challenges[0];
+
+                    for (dst, plan) in dst
+                        .iter_mut()
+                        .zip(extension_field_inputs_plan.iter().copied())
+                    {
+                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                            previous_layer_start: plan.previous_layer_start,
+                            this_layer_start: plan.this_layer_start,
+                            this_layer_size: plan.this_layer_size,
+                            next_layer_size: plan.next_layer_size,
+                            folding_challenge,
+                            first_access: plan.first_access,
+                        };
+                    }
+                },
+            )?;
+        let device = GpuSumcheckRound1DeviceLaunchDescriptors {
+            base_field_inputs: base_field_inputs_device,
+            extension_field_inputs: extension_field_inputs_device,
         };
         let host = GpuSumcheckRound1HostLaunchDescriptors {
             base_field_inputs,
@@ -1271,19 +1263,15 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
         B: 'a,
         E: 'a,
     {
-        let mut base_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.base_field_inputs.len()) };
-        let mut extension_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.extension_field_inputs.len()) };
-
-        let base_field_inputs_accessor = base_field_inputs.get_mut_accessor();
-        let extension_field_inputs_accessor = extension_field_inputs.get_mut_accessor();
         let base_field_inputs_plan = self.base_field_inputs.clone();
         let extension_field_inputs_plan = self.extension_field_inputs.clone();
         let sumcheck_step = self.sumcheck_step;
 
-        callbacks.schedule(
-            move || unsafe {
+        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
+            context,
+            self.base_field_inputs.len(),
+            callbacks,
+            move |dst: &mut [GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E>]| unsafe {
                 let folding_challenges = folding_challenges.get();
                 assert_eq!(folding_challenges.len(), sumcheck_step);
                 let first_folding_challenge = folding_challenges[0];
@@ -1291,11 +1279,7 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
                 let mut combined_challenges = first_folding_challenge;
                 combined_challenges.mul_assign(&second_folding_challenge);
 
-                for (dst, plan) in base_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(base_field_inputs_plan.iter().copied())
-                {
+                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
                     *dst = GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor {
                         base_input_start: plan.base_input_start,
                         this_layer_cache_start: plan.this_layer_cache_start,
@@ -1308,30 +1292,36 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
                         first_access: plan.first_access,
                     };
                 }
-
-                for (dst, plan) in extension_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(extension_field_inputs_plan.iter().copied())
-                {
-                    *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                        previous_layer_start: plan.previous_layer_start,
-                        this_layer_start: plan.this_layer_start,
-                        this_layer_size: plan.this_layer_size,
-                        next_layer_size: plan.next_layer_size,
-                        folding_challenge: second_folding_challenge,
-                        first_access: plan.first_access,
-                    };
-                }
             },
-            context.get_exec_stream(),
         )?;
-        let device = GpuSumcheckRound2DeviceLaunchDescriptors {
-            base_field_inputs: alloc_device_and_schedule_upload(context, &base_field_inputs)?,
-            extension_field_inputs: alloc_device_and_schedule_upload(
+        let (extension_field_inputs, extension_field_inputs_device) =
+            schedule_callback_populated_upload(
                 context,
-                &extension_field_inputs,
-            )?,
+                self.extension_field_inputs.len(),
+                callbacks,
+                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
+                    let folding_challenges = folding_challenges.get();
+                    assert_eq!(folding_challenges.len(), sumcheck_step);
+                    let second_folding_challenge = folding_challenges[1];
+
+                    for (dst, plan) in dst
+                        .iter_mut()
+                        .zip(extension_field_inputs_plan.iter().copied())
+                    {
+                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                            previous_layer_start: plan.previous_layer_start,
+                            this_layer_start: plan.this_layer_start,
+                            this_layer_size: plan.this_layer_size,
+                            next_layer_size: plan.next_layer_size,
+                            folding_challenge: second_folding_challenge,
+                            first_access: plan.first_access,
+                        };
+                    }
+                },
+            )?;
+        let device = GpuSumcheckRound2DeviceLaunchDescriptors {
+            base_field_inputs: base_field_inputs_device,
+            extension_field_inputs: extension_field_inputs_device,
         };
         let host = GpuSumcheckRound2HostLaunchDescriptors {
             base_field_inputs,
@@ -1352,43 +1342,20 @@ impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
     where
         E: 'a,
     {
-        let mut base_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.base_field_inputs.len()) };
-        let mut extension_field_inputs =
-            unsafe { context.alloc_host_uninit_slice(self.extension_field_inputs.len()) };
-
-        let base_field_inputs_accessor = base_field_inputs.get_mut_accessor();
-        let extension_field_inputs_accessor = extension_field_inputs.get_mut_accessor();
         let base_field_inputs_plan = self.base_field_inputs.clone();
         let extension_field_inputs_plan = self.extension_field_inputs.clone();
         let sumcheck_step = self.sumcheck_step;
 
-        callbacks.schedule(
-            move || unsafe {
+        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
+            context,
+            self.base_field_inputs.len(),
+            callbacks,
+            move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
                 let folding_challenges = folding_challenges.get();
                 assert_eq!(folding_challenges.len(), sumcheck_step);
                 let folding_challenge = *folding_challenges.last().expect("must be present");
 
-                for (dst, plan) in base_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(base_field_inputs_plan.iter().copied())
-                {
-                    *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                        previous_layer_start: plan.previous_layer_start,
-                        this_layer_start: plan.this_layer_start,
-                        this_layer_size: plan.this_layer_size,
-                        next_layer_size: plan.next_layer_size,
-                        folding_challenge,
-                        first_access: plan.first_access,
-                    };
-                }
-
-                for (dst, plan) in extension_field_inputs_accessor
-                    .get_mut()
-                    .iter_mut()
-                    .zip(extension_field_inputs_plan.iter().copied())
-                {
+                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
                     *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
                         previous_layer_start: plan.previous_layer_start,
                         this_layer_start: plan.this_layer_start,
@@ -1399,14 +1366,35 @@ impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
                     };
                 }
             },
-            context.get_exec_stream(),
         )?;
-        let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
-            base_field_inputs: alloc_device_and_schedule_upload(context, &base_field_inputs)?,
-            extension_field_inputs: alloc_device_and_schedule_upload(
+        let (extension_field_inputs, extension_field_inputs_device) =
+            schedule_callback_populated_upload(
                 context,
-                &extension_field_inputs,
-            )?,
+                self.extension_field_inputs.len(),
+                callbacks,
+                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
+                    let folding_challenges = folding_challenges.get();
+                    assert_eq!(folding_challenges.len(), sumcheck_step);
+                    let folding_challenge = *folding_challenges.last().expect("must be present");
+
+                    for (dst, plan) in dst
+                        .iter_mut()
+                        .zip(extension_field_inputs_plan.iter().copied())
+                    {
+                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                            previous_layer_start: plan.previous_layer_start,
+                            this_layer_start: plan.this_layer_start,
+                            this_layer_size: plan.this_layer_size,
+                            next_layer_size: plan.next_layer_size,
+                            folding_challenge,
+                            first_access: plan.first_access,
+                        };
+                    }
+                },
+            )?;
+        let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
+            base_field_inputs: base_field_inputs_device,
+            extension_field_inputs: extension_field_inputs_device,
         };
         let host = GpuSumcheckRound3AndBeyondHostLaunchDescriptors {
             base_field_inputs,
@@ -1422,17 +1410,10 @@ mod tests {
     use super::*;
     use crate::allocator::tracker::AllocationPlacement;
     use crate::primitives::callbacks::Callbacks;
-    use crate::primitives::context::ProverContextConfig;
     use crate::primitives::field::{BF, E4};
+    use crate::prover::test_utils::make_test_context;
     use era_cudart::memory::memory_copy;
     use serial_test::serial;
-
-    fn make_context() -> ProverContext {
-        let mut config = ProverContextConfig::default();
-        config.max_device_allocation_blocks_count = Some(64);
-        config.host_allocator_blocks_count = 8;
-        ProverContext::new(&config).unwrap()
-    }
 
     fn alloc_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> DeviceAllocation<T> {
         let mut allocation = context
@@ -1475,7 +1456,7 @@ mod tests {
     #[cfg(not(no_cuda))]
     #[serial]
     fn insert_get_try_get_and_purge_match_cpu_semantics() {
-        let context = make_context();
+        let context = make_test_context(64, 8);
         let mut storage = GpuGKRStorage::<BF, E4>::default();
 
         let base_memory = GpuBaseFieldPoly::new(alloc_and_copy(
@@ -1555,7 +1536,7 @@ mod tests {
     #[cfg(not(no_cuda))]
     #[serial]
     fn shared_views_support_subviews_and_drop_on_last_reference() {
-        let context = make_context();
+        let context = make_test_context(64, 8);
         let baseline = context.get_used_mem_current();
 
         let backing = Arc::new(alloc_and_copy(
@@ -1591,7 +1572,7 @@ mod tests {
     #[cfg(not(no_cuda))]
     #[serial]
     fn round_builders_allocate_and_reuse_scratch() {
-        let context = make_context();
+        let context = make_test_context(64, 8);
         let baseline = context.get_used_mem_current();
         let mut callbacks = Callbacks::new();
 
