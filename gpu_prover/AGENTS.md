@@ -16,7 +16,7 @@
 - Build: `cargo build -p gpu_prover`
 - Test: `cargo test -p gpu_prover`
 - Bench: `cargo bench -p gpu_prover`
-- For compute-heavy tests, use `cargo test -p gpu_prover --release`.
+- For compute-heavy GPU tests or prover flows, use `cargo test -p gpu_prover --release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
 
 ## Build Script
 - Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
