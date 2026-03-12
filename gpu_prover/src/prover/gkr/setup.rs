@@ -85,6 +85,28 @@ impl GpuGKRSetupHost {
     }
 }
 
+fn bind_trace_holder_columns_into_storage<E>(
+    trace_holder: &TraceHolder<BF>,
+    storage: &mut GpuGKRStorage<BF, E>,
+    make_address: impl Fn(usize) -> GKRAddress,
+) {
+    let trace_len = 1usize << trace_holder.log_domain_size;
+    assert_eq!(
+        trace_holder.get_hypercube_evals().len(),
+        trace_holder.columns_count * trace_len,
+        "trace holder backing must be laid out as flat column-major hypercube evals",
+    );
+
+    let backing = trace_holder.raw_hypercube_backing();
+    for column in 0..trace_holder.columns_count {
+        storage.insert_base_field_at_layer(
+            0,
+            make_address(column),
+            GpuBaseFieldPoly::from_arc(backing.clone(), column * trace_len, trace_len),
+        );
+    }
+}
+
 pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) host: Arc<GpuGKRSetupHost>,
     pub(crate) trace_holder: TraceHolder<BF>,
@@ -141,18 +163,55 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     }
 
     pub(crate) fn bind_setup_columns_into_storage<E>(&self, storage: &mut GpuGKRStorage<BF, E>) {
-        let backing = self.trace_holder.raw_hypercube_backing();
-        for column in 0..self.host.columns_count {
-            storage.insert_base_field_at_layer(
-                0,
-                GKRAddress::Setup(column),
-                GpuBaseFieldPoly::from_arc(
-                    backing.clone(),
-                    self.host.column_offset(column),
-                    self.host.trace_len,
-                ),
+        assert_eq!(self.trace_holder.columns_count, self.host.columns_count);
+        assert_eq!(
+            1usize << self.trace_holder.log_domain_size,
+            self.host.trace_len
+        );
+        bind_trace_holder_columns_into_storage(&self.trace_holder, storage, GKRAddress::Setup);
+    }
+
+    pub(crate) fn bootstrap_storage<E>(
+        &self,
+        memory_trace_holder: &TraceHolder<BF>,
+        witness_trace_holder: &TraceHolder<BF>,
+    ) -> GpuGKRStorage<BF, E> {
+        for (label, trace_holder) in [
+            ("memory", memory_trace_holder),
+            ("witness", witness_trace_holder),
+        ] {
+            assert_eq!(
+                trace_holder.log_domain_size, self.trace_holder.log_domain_size,
+                "{label} trace holder must match setup trace length",
+            );
+            assert_eq!(
+                trace_holder.log_lde_factor, self.trace_holder.log_lde_factor,
+                "{label} trace holder must match setup LDE factor",
+            );
+            assert_eq!(
+                trace_holder.log_rows_per_leaf, self.trace_holder.log_rows_per_leaf,
+                "{label} trace holder must match setup rows per leaf",
+            );
+            assert_eq!(
+                trace_holder.log_tree_cap_size, self.trace_holder.log_tree_cap_size,
+                "{label} trace holder must match setup tree cap size",
             );
         }
+
+        let mut storage = GpuGKRStorage::default();
+        self.bind_setup_columns_into_storage(&mut storage);
+        bind_trace_holder_columns_into_storage(
+            memory_trace_holder,
+            &mut storage,
+            GKRAddress::BaseLayerMemory,
+        );
+        bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        );
+
+        storage
     }
 
     pub(crate) fn prepare_lookup_runtime_data<E>(
@@ -481,6 +540,7 @@ fn copy_host_allocation<T: Copy>(
 #[cfg(test)]
 mod tests {
     use std::alloc::Global;
+    use std::ops::DerefMut;
     use std::sync::Arc;
 
     use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
@@ -494,6 +554,8 @@ mod tests {
     use worker::Worker;
 
     use super::*;
+    use crate::ops::simple::set_by_ref;
+    use crate::primitives::field::E4;
     use crate::prover::test_utils::make_test_context;
 
     fn make_test_cpu_setup(
@@ -554,6 +616,58 @@ mod tests {
                 MerkleTreeCapVarLength { cap }
             })
             .collect_vec()
+    }
+
+    fn materialize_trace_holder_from_values(
+        values: &[BF],
+        columns_count: usize,
+        trace_len: usize,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        context: &ProverContext,
+    ) -> TraceHolder<BF> {
+        let mut source = context
+            .alloc(values.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy(&mut source, values).unwrap();
+        let mut trace_holder = TraceHolder::<BF>::new(
+            trace_len.trailing_zeros(),
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            TreesCacheMode::CachePartial,
+            context,
+        )
+        .unwrap();
+        trace_holder
+            .materialize_and_commit_from_hypercube_evals(&source, context)
+            .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        trace_holder
+    }
+
+    fn copy_base_poly_from_storage(
+        storage: &GpuGKRStorage<BF, E4>,
+        address: GKRAddress,
+        context: &ProverContext,
+    ) -> Vec<BF> {
+        let poly = storage.get_base_layer(address);
+        let mut tmp = context
+            .alloc(poly.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        set_by_ref(
+            &poly.as_device_chunk(),
+            tmp.deref_mut(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let mut host = vec![BF::ZERO; poly.len()];
+        memory_copy(&mut host, &tmp).unwrap();
+        host
     }
 
     #[test]
@@ -698,5 +812,95 @@ mod tests {
             transfer.trace_holder.get_tree_caps(),
             fresh_holder.get_tree_caps()
         );
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
+        let trace_len = 1usize << 10;
+        let lde_factor = 2usize;
+        let tree_cap_size = 4usize;
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let log_rows_per_leaf = 1u32;
+        let log_tree_cap_size = tree_cap_size.trailing_zeros();
+        let setup = make_test_cpu_setup(trace_len, 2, 32);
+        let context = make_test_context(256, 64);
+
+        let host = Arc::new(
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                &setup,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                &context,
+            )
+            .unwrap(),
+        );
+        let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+        transfer.schedule_transfer(&context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+
+        let memory_columns = 2usize;
+        let witness_columns = 3usize;
+        let memory_values = (0..memory_columns * trace_len)
+            .map(|i| BF::from_u32_unchecked(i as u32 + 1))
+            .collect_vec();
+        let witness_values = (0..witness_columns * trace_len)
+            .map(|i| BF::from_u32_unchecked(i as u32 + 1000))
+            .collect_vec();
+        let memory_trace_holder = materialize_trace_holder_from_values(
+            &memory_values,
+            memory_columns,
+            trace_len,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        );
+        let witness_trace_holder = materialize_trace_holder_from_values(
+            &witness_values,
+            witness_columns,
+            trace_len,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        );
+
+        let storage = transfer.bootstrap_storage::<E4>(&memory_trace_holder, &witness_trace_holder);
+        assert_eq!(storage.layers.len(), 1);
+        assert!(storage.layers[0].extension_field_inputs.is_empty());
+
+        for column in 0..setup.hypercube_evals.len() {
+            let poly = storage.get_base_layer(GKRAddress::Setup(column));
+            assert_eq!(poly.offset(), column * trace_len);
+            assert_eq!(
+                copy_base_poly_from_storage(&storage, GKRAddress::Setup(column), &context),
+                &setup.hypercube_evals[column][..]
+            );
+        }
+        for column in 0..memory_columns {
+            let expected = &memory_values[column * trace_len..(column + 1) * trace_len];
+            assert_eq!(
+                copy_base_poly_from_storage(
+                    &storage,
+                    GKRAddress::BaseLayerMemory(column),
+                    &context
+                ),
+                expected,
+            );
+        }
+        for column in 0..witness_columns {
+            let expected = &witness_values[column * trace_len..(column + 1) * trace_len];
+            assert_eq!(
+                copy_base_poly_from_storage(
+                    &storage,
+                    GKRAddress::BaseLayerWitness(column),
+                    &context
+                ),
+                expected,
+            );
+        }
     }
 }

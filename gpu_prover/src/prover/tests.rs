@@ -1,5 +1,9 @@
-use super::gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
+use super::gkr::{
+    setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
+    GpuGKRStorage,
+};
 use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::simple::set_by_ref;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
 use crate::primitives::context::ProverContext;
@@ -167,19 +171,15 @@ fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
         .collect_vec()
 }
 
-fn gpu_trace_caps_from_flat_columns(
-    values: &[BF],
+fn materialize_trace_holder_from_columns(
+    values: &DeviceSlice<BF>,
     columns_count: usize,
     trace_len: usize,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_tree_cap_size: u32,
     context: &ProverContext,
-) -> Vec<MerkleTreeCapVarLength> {
-    let mut source_device = context
-        .alloc(values.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy(&mut source_device, values).unwrap();
+) -> TraceHolder<BF> {
     let mut trace_holder = TraceHolder::<BF>::new(
         trace_len.trailing_zeros(),
         log_lde_factor,
@@ -191,10 +191,50 @@ fn gpu_trace_caps_from_flat_columns(
     )
     .unwrap();
     trace_holder
-        .materialize_and_commit_from_hypercube_evals(&source_device, context)
+        .materialize_and_commit_from_hypercube_evals(values, context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    trace_holder.get_tree_caps()
+    trace_holder
+}
+
+fn copy_base_poly_from_gpu_storage<E: Field>(
+    storage: &GpuGKRStorage<BF, E>,
+    address: GKRAddress,
+    context: &ProverContext,
+) -> Vec<BF> {
+    let poly = storage.get_base_layer(address);
+    let mut tmp = context
+        .alloc(poly.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    set_by_ref(
+        &poly.as_device_chunk(),
+        tmp.deref_mut(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut host = vec![BF::ZERO; poly.len()];
+    memory_copy(&mut host, &tmp).unwrap();
+    host
+}
+
+fn assert_storage_base_columns_match_cpu_trace<Column: AsRef<[BF]>, E: Field>(
+    storage: &GpuGKRStorage<BF, E>,
+    make_address: impl Fn(usize) -> GKRAddress,
+    cpu_columns: &[Column],
+    context: &ProverContext,
+) {
+    for (column_idx, cpu_column) in cpu_columns.iter().enumerate() {
+        let address = make_address(column_idx);
+        let gpu_column = copy_base_poly_from_gpu_storage(storage, address, context);
+        assert_eq!(
+            gpu_column,
+            cpu_column.as_ref(),
+            "storage column {:?} diverged",
+            address,
+        );
+    }
 }
 
 fn assert_flat_columns_match_cpu_trace<Column: AsRef<[BF]>>(
@@ -463,7 +503,7 @@ fn run_basic_unrolled_test() {
     gpu_setup_transfer.schedule_transfer(&context).unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
-    let (h_memory, h_witness) = {
+    let (d_memory, d_witness) = {
         let circuit_type = UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop;
         let memory_layout = &add_sub_circuit.memory_layout;
         let witness_layout = &add_sub_circuit.witness_layout;
@@ -572,7 +612,7 @@ fn run_basic_unrolled_test() {
             &full_trace.column_major_witness_trace,
             NUM_CYCLES_PER_CHUNK,
         );
-        (h_memory, h_witness)
+        (d_memory, d_witness)
     };
 
     let now = std::time::Instant::now();
@@ -593,9 +633,8 @@ fn run_basic_unrolled_test() {
     let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
     assert_eq!(trace_holder_caps, setup_caps);
 
-    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
-    let gpu_memory_caps = gpu_trace_caps_from_flat_columns(
-        &h_memory,
+    let memory_trace_holder = materialize_trace_holder_from_columns(
+        &d_memory,
         add_sub_circuit.memory_layout.total_width,
         trace_len,
         log_lde_factor,
@@ -603,11 +642,11 @@ fn run_basic_unrolled_test() {
         log_tree_cap_size,
         &context,
     );
-    assert_eq!(gpu_memory_caps, memory_caps);
+    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    assert_eq!(memory_trace_holder.get_tree_caps(), memory_caps);
 
-    let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = gpu_trace_caps_from_flat_columns(
-        &h_witness,
+    let witness_trace_holder = materialize_trace_holder_from_columns(
+        &d_witness,
         add_sub_circuit.witness_layout.total_width,
         trace_len,
         log_lde_factor,
@@ -615,7 +654,36 @@ fn run_basic_unrolled_test() {
         log_tree_cap_size,
         &context,
     );
-    assert_eq!(gpu_witness_caps, witness_caps);
+    let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    assert_eq!(witness_trace_holder.get_tree_caps(), witness_caps);
+
+    let gpu_gkr_storage =
+        gpu_setup_transfer.bootstrap_storage::<E4>(&memory_trace_holder, &witness_trace_holder);
+    assert_eq!(gpu_gkr_storage.layers.len(), 1);
+    assert!(gpu_gkr_storage.layers[0].extension_field_inputs.is_empty());
+    let setup_columns = setup
+        .hypercube_evals
+        .iter()
+        .map(|column| column.as_ref().as_ref())
+        .collect_vec();
+    assert_storage_base_columns_match_cpu_trace(
+        &gpu_gkr_storage,
+        GKRAddress::Setup,
+        &setup_columns,
+        &context,
+    );
+    assert_storage_base_columns_match_cpu_trace(
+        &gpu_gkr_storage,
+        GKRAddress::BaseLayerMemory,
+        &full_trace.column_major_memory_trace,
+        &context,
+    );
+    assert_storage_base_columns_match_cpu_trace(
+        &gpu_gkr_storage,
+        GKRAddress::BaseLayerWitness,
+        &full_trace.column_major_witness_trace,
+        &context,
+    );
 
     let mut transcript_input = vec![];
     external_challenges.flatten_into_buffer(&mut transcript_input);
