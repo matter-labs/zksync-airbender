@@ -64,6 +64,8 @@ pub(crate) struct TraceHolder<T> {
     pub(crate) log_rows_per_leaf: u32,
     pub(crate) log_tree_cap_size: u32,
     pub(crate) columns_count: usize,
+    raw_hypercube_evals: std::sync::Arc<DeviceAllocation<T>>,
+    cosets_materialized: bool,
     pub(crate) cosets: CosetsHolder<T>,
     pub(crate) trees: TreesHolder,
     pub(crate) tree_caps: Option<Vec<HostAllocation<[Digest]>>>,
@@ -80,6 +82,10 @@ impl<T> TraceHolder<T> {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let instances_count = 1usize << log_lde_factor;
+        let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
+            columns_count << log_domain_size,
+            AllocationPlacement::Bottom,
+        )?);
         let cosets = CosetsHolder::Full(allocate_cosets(
             instances_count,
             log_domain_size,
@@ -107,6 +113,8 @@ impl<T> TraceHolder<T> {
             log_rows_per_leaf,
             log_tree_cap_size,
             columns_count,
+            raw_hypercube_evals,
+            cosets_materialized: false,
             cosets,
             trees,
             tree_caps: None,
@@ -138,8 +146,30 @@ impl<T> TraceHolder<T> {
         move || unsafe { Transcript::commit_with_seed(seed_accessor.get_mut(), &input) }
     }
 
+    pub(crate) fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
+        self.raw_hypercube_evals.as_ref()
+    }
+
+    pub(crate) fn get_uninit_hypercube_evals_mut(&mut self) -> &mut DeviceSlice<T> {
+        self.cosets_materialized = false;
+        std::sync::Arc::get_mut(&mut self.raw_hypercube_evals)
+            .expect("raw hypercube allocation must not be shared while being initialized")
+    }
+
+    pub(crate) fn raw_hypercube_backing(&self) -> std::sync::Arc<DeviceAllocation<T>> {
+        std::sync::Arc::clone(&self.raw_hypercube_evals)
+    }
+
+    pub(crate) fn are_cosets_materialized(&self) -> bool {
+        self.cosets_materialized
+    }
+
     pub(crate) fn get_coset_evaluations(&self, coset_index: usize) -> &DeviceSlice<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
+        assert!(
+            self.cosets_materialized,
+            "coset evaluations must be materialized before access"
+        );
         match &self.cosets {
             CosetsHolder::Full(evaluations) => &evaluations[coset_index],
         }
@@ -162,16 +192,44 @@ impl<T> TraceHolder<T> {
     pub(crate) fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
         self.get_uninit_coset_evaluations_mut(0)
     }
+
+    pub(crate) fn get_uninit_tree_mut(
+        &mut self,
+        coset_index: usize,
+    ) -> Option<&mut DeviceSlice<Digest>> {
+        assert!(coset_index < (1usize << self.log_lde_factor));
+        match &mut self.trees {
+            TreesHolder::Full(trees) => Some(&mut trees[coset_index]),
+            TreesHolder::Partial(trees) => Some(&mut trees[coset_index]),
+            TreesHolder::None => None,
+        }
+    }
+
+    pub(crate) fn clone_tree_caps_from_host(
+        &mut self,
+        source: &[HostAllocation<[Digest]>],
+        context: &ProverContext,
+    ) {
+        assert_eq!(source.len(), 1usize << self.log_lde_factor);
+        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
+        for (src, dst) in source.iter().zip(caps.iter_mut()) {
+            unsafe {
+                dst.get_mut_accessor()
+                    .get_mut()
+                    .copy_from_slice(src.get_accessor().get());
+            }
+        }
+        assert!(self.tree_caps.replace(caps).is_none());
+    }
 }
 
 impl TraceHolder<BF> {
-    pub(crate) fn materialize_from_hypercube_evals(
+    pub(crate) fn materialize_cosets_from_owned_hypercube(
         &mut self,
-        source: &DeviceSlice<BF>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        let source = self.raw_hypercube_backing();
         let domain_size = 1usize << self.log_domain_size;
-        assert_eq!(source.len(), self.columns_count * domain_size);
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
@@ -201,7 +259,30 @@ impl TraceHolder<BF> {
                 }
             }
         }
+        self.cosets_materialized = true;
         Ok(())
+    }
+
+    pub(crate) fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
+        if !self.cosets_materialized {
+            self.materialize_cosets_from_owned_hypercube(context)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn materialize_from_hypercube_evals(
+        &mut self,
+        source: &DeviceSlice<BF>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let domain_size = 1usize << self.log_domain_size;
+        assert_eq!(source.len(), self.columns_count * domain_size);
+        memory_copy_async(
+            self.get_uninit_hypercube_evals_mut(),
+            source,
+            context.get_exec_stream(),
+        )?;
+        self.materialize_cosets_from_owned_hypercube(context)
     }
 
     fn commit_and_transfer_tree_caps(
@@ -266,6 +347,7 @@ impl TraceHolder<BF> {
     }
 
     pub(crate) fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.ensure_cosets_materialized(context)?;
         let tree_caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
         assert!(self.tree_caps.replace(tree_caps).is_none());
         for coset_index in 0..(1usize << self.log_lde_factor) {
@@ -284,11 +366,12 @@ impl TraceHolder<BF> {
     }
 
     pub fn get_leafs_and_merkle_paths(
-        &self,
+        &mut self,
         coset_index: usize,
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<LeafsAndMerklePaths> {
+        self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
         let log_domain_size = self.log_domain_size;
         let log_rows_per_index = self.log_rows_per_leaf;
@@ -783,7 +866,7 @@ mod test {
     fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32) {
         let worker = Worker::new();
         let context = make_context();
-        let log_domain_size = 4u32;
+        let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
         let log_lde_factor = 2u32;
         let domain_size = 1usize << log_domain_size;
         let columns_count = 3usize;
@@ -812,6 +895,10 @@ mod test {
         trace_holder
             .materialize_from_hypercube_evals(&source_device, &context)
             .unwrap();
+        let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
+        memory_copy(&mut raw_hypercube, trace_holder.get_hypercube_evals()).unwrap();
+        assert_eq!(raw_hypercube, source_host);
+        assert!(trace_holder.are_cosets_materialized());
 
         match &trace_holder.cosets {
             CosetsHolder::Full(cosets) => {
@@ -837,6 +924,53 @@ mod test {
             &worker,
         );
         assert_eq!(gpu_caps, cpu_caps);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn trace_holder_lazy_coset_materialization_matches_cpu() {
+        let worker = Worker::new();
+        let context = make_context();
+        let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
+        let log_lde_factor = 2u32;
+        let columns_count = 3usize;
+        let (source_host, cpu_cosets) = make_source_host_and_cpu_cosets(
+            log_domain_size,
+            log_lde_factor,
+            columns_count,
+            &worker,
+        );
+
+        let mut trace_holder = TraceHolder::<BF>::new(
+            log_domain_size,
+            log_lde_factor,
+            0,
+            log_lde_factor + 1,
+            columns_count,
+            TreesCacheMode::CachePartial,
+            &context,
+        )
+        .unwrap();
+        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &source_host).unwrap();
+
+        let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
+        memory_copy(&mut raw_hypercube, trace_holder.get_hypercube_evals()).unwrap();
+        assert_eq!(raw_hypercube, source_host);
+        assert!(!trace_holder.are_cosets_materialized());
+
+        trace_holder.ensure_cosets_materialized(&context).unwrap();
+        assert!(trace_holder.are_cosets_materialized());
+
+        match &trace_holder.cosets {
+            CosetsHolder::Full(cosets) => {
+                for (coset_idx, coset) in cosets.iter().enumerate() {
+                    let mut gpu = vec![BF::ZERO; coset.len()];
+                    memory_copy(&mut gpu, coset).unwrap();
+                    assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
+                }
+            }
+        }
     }
 
     #[test]
