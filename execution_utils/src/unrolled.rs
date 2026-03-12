@@ -489,43 +489,117 @@ mod test {
     use risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
     use risc_v_simulator::cycle::MachineConfig;
     use std::alloc::Global;
+
+    struct TestProgram {
+        binary_image: Vec<u8>,
+        binary_image_u32: Vec<u32>,
+        text_section: Vec<u8>,
+        text_section_u32: Vec<u32>,
+    }
+
+    fn load_test_program(binary_path: &str, text_path: &str) -> TestProgram {
+        let (binary_image, binary_image_u32) = setups::read_and_pad_binary(&Path::new(binary_path));
+        let (text_section, text_section_u32) = setups::read_and_pad_binary(&Path::new(text_path));
+
+        TestProgram {
+            binary_image,
+            binary_image_u32,
+            text_section,
+            text_section_u32,
+        }
+    }
+
+    fn prepare_unrolled_program<C: MachineConfig>(
+        program: &TestProgram,
+    ) -> (UnrolledProgramSetup, CompiledCircuitsSet) {
+        let program_setup = compute_setup_for_machine_configuration::<C>(
+            &program.binary_image,
+            &program.text_section,
+        );
+        let compiled_layouts =
+            setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<C>(
+                &program.binary_image_u32,
+            );
+
+        (program_setup, compiled_layouts)
+    }
+
+    fn prove_unrolled_test_program<C: MachineConfig>(
+        program: &TestProgram,
+        cycles_bound: usize,
+        non_determinism_source: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+        ram_bound: usize,
+        worker: &prover::worker::Worker,
+    ) -> UnrolledProgramProof {
+        prove_unrolled_for_machine_configuration_into_program_proof::<C>(
+            &program.binary_image_u32,
+            &program.text_section_u32,
+            cycles_bound,
+            non_determinism_source,
+            ram_bound,
+            worker,
+        )
+    }
+
+    fn verify_unrolled_test_program(
+        proof: &UnrolledProgramProof,
+        program_setup: &UnrolledProgramSetup,
+        compiled_layouts: &CompiledCircuitsSet,
+        is_base_layer: bool,
+    ) -> [u32; 16] {
+        verify_unrolled_layer_proof(proof, program_setup, compiled_layouts, is_base_layer)
+            .expect("proof should verify")
+    }
+
+    fn expected_base_layer_output(
+        program_setup: &UnrolledProgramSetup,
+        output_registers: [u32; 8],
+    ) -> [u32; 16] {
+        let (recursion_chain_hash, _) =
+            UnrolledProgramSetup::begin_recursion_chain(&program_setup.end_params);
+        let mut expected_output = [0u32; 16];
+        expected_output[..8].copy_from_slice(&output_registers);
+        expected_output[8..].copy_from_slice(&recursion_chain_hash);
+
+        expected_output
+    }
 
     #[test]
     #[ignore = "manual heavy proving test"]
     #[serial_test::serial]
     fn test_prove_unrolled_fibonacci() {
         skip_if_ci!();
-        let (_, binary_image) =
-            setups::read_and_pad_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
-        let (_, text_section) =
-            setups::read_and_pad_binary(&Path::new("../examples/basic_fibonacci/app.text"));
+        let program = load_test_program(
+            "../examples/basic_fibonacci/app.bin",
+            "../examples/basic_fibonacci/app.text",
+        );
 
         let worker = prover::worker::Worker::new_with_num_threads(32);
 
         let cycles_bound = 1 << 24;
-        let rom_bound = 1 << 32;
-        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
+        let ram_bound = 1 << 32;
+        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![]);
+        let expected_output_registers = [144, 0, 0, 0, 0, 0, 0, 0];
 
-        let proofs = prove_unrolled_with_replayer_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
-            &binary_image,
-            &text_section,
+        let (program_setup, compiled_layouts) =
+            prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
+            &program,
             cycles_bound,
             non_determinism_source,
-            rom_bound,
+            ram_bound,
             &worker,
         );
+        let output =
+            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
 
-        println!("Proving completed, preparing to verify");
-
-        let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(&binary_image, &text_section, proofs);
-
-        assert!(is_valid);
+        assert_eq!(
+            output,
+            expected_base_layer_output(&program_setup, expected_output_registers)
+        );
     }
 
     #[test]
@@ -533,188 +607,194 @@ mod test {
     #[serial_test::serial]
     fn test_prove_unrolled_hashed_fibonacci() {
         skip_if_ci!();
-        let (_, binary_image) =
-            setups::read_and_pad_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
-        let (_, text_section) =
-            setups::read_and_pad_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+        let program = load_test_program(
+            "../examples/hashed_fibonacci/app.bin",
+            "../examples/hashed_fibonacci/app.text",
+        );
 
         let worker = prover::worker::Worker::new_with_num_threads(8);
 
         let cycles_bound = 1 << 24;
-        let rom_bound = 1 << 32;
+        let ram_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
+        let expected_output_registers = [1597, 15, 2_242_890_078, 0, 0, 0, 0, 0];
 
-        let proofs = prove_unrolled_with_replayer_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(
-            &binary_image,
-            &text_section,
+        let (program_setup, compiled_layouts) =
+            prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
+            &program,
             cycles_bound,
             non_determinism_source,
-            rom_bound,
+            ram_bound,
+            &worker,
+        );
+        let output =
+            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
+
+        assert_eq!(
+            output,
+            expected_base_layer_output(&program_setup, expected_output_registers)
+        );
+    }
+
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
+    fn test_prove_unrolled_bigint_with_control() {
+        skip_if_ci!();
+        let program = load_test_program(
+            "../examples/bigint_with_control/app.bin",
+            "../examples/bigint_with_control/app.text",
+        );
+
+        let worker = prover::worker::Worker::new_with_num_threads(8);
+
+        let cycles_bound = 1 << 20;
+        let ram_bound = 1 << 32;
+        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![]);
+        let expected_output_registers = [0, 0, 1, 0, 0, 0, 0, 0];
+
+        let (program_setup, compiled_layouts) =
+            prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
+            &program,
+            cycles_bound,
+            non_determinism_source,
+            ram_bound,
             &worker,
         );
 
-        println!("Proving completed, preparing to verify");
+        let bigint_proofs = program_proof
+            .delegation_proofs
+            .get(
+                &common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+            )
+            .expect("bigint example should emit bigint delegation proofs");
+        assert!(!bigint_proofs.is_empty());
 
-        let is_valid = verify_unrolled_base_layer_for_machine_configuration::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-        >(&binary_image, &text_section, proofs);
-
-        assert!(is_valid);
+        let output =
+            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
+        assert_eq!(
+            output,
+            expected_base_layer_output(&program_setup, expected_output_registers)
+        );
     }
 
-    #[allow(dead_code)]
-    pub fn prove_unrolled_for_machine_configuration<C: MachineConfig>(
-        binary_image: &[u32],
-        text_section: &[u32],
-        cycles_bound: usize,
-        non_determinism: impl NonDeterminismCSRSource<VectorMemoryImplWithRom>,
-        ram_bound: usize,
-        worker: &prover::worker::Worker,
-    ) -> (
-        BTreeMap<u8, Vec<UnrolledModeProof>>,
-        Vec<UnrolledModeProof>,
-        Vec<(u32, Vec<Proof>)>,
-        [FinalRegisterValue; 32],
-        (u32, TimestampScalar),
-        u64,
-    ) {
-        println!("Performing precomputations for circuit families");
-        let families_precomps =
-            setups::unrolled_circuits::get_unrolled_circuits_setups_for_machine_type::<
-                C,
-                Global,
-                Global,
-            >(binary_image, &text_section, &worker);
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial]
+    fn test_prove_unrolled_keccak_f1600() {
+        skip_if_ci!();
+        let program = load_test_program(
+            "../riscv_transpiler/examples/keccak_f1600/app.bin",
+            "../riscv_transpiler/examples/keccak_f1600/app.text",
+        );
 
-        println!("Performing precomputations for inits and teardowns");
-        let inits_and_teardowns_precomps =
-            setups::unrolled_circuits::inits_and_teardowns_circuit_setup(
-                &binary_image,
-                &text_section,
-                worker,
-            );
+        let worker = prover::worker::Worker::new_with_num_threads(8);
 
-        println!("Performing precomputations for delegation circuits");
-        let delegation_precomputations = setups::all_delegation_circuits_precomputations(worker);
+        let cycles_bound = 1 << 21;
+        let ram_bound = 1 << 32;
+        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![]);
+        let expected_output_registers = [1, 0, 0, 0, 0, 0, 0, 0];
 
-        let (
-            main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs,
-            register_final_state,
-            (final_pc, final_timestamp),
-            pow_challenge,
-        ) = prover_examples::unrolled::prove_unrolled_execution::<_, C, Global, 5>(
+        let (program_setup, compiled_layouts) =
+            prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
+            &program,
             cycles_bound,
-            &binary_image,
-            &text_section,
-            non_determinism,
-            &families_precomps,
-            &inits_and_teardowns_precomps,
-            &delegation_precomputations,
+            non_determinism_source,
             ram_bound,
-            worker,
+            &worker,
         );
+        let output =
+            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
 
-        (
-            main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs,
-            register_final_state,
-            (final_pc, final_timestamp),
-            pow_challenge,
-        )
+        assert_eq!(
+            output,
+            expected_base_layer_output(&program_setup, expected_output_registers)
+        );
     }
 
-    pub fn verify_unrolled_base_layer_for_machine_configuration<C: MachineConfig>(
-        binary_image: &[u32],
-        text_section: &[u32],
-        proofs: (
-            BTreeMap<u8, Vec<UnrolledModeProof>>,
-            Vec<UnrolledModeProof>,
-            Vec<(u32, Vec<Proof>)>,
-            [FinalRegisterValue; 32],
-            (u32, TimestampScalar),
-            u64,
-        ),
-    ) -> bool {
-        let (
-            main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs,
-            register_final_state,
-            (final_pc, final_timestamp),
-            pow_challenge,
-        ) = proofs;
-        let compiled_circuits_set =
-            setups::unrolled_circuits::get_unrolled_circuits_artifacts_for_machine_type::<C>(
-                &binary_image,
-            );
+    #[test]
+    #[ignore = "manual heavy recursion proving test"]
+    #[serial_test::serial]
+    fn test_prove_unrolled_recursion_over_hashed_fibonacci() {
+        skip_if_ci!();
 
-        // flatten and set iterator
-
-        let program_proofs = UnrolledProgramProof {
-            final_pc,
-            final_timestamp,
-            circuit_families_proofs: main_proofs,
-            inits_and_teardowns_proofs,
-            delegation_proofs: BTreeMap::from_iter(delegation_proofs.into_iter()),
-            register_final_values: register_final_state,
-            recursion_chain_hash: None,
-            recursion_chain_preimage: None,
-            pow_challenge,
-        };
-
-        for (k, v) in program_proofs.circuit_families_proofs.iter() {
-            println!("{} proofs for family {}", v.len(), k);
-        }
-
-        let responses = program_proofs
-            .flatten_into_responses(C::ALLOWED_DELEGATION_CSRS, &compiled_circuits_set);
-
-        let families_setups = setups::compute_unrolled_circuits_params_for_machine_configuration::<C>(
-            binary_image,
-            text_section,
+        // First, prove a current base-layer program using the replayer path.
+        let base_program = load_test_program(
+            "../examples/hashed_fibonacci/app.bin",
+            "../examples/hashed_fibonacci/app.text",
         );
-        let inits_and_teardowns_setup =
-            setups::compute_inits_and_teardowns_params(&binary_image, &text_section);
 
-        let params = if setups::is_default_machine_configuration::<C>() {
-            full_statement_verifier::unrolled_proof_statement::FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-        } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
-            full_statement_verifier::unrolled_proof_statement::FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-        } else if setups::is_reduced_machine_configuration::<C>() {
-            full_statement_verifier::unrolled_proof_statement::RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS
-        } else {
-            panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-        };
+        let worker = prover::worker::Worker::new_with_num_threads(8);
+        let base_cycles_bound = 1 << 24;
+        let base_ram_bound = 1 << 32;
+        let base_non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        println!("Running the verifier");
+        let (base_program_setup, base_compiled_layouts) =
+            prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&base_program);
+        let base_program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
+            &base_program,
+            base_cycles_bound,
+            base_non_determinism_source,
+            base_ram_bound,
+            &worker,
+        );
 
-        let result = std::thread::Builder::new()
-                .name("verifier thread".to_string())
-                .stack_size(1 << 27)
-                .spawn(move || {
+        // Then feed that proof into the checked-in recursion verifier binary and prove
+        // that program through the same replayer/transpiler path used by the current stack.
+        let recursion_program = load_test_program(
+            "../tools/verifier/recursion_in_unrolled_layer.bin",
+            "../tools/verifier/recursion_in_unrolled_layer.text",
+        );
+        let recursion_cycles_bound = 1 << 26;
+        let recursion_ram_bound = 1 << 30;
+        let recursion_input = flatten_proof_into_responses_for_unrolled_recursion(
+            &base_program_proof,
+            &base_program_setup,
+            &base_compiled_layouts,
+            true,
+        );
+        let recursion_non_determinism_source = QuasiUARTSource::new_with_reads(recursion_input);
+        let (recursion_program_setup, recursion_compiled_layouts) = prepare_unrolled_program::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(&recursion_program);
+        let expected_base_output = verify_unrolled_test_program(
+            &base_program_proof,
+            &base_program_setup,
+            &base_compiled_layouts,
+            true,
+        );
+        let (previous_chain_hash, previous_chain_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_program_setup.end_params);
+        let (expected_chain_hash, _) = UnrolledProgramSetup::continue_recursion_chain(
+            &recursion_program_setup.end_params,
+            &previous_chain_hash,
+            &previous_chain_preimage,
+        );
 
-            let families_setups: Vec<_> = families_setups.iter().map(|el| &el.setup_caps).collect();
+        let mut recursion_program_proof =
+            prove_unrolled_test_program::<IWithoutByteAccessIsaConfigWithDelegation>(
+                &recursion_program,
+                recursion_cycles_bound,
+                recursion_non_determinism_source,
+                recursion_ram_bound,
+                &worker,
+            );
+        recursion_program_proof.recursion_chain_hash = Some(previous_chain_hash);
+        recursion_program_proof.recursion_chain_preimage = Some(previous_chain_preimage);
 
-            let it = responses.into_iter();
-            prover::nd_source_std::set_iterator(it);
+        let result = verify_unrolled_test_program(
+            &recursion_program_proof,
+            &recursion_program_setup,
+            &recursion_compiled_layouts,
+            false,
+        );
 
-            #[allow(invalid_value)]
-            let _ = unsafe {
-                full_statement_verifier::unrolled_proof_statement::verify_full_statement_for_unrolled_circuits::<true, { setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS }>(
-                    &families_setups,
-                    params,
-                    (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
-                    full_statement_verifier::imports::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
-                )
-            };
-        })
-        .expect("must spawn verifier thread").join();
+        let mut expected_result = expected_base_output;
+        expected_result[8..].copy_from_slice(&expected_chain_hash);
 
-        result.is_ok()
+        assert_eq!(result, expected_result);
     }
 }
