@@ -325,9 +325,9 @@ impl ProgramProver {
         match &self.inner {
             ProgramProverInner::Cpu => self.continue_artifact_cpu(artifact),
             #[cfg(feature = "gpu")]
-            ProgramProverInner::Gpu(_) => Err(
-                "continue-proof currently supports only the CPU backend".to_string(),
-            ),
+            ProgramProverInner::Gpu(_) => {
+                Err("continue-proof currently supports only the CPU backend".to_string())
+            }
         }
     }
 
