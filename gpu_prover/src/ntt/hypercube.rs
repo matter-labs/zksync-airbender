@@ -464,6 +464,7 @@ pub(crate) fn hypercube_monomials_to_evals_2_pass(
     Ok(())
 }
 
+#[allow(unused)]
 pub fn hypercube_monomials_to_evals(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -495,6 +496,7 @@ pub fn hypercube_monomials_to_evals(
     Ok(())
 }
 
+#[allow(unused)]
 pub fn hypercube_evals_to_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
