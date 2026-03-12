@@ -17,7 +17,7 @@ use crate::ops::blake2s::{
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
-use crate::primitives::field::{BF, E4};
+use crate::primitives::field::BF;
 
 pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = crate::primitives::utils::LOG_WARP_SIZE;
 
@@ -44,12 +44,14 @@ pub(crate) struct LeafsAndMerklePaths {
     pub merkle_paths: HostAllocation<[Digest]>,
 }
 
+#[allow(dead_code)] // Used by the old query workflow and will be wired back into the new prover.
 pub(crate) struct LeafsAndMerklePathsAccessors {
     pub leafs: UnsafeAccessor<[BF]>,
     pub merkle_paths: UnsafeAccessor<[Digest]>,
 }
 
 impl LeafsAndMerklePaths {
+    #[allow(dead_code)] // Used by the old query workflow and will be wired back into the new prover.
     pub(crate) fn get_accessor(&self) -> LeafsAndMerklePathsAccessors {
         LeafsAndMerklePathsAccessors {
             leafs: self.leafs.get_accessor(),
@@ -135,11 +137,13 @@ impl<T> TraceHolder<T> {
         get_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
     }
 
+    #[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
     fn flatten_tree_caps(&self) -> Vec<u32> {
         let tree_caps_accessors = self.get_tree_caps_accessors();
         flatten_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
     }
 
+    #[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
     pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
         let seed_accessor = seed.get_mut_accessor();
         let input = self.flatten_tree_caps();
@@ -175,6 +179,7 @@ impl<T> TraceHolder<T> {
         }
     }
 
+    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
     pub(crate) fn get_uninit_coset_evaluations_mut(
         &mut self,
         coset_index: usize,
@@ -185,10 +190,12 @@ impl<T> TraceHolder<T> {
         }
     }
 
+    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
     pub(crate) fn get_evaluations(&self) -> &DeviceSlice<T> {
         self.get_coset_evaluations(0)
     }
 
+    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
     pub(crate) fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
         self.get_uninit_coset_evaluations_mut(0)
     }
@@ -472,16 +479,6 @@ impl TraceHolder<BF> {
     }
 }
 
-impl TraceHolder<E4> {
-    pub(crate) fn materialize_from_hypercube_evals(
-        &mut self,
-        _source: &DeviceSlice<E4>,
-        _context: &ProverContext,
-    ) -> CudaResult<()> {
-        unimplemented!("TraceHolder<E4> is intentionally out of scope in the BabyBear bring-up")
-    }
-}
-
 pub(crate) fn allocate_coset<T>(
     log_domain_size: u32,
     columns_count: usize,
@@ -628,6 +625,7 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     }
 }
 
+#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
 fn flatten_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
@@ -652,6 +650,14 @@ fn flatten_tree_caps_for_accessors(
     result
 }
 
+#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
+pub(crate) fn flatten_tree_caps(
+    accessors: &[UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) -> Vec<u32> {
+    flatten_tree_caps_for_accessors(accessors, log_lde_factor)
+}
+
 fn get_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
@@ -665,6 +671,14 @@ fn get_tree_caps_for_accessors(
             MerkleTreeCapVarLength { cap }
         })
         .collect_vec()
+}
+
+#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
+pub(crate) fn get_tree_caps(
+    accessors: &[UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) -> Vec<MerkleTreeCapVarLength> {
+    get_tree_caps_for_accessors(accessors, log_lde_factor)
 }
 
 #[cfg(test)]
@@ -682,14 +696,7 @@ mod test {
 
     use super::*;
     use crate::allocator::tracker::AllocationPlacement;
-    use crate::primitives::context::ProverContextConfig;
-
-    fn make_context() -> ProverContext {
-        let mut config = ProverContextConfig::default();
-        config.max_device_allocation_blocks_count = Some(256);
-        config.host_allocator_blocks_count = 32;
-        ProverContext::new(&config).unwrap()
-    }
+    use crate::prover::test_utils::make_test_context;
 
     fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Vec<BF>> {
         let n = coeffs.len();
@@ -865,7 +872,7 @@ mod test {
 
     fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32) {
         let worker = Worker::new();
-        let context = make_context();
+        let context = make_test_context(256, 32);
         let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
         let log_lde_factor = 2u32;
         let domain_size = 1usize << log_domain_size;
@@ -931,7 +938,7 @@ mod test {
     #[serial]
     fn trace_holder_lazy_coset_materialization_matches_cpu() {
         let worker = Worker::new();
-        let context = make_context();
+        let context = make_test_context(256, 32);
         let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
         let log_lde_factor = 2u32;
         let columns_count = 3usize;
@@ -992,7 +999,7 @@ mod test {
     #[serial]
     fn trace_holder_queries_match_across_tree_cache_modes() {
         let worker = Worker::new();
-        let context = make_context();
+        let context = make_test_context(256, 32);
         let log_domain_size = 9u32;
         let log_lde_factor = 2u32;
         let log_rows_per_leaf = 2u32;

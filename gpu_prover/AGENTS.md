@@ -17,6 +17,7 @@
 - Test: `cargo test -p gpu_prover`
 - Bench: `cargo bench -p gpu_prover`
 - For compute-heavy GPU tests or prover flows, use `cargo test -p gpu_prover --release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
+- For Rust GPU tests, compile first with `cargo test --no-run`, then run the produced test binary under `.agents/bin/with_gpu_lock.sh`. Do not run locked `cargo test ...` directly when the binary can be built first.
 
 ## Build Script
 - Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
