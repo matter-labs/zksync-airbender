@@ -68,6 +68,7 @@ struct UnrolledMemoryLayout {
   const RamQuery shuffle_ram_access_sets[MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
   const MachineStatePermutationDescription machine_state;
   const DecoderPlacementDescription decoder_input;
+  const u32 decoder_lookup_offset;
 };
 
 struct AuxLayoutData {
@@ -225,7 +226,7 @@ DEVICE_FORCEINLINE void process_machine_state_assuming_preprocessed_decoder(cons
     write_u8_value(funct3_column, funct3_value, witness);
     PRINT_U8(W, funct3_column, funct3_value);
   }
-  decoder_lookup_mapping[index] = execute_value ? initial_pc_value / 4 : 0xffffffff;
+  decoder_lookup_mapping[index] = execute_value ? initial_pc_value / 4 + layout.decoder_lookup_offset : 0xffffffff;
 }
 
 template <bool COMPUTE_WITNESS, typename ORACLE>
