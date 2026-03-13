@@ -13,10 +13,10 @@ use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::{BatchInv, batch_inv_in_place};
-use crate::ops::simple::{Add, BinaryOp, Mul, SetByRef, add_into_y, mul_into_y, set_by_ref};
+use crate::ops::complex::{batch_inv_in_place, BatchInv};
+use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, Add, BinaryOp, Mul, SetByRef};
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
@@ -223,15 +223,14 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         self.bootstrap_storage(&stage1.memory_trace_holder, &stage1.witness_trace_holder)
     }
 
-    pub(crate) fn schedule_forward_setup<'b, E>(
+    pub(crate) fn schedule_forward_setup<E>(
         &self,
         compiled_circuit: &GKRCircuitArtifact<BF>,
-        lookup_challenges: UnsafeAccessor<[E]>,
-        callbacks: &mut Callbacks<'b>,
+        lookup_challenges: HostAllocation<[E]>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
-        E: Field + SetByRef + BatchInv + 'b,
+        E: Field + SetByRef + BatchInv + 'static,
         Add: BinaryOp<E, E, E>,
         Add: BinaryOp<BF, E, E>,
         Mul: BinaryOp<BF, E, E>,
@@ -261,6 +260,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         } else {
             None
         };
+        let lookup_challenges_accessor = lookup_challenges.get_accessor();
+        let mut callbacks = Callbacks::new();
 
         let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
         let alpha_powers_accessor = host_lookup_alpha_powers
@@ -272,7 +273,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             .unwrap_or(0);
         callbacks.schedule(
             move || unsafe {
-                let lookup_challenges = lookup_challenges.get();
+                let lookup_challenges = lookup_challenges_accessor.get();
                 assert!(
                     lookup_challenges.len() >= 2,
                     "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
@@ -351,6 +352,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
         Ok(GpuGKRForwardSetup {
             tracing_ranges,
+            lookup_challenges,
+            callbacks,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
             device_lookup_additive_part,
@@ -362,6 +365,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 pub(crate) struct GpuGKRForwardSetup<E> {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     tracing_ranges: Vec<Range>,
+    #[allow(dead_code)] // Keeps challenge source alive until queued callbacks consume it.
+    lookup_challenges: HostAllocation<[E]>,
+    #[allow(dead_code)] // Keeps queued setup callbacks alive until the stream consumes them.
+    callbacks: Callbacks<'static>,
     #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
     host_lookup_additive_part: HostAllocation<[E]>,
     #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.

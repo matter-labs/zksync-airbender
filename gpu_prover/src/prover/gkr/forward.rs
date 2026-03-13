@@ -3,11 +3,11 @@ use std::mem::{align_of, size_of};
 use std::ops::DerefMut;
 
 use cs::definitions::{
-    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    gkr::DECODER_LOOKUP_FORMAL_SET_INDEX, GKRAddress,
+    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, gkr::DECODER_LOOKUP_FORMAL_SET_INDEX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
@@ -17,8 +17,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
@@ -28,8 +28,8 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::gather_rows;
 use crate::ops::complex::BatchInv;
 use crate::ops::simple::{
-    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul, mul_into_x, mul_into_y,
-    set_by_ref, set_by_val, sub_into_x,
+    add_into_y, mul, mul_into_x, mul_into_y, set_arithmetic_sequence, set_by_ref, set_by_val,
+    sub_into_x, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::{
@@ -138,10 +138,6 @@ impl<B, E> GpuGKRForwardOutput<B, E> {
 }
 
 pub(super) struct GpuGKRForwardScratch {
-    #[allow(dead_code)] // Async H2D sources must stay alive until the stream consumes them.
-    even_indexes_host: HostAllocation<[u32]>,
-    #[allow(dead_code)] // Async H2D sources must stay alive until the stream consumes them.
-    odd_indexes_host: HostAllocation<[u32]>,
     even_indexes_device: DeviceAllocation<u32>,
     odd_indexes_device: DeviceAllocation<u32>,
 }
@@ -149,36 +145,23 @@ pub(super) struct GpuGKRForwardScratch {
 impl GpuGKRForwardScratch {
     fn new(max_output_trace_len: usize, context: &ProverContext) -> CudaResult<Self> {
         assert!(max_output_trace_len <= (u32::MAX as usize / 2));
-        let mut even_indexes_host =
-            unsafe { context.alloc_host_uninit_slice(max_output_trace_len) };
-        let mut odd_indexes_host = unsafe { context.alloc_host_uninit_slice(max_output_trace_len) };
-        unsafe {
-            let mut even_accessor = even_indexes_host.get_mut_accessor();
-            let even = even_accessor.get_mut();
-            let mut odd_accessor = odd_indexes_host.get_mut_accessor();
-            let odd = odd_accessor.get_mut();
-            for idx in 0..max_output_trace_len {
-                even[idx] = (idx * 2) as u32;
-                odd[idx] = (idx * 2 + 1) as u32;
-            }
-        }
         let mut even_indexes_device =
             context.alloc(max_output_trace_len, AllocationPlacement::BestFit)?;
         let mut odd_indexes_device =
             context.alloc(max_output_trace_len, AllocationPlacement::BestFit)?;
-        memory_copy_async(
-            &mut even_indexes_device,
-            &even_indexes_host,
+        set_arithmetic_sequence(
+            0,
+            2,
+            even_indexes_device.deref_mut(),
             context.get_exec_stream(),
         )?;
-        memory_copy_async(
-            &mut odd_indexes_device,
-            &odd_indexes_host,
+        set_arithmetic_sequence(
+            1,
+            2,
+            odd_indexes_device.deref_mut(),
             context.get_exec_stream(),
         )?;
         Ok(Self {
-            even_indexes_host,
-            odd_indexes_host,
             even_indexes_device,
             odd_indexes_device,
         })

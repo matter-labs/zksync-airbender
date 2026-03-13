@@ -1,17 +1,16 @@
 use super::gkr::{
-    GpuGKRStorage,
     backward::GpuGKRDimensionReducingSumcheckLayerPlan,
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
+    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{SetByRef, set_by_ref};
-use crate::primitives::callbacks::Callbacks;
+use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::circuit_type::{
     CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::primitives::context::{HostAllocation, ProverContext};
+use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
@@ -30,7 +29,7 @@ use cs::machine::ops::unrolled::{
 use cs::tables::TableDriver;
 use era_cudart::memory::memory_copy;
 use era_cudart::slice::DeviceSlice;
-use fft::{Twiddles, materialize_powers_serial_starting_with_elem};
+use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
@@ -49,8 +48,8 @@ use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use prover::gkr::whir::whir_fold;
 use prover::gkr::witness_gen::family_circuits::{
-    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
+    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
 use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -60,7 +59,7 @@ use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::unrolled::NonMemoryCircuitOracle;
-use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, Instruction, preprocess_bytecode};
+use riscv_transpiler::ir::{preprocess_bytecode, FullUnsignedMachineDecoderConfig, Instruction};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -208,17 +207,6 @@ fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
     evals.try_into().unwrap()
 }
 
-fn alloc_host_values<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
-}
-
 fn expected_dimension_reducing_kernel_specs_for_test<E: Field>(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     batch_challenge_base: E,
@@ -311,6 +299,21 @@ fn assert_dimension_reducing_layer_plan_for_test<E: Field + std::fmt::Debug>(
             assert_eq!(descriptor.next_layer_size, poly.len() / 2);
         }
     }
+}
+
+fn assert_sumcheck_intermediate_values_eq_for_test<F: PrimeField, E: FieldExtension<F> + Field>(
+    actual: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
+    expected: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
+) {
+    assert_eq!(actual.sumcheck_num_rounds, expected.sumcheck_num_rounds);
+    assert_eq!(
+        actual.internal_round_coefficients,
+        expected.internal_round_coefficients
+    );
+    assert_eq!(
+        actual.final_step_evaluations,
+        expected.final_step_evaluations
+    );
 }
 
 fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
@@ -935,11 +938,8 @@ fn run_basic_unrolled_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -947,28 +947,16 @@ fn run_basic_unrolled_test() {
         lookup_additive_part,
         constraints_batch_challenge,
     ];
-    let lookup_challenges_accessor = lookup_challenges_host.get_accessor();
-    let lookup_challenges_dst = lookup_challenges_host.get_mut_accessor();
-    let mut callbacks = Callbacks::new();
-    callbacks
-        .schedule(
-            move || unsafe {
-                lookup_challenges_dst
-                    .get_mut()
-                    .copy_from_slice(&lookup_challenges)
-            },
-            context.get_exec_stream(),
-        )
-        .unwrap();
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&lookup_challenges);
+    }
     let mut gpu_forward_setup = {
         let _range = range!("test.gpu.forward_setup.schedule");
         let gpu_forward_setup = gpu_setup_transfer
-            .schedule_forward_setup(
-                &add_sub_circuit,
-                lookup_challenges_accessor,
-                &mut callbacks,
-                &context,
-            )
+            .schedule_forward_setup(&add_sub_circuit, lookup_challenges_host, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         gpu_forward_setup
@@ -1128,16 +1116,8 @@ fn run_basic_unrolled_test() {
         &worker,
     );
     assert_eq!(gpu_initial_claims, cpu_initial_claims);
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = cpu_initial_claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        cpu_initial_claims;
     let mut gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
     let output_map = output_layer_for_sumcheck;
@@ -1183,17 +1163,20 @@ fn run_basic_unrolled_test() {
     let mut sumcheck_intermediate_values = BTreeMap::new();
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
-    let mut backward_callbacks = Callbacks::new();
+    let mut gpu_claims_for_layers = claims_for_layers.clone();
+    let mut gpu_points_for_claims_at_layer = points_for_claims_at_layer.clone();
+    let mut gpu_sumcheck_batching_challenge = sumcheck_batching_challenge;
+    let mut gpu_seed = seed;
     {
         let _range = range!("test.cpu.sumcheck.dimension_reduction");
         for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
             let _layer_range = range!("test.cpu.sumcheck.dimension_reduction.layer.{}", layer_idx);
             let expected_specs = expected_dimension_reducing_kernel_specs_for_test(
                 &layer,
-                sumcheck_batching_challenge,
+                gpu_sumcheck_batching_challenge,
             );
-            let prepared_layer = gpu_backward_state
-                .prepare_next_layer(sumcheck_batching_challenge, &context)
+            let mut prepared_layer = gpu_backward_state
+                .prepare_next_layer(gpu_sumcheck_batching_challenge, &context)
                 .unwrap()
                 .expect("GPU backward state should have a matching dimension-reducing layer");
             assert_eq!(prepared_layer.layer_idx, layer_idx);
@@ -1208,6 +1191,22 @@ fn run_basic_unrolled_test() {
                 &expected_specs,
             );
 
+            let gpu_execution = prepared_layer
+                .schedule_execute_dimension_reducing_layer(
+                    gpu_claims_for_layers
+                        .get(&(layer_idx + 1))
+                        .expect("GPU output-layer claims must exist"),
+                    gpu_points_for_claims_at_layer
+                        .get(&(layer_idx + 1))
+                        .expect("GPU output-layer claim point must exist"),
+                    gpu_seed,
+                    gpu_sumcheck_batching_challenge,
+                    &context,
+                )
+                .unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let gpu_execution = gpu_execution.into_execution();
+
             let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
                 layer_idx,
                 &layer,
@@ -1220,154 +1219,32 @@ fn run_basic_unrolled_test() {
                 &worker,
             );
 
-            let folding_challenges = points_for_claims_at_layer
-                .get(&layer_idx)
-                .expect("dimension-reducing sumcheck must record folding challenges");
-            assert_eq!(folding_challenges.len(), prepared_layer.folding_steps + 1);
-            let round_folding_challenges = &folding_challenges[..prepared_layer.folding_steps - 1];
+            assert_sumcheck_intermediate_values_eq_for_test(&gpu_execution.proof, &proof);
+            assert_eq!(
+                gpu_execution.new_claim_point,
+                points_for_claims_at_layer[&layer_idx]
+            );
+            assert_eq!(gpu_execution.new_claims, claims_for_layers[&layer_idx]);
+            assert_eq!(
+                gpu_execution.next_batching_challenge,
+                sumcheck_batching_challenge
+            );
+            assert_eq!(gpu_execution.updated_seed, seed);
 
-            let round1_host_values = alloc_host_values(&context, &round_folding_challenges[..1]);
-            let round1_scheduled = prepared_layer
-                .schedule_round_1(
-                    round1_host_values.get_accessor(),
-                    &mut backward_callbacks,
-                    &context,
-                )
-                .unwrap();
+            gpu_points_for_claims_at_layer.insert(layer_idx, gpu_execution.new_claim_point.clone());
+            gpu_claims_for_layers.insert(layer_idx, gpu_execution.new_claims.clone());
+            gpu_sumcheck_batching_challenge = gpu_execution.next_batching_challenge;
+            gpu_seed = gpu_execution.updated_seed;
 
-            let round2_scheduled = if prepared_layer.folding_steps >= 3 {
-                let round2_host_values =
-                    alloc_host_values(&context, &round_folding_challenges[..2]);
-                let round2_accessor = round2_host_values.get_accessor();
-                Some((
-                    round2_host_values,
-                    prepared_layer
-                        .schedule_round_2(round2_accessor, &mut backward_callbacks, &context)
-                        .unwrap(),
-                ))
-            } else {
-                None
-            };
-
-            let mut round3_scheduled = Vec::new();
-            for step in 3..prepared_layer.folding_steps {
-                let round_host_values =
-                    alloc_host_values(&context, &round_folding_challenges[..step]);
-                let scheduled = prepared_layer
-                    .schedule_round_3_and_beyond(
-                        step,
-                        round_host_values.get_accessor(),
-                        &mut backward_callbacks,
-                        &context,
-                    )
-                    .unwrap();
-                round3_scheduled.push((step, round_host_values, scheduled));
-            }
-
-            context.get_exec_stream().synchronize().unwrap();
-
-            let round1_ext_inputs: Vec<Vec<_>> = round1_scheduled
-                .iter()
-                .map(|scheduled| unsafe {
-                    scheduled
-                        .host
-                        .extension_field_inputs
-                        .get_accessor()
-                        .get()
-                        .to_vec()
-                })
-                .collect();
-            for (idx, descriptors) in round1_ext_inputs.iter().enumerate() {
-                let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
-                assert_eq!(descriptors.len(), expected_inputs.len());
-                for (descriptor, address) in descriptors.iter().zip(expected_inputs.iter()) {
-                    let poly = gpu_backward_state.storage().get_ext_poly(*address);
-                    assert_eq!(descriptor.previous_layer_start, poly.as_ptr());
-                    assert_eq!(descriptor.this_layer_size, poly.len() / 2);
-                    assert_eq!(descriptor.next_layer_size, poly.len() / 4);
-                    assert_eq!(descriptor.folding_challenge, round_folding_challenges[0]);
-                    assert!(descriptor.first_access);
-                }
-            }
-
-            if let Some((_, round2_scheduled)) = round2_scheduled {
-                let round2_ext_inputs: Vec<Vec<_>> = round2_scheduled
-                    .iter()
-                    .map(|scheduled| unsafe {
-                        scheduled
-                            .host
-                            .extension_field_inputs
-                            .get_accessor()
-                            .get()
-                            .to_vec()
-                    })
-                    .collect();
-                for (idx, descriptors) in round2_ext_inputs.iter().enumerate() {
-                    let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
-                    assert_eq!(descriptors.len(), expected_inputs.len());
-                    for ((descriptor, previous), address) in descriptors
-                        .iter()
-                        .zip(round1_ext_inputs[idx].iter())
-                        .zip(expected_inputs.iter())
-                    {
-                        let poly = gpu_backward_state.storage().get_ext_poly(*address);
-                        assert_eq!(descriptor.previous_layer_start, previous.this_layer_start);
-                        assert_eq!(descriptor.this_layer_size, poly.len() / 4);
-                        assert_eq!(descriptor.next_layer_size, poly.len() / 8);
-                        assert_eq!(descriptor.folding_challenge, round_folding_challenges[1]);
-                        assert!(descriptor.first_access);
-                    }
-                }
-
-                let mut previous_ext_inputs = round2_ext_inputs;
-                for (step, _, scheduled) in round3_scheduled.into_iter() {
-                    let round_ext_inputs: Vec<Vec<_>> = scheduled
-                        .iter()
-                        .map(|scheduled| unsafe {
-                            scheduled
-                                .host
-                                .extension_field_inputs
-                                .get_accessor()
-                                .get()
-                                .to_vec()
-                        })
-                        .collect();
-                    for (idx, descriptors) in round_ext_inputs.iter().enumerate() {
-                        let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
-                        assert_eq!(descriptors.len(), expected_inputs.len());
-                        for ((descriptor, previous), address) in descriptors
-                            .iter()
-                            .zip(previous_ext_inputs[idx].iter())
-                            .zip(expected_inputs.iter())
-                        {
-                            let poly = gpu_backward_state.storage().get_ext_poly(*address);
-                            assert_eq!(descriptor.previous_layer_start, previous.this_layer_start);
-                            assert_eq!(descriptor.this_layer_size, poly.len() >> step);
-                            assert_eq!(descriptor.next_layer_size, poly.len() >> (step + 1));
-                            assert_eq!(
-                                descriptor.folding_challenge,
-                                round_folding_challenges[step - 1]
-                            );
-                            assert!(descriptor.first_access);
-                        }
-                    }
-                    previous_ext_inputs = round_ext_inputs;
-                }
-            } else {
-                assert!(round3_scheduled.is_empty());
-            }
-
-            sumcheck_intermediate_values.insert(layer_idx, proof);
+            sumcheck_intermediate_values.insert(layer_idx, gpu_execution.proof);
             reduced_trace_size_log_2 += 1;
         }
     }
 
-    assert!(
-        gpu_backward_state
-            .prepare_next_layer(sumcheck_batching_challenge, &context)
-            .unwrap()
-            .is_none()
-    );
+    assert!(gpu_backward_state
+        .prepare_next_layer(sumcheck_batching_challenge, &context)
+        .unwrap()
+        .is_none());
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1522,12 +1399,12 @@ fn run_basic_unrolled_test() {
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::cs::placeholder::Placeholder;
-    use cs::cs::witness_placer::WitnessTypeSet;
     use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::cs::witness_placer::WitnessTypeSet;
     use cs::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
