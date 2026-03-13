@@ -335,9 +335,9 @@ mod tests {
     use era_cudart::stream::CudaStream;
     use field::FieldExtension;
     use prover::tests::{
-        run_basic_delegation_test_impl,
-        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl, run_keccak_test_impl,
-        GpuComparisonArgs,
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+        KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
     };
     use serial_test::serial;
 
@@ -546,33 +546,22 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_standalone_barycentric_non_unrolled_for_main_and_blake() {
-        let ctx = DeviceContext::create(12).unwrap();
-        run_basic_delegation_test_impl(
-            Some(Box::new(comparison_hook)),
-            Some(Box::new(comparison_hook)),
-        );
-        ctx.destroy().unwrap();
-    }
-
-    #[test]
-    #[serial]
-    #[ignore]
-    fn test_standalone_barycentric_non_unrolled_for_main_and_keccak() {
-        let ctx = DeviceContext::create(12).unwrap();
-        run_keccak_test_impl(
-            Some(Box::new(comparison_hook)),
-            Some(Box::new(comparison_hook)),
-        );
-        ctx.destroy().unwrap();
-    }
-
-    #[test]
-    #[serial]
-    #[ignore]
-    fn test_standalone_barycentric_unrolled_with_transpiler_for_main_and_keccak() {
+    fn test_standalone_barycentric_with_transpiler_for_current_path() {
         let ctx = DeviceContext::create(12).unwrap();
         run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[ignore = "manual heavy GPU comparison test"]
+    #[serial]
+    fn test_standalone_barycentric_with_transpiler_for_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl(
+            KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

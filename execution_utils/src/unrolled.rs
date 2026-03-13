@@ -485,13 +485,10 @@ mod test {
     use super::*;
     use std::path::Path;
 
-    use crate::unrolled::prover::VectorMemoryImplWithRom;
-    use risc_v_simulator::abstractions::non_determinism::NonDeterminismCSRSource;
     use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
     use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
     use risc_v_simulator::cycle::MachineConfig;
-    use std::alloc::Global;
 
     struct TestProgram {
         binary_image: Vec<u8>,
