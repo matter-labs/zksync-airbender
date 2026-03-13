@@ -47,23 +47,21 @@ pub struct TranspilerTestProgram {
     pub non_determinism_reads: &'static [u32],
 }
 
-pub const HASHED_FIBONACCI_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram =
-    TranspilerTestProgram {
-        name: "hashed_fibonacci",
-        binary_path: "../examples/hashed_fibonacci/app.bin",
-        text_path: "../examples/hashed_fibonacci/app.text",
-        cycles_bound: 1 << 20,
-        non_determinism_reads: &[15, 1],
-    };
+pub const HASHED_FIBONACCI_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram = TranspilerTestProgram {
+    name: "hashed_fibonacci",
+    binary_path: "../examples/hashed_fibonacci/app.bin",
+    text_path: "../examples/hashed_fibonacci/app.text",
+    cycles_bound: 1 << 20,
+    non_determinism_reads: &[15, 1],
+};
 
-pub const KECCAK_F1600_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram =
-    TranspilerTestProgram {
-        name: "keccak_f1600",
-        binary_path: "../riscv_transpiler/examples/keccak_f1600/app.bin",
-        text_path: "../riscv_transpiler/examples/keccak_f1600/app.text",
-        cycles_bound: 1 << 21,
-        non_determinism_reads: &[],
-    };
+pub const KECCAK_F1600_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram = TranspilerTestProgram {
+    name: "keccak_f1600",
+    binary_path: "../riscv_transpiler/examples/keccak_f1600/app.bin",
+    text_path: "../riscv_transpiler/examples/keccak_f1600/app.text",
+    cycles_bound: 1 << 21,
+    non_determinism_reads: &[],
+};
 
 // #[ignore = "test has explicit panic inside"]
 #[cfg(test)]

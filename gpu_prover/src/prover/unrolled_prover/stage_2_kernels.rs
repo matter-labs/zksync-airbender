@@ -545,8 +545,8 @@ mod tests {
     use field::Field;
     use prover::tests::{
         run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
-        run_unrolled_test_program_in_transpiler_with_word_specialization_impl,
-        GpuComparisonArgs, KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+        KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
     };
     use serial_test::serial;
 
