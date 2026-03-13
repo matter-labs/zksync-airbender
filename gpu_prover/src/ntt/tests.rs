@@ -21,7 +21,7 @@ use worker::Worker;
 use super::{
     bitreversed_coeffs_to_natural_coset, evals_to_monomials_2_pass, evals_to_monomials_3_pass,
     hypercube_evals_natural_to_bitreversed_coeffs, monomials_to_evals_2_pass,
-    monomials_to_evals_3_pass,
+    monomials_to_evals_3_pass, OMEGA_LOG_ORDER,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_context::DeviceContext;
@@ -164,6 +164,9 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
         }
     }
 }
+
+const TEST_LOG_LDE_FACTOR: usize = 2;
+const TEST_LDE_COSET: usize = 1;
 
 #[derive(PartialEq)]
 enum InOrOutOfPlace {
@@ -342,6 +345,7 @@ fn run_monomials_to_evals(
         &DeviceMatrixChunk<BF>,
         &mut DeviceMatrixChunkMut<BF>,
         usize,
+        usize,
         bool,
         &CudaStream,
     ) -> CudaResult<()>,
@@ -376,6 +380,8 @@ fn run_monomials_to_evals(
         memory_copy_async(&mut flush_l2_device[..], &flush_l2_host[..], &stream).unwrap();
     };
     for log_n in log_n_range {
+        let coset_factor_power =
+            TEST_LDE_COSET << (OMEGA_LOG_ORDER as usize - log_n - TEST_LOG_LDE_FACTOR);
         let n = (1 << log_n) as usize;
         let stride = n + OFFSET;
         let memory_size = stride * num_bf_cols;
@@ -411,6 +417,7 @@ fn run_monomials_to_evals(
                     &inputs_device_matrix,
                     &mut outputs_device_matrix,
                     log_n,
+                    coset_factor_power,
                     transposed_monomials,
                     &stream,
                 )
@@ -442,6 +449,7 @@ fn run_monomials_to_evals(
                     &inplace_input_view_matrix,
                     &mut inplace_output_view_matrix,
                     log_n,
+                    coset_factor_power,
                     transposed_monomials,
                     &stream,
                 )
@@ -477,8 +485,8 @@ fn run_monomials_to_evals(
     // ctx.destroy().unwrap();
 }
 
-// These wrappers "de-genericize" impl arguments of the user-facing API,
-// I can pass the wrappers to the run harness as FnMut generic arguments.
+// These wrappers "de-genericize" impl arguments of the user-facing API
+// so I can pass each wrapper to a run harness as a FnMut generic.
 #[cfg(not(no_cuda))]
 fn wrap_evals_to_monomials_2_pass(
     inputs: &DeviceMatrixChunk<BF>,
@@ -504,9 +512,10 @@ fn wrap_monomials_to_evals_2_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
+    coset_factor_power: usize,
     transposed_monomials: bool,
     stream: &CudaStream) -> CudaResult<()> {
-    monomials_to_evals_2_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    monomials_to_evals_2_pass(inputs, outputs, log_n, coset_factor_power, transposed_monomials, stream)
 }
 
 #[cfg(not(no_cuda))]
@@ -514,9 +523,10 @@ fn wrap_monomials_to_evals_3_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
+    coset_factor_power: usize,
     transposed_monomials: bool,
     stream: &CudaStream) -> CudaResult<()> {
-    monomials_to_evals_3_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    monomials_to_evals_3_pass(inputs, outputs, log_n, coset_factor_power, transposed_monomials, stream)
 }
 
 #[test]
@@ -545,34 +555,6 @@ fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
 #[serial]
 fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(23..25, 8, wrap_evals_to_monomials_2_pass, InOrOutOfPlace::In, true);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[serial]
-fn test_monomials_to_evals_2_pass_out_of_place() {
-    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::Out, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[serial]
-fn test_monomials_to_evals_2_pass_in_place() {
-    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::In, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[serial]
-fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
-    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::Out, true);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[serial]
-fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
-    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::In, true);
 }
 
 #[test]
@@ -628,5 +610,33 @@ fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
 #[cfg(not(no_cuda))]
 #[serial]
 fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
-    run_monomials_to_evals(21..25, 8, wrap_monomials_to_evals_3_pass, InOrOutOfPlace::In, true);
+    run_monomials_to_evals(24..25, 8, wrap_monomials_to_evals_3_pass, InOrOutOfPlace::In, true);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_out_of_place() {
+    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::Out, false);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_in_place() {
+    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::In, false);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
+    run_monomials_to_evals(23..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::Out, true);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
+    run_monomials_to_evals(24..25, 8, wrap_monomials_to_evals_2_pass, InOrOutOfPlace::In, true);
 }

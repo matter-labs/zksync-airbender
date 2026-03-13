@@ -21,6 +21,17 @@ DEVICE_FORCEINLINE int linear_to_swizzled(const int i) {
   return xy_to_swizzled(i & BANK_MASK, i >> LOG_BANKS);
 }
 
+// helper for dealing with intermediate transposed monomials
+DEVICE_FORCEINLINE int transposed_row_to_effective_row(const int row) {
+  constexpr int ROW_SIZE = 32;
+  constexpr int ROW_MASK = ROW_SIZE - 1;
+  constexpr int CHUNK_MASK = 1023;
+  const int x_in_chunk = row & ROW_MASK;
+  const int y_in_chunk = (row & CHUNK_MASK) >> 5;
+  const int effective_row = (row & (~CHUNK_MASK)) + ROW_SIZE * x_in_chunk + y_in_chunk;
+  return effective_row;
+}
+
 // This is a little tricky:
 // it assumes "i" NEEDS to be bitreved and accounts for that by assuming "fine" and "coarse"
 // arrays are already bitreved.

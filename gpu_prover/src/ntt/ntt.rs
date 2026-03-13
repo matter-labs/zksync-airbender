@@ -13,6 +13,7 @@ use crate::device_structures::{
 };
 use crate::field::BaseField;
 use crate::primitives::context::DeviceProperties;
+use crate::primitives::device_context::OMEGA_LOG_ORDER;
 use crate::utils::GetChunksCount;
 
 use std::mem::size_of;
@@ -32,19 +33,19 @@ cuda_kernel!(
 strided_tiles_stages!(ab_evals_to_monomials_first_9_stages_kernel);
 strided_tiles_stages!(ab_evals_to_monomials_first_10_stages_kernel);
 
+// 3-pass evals to monomials
+strided_tiles_stages!(ab_evals_to_monomials_nonfinal_8_stages_kernel);
+
 // 2-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_last_9_stages_kernel);
 strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
-
-// 3-pass evals to monomials
-strided_tiles_stages!(ab_evals_to_monomials_nonfinal_8_stages_kernel);
 
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
 
 cuda_kernel!(
-    ContiguousChunksStages,
-    contiguous_chunks_stages,
+    EvalsToMonomialsFinal,
+    evals_to_monomials_final,
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
     transposed_monomials: bool,
@@ -52,22 +53,32 @@ cuda_kernel!(
 );
 
 // 2-pass evals to monomials
-contiguous_chunks_stages!(ab_evals_to_monomials_last_14_stages_kernel);
-
-// 2-pass monomials to evals
-contiguous_chunks_stages!(ab_monomials_to_evals_first_14_stages_kernel);
+evals_to_monomials_final!(ab_evals_to_monomials_last_14_stages_kernel);
 
 // 3-pass evals to monomials
-contiguous_chunks_stages!(ab_evals_to_monomials_final_5_stages_kernel);
-contiguous_chunks_stages!(ab_evals_to_monomials_final_6_stages_kernel);
-contiguous_chunks_stages!(ab_evals_to_monomials_final_7_stages_kernel);
-contiguous_chunks_stages!(ab_evals_to_monomials_final_8_stages_kernel);
+evals_to_monomials_final!(ab_evals_to_monomials_final_5_stages_kernel);
+evals_to_monomials_final!(ab_evals_to_monomials_final_6_stages_kernel);
+evals_to_monomials_final!(ab_evals_to_monomials_final_7_stages_kernel);
+evals_to_monomials_final!(ab_evals_to_monomials_final_8_stages_kernel);
+
+cuda_kernel!(
+    MonomialsToEvalsInitial,
+    monomials_to_evals_initial,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    transposed_monomials: bool,
+    log_n: i32,
+    coset_factor_power: i32,
+);
+
+// 2-pass monomials to evals
+monomials_to_evals_initial!(ab_monomials_to_evals_first_14_stages_kernel);
 
 // 3-pass monomials to evals
-contiguous_chunks_stages!(ab_monomials_to_evals_initial_5_stages_kernel);
-contiguous_chunks_stages!(ab_monomials_to_evals_initial_6_stages_kernel);
-contiguous_chunks_stages!(ab_monomials_to_evals_initial_7_stages_kernel);
-contiguous_chunks_stages!(ab_monomials_to_evals_initial_8_stages_kernel);
+monomials_to_evals_initial!(ab_monomials_to_evals_initial_5_stages_kernel);
+monomials_to_evals_initial!(ab_monomials_to_evals_initial_6_stages_kernel);
+monomials_to_evals_initial!(ab_monomials_to_evals_initial_7_stages_kernel);
+monomials_to_evals_initial!(ab_monomials_to_evals_initial_8_stages_kernel);
 
 pub(crate) fn evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -142,20 +153,20 @@ pub(crate) fn evals_to_monomials_3_pass(
         let bf_vals_per_block = 1 << 13; // 8192
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        let args = ContiguousChunksStagesArguments::new(
+        let args = EvalsToMonomialsFinalArguments::new(
             output_matrix_const,
             output_matrix_mut,
             transposed_monomials,
             log_n as i32,
         );
         match log_n {
-            21 => ContiguousChunksStagesFunction(ab_evals_to_monomials_final_5_stages_kernel)
+            21 => EvalsToMonomialsFinalFunction(ab_evals_to_monomials_final_5_stages_kernel)
                 .launch(&config, &args)?,
-            22 => ContiguousChunksStagesFunction(ab_evals_to_monomials_final_6_stages_kernel)
+            22 => EvalsToMonomialsFinalFunction(ab_evals_to_monomials_final_6_stages_kernel)
                 .launch(&config, &args)?,
-            23 => ContiguousChunksStagesFunction(ab_evals_to_monomials_final_7_stages_kernel)
+            23 => EvalsToMonomialsFinalFunction(ab_evals_to_monomials_final_7_stages_kernel)
                 .launch(&config, &args)?,
-            24 => ContiguousChunksStagesFunction(ab_evals_to_monomials_final_8_stages_kernel)
+            24 => EvalsToMonomialsFinalFunction(ab_evals_to_monomials_final_8_stages_kernel)
                 .launch(&config, &args)?,
             _ => unimplemented!(),
         }
@@ -236,13 +247,13 @@ pub(crate) fn evals_to_monomials_2_pass(
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
         config.dynamic_smem_bytes = smem_bytes;
-        let args = ContiguousChunksStagesArguments::new(
+        let args = EvalsToMonomialsFinalArguments::new(
             output_matrix_const,
             output_matrix_mut,
             transposed_monomials,
             log_n as i32,
         );
-        let function = ContiguousChunksStagesFunction(ab_evals_to_monomials_last_14_stages_kernel);
+        let function = EvalsToMonomialsFinalFunction(ab_evals_to_monomials_last_14_stages_kernel);
         let func_ptr = function.as_ptr();
         unsafe {
             cudaFuncSetAttribute(
@@ -261,6 +272,7 @@ pub(crate) fn monomials_to_evals_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
+    coset_factor_power: usize,
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -301,20 +313,21 @@ pub(crate) fn monomials_to_evals_3_pass(
         let bf_vals_per_block = 1 << 13; // 8192
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        let args = ContiguousChunksStagesArguments::new(
+        let args = MonomialsToEvalsInitialArguments::new(
             input_matrix,
             output_matrix_mut,
             transposed_monomials,
             log_n as i32,
+            coset_factor_power as i32,
         );
         match log_n {
-            21 => ContiguousChunksStagesFunction(ab_monomials_to_evals_initial_5_stages_kernel)
+            21 => MonomialsToEvalsInitialFunction(ab_monomials_to_evals_initial_5_stages_kernel)
                 .launch(&config, &args)?,
-            22 => ContiguousChunksStagesFunction(ab_monomials_to_evals_initial_6_stages_kernel)
+            22 => MonomialsToEvalsInitialFunction(ab_monomials_to_evals_initial_6_stages_kernel)
                 .launch(&config, &args)?,
-            23 => ContiguousChunksStagesFunction(ab_monomials_to_evals_initial_7_stages_kernel)
+            23 => MonomialsToEvalsInitialFunction(ab_monomials_to_evals_initial_7_stages_kernel)
                 .launch(&config, &args)?,
-            24 => ContiguousChunksStagesFunction(ab_monomials_to_evals_initial_8_stages_kernel)
+            24 => MonomialsToEvalsInitialFunction(ab_monomials_to_evals_initial_8_stages_kernel)
                 .launch(&config, &args)?,
             _ => unimplemented!(),
         }
@@ -350,6 +363,7 @@ pub(crate) fn monomials_to_evals_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
+    coset_factor_power: usize,
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -393,13 +407,14 @@ pub(crate) fn monomials_to_evals_2_pass(
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
         config.dynamic_smem_bytes = smem_bytes;
-        let args = ContiguousChunksStagesArguments::new(
+        let args = MonomialsToEvalsInitialArguments::new(
             input_matrix,
             output_matrix_mut,
             transposed_monomials,
             log_n as i32,
+            coset_factor_power as i32,
         );
-        let function = ContiguousChunksStagesFunction(ab_monomials_to_evals_first_14_stages_kernel);
+        let function = MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);
         let func_ptr = function.as_ptr();
         unsafe {
             cudaFuncSetAttribute(
@@ -449,10 +464,13 @@ pub fn monomials_to_evals(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
+    log_lde_factor: usize,
+    coset_index: usize,
     transposed_monomials: bool,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
+    let coset_factor_power = coset_index << (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor);
     // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let column_bytes = (1 << log_n) * size_of::<BF>();
@@ -461,6 +479,7 @@ pub fn monomials_to_evals(
             inputs_matrix,
             outputs_matrix,
             log_n,
+            coset_factor_power,
             transposed_monomials,
             stream,
         )?;
@@ -469,6 +488,7 @@ pub fn monomials_to_evals(
             inputs_matrix,
             outputs_matrix,
             log_n,
+            coset_factor_power,
             transposed_monomials,
             stream,
         )?;

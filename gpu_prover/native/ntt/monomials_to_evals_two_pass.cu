@@ -132,7 +132,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_monomials_to_evals_first_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                      const bool transposed_monomials) {
+                                                      const bool transposed_monomials, const int log_n, const int coset_factor_power) {
   constexpr int WARP_SIZE = 32;
   constexpr int VALS_PER_THREAD = 32;
   constexpr int WARPS_PER_BLOCK = 16;
@@ -165,6 +165,16 @@ EXTERN __launch_bounds__(512, 1) __global__
 #pragma unroll
   for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
     vals[i] = gmem_in.get_at_row(row);
+
+  // A separate adjustment loop performs better than interleaving adjustments with loads.
+  if (coset_factor_power > 0) {
+#pragma unroll
+    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE) {
+      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(row) : row;
+      const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(effective_row, log_n) * coset_factor_power);
+      vals[i] = bf::mul(vals[i], coset_offset);
+    }
+  }
 
   if (!transposed_monomials) {
     // transpose coalesced loads into registers
