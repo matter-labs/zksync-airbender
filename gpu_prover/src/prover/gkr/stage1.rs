@@ -7,6 +7,7 @@ use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
+use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
@@ -103,6 +104,8 @@ impl GpuGKRLookupMappings {
 }
 
 pub(crate) struct GpuGKRStage1Output {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     pub(crate) memory_trace_holder: TraceHolder<BF>,
     pub(crate) witness_trace_holder: TraceHolder<BF>,
     pub(crate) lookup_mappings: GpuGKRLookupMappings,
@@ -136,6 +139,10 @@ impl GpuGKRStage1Output {
         setup.ensure_transferred(context)?;
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << setup.trace_holder.log_domain_size);
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let stage1_range = Range::new("gkr.stage1.generate")?;
+        stage1_range.start(stream)?;
 
         let mut memory_trace_holder = Self::allocate_trace_holder(
             compiled_circuit.memory_layout.total_width,
@@ -193,6 +200,9 @@ impl GpuGKRStage1Output {
                     CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace)),
                 ) => {
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
                     let decoder_table = if compiled_circuit.has_decoder_lookup {
                         decoder_table.expect("decoder lookup requires transferred decoder table")
                     } else {
@@ -219,6 +229,8 @@ impl GpuGKRStage1Output {
                         &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
                         context.get_exec_stream(),
                     )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
                 }
                 _ => unimplemented!(
                     "GPU GKR stage1 currently supports only unrolled non-memory traces",
@@ -231,6 +243,8 @@ impl GpuGKRStage1Output {
             .multiplicities_columns_for_generic_lookup
             .clone();
         if !generic_lookup_multiplicities_range.is_empty() {
+            let multiplicities_range = Range::new("gkr.stage1.generate.generic_multiplicities")?;
+            multiplicities_range.start(stream)?;
             let generic_lookup_multiplicities = &mut witness_matrix.slice_mut()
                 [generic_lookup_multiplicities_range.start * trace_len
                     ..generic_lookup_multiplicities_range.end * trace_len];
@@ -239,14 +253,24 @@ impl GpuGKRStage1Output {
                 &mut DeviceMatrixMut::new(generic_lookup_multiplicities, trace_len),
                 context,
             )?;
+            multiplicities_range.end(stream)?;
+            tracing_ranges.push(multiplicities_range);
         }
 
+        let range_mapping_range = Range::new("gkr.stage1.generate.range_check_lookup_mappings")?;
+        range_mapping_range.start(stream)?;
         let (mut range_check_16, mut timestamp) = generate_range_check_lookup_mappings(
             compiled_circuit,
             &DeviceMatrix::new(memory_matrix.slice(), trace_len),
             &DeviceMatrix::new(witness_matrix.slice(), trace_len),
             context,
         )?;
+        range_mapping_range.end(stream)?;
+        tracing_ranges.push(range_mapping_range);
+
+        let range_multiplicities_range =
+            Range::new("gkr.stage1.generate.range_check_multiplicities")?;
+        range_multiplicities_range.start(stream)?;
         generate_range_check_multiplicities_from_mappings(
             compiled_circuit,
             &mut DeviceMatrixMut::new(&mut range_check_16, trace_len),
@@ -254,12 +278,25 @@ impl GpuGKRStage1Output {
             &mut witness_matrix,
             context,
         )?;
+        range_multiplicities_range.end(stream)?;
+        tracing_ranges.push(range_multiplicities_range);
 
         drop(memory_matrix);
         drop(witness_matrix);
 
+        let memory_commit_range = Range::new("gkr.stage1.commit.memory_trace")?;
+        memory_commit_range.start(stream)?;
         memory_trace_holder.commit_all(context)?;
+        memory_commit_range.end(stream)?;
+        tracing_ranges.push(memory_commit_range);
+
+        let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
+        witness_commit_range.start(stream)?;
         witness_trace_holder.commit_all(context)?;
+        witness_commit_range.end(stream)?;
+        tracing_ranges.push(witness_commit_range);
+        stage1_range.end(stream)?;
+        tracing_ranges.push(stage1_range);
 
         let lookup_mappings = GpuGKRLookupMappings {
             generic_family: Some(generic_family),
@@ -271,6 +308,7 @@ impl GpuGKRStage1Output {
         };
 
         Ok(Self {
+            tracing_ranges,
             memory_trace_holder,
             witness_trace_holder,
             lookup_mappings,
