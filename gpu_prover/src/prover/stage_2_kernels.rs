@@ -545,7 +545,6 @@ pub fn compute_stage_2_args_on_main_domain(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::device_context::DeviceContext;
     use crate::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
     use crate::ops_complex::transpose;
     use crate::prover::{
@@ -555,8 +554,7 @@ pub(crate) mod tests {
 
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, run_keccak_test_impl, GpuComparisonArgs};
-    use serial_test::serial;
+    use prover::tests::GpuComparisonArgs;
 
     type BF = BaseField;
     type E4 = Ext4Field;
@@ -1012,28 +1010,5 @@ pub(crate) mod tests {
                 stage_2_trace_view.advance_row();
             }
         }
-    }
-
-    #[test]
-    #[serial]
-    fn test_standalone_stage_2_non_unrolled_for_main_and_blake() {
-        let ctx = DeviceContext::create(12).unwrap();
-        run_basic_delegation_test_impl(
-            Some(Box::new(comparison_hook)),
-            Some(Box::new(comparison_hook)),
-        );
-        ctx.destroy().unwrap();
-    }
-
-    #[test]
-    #[serial]
-    #[ignore]
-    fn test_standalone_stage_2_non_unrolled_for_main_and_keccak() {
-        let ctx = DeviceContext::create(12).unwrap();
-        run_keccak_test_impl(
-            Some(Box::new(comparison_hook)),
-            Some(Box::new(comparison_hook)),
-        );
-        ctx.destroy().unwrap();
     }
 }

@@ -2,7 +2,6 @@ use crate::definitions::*;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::prover_stages::SetupPrecomputations;
 use ::field::*;
-use cs::default_compile_machine;
 use cs::definitions::*;
 use cs::machine::machine_configurations::*;
 use cs::one_row_compiler::*;
@@ -14,34 +13,6 @@ use prover_stages::{prove, ProverData};
 use std::alloc::Global;
 use trace_holder::RowMajorTrace;
 use worker::Worker;
-
-pub mod full_machine_with_gpu_tracer {
-    use crate::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-    use ::cs::cs::placeholder::Placeholder;
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-    use risc_v_simulator::cycle::IMStandardIsaConfig;
-
-    include!("../../full_machine_with_delegation_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, MainRiscVOracle<'b, IMStandardIsaConfig>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, MainRiscVOracle<'b, IMStandardIsaConfig>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
 
 pub(crate) mod reduced_machine {
     use crate::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
@@ -75,32 +46,6 @@ pub(crate) mod reduced_machine {
     }
 }
 
-pub mod blake2s_delegation_with_gpu_tracer {
-    use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../blake_delegation_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
 pub mod blake2s_delegation_with_transpiler {
     use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
     use crate::witness_evaluator::SimpleWitnessProxy;
@@ -122,32 +67,6 @@ pub mod blake2s_delegation_with_transpiler {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<Mersenne31Field, true>,
             SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-pub mod keccak_special5_delegation_with_gpu_tracer {
-    use crate::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
-    use crate::witness_evaluator::SimpleWitnessProxy;
-    use crate::witness_proxy::WitnessProxy;
-
-    use ::cs::cs::witness_placer::WitnessTypeSet;
-    use ::cs::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
-    };
-    use ::field::Mersenne31Field;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../keccak_delegation_generated.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<Mersenne31Field, true>,
-            SimpleWitnessProxy<'a, DelegationCircuitOracle<'b>>,
         >;
         (fn_ptr)(proxy);
     }
@@ -178,19 +97,17 @@ pub mod keccak_special5_delegation_with_transpiler {
 }
 
 use super::*;
-use std::collections::HashMap;
 
-mod delegation_test;
-mod keccak_test;
 mod unrolled;
 
 #[cfg(test)]
 mod lde_tests;
 
-pub use delegation_test::run_basic_delegation_test_impl;
-pub use keccak_test::run_keccak_test_impl;
-
-pub use unrolled::with_transpiler::run_basic_unrolled_test_in_transpiler_with_word_specialization_impl;
+pub use unrolled::with_transpiler::{
+    run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
+    run_unrolled_test_program_in_transpiler_with_word_specialization_impl,
+    KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
+};
 
 // NOTE: For some reason tryint to add generic tree constructor to GPU arguments just makes resolver crazy,
 // it starts to complaint about `ROM_ADDRESS_SPACE_SECOND_WORD_BITS` being not a constant but unconstraint const generic,
