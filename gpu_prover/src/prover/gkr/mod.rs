@@ -1530,14 +1530,12 @@ mod tests {
 
         storage.purge_up_to_layer(0);
         assert_eq!(storage.layers.len(), 1);
-        assert!(
-            storage
-                .try_get_ext_poly(GKRAddress::InnerLayer {
-                    layer: 1,
-                    offset: 0
-                })
-                .is_none()
-        );
+        assert!(storage
+            .try_get_ext_poly(GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0
+            })
+            .is_none());
         assert_eq!(storage.get_base_layer_mem(0).as_ptr(), base_memory_ptr);
     }
 
