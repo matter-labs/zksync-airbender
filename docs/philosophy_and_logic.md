@@ -12,7 +12,7 @@ All arithmetisation is performed over Mersenne31 field elements, except when sec
 
 Maximum total RiscV cpu cycles executed in a single run of the proving machine are in the order of $2^{30}$, chunked into batches of around $2^{22}$ cycles which are then individually proven for a specific circuit and connected by "global" RAM and Delegation arguments, finally chunks are joined via multiple recursion phases until the final proof is obtained. 
 All AIR constraints are kept at a maximum of degree 2 polynomials, which streamlines proving optimisations for STARK/FRI and distills circuit performance analysis to the counting of total field element variables used at each cycle (i.e. number of witness trace columns present in each row). 
-Preliminary minimal witness generation is natively performed by a fast Rust RiscV simulator on a cpu, and quickly handed over to a CUDA-compatible gpu where much faster circuit-specific witness generation and proving can be completed (this repo contains both cpu and gpu prover implementations that mirror each other). 
+Preliminary witness data is generated on CPU by executing the program through the transpiler VM and replay pipeline, and is then handed over to a CUDA-compatible gpu where much faster circuit-specific witness generation and proving can be completed (this repo contains both cpu and gpu prover implementations that mirror each other). 
 
 Stages for each proving chunk follow a linear structure: Stage 1 computes witness LDEs and Trace Commitments, Stage 2 sets up Lookup and Memory arguments, Stage 3 computes the primary STARK Quotient Polynomial, Stage 4 computes the DEEP optimisation (FRI Batched) Polynomial, finally Stage 5 computes the required IOPP (FRI) proof.
 

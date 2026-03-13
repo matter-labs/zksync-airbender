@@ -2,28 +2,33 @@
 
 ## How to add a new circuit
 
-- for a new main circuit
-    - under `native/witness/circuits` add a new `name_of_the_circuit.cu` file by copying an existing one for a main
-      circuit
-    - adjust the `NAME` inside the new file
-    - add the new file to `native/CMakeLists.txt` list of files for the `gpu_prover_native` library
-    - create a new enum variant in `src/circuit_types.rs` for the new circuit in `MainCircuitType` enum and add the
-      handling of the variant in the functions inside implementation of `MainCircuitType`
-    - create binding for the circuit with the `generate_witness_main_kernel` macro inside `src/witness/witness_main.rs`
-      file and add the kernel as a variant towards the end of the `generate_witness_values_main` function
-    - add handling of the new variant in the `get_main_circuit_precomputations` function in
-      `src/execution/precomputations.rs`
-    - add handling of the new variant in the `spawn_cpu_worker` function in `src/execution/prover.rs`
-- for a new delegation circuit
-    - under `native/witness/circuits` add a new `name_of_the_circuit.cu` file by copying an existing one for a
-      delegation circuit
-    - adjust the `NAME` inside the new file
-    - add the new file to `native/CMakeLists.txt` list of files for the `gpu_prover_native` library
-    - create a new enum variant in `src/circuit_types.rs` for the new circuit in `DelegationCircuitType` enum and add
-      the handling of the variant in the functions inside implementation of `DelegationCircuitType`
-    - add the mapping to/from `DELEGATION_TYPE_ID` and the witness factory function for the `DelegationCircuitType` enum
-    - create binding for the circuit with the `generate_witness_delegation_kernel` macro inside
-      `src/witness/witness_delegation.rs` file and add the kernel as a variant towards the end of the
-      `generate_witness_values_delegation` function
-    - add handling of the new variant in the `get_delegation_circuit_precomputations` function in
-      `src/execution/precomputations.rs`
+The active GPU path has two circuit families:
+
+- unrolled execution circuits, described by `CircuitType::Unrolled(...)` in `src/circuit_type.rs`
+- delegation circuits, described by `CircuitType::Delegation(...)` in `src/circuit_type.rs`
+
+### Adding a new unrolled execution circuit
+
+- under `native/witness/circuits`, add a new `name_of_the_circuit.cu` file by copying the closest existing unrolled kernel
+- adjust the `NAME` inside the new file
+- add the new file to `native/CMakeLists.txt` so it is built into `gpu_prover_native`
+- add or extend the matching enum variant in `src/circuit_type.rs`
+  - use `UnrolledMemoryCircuitType` for load/store-style families
+  - use `UnrolledNonMemoryCircuitType` for arithmetic and control-flow families
+  - update `UnrolledCircuitType::Unified` only if you are changing the unified reduced recursion circuit itself
+- wire the witness kernel in `src/witness/witness_unrolled.rs`
+- update `src/witness/memory_unrolled.rs` if the circuit needs different RAM or lookup-layout handling
+- add the corresponding precomputation handling in `src/execution/precomputations.rs`
+- update `src/execution/tracing.rs` and `src/execution/prover.rs` so the new circuit can be scheduled and traced by the active replay pipeline
+
+### Adding a new delegation circuit
+
+- under `native/witness/circuits`, add a new `name_of_the_circuit.cu` file by copying the closest existing delegation kernel
+- adjust the `NAME` inside the new file
+- add the new file to `native/CMakeLists.txt` so it is built into `gpu_prover_native`
+- add a new `DelegationCircuitType` variant in `src/circuit_type.rs`
+- add the mapping to and from the delegation type id in `src/circuit_type.rs`
+- wire the witness kernel in `src/witness/witness_delegation.rs`
+- update `src/witness/memory_delegation.rs` if the delegation ABI changes the RAM access layout
+- add the corresponding precomputation handling in `src/execution/precomputations.rs`
+- update `src/execution/tracing.rs` so replay emits the right trace payload for the new delegation
