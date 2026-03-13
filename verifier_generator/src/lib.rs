@@ -107,21 +107,4 @@ mod test {
             dst.write_all(&result.to_string().as_bytes()).unwrap();
         }
     }
-
-    #[cfg(feature = "legacy_tests")]
-    #[test]
-    #[serial_test::serial]
-    // TODO(legacy-cleanup): determine whether the legacy code path exercised here can be removed.
-    fn generate_reduced_machine() {
-        skip_if_ci!();
-        let compiled_circuit = deserialize_from_file("../prover/reduced_machine_layout");
-
-        let result = generate_from_parts(&compiled_circuit);
-        let mut dst = std::fs::File::create("./src/generated.rs").unwrap();
-        dst.write_all(&result.to_string().as_bytes()).unwrap();
-
-        let result = generate_inlined(compiled_circuit);
-        let mut dst = std::fs::File::create("./src/generated_inlined_verifier.rs").unwrap();
-        dst.write_all(&result.to_string().as_bytes()).unwrap();
-    }
 }

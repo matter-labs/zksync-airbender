@@ -544,7 +544,9 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use prover::tests::{
-        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+        KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
     };
     use serial_test::serial;
 
@@ -1157,6 +1159,23 @@ mod tests {
         // Tells the CPU test to use this file's comparison_hook for unrolled circuits,
         // and comparison_hook from non-unrolled stage_2_kernels for delegation circuits.
         run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(
+                crate::prover::stage_2_kernels::tests::comparison_hook,
+            )),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[ignore = "manual heavy GPU comparison test"]
+    #[serial]
+    fn test_standalone_stage_2_unrolled_with_transpiler_for_main_and_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        // Keccak keeps a real delegation-specific GPU comparison lane on the
+        // current replayer/transpiler path, replacing the removed simulator test.
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl(
+            KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
             Some(Box::new(comparison_hook)),
             Some(Box::new(
                 crate::prover::stage_2_kernels::tests::comparison_hook,

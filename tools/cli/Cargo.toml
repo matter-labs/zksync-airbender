@@ -50,45 +50,36 @@ default = ["security_80"]
 
 security_80 = [
     "execution_utils/security_80",
+    "execution_utils/verifier_80",
     "prover_examples/security_80",
     "verifier_common/security_80",
+    "full_statement_verifier",
+    "full_statement_verifier/verifiers",
+    "full_statement_verifier/replace_csr",
+    "blake2_with_compression_verifier",
+    "verifier_common/replace_csr",
+    "verifier_common/proof_utils",
+    "field/no_inline",
     "gpu_prover?/security_80",
     "full_statement_verifier?/security_80",
     "blake2_with_compression_verifier?/security_80",
 ]
 security_100 = [
     "execution_utils/security_100",
+    "execution_utils/verifier_100",
     "prover_examples/security_100",
     "verifier_common/security_100",
+    "full_statement_verifier",
+    "full_statement_verifier/verifiers",
+    "full_statement_verifier/replace_csr",
+    "blake2_with_compression_verifier",
+    "verifier_common/replace_csr",
+    "verifier_common/proof_utils",
+    "field/no_inline",
     "gpu_prover?/security_100",
     "full_statement_verifier?/security_100",
     "blake2_with_compression_verifier?/security_100",
 ]
-
-# If include verifiers is disabled, the compilation is a lot faster, but `verify` command is not available.
-include_verifiers_80 = [
-    "security_80",
-    "full_statement_verifier",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "blake2_with_compression_verifier",
-    "verifier_common/replace_csr",
-    "verifier_common/proof_utils",
-    "field/no_inline",
-    "execution_utils/verifier_80",
-]
-include_verifiers_100 = [
-    "security_100",
-    "full_statement_verifier",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "blake2_with_compression_verifier",
-    "verifier_common/replace_csr",
-    "verifier_common/proof_utils",
-    "field/no_inline",
-    "execution_utils/verifier_100",
-]
-include_verifiers = ["include_verifiers_80"]
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.

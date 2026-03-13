@@ -6,10 +6,7 @@ use cs::cs::oracle::Oracle;
 use cs::cs::placeholder::Placeholder;
 use cs::definitions::ColumnAddress;
 use cs::definitions::LookupExpression;
-use cs::machine::machine_configurations::*;
-use cs::machine::Machine;
 use cs::one_row_compiler::*;
-use cs::tables::LookupWrapper;
 use cs::tables::TableDriver;
 use cs::utils::split_u32_into_pair_u16;
 use fft::*;
@@ -18,10 +15,8 @@ use memory_witness::delegation_circuit::process_delegation_requests_execution;
 use memory_witness::main_circuit::process_delegation_requests;
 use memory_witness::main_circuit::process_lazy_init_work;
 use memory_witness::main_circuit::process_shuffle_ram_accesses;
-use risc_v_simulator::abstractions::non_determinism::*;
 use risc_v_simulator::cycle::state::NUM_REGISTERS;
 use std::alloc::Allocator;
-use std::alloc::Global;
 use std::collections::HashMap;
 use trace_holder::*;
 use worker::Worker;
@@ -29,7 +24,6 @@ use worker::Worker;
 mod new;
 
 mod ext_calls;
-mod ext_calls_with_gpu_tracers;
 mod memory_witness;
 pub mod unrolled;
 pub mod witness_proxy;
@@ -49,7 +43,6 @@ pub use self::memory_witness::{
 };
 
 pub use self::ext_calls::*;
-pub use self::ext_calls_with_gpu_tracers::*;
 use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

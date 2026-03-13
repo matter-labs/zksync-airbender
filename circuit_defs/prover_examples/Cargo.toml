@@ -44,7 +44,6 @@ debug_satisfiable = ["prover/debug_satisfiable"]
 # Print logs related to timings only.
 timing_logs = []
 verifiers = ["full_statement_verifier/verifiers"]
-legacy_tests = []
 
 default = ["timing_logs", "security_80", "verifier_common/proof_utils"]
 

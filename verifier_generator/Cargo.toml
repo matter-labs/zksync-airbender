@@ -20,6 +20,3 @@ serde_json = "*"
 [dev-dependencies]
 test_utils = { workspace = true }
 serial_test = "3"
-
-[features]
-legacy_tests = []

@@ -1,4 +1,5 @@
 use super::*;
+use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
@@ -32,6 +33,36 @@ const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 6;
 const NUM_DELEGATION_CYCLES: usize = (1 << 20) - 1;
 
+// These program descriptors let GPU comparison tests reuse the same current-path
+// witness harness without hardcoding a single example forever. We keep the
+// default Blake-backed sample for broad coverage, and add a Keccak sample to
+// preserve the delegation path that previously only existed behind simulator
+// tests.
+#[derive(Clone, Copy)]
+pub struct TranspilerTestProgram {
+    pub name: &'static str,
+    pub binary_path: &'static str,
+    pub text_path: &'static str,
+    pub cycles_bound: usize,
+    pub non_determinism_reads: &'static [u32],
+}
+
+pub const HASHED_FIBONACCI_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram = TranspilerTestProgram {
+    name: "hashed_fibonacci",
+    binary_path: "../examples/hashed_fibonacci/app.bin",
+    text_path: "../examples/hashed_fibonacci/app.text",
+    cycles_bound: 1 << 20,
+    non_determinism_reads: &[15, 1],
+};
+
+pub const KECCAK_F1600_TRANSPILER_TEST_PROGRAM: TranspilerTestProgram = TranspilerTestProgram {
+    name: "keccak_f1600",
+    binary_path: "../riscv_transpiler/examples/keccak_f1600/app.bin",
+    text_path: "../riscv_transpiler/examples/keccak_f1600/app.text",
+    cycles_bound: 1 << 21,
+    non_determinism_reads: &[],
+};
+
 // #[ignore = "test has explicit panic inside"]
 #[cfg(test)]
 #[ignore = "manual heavy proving test"]
@@ -42,6 +73,18 @@ fn run_basic_unrolled_test_in_transpiler_with_word_specialization() {
 }
 
 pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
+    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
+    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
+) {
+    run_unrolled_test_program_in_transpiler_with_word_specialization_impl(
+        HASHED_FIBONACCI_TRANSPILER_TEST_PROGRAM,
+        maybe_gpu_unrolled_comparison_hook,
+        maybe_gpu_delegation_comparison_hook,
+    );
+}
+
+pub fn run_unrolled_test_program_in_transpiler_with_word_specialization_impl(
+    program: TranspilerTestProgram,
     maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
     maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn(&GpuComparisonArgs)>>,
 ) {
@@ -74,11 +117,11 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
 
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
-    // load binary
+    println!("Running transpiler witness harness for {}", program.name);
 
-    // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    // The binary and its bytecode tables define the exact circuit mix we are
+    // about to exercise, so tests choose them explicitly through `program`.
+    let binary = std::fs::read(program.binary_path).unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -87,9 +130,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    let text_section = std::fs::read(program.text_path).unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -107,11 +148,12 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
         &binary,
         1 << 30,
     );
-    let cycles_bound = 1 << 20;
+    let cycles_bound = program.cycles_bound;
 
     let mut state = State::initial_with_counters(CountersT::default());
     let mut snapshotter = SimpleSnapshotter::<CountersT, {common_constants::ROM_SECOND_WORD_BITS}>::new_with_cycle_limit(cycles_bound, state);
-    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
+    let mut non_determinism =
+        QuasiUARTSource::new_with_reads(program.non_determinism_reads.to_vec());
 
     let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _>(
         &mut state,
@@ -262,7 +304,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &opcodes_for_full_machine_with_mem_word_access_specialization(),
             1 << 20,
             &[
-                NON_DETERMINISM_CSR,
+                NON_DETERMINISM_CSR as u16,
                 BLAKE2S_DELEGATION_CSR_REGISTER as u16,
                 BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
                 KECCAK_SPECIAL5_CSR_REGISTER as u16,
@@ -274,7 +316,7 @@ pub fn run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
             &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
             1 << 20,
             &[
-                NON_DETERMINISM_CSR,
+                NON_DETERMINISM_CSR as u16,
                 BLAKE2S_DELEGATION_CSR_REGISTER as u16,
                 BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
                 KECCAK_SPECIAL5_CSR_REGISTER as u16
