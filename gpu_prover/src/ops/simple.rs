@@ -77,6 +77,35 @@ set_by_val_impl!(E2);
 set_by_val_impl!(E4);
 set_by_val_impl!(E6);
 
+// SET_ARITHMETIC_SEQUENCE_KERNEL
+cuda_kernel_signature_arguments_and_function!(
+    SetArithmeticSequence,
+    start: u32,
+    step: u32,
+    result: MutPtrAndStrideWrappingMatrix<u32>,
+);
+
+cuda_kernel_declaration!(
+    ab_set_arithmetic_sequence_u32_kernel(
+        start: u32,
+        step: u32,
+        result: MutPtrAndStrideWrappingMatrix<u32>,
+    )
+);
+
+pub fn set_arithmetic_sequence(
+    start: u32,
+    step: u32,
+    result: &mut (impl DeviceMatrixChunkMutImpl<u32> + ?Sized),
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let result = MutPtrAndStrideWrappingMatrix::new(result);
+    let (grid_dim, block_dim) = get_launch_dims(result.rows, result.cols);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = SetArithmeticSequenceArguments::new(start, step, result);
+    SetArithmeticSequenceFunction(ab_set_arithmetic_sequence_u32_kernel).launch(&config, &args)
+}
+
 // SET_BY_REF_KERNEL
 cuda_kernel_signature_arguments_and_function!(
     SetByRef<T>,
