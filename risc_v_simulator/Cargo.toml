@@ -12,10 +12,8 @@ categories.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-common_constants = { workspace = true }
-cs = { workspace = true, default-features = false }
-serde = { workspace = true }
+riscv_transpiler = { workspace = true, default-features = false }
 
 [features]
 default = []
-delegation = []
+delegation = ["riscv_transpiler/delegation"]

@@ -11,10 +11,10 @@ categories.workspace = true
 
 [dependencies]
 common_constants = { workspace = true }
+cs = { workspace = true, default-features = false }
 field = { workspace = true }
 blake2s_u32 = { workspace = true }
 ruint = { version = "1.16" }
-risc_v_simulator = { workspace = true, features = ["delegation"] }
 worker = { workspace = true }
 serde = { workspace = true }
 seq-macro = { workspace = true }
@@ -29,6 +29,7 @@ riscv-decode = {version = "0.2", optional = true }
 capstone = {version = "0.13", optional = true }
 
 [features]
+delegation = []
 jit = ["dynasmrt", "riscv-decode", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 default = ["jit"]

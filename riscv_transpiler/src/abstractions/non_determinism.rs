@@ -1,6 +1,3 @@
-// We keep this source here because the current CLI and proof orchestration still
-// pass it around as the canonical nondeterminism carrier. The active execution
-// engine is the transpiler VM, which implements its own trait for this type.
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]

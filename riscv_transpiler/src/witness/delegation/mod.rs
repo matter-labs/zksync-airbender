@@ -1,6 +1,6 @@
 use common_constants::TimestampScalar;
 use core::fmt::Debug;
-use risc_v_simulator::abstractions::tracer::{
+use crate::abstractions::tracer::{
     RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
 };
 use std::ops::Range;

@@ -1,4 +1,4 @@
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use crate::abstractions::non_determinism::QuasiUARTSource;
 
 use super::*;
 use crate::{

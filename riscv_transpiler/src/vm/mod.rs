@@ -186,7 +186,7 @@ impl NonDeterminismCSRSource for () {
     fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {}
 }
 
-impl NonDeterminismCSRSource for risc_v_simulator::abstractions::non_determinism::QuasiUARTSource {
+impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUARTSource {
     fn read(&mut self) -> u32 {
         // self.oracle.pop_front().unwrap_or_default()
         self.oracle.pop_front().expect("must have an answer")
@@ -614,7 +614,7 @@ pub(crate) mod test {
     #[serial_test::serial]
     fn test_reference_block_exec() {
         use crate::ir::*;
-        use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+        use crate::abstractions::non_determinism::QuasiUARTSource;
 
         let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
