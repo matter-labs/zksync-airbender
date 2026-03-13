@@ -8,10 +8,13 @@ using namespace ::airbender::witness::memory;
 namespace airbender::witness::multiplicities {
 
 EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __restrict__ unique_indexes, const u32 *const __restrict__ counts,
-                                                         const u32 *const __restrict__ num_runs, const matrix_setter<bf, st_modifier::cs> multiplicities,
-                                                         const unsigned count) {
+                                                         const u32 *const __restrict__ num_runs, u32 *const __restrict__ lookup_mapping,
+                                                         const unsigned lookup_mapping_size, const matrix_setter<bf, st_modifier::cs> multiplicities,
+                                                         const unsigned multiplicities_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
+  if (gid < lookup_mapping_size && lookup_mapping[gid] == 0xffffffffu)
+    lookup_mapping[gid] = 0;
+  if (gid >= multiplicities_size)
     return;
   if (gid >= num_runs[0])
     return;

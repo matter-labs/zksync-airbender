@@ -9,7 +9,9 @@
 //   enclosing prover job until the stream has consumed them. Any proof data needed after execution
 //   must be copied back to host as part of the scheduled workflow.
 
+pub(crate) mod forward;
 pub(crate) mod setup;
+pub(crate) mod stage1;
 
 use std::collections::BTreeMap;
 use std::ptr::null;

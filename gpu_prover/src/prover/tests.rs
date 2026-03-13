@@ -1,24 +1,22 @@
 use super::gkr::{
+    forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
+    stage1::GpuGKRStage1Output,
     GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::set_by_ref;
+use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::circuit_type::UnrolledNonMemoryCircuitType;
+use crate::primitives::circuit_type::{
+    CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
+};
 use crate::primitives::context::ProverContext;
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
-use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
-use crate::witness::memory_unrolled::generate_memory_and_witness_values_unrolled_non_memory;
-use crate::witness::multiplicities::{
-    generate_generic_lookup_multiplicities, generate_range_check_multiplicities,
-};
+use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
-use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memory;
 use cs::definitions::*;
-use cs::gkr_compiler::OutputType;
+use cs::gkr_compiler::{NoFieldGKRRelation, OutputType};
 use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::{
     add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
     add_sub_lui_auipc_mop_table_addition_fn,
@@ -29,9 +27,8 @@ use cs::machine::ops::unrolled::{
     process_binary_into_separate_tables_ext,
 };
 use cs::tables::TableDriver;
-use era_cudart::memory::{memory_copy, DeviceAllocation};
+use era_cudart::memory::memory_copy;
 use era_cudart::slice::DeviceSlice;
-use era_cudart::stream::CudaStream;
 use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
@@ -171,30 +168,16 @@ fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
         .collect_vec()
 }
 
-fn materialize_trace_holder_from_columns(
-    values: &DeviceSlice<BF>,
-    columns_count: usize,
-    trace_len: usize,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    context: &ProverContext,
-) -> TraceHolder<BF> {
-    let mut trace_holder = TraceHolder::<BF>::new(
-        trace_len.trailing_zeros(),
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        columns_count,
-        TreesCacheMode::CachePartial,
-        context,
-    )
-    .unwrap();
-    trace_holder
-        .materialize_and_commit_from_hypercube_evals(values, context)
-        .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    trace_holder
+fn copy_bf_device_slice_to_host(values: &DeviceSlice<BF>) -> Vec<BF> {
+    let mut host = vec![BF::ZERO; values.len()];
+    memory_copy(&mut host, values).unwrap();
+    host
+}
+
+fn copy_u32_device_slice_to_host(values: &DeviceSlice<u32>) -> Vec<u32> {
+    let mut host = vec![0u32; values.len()];
+    memory_copy(&mut host, values).unwrap();
+    host
 }
 
 fn copy_base_poly_from_gpu_storage<E: Field>(
@@ -215,6 +198,30 @@ fn copy_base_poly_from_gpu_storage<E: Field>(
     context.get_exec_stream().synchronize().unwrap();
 
     let mut host = vec![BF::ZERO; poly.len()];
+    memory_copy(&mut host, &tmp).unwrap();
+    host
+}
+
+fn copy_ext_poly_from_gpu_storage<E: Field + SetByRef>(
+    storage: &GpuGKRStorage<BF, E>,
+    address: GKRAddress,
+    context: &ProverContext,
+) -> Vec<E> {
+    let poly = storage
+        .try_get_ext_poly(address)
+        .unwrap_or_else(|| panic!("missing GPU extension poly for {:?}", address));
+    let mut tmp = context
+        .alloc(poly.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    set_by_ref(
+        &poly.as_device_chunk(),
+        tmp.deref_mut(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut host = vec![E::ZERO; poly.len()];
     memory_copy(&mut host, &tmp).unwrap();
     host
 }
@@ -251,6 +258,104 @@ fn assert_flat_columns_match_cpu_trace<Column: AsRef<[BF]>>(
             "column {} diverged",
             column_idx
         );
+    }
+}
+
+fn assert_generic_family_mapping_contract(
+    lookup_mappings: &crate::prover::gkr::stage1::GpuGKRLookupMappings,
+    cpu_trace: &GKRFullWitnessTrace<
+        BF,
+        impl std::alloc::Allocator + Clone,
+        impl std::alloc::Allocator + Clone,
+    >,
+    _populated_rows: usize,
+) {
+    let gpu_generic_family = copy_u32_device_slice_to_host(lookup_mappings.generic_family());
+    let trace_len = lookup_mappings.trace_len;
+    let expected_num_cols = cpu_trace.generic_lookup_mapping.len();
+    assert_eq!(gpu_generic_family.len(), expected_num_cols * trace_len);
+
+    for generic_set_idx in 0..lookup_mappings.num_generic_sets {
+        let gpu_column =
+            copy_u32_device_slice_to_host(lookup_mappings.generic_mapping(generic_set_idx));
+        let cpu_column = &cpu_trace.generic_lookup_mapping[generic_set_idx];
+        assert_eq!(
+            gpu_column, *cpu_column,
+            "generic mapping column {generic_set_idx} diverged",
+        );
+    }
+
+    if lookup_mappings.has_decoder {
+        let gpu_decoder = copy_u32_device_slice_to_host(
+            lookup_mappings
+                .decoder_mapping()
+                .expect("decoder mapping must be present"),
+        );
+        let cpu_decoder = cpu_trace
+            .generic_lookup_mapping
+            .last()
+            .expect("decoder lookup mapping must be present");
+        assert_eq!(gpu_decoder, *cpu_decoder);
+        assert_eq!(
+            &gpu_generic_family[lookup_mappings.num_generic_sets * trace_len..],
+            &gpu_decoder,
+        );
+    }
+}
+
+fn assert_gpu_and_cpu_gkr_storage_match<
+    E: FieldExtension<BF> + Field + SetByRef + core::fmt::Debug,
+>(
+    gpu_storage: &GpuGKRStorage<BF, E>,
+    cpu_storage: &GKRStorage<BF, E>,
+    context: &ProverContext,
+) {
+    assert_eq!(gpu_storage.layers.len(), cpu_storage.layers.len());
+    for (layer_idx, (gpu_layer, cpu_layer)) in gpu_storage
+        .layers
+        .iter()
+        .zip(cpu_storage.layers.iter())
+        .enumerate()
+    {
+        let gpu_base_keys = gpu_layer.base_field_inputs.keys().copied().collect_vec();
+        let cpu_base_keys = cpu_layer.base_field_inputs.keys().copied().collect_vec();
+        assert_eq!(
+            gpu_base_keys, cpu_base_keys,
+            "base keys differ in layer {layer_idx}"
+        );
+        for address in cpu_base_keys {
+            let gpu_values = copy_base_poly_from_gpu_storage(gpu_storage, address, context);
+            let cpu_values = cpu_storage
+                .try_get_base_poly(address)
+                .unwrap_or_else(|| panic!("missing CPU base poly for {:?}", address));
+            assert_eq!(gpu_values, cpu_values, "base poly {:?} diverged", address);
+        }
+
+        let gpu_ext_keys = gpu_layer
+            .extension_field_inputs
+            .keys()
+            .copied()
+            .collect_vec();
+        let cpu_ext_keys = cpu_layer
+            .extension_field_inputs
+            .keys()
+            .copied()
+            .collect_vec();
+        assert_eq!(
+            gpu_ext_keys, cpu_ext_keys,
+            "extension keys differ in layer {layer_idx}"
+        );
+        for address in cpu_ext_keys {
+            let gpu_values = copy_ext_poly_from_gpu_storage(gpu_storage, address, context);
+            let cpu_values = cpu_storage
+                .try_get_ext_poly(address)
+                .unwrap_or_else(|| panic!("missing CPU extension poly for {:?}", address));
+            assert_eq!(
+                gpu_values, cpu_values,
+                "extension poly {:?} diverged",
+                address
+            );
+        }
     }
 }
 
@@ -487,7 +592,7 @@ fn run_basic_unrolled_test() {
     let log_rows_per_leaf = whir_first_fold_step_log2 as u32;
     let log_tree_cap_size = tree_cap_size.trailing_zeros();
     let subcap_size = tree_cap_size / base_lde_factor;
-    let context = make_test_context(20 * 1024, 1024);
+    let context = make_test_context(64 * 1024, 1024);
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -502,118 +607,6 @@ fn run_basic_unrolled_test() {
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
     gpu_setup_transfer.schedule_transfer(&context).unwrap();
     context.get_h2d_stream().synchronize().unwrap();
-
-    let (d_memory, d_witness) = {
-        let circuit_type = UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop;
-        let memory_layout = &add_sub_circuit.memory_layout;
-        let witness_layout = &add_sub_circuit.witness_layout;
-        let aux_layout_data = &add_sub_circuit.aux_layout_data;
-        let h_decoder_table = witness_gen_data
-            .iter()
-            .copied()
-            .map(|d| d.into())
-            .collect_vec();
-        let mut d_decoder_table = context
-            .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-            .unwrap();
-        memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
-        let mut d_memory =
-            DeviceAllocation::alloc(memory_layout.total_width * NUM_CYCLES_PER_CHUNK).unwrap();
-        let generic_lookups_count = {
-            let count = witness_layout.generic_lookups.len();
-            if add_sub_circuit.has_decoder_lookup {
-                count + 1
-            } else {
-                count
-            }
-        };
-        let mut d_generic_lookup_mapping = context
-            .alloc(
-                generic_lookups_count * NUM_CYCLES_PER_CHUNK,
-                AllocationPlacement::BestFit,
-            )
-            .unwrap();
-        let (d_decoder_lookup_mapping_slice, d_generic_lookup_mapping_slice) =
-            if add_sub_circuit.has_decoder_lookup {
-                d_generic_lookup_mapping.split_at_mut(NUM_CYCLES_PER_CHUNK)
-            } else {
-                (
-                    DeviceSlice::empty_mut(),
-                    d_generic_lookup_mapping.deref_mut(),
-                )
-            };
-        let mut trace_data = context
-            .alloc(buffer.len(), AllocationPlacement::BestFit)
-            .unwrap();
-        memory_copy(&mut trace_data, &buffer[..]).unwrap();
-        let d_trace = UnrolledNonMemoryTraceDevice {
-            tracing_data: trace_data,
-        };
-        let d_setup = gpu_setup_transfer.trace_holder.get_hypercube_evals();
-        let d_generic_lookup_tables = &d_setup[2 * NUM_CYCLES_PER_CHUNK..];
-        let mut d_witness = context
-            .alloc(
-                witness_layout.total_width * NUM_CYCLES_PER_CHUNK,
-                AllocationPlacement::BestFit,
-            )
-            .unwrap();
-
-        generate_memory_and_witness_values_unrolled_non_memory(
-            circuit_type,
-            memory_layout,
-            aux_layout_data,
-            &d_decoder_table,
-            &d_trace,
-            &mut DeviceMatrixMut::new(&mut d_memory, NUM_CYCLES_PER_CHUNK),
-            &mut DeviceMatrixMut::new(&mut d_witness, NUM_CYCLES_PER_CHUNK),
-            d_decoder_lookup_mapping_slice,
-            &CudaStream::DEFAULT,
-        )
-        .unwrap();
-        generate_witness_values_unrolled_non_memory(
-            circuit_type,
-            &d_trace,
-            &DeviceMatrix::new(d_generic_lookup_tables, NUM_CYCLES_PER_CHUNK),
-            &DeviceMatrix::new(&d_memory, NUM_CYCLES_PER_CHUNK),
-            &mut DeviceMatrixMut::new(&mut d_witness, NUM_CYCLES_PER_CHUNK),
-            &mut DeviceMatrixMut::new(d_generic_lookup_mapping_slice, NUM_CYCLES_PER_CHUNK),
-            &CudaStream::DEFAULT,
-        )
-        .unwrap();
-        let range = witness_layout
-            .multiplicities_columns_for_generic_lookup
-            .clone();
-        let generic_lookup_multiplicities =
-            &mut d_witness[range.start * NUM_CYCLES_PER_CHUNK..range.end * NUM_CYCLES_PER_CHUNK];
-        generate_generic_lookup_multiplicities(
-            &mut DeviceMatrixMut::new(&mut d_generic_lookup_mapping, NUM_CYCLES_PER_CHUNK),
-            &mut DeviceMatrixMut::new(generic_lookup_multiplicities, NUM_CYCLES_PER_CHUNK),
-            &context,
-        )
-        .unwrap();
-        generate_range_check_multiplicities(
-            &add_sub_circuit,
-            &mut DeviceMatrixMut::new(&mut d_memory, NUM_CYCLES_PER_CHUNK),
-            &mut DeviceMatrixMut::new(&mut d_witness, NUM_CYCLES_PER_CHUNK),
-            &context,
-        )
-        .unwrap();
-        let mut h_memory = vec![BF::ZERO; memory_layout.total_width * NUM_CYCLES_PER_CHUNK];
-        memory_copy(&mut h_memory, &d_memory).unwrap();
-        assert_flat_columns_match_cpu_trace(
-            &h_memory,
-            &full_trace.column_major_memory_trace,
-            NUM_CYCLES_PER_CHUNK,
-        );
-        let mut h_witness = vec![BF::ZERO; witness_layout.total_width * NUM_CYCLES_PER_CHUNK];
-        memory_copy(&mut h_witness, &d_witness).unwrap();
-        assert_flat_columns_match_cpu_trace(
-            &h_witness,
-            &full_trace.column_major_witness_trace,
-            NUM_CYCLES_PER_CHUNK,
-        );
-        (d_memory, d_witness)
-    };
 
     let now = std::time::Instant::now();
     assert_eq!(add_sub_circuit.trace_len, trace_len);
@@ -632,33 +625,85 @@ fn run_basic_unrolled_test() {
     let trace_holder_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
     let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
     assert_eq!(trace_holder_caps, setup_caps);
-
-    let memory_trace_holder = materialize_trace_holder_from_columns(
-        &d_memory,
-        add_sub_circuit.memory_layout.total_width,
-        trace_len,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+    let h_decoder_table = witness_gen_data
+        .iter()
+        .copied()
+        .map(|d| d.into())
+        .collect_vec();
+    let mut d_decoder_table = context
+        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
+    let mut trace_data = context
+        .alloc(buffer.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy(&mut trace_data, &buffer[..]).unwrap();
+    let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
+        UnrolledNonMemoryTraceDevice {
+            tracing_data: trace_data,
+        },
+    ));
+    let mut stage1_output = GpuGKRStage1Output::generate(
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )),
+        &add_sub_circuit,
+        &gpu_setup_transfer,
+        if add_sub_circuit.has_decoder_lookup {
+            Some(&d_decoder_table)
+        } else {
+            None
+        },
+        &gpu_trace,
         &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let gpu_memory_flat =
+        copy_bf_device_slice_to_host(stage1_output.memory_trace_holder.get_hypercube_evals());
+    assert_flat_columns_match_cpu_trace(
+        &gpu_memory_flat,
+        &full_trace.column_major_memory_trace,
+        NUM_CYCLES_PER_CHUNK,
     );
-    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
-    assert_eq!(memory_trace_holder.get_tree_caps(), memory_caps);
+    let gpu_witness_flat =
+        copy_bf_device_slice_to_host(stage1_output.witness_trace_holder.get_hypercube_evals());
+    assert_flat_columns_match_cpu_trace(
+        &gpu_witness_flat,
+        &full_trace.column_major_witness_trace,
+        NUM_CYCLES_PER_CHUNK,
+    );
 
-    let witness_trace_holder = materialize_trace_holder_from_columns(
-        &d_witness,
-        add_sub_circuit.witness_layout.total_width,
-        trace_len,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        &context,
+    assert_generic_family_mapping_contract(&stage1_output.lookup_mappings, &full_trace, num_calls);
+    let expected_range_check = full_trace
+        .range_check_16_lookup_mapping
+        .iter()
+        .flat_map(|column| column.iter().map(|value| u32::from(*value)))
+        .collect_vec();
+    let gpu_range_check =
+        copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16());
+    assert_eq!(gpu_range_check, expected_range_check);
+    let expected_timestamp = full_trace
+        .timestamp_range_check_lookup_mapping
+        .iter()
+        .flat_map(|column| column.iter().copied())
+        .collect_vec();
+    let gpu_timestamp = copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp());
+    assert_eq!(gpu_timestamp, expected_timestamp);
+
+    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    assert_eq!(
+        stage1_output.memory_trace_holder.get_tree_caps(),
+        memory_caps
     );
     let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    assert_eq!(witness_trace_holder.get_tree_caps(), witness_caps);
+    assert_eq!(
+        stage1_output.witness_trace_holder.get_tree_caps(),
+        witness_caps
+    );
 
-    let gpu_gkr_storage =
-        gpu_setup_transfer.bootstrap_storage::<E4>(&memory_trace_holder, &witness_trace_holder);
+    let gpu_gkr_storage = gpu_setup_transfer.bootstrap_storage_from_stage1::<E4>(&stage1_output);
     assert_eq!(gpu_gkr_storage.layers.len(), 1);
     assert!(gpu_gkr_storage.layers[0].extension_field_inputs.is_empty());
     let setup_columns = setup
@@ -720,21 +765,29 @@ fn run_basic_unrolled_test() {
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
 
-    let mut lookup_challenges = unsafe { context.alloc_host_uninit_slice(2) };
-    unsafe {
-        lookup_challenges
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(&[lookup_alpha, lookup_additive_part]);
-    }
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
+    let lookup_challenges = [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ];
+    let lookup_challenges_accessor = lookup_challenges_host.get_accessor();
+    let lookup_challenges_dst = lookup_challenges_host.get_mut_accessor();
     let mut callbacks = Callbacks::new();
-    let mut gpu_lookup_runtime_data = gpu_setup_transfer
-        .prepare_lookup_runtime_data(&add_sub_circuit, &context)
+    callbacks
+        .schedule(
+            move || unsafe {
+                lookup_challenges_dst
+                    .get_mut()
+                    .copy_from_slice(&lookup_challenges)
+            },
+            context.get_exec_stream(),
+        )
         .unwrap();
-    gpu_setup_transfer
-        .schedule_lookup_runtime_data(
-            &mut gpu_lookup_runtime_data,
-            lookup_challenges.get_accessor(),
+    let mut gpu_forward_setup = gpu_setup_transfer
+        .schedule_forward_setup(
+            &add_sub_circuit,
+            lookup_challenges_accessor,
             &mut callbacks,
             &context,
         )
@@ -742,11 +795,7 @@ fn run_basic_unrolled_test() {
     context.get_exec_stream().synchronize().unwrap();
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
-    let (
-        preprocessed_range_check_16,
-        preprocessed_timestamp_range_checks,
-        preprocessed_generic_lookup,
-    ) = setup.preprocess_lookups(
+    let (_, _, preprocessed_generic_lookup) = setup.preprocess_lookups(
         &add_sub_circuit,
         lookup_alpha,
         lookup_additive_part,
@@ -755,32 +804,9 @@ fn run_basic_unrolled_test() {
         &worker,
     );
 
-    let mut gpu_range = vec![E4::ZERO; gpu_lookup_runtime_data.range_check_16.len()];
-    memory_copy(&mut gpu_range, &gpu_lookup_runtime_data.range_check_16).unwrap();
-    assert_eq!(gpu_range, preprocessed_range_check_16.as_ref());
-
-    let mut gpu_timestamp = vec![E4::ZERO; gpu_lookup_runtime_data.timestamp_range_check.len()];
-    memory_copy(
-        &mut gpu_timestamp,
-        &gpu_lookup_runtime_data.timestamp_range_check,
-    )
-    .unwrap();
-    assert_eq!(gpu_timestamp, preprocessed_timestamp_range_checks.as_ref());
-
-    let mut gpu_generic = vec![E4::ZERO; gpu_lookup_runtime_data.generic_lookup.len()];
-    memory_copy(&mut gpu_generic, &gpu_lookup_runtime_data.generic_lookup).unwrap();
+    let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
+    memory_copy(&mut gpu_generic, gpu_forward_setup.generic_lookup()).unwrap();
     assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
-
-    let gpu_vectorized_lookup_setup = gpu_lookup_runtime_data.vectorized_lookup_setup_poly();
-    let mut gpu_vectorized_host = vec![E4::ZERO; gpu_vectorized_lookup_setup.len()];
-    memory_copy(&mut gpu_vectorized_host, gpu_vectorized_lookup_setup).unwrap();
-    assert_eq!(
-        &gpu_vectorized_host[..preprocessed_generic_lookup.len()],
-        preprocessed_generic_lookup.as_ref()
-    );
-    assert!(gpu_vectorized_host[preprocessed_generic_lookup.len()..]
-        .iter()
-        .all(|value| *value == lookup_additive_part));
 
     let mut witness_eval_data = full_trace;
     for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate() {
@@ -808,6 +834,63 @@ fn run_basic_unrolled_test() {
             final_trace_size_log_2,
             &worker,
         );
+
+    let gpu_forward_output = schedule_forward_pass(
+        &gpu_setup_transfer,
+        &mut stage1_output,
+        &mut gpu_forward_setup,
+        &add_sub_circuit,
+        &external_challenges,
+        final_trace_size_log_2,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    assert!(!stage1_output.lookup_mappings.has_generic_family());
+    assert!(!stage1_output.lookup_mappings.has_range_check_16());
+    assert!(!stage1_output.lookup_mappings.has_timestamp());
+    assert!(!gpu_forward_setup.has_generic_lookup());
+    assert_eq!(
+        gpu_forward_output.initial_layer_for_sumcheck,
+        initial_layer_for_sumcheck
+    );
+    assert_eq!(
+        gpu_forward_output.dimension_reducing_inputs,
+        dimension_reducing_inputs
+    );
+    assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+
+    let (copy_input, copy_output) = add_sub_circuit
+        .layers
+        .iter()
+        .flat_map(|layer| {
+            layer
+                .gates
+                .iter()
+                .chain(layer.gates_with_external_connections.iter())
+        })
+        .find_map(|gate| match &gate.enforced_relation {
+            NoFieldGKRRelation::Copy { input, output } => Some((*input, *output)),
+            _ => None,
+        })
+        .expect("test circuit must contain a Copy relation");
+    if let Some(input_poly) = gpu_forward_output.storage.try_get_base_poly(copy_input) {
+        let output_poly = gpu_forward_output
+            .storage
+            .try_get_base_poly(copy_output)
+            .expect("copy output must preserve base-field representation");
+        assert!(input_poly.shares_backing_with(output_poly));
+    } else {
+        let input_poly = gpu_forward_output
+            .storage
+            .try_get_ext_poly(copy_input)
+            .expect("copy input must exist");
+        let output_poly = gpu_forward_output
+            .storage
+            .try_get_ext_poly(copy_output)
+            .expect("copy output must preserve extension-field representation");
+        assert!(input_poly.shares_backing_with(output_poly));
+    }
 
     let mut final_explicit_evaluations = BTreeMap::new();
     let mut evals_flattened = vec![];
@@ -964,8 +1047,6 @@ fn run_basic_unrolled_test() {
         }
     }
 
-    drop(preprocessed_range_check_16);
-    drop(preprocessed_timestamp_range_checks);
     drop(preprocessed_generic_lookup);
 
     let mut mem_polys_claims = Vec::with_capacity(add_sub_circuit.memory_layout.total_width);
