@@ -5,10 +5,14 @@ use ::field::*;
 use cs::definitions::*;
 use cs::machine::machine_configurations::*;
 use cs::one_row_compiler::*;
+use cs::tables::LookupWrapper;
+use cs::tables::{TableDriver, TableType};
 use fft::*;
-use prover_stages::ProverData;
+use mem_utils::produce_register_contribution_into_memory_accumulator;
+use prover_stages::{prove, ProverData};
 use std::alloc::Global;
 use trace_holder::RowMajorTrace;
+use worker::Worker;
 
 pub mod blake2s_delegation_with_transpiler {
     use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
