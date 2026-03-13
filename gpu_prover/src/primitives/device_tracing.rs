@@ -4,21 +4,23 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use std::sync::{Arc, OnceLock};
 
-pub(super) struct Range<'a> {
+pub(crate) struct Range {
     start_event: CudaEvent,
-    start_fn: HostFn<'a>,
+    start_fn: HostFn<'static>,
     end_event: CudaEvent,
-    end_fn: HostFn<'a>,
+    end_fn: HostFn<'static>,
 }
 
-impl<'a> Range<'a> {
-    pub fn new(name: &'a str) -> CudaResult<Self> {
+impl Range {
+    pub fn new(name: impl Into<Arc<str>>) -> CudaResult<Self> {
+        let name = name.into();
         let id = Arc::new(OnceLock::new());
         let start_event = CudaEvent::create()?;
         let start_fn = {
             let id = id.clone();
+            let name = Arc::clone(&name);
             HostFn::new(move || {
-                id.set(nvtx::range_start!("{}", name)).unwrap();
+                id.set(nvtx::range_start!("{}", name.as_ref())).unwrap();
             })
         };
         let end_event = CudaEvent::create()?;

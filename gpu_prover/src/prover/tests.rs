@@ -34,6 +34,7 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
+use nvtx::range;
 use prover::definitions::Transcript;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
@@ -605,8 +606,11 @@ fn run_basic_unrolled_test() {
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    gpu_setup_transfer.schedule_transfer(&context).unwrap();
-    context.get_h2d_stream().synchronize().unwrap();
+    {
+        let _range = range!("test.gpu.setup_transfer");
+        gpu_setup_transfer.schedule_transfer(&context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+    }
 
     let now = std::time::Instant::now();
     assert_eq!(add_sub_circuit.trace_len, trace_len);
@@ -643,54 +647,66 @@ fn run_basic_unrolled_test() {
             tracing_data: trace_data,
         },
     ));
-    let mut stage1_output = GpuGKRStage1Output::generate(
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        )),
-        &add_sub_circuit,
-        &gpu_setup_transfer,
-        if add_sub_circuit.has_decoder_lookup {
-            Some(&d_decoder_table)
-        } else {
-            None
-        },
-        &gpu_trace,
-        &context,
-    )
-    .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
+    let mut stage1_output = {
+        let _range = range!("test.gpu.stage1.generate");
+        let stage1_output = GpuGKRStage1Output::generate(
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            &add_sub_circuit,
+            &gpu_setup_transfer,
+            if add_sub_circuit.has_decoder_lookup {
+                Some(&d_decoder_table)
+            } else {
+                None
+            },
+            &gpu_trace,
+            &context,
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        stage1_output
+    };
 
-    let gpu_memory_flat =
-        copy_bf_device_slice_to_host(stage1_output.memory_trace_holder.get_hypercube_evals());
-    assert_flat_columns_match_cpu_trace(
-        &gpu_memory_flat,
-        &full_trace.column_major_memory_trace,
-        NUM_CYCLES_PER_CHUNK,
-    );
-    let gpu_witness_flat =
-        copy_bf_device_slice_to_host(stage1_output.witness_trace_holder.get_hypercube_evals());
-    assert_flat_columns_match_cpu_trace(
-        &gpu_witness_flat,
-        &full_trace.column_major_witness_trace,
-        NUM_CYCLES_PER_CHUNK,
-    );
+    {
+        let _range = range!("test.gpu.stage1.readback_asserts");
+        let gpu_memory_flat =
+            copy_bf_device_slice_to_host(stage1_output.memory_trace_holder.get_hypercube_evals());
+        assert_flat_columns_match_cpu_trace(
+            &gpu_memory_flat,
+            &full_trace.column_major_memory_trace,
+            NUM_CYCLES_PER_CHUNK,
+        );
+        let gpu_witness_flat =
+            copy_bf_device_slice_to_host(stage1_output.witness_trace_holder.get_hypercube_evals());
+        assert_flat_columns_match_cpu_trace(
+            &gpu_witness_flat,
+            &full_trace.column_major_witness_trace,
+            NUM_CYCLES_PER_CHUNK,
+        );
 
-    assert_generic_family_mapping_contract(&stage1_output.lookup_mappings, &full_trace, num_calls);
-    let expected_range_check = full_trace
-        .range_check_16_lookup_mapping
-        .iter()
-        .flat_map(|column| column.iter().map(|value| u32::from(*value)))
-        .collect_vec();
-    let gpu_range_check =
-        copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16());
-    assert_eq!(gpu_range_check, expected_range_check);
-    let expected_timestamp = full_trace
-        .timestamp_range_check_lookup_mapping
-        .iter()
-        .flat_map(|column| column.iter().copied())
-        .collect_vec();
-    let gpu_timestamp = copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp());
-    assert_eq!(gpu_timestamp, expected_timestamp);
+        assert_generic_family_mapping_contract(
+            &stage1_output.lookup_mappings,
+            &full_trace,
+            num_calls,
+        );
+        let expected_range_check = full_trace
+            .range_check_16_lookup_mapping
+            .iter()
+            .flat_map(|column| column.iter().map(|value| u32::from(*value)))
+            .collect_vec();
+        let gpu_range_check =
+            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16());
+        assert_eq!(gpu_range_check, expected_range_check);
+        let expected_timestamp = full_trace
+            .timestamp_range_check_lookup_mapping
+            .iter()
+            .flat_map(|column| column.iter().copied())
+            .collect_vec();
+        let gpu_timestamp =
+            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp());
+        assert_eq!(gpu_timestamp, expected_timestamp);
+    }
 
     let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     assert_eq!(
@@ -784,15 +800,19 @@ fn run_basic_unrolled_test() {
             context.get_exec_stream(),
         )
         .unwrap();
-    let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(
-            &add_sub_circuit,
-            lookup_challenges_accessor,
-            &mut callbacks,
-            &context,
-        )
-        .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
+    let mut gpu_forward_setup = {
+        let _range = range!("test.gpu.forward_setup.schedule");
+        let gpu_forward_setup = gpu_setup_transfer
+            .schedule_forward_setup(
+                &add_sub_circuit,
+                lookup_challenges_accessor,
+                &mut callbacks,
+                &context,
+            )
+            .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        gpu_forward_setup
+    };
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
     let (_, _, preprocessed_generic_lookup) = setup.preprocess_lookups(
@@ -804,9 +824,12 @@ fn run_basic_unrolled_test() {
         &worker,
     );
 
-    let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
-    memory_copy(&mut gpu_generic, gpu_forward_setup.generic_lookup()).unwrap();
-    assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
+    {
+        let _range = range!("test.gpu.forward_setup.readback_asserts");
+        let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
+        memory_copy(&mut gpu_generic, gpu_forward_setup.generic_lookup()).unwrap();
+        assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
+    }
 
     let mut witness_eval_data = full_trace;
     for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate() {
@@ -835,30 +858,37 @@ fn run_basic_unrolled_test() {
             &worker,
         );
 
-    let gpu_forward_output = schedule_forward_pass(
-        &gpu_setup_transfer,
-        &mut stage1_output,
-        &mut gpu_forward_setup,
-        &add_sub_circuit,
-        &external_challenges,
-        final_trace_size_log_2,
-        &context,
-    )
-    .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    assert!(!stage1_output.lookup_mappings.has_generic_family());
-    assert!(!stage1_output.lookup_mappings.has_range_check_16());
-    assert!(!stage1_output.lookup_mappings.has_timestamp());
-    assert!(!gpu_forward_setup.has_generic_lookup());
-    assert_eq!(
-        gpu_forward_output.initial_layer_for_sumcheck,
-        initial_layer_for_sumcheck
-    );
-    assert_eq!(
-        gpu_forward_output.dimension_reducing_inputs,
-        dimension_reducing_inputs
-    );
-    assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+    let gpu_forward_output = {
+        let _range = range!("test.gpu.forward.schedule");
+        let gpu_forward_output = schedule_forward_pass(
+            &gpu_setup_transfer,
+            &mut stage1_output,
+            &mut gpu_forward_setup,
+            &add_sub_circuit,
+            &external_challenges,
+            final_trace_size_log_2,
+            &context,
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        gpu_forward_output
+    };
+    {
+        let _range = range!("test.gpu.forward.readback_asserts");
+        assert!(!stage1_output.lookup_mappings.has_generic_family());
+        assert!(!stage1_output.lookup_mappings.has_range_check_16());
+        assert!(!stage1_output.lookup_mappings.has_timestamp());
+        assert!(!gpu_forward_setup.has_generic_lookup());
+        assert_eq!(
+            gpu_forward_output.initial_layer_for_sumcheck,
+            initial_layer_for_sumcheck
+        );
+        assert_eq!(
+            gpu_forward_output.dimension_reducing_inputs,
+            dimension_reducing_inputs
+        );
+        assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+    }
 
     let (copy_input, copy_output) = add_sub_circuit
         .layers
@@ -974,40 +1004,48 @@ fn run_basic_unrolled_test() {
     let mut sumcheck_intermediate_values = BTreeMap::new();
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
-    for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
-            layer_idx,
-            &layer,
-            &mut points_for_claims_at_layer,
-            &mut claims_for_layers,
-            &mut gkr_storage,
-            &mut sumcheck_batching_challenge,
-            &mut seed,
-            1 << reduced_trace_size_log_2,
-            &worker,
-        );
-        sumcheck_intermediate_values.insert(layer_idx, proof);
-        reduced_trace_size_log_2 += 1;
+    {
+        let _range = range!("test.cpu.sumcheck.dimension_reduction");
+        for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
+            let _layer_range = range!("test.cpu.sumcheck.dimension_reduction.layer.{}", layer_idx);
+            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+                layer_idx,
+                &layer,
+                &mut points_for_claims_at_layer,
+                &mut claims_for_layers,
+                &mut gkr_storage,
+                &mut sumcheck_batching_challenge,
+                &mut seed,
+                1 << reduced_trace_size_log_2,
+                &worker,
+            );
+            sumcheck_intermediate_values.insert(layer_idx, proof);
+            reduced_trace_size_log_2 += 1;
+        }
     }
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
-    for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate().rev() {
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
-            layer_idx,
-            layer,
-            &mut points_for_claims_at_layer,
-            &mut claims_for_layers,
-            &mut gkr_storage,
-            &mut sumcheck_batching_challenge,
-            &add_sub_circuit,
-            trace_len,
-            lookup_additive_part,
-            constraints_batch_challenge,
-            &mut seed,
-            &worker,
-        );
-        sumcheck_intermediate_values.insert(layer_idx, proof);
+    {
+        let _range = range!("test.cpu.sumcheck.main_layers");
+        for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate().rev() {
+            let _layer_range = range!("test.cpu.sumcheck.main_layers.layer.{}", layer_idx);
+            let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+                layer_idx,
+                layer,
+                &mut points_for_claims_at_layer,
+                &mut claims_for_layers,
+                &mut gkr_storage,
+                &mut sumcheck_batching_challenge,
+                &add_sub_circuit,
+                trace_len,
+                lookup_additive_part,
+                constraints_batch_challenge,
+                &mut seed,
+                &worker,
+            );
+            sumcheck_intermediate_values.insert(layer_idx, proof);
+        }
     }
 
     let base_layer_z = points_for_claims_at_layer
@@ -1086,26 +1124,29 @@ fn run_basic_unrolled_test() {
 
     let whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
     let whir_schedule = whir_schedule.clone();
-    let whir_proof = whir_fold(
-        mem_oracle,
-        mem_polys_claims,
-        wit_oracle,
-        wit_polys_claims,
-        &setup_commitment,
-        setup_polys_claims,
-        base_layer_z.clone(),
-        whir_schedule.base_lde_factor,
-        whir_batching_challenge,
-        whir_schedule.whir_steps_schedule,
-        whir_schedule.whir_queries_schedule,
-        whir_schedule.whir_steps_lde_factors,
-        whir_schedule.whir_pow_schedule,
-        &twiddles,
-        seed,
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let whir_proof = {
+        let _range = range!("test.cpu.whir_fold");
+        whir_fold(
+            mem_oracle,
+            mem_polys_claims,
+            wit_oracle,
+            wit_polys_claims,
+            &setup_commitment,
+            setup_polys_claims,
+            base_layer_z.clone(),
+            whir_schedule.base_lde_factor,
+            whir_batching_challenge,
+            whir_schedule.whir_steps_schedule,
+            whir_schedule.whir_queries_schedule,
+            whir_schedule.whir_steps_lde_factors,
+            whir_schedule.whir_pow_schedule,
+            &twiddles,
+            seed,
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        )
+    };
 
     let [read_set_computed, write_set_computed] = final_explicit_evaluations
         .get(&OutputType::PermutationProduct)

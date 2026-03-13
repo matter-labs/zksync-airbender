@@ -13,6 +13,8 @@ Applies only to GPU-related code or commands that use the local GPU.
 - If a GPU command cannot be split cleanly, lock the whole command as a fallback.
 - Treat profiling as GPU work.
 - Keep the locked section short and report clearly when waiting on the GPU lock.
+- For local profiling output, default to ignored or temporary locations so the worktree stays clean.
+- Prefer an ignored repo-local directory under `target/` for profiler reports and other generated diagnostics, or `/tmp/...` when the output is only needed for ad hoc inspection.
 
 For Rust tests, build unlocked and have `.agents/bin/cargo_test_executables.py` print the locked command to run next. This is the default required workflow for Rust GPU tests:
 
