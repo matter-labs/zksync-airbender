@@ -436,7 +436,7 @@ pub fn prove_unrolled_execution<
         0
     };
 
-    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
         all_challenges_seed,
         MEMORY_DELEGATION_POW_BITS,
         pow_challenge,
@@ -1377,7 +1377,7 @@ pub fn prove_unrolled_execution_with_replayer<
         0
     };
 
-    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
         all_challenges_seed,
         MEMORY_DELEGATION_POW_BITS,
         pow_challenge,

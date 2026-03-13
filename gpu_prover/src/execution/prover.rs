@@ -1282,7 +1282,7 @@ impl ExecutionProver {
             .1
         };
         let external_challenges =
-            ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+            ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
                 all_challenges_seed,
                 MEMORY_DELEGATION_POW_BITS,
                 pow_challenge,
