@@ -13,8 +13,6 @@ use clap::ValueEnum;
 use risc_v_simulator::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
 use verifier_common::prover::definitions::MerkleTreeCap;
-use verifier_common::prover::fft::GoodAllocator;
-use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
 pub use prover_examples;
@@ -98,20 +96,6 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
     let final_pc = (start + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
 
     final_pc as u32
-}
-
-pub fn compute_end_parameters<C: MachineConfig, A: GoodAllocator>(
-    expected_final_pc: u32,
-    setup: &trace_and_split::setups::MainCircuitPrecomputations<C, A, impl GoodAllocator>,
-) -> [u32; 8] {
-    let mut result_hasher = Blake2sBufferingTranscript::new();
-    result_hasher.absorb(&[expected_final_pc]);
-
-    let caps = flatten_merkle_caps(&setup.setup.trees);
-    result_hasher.absorb(&caps);
-    let end_params_output = result_hasher.finalize_reset();
-
-    end_params_output.0
 }
 
 pub fn compute_end_parameters_for_unrolled_circuits(
