@@ -128,6 +128,15 @@ SET_BY_VAL_KERNEL(e2)
 SET_BY_VAL_KERNEL(e4)
 SET_BY_VAL_KERNEL(e6)
 
+EXTERN __global__ void ab_set_arithmetic_sequence_u32_kernel(const u32 start, const u32 step, u32_setter result) {
+  const unsigned row = threadIdx.x + blockIdx.x * blockDim.x;
+  if (row >= result.rows)
+    return;
+  const unsigned col = blockIdx.y;
+  const u32 linear_index = col * result.rows + row;
+  result.set(row, col, start + linear_index * step);
+}
+
 #define SET_BY_REF_KERNEL(arg_t)                                                                                                                               \
   EXTERN __global__ void ab_set_by_ref_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
 
