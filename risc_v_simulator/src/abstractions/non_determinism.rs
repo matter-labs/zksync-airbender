@@ -1,26 +1,6 @@
-// there is no interpretation of methods here, it's just read/write and that's all
-pub trait NonDeterminismCSRSource<M: MemorySource + ?Sized> {
-    const SHOULD_MOCK_READS_BEFORE_WRITES: bool = true;
-    const SHOULD_IGNORE_WRITES_AFTER_READS: bool = true;
-
-    fn read(&mut self) -> u32;
-
-    // we in general can allow CSR source to peek into memory (readonly)
-    // to perform adhoc computations to prepare result. This will allow to save on
-    // passing large structures
-    fn write_with_memory_access(&mut self, memory: &M, value: u32);
-}
-
-pub struct ZeroedSource;
-
-impl<M: MemorySource> NonDeterminismCSRSource<M> for ZeroedSource {
-    fn read(&mut self) -> u32 {
-        0u32
-    }
-    fn write_with_memory_access(&mut self, _memory: &M, _value: u32) {}
-}
-
-use super::memory::MemorySource;
+// We keep this source here because the current CLI and proof orchestration still
+// pass it around as the canonical nondeterminism carrier. The active execution
+// engine is the transpiler VM, which implements its own trait for this type.
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
@@ -110,16 +90,6 @@ impl QuasiUARTSourceState {
                 }
             }
         }
-    }
-}
-
-impl<M: MemorySource> NonDeterminismCSRSource<M> for QuasiUARTSource {
-    fn read(&mut self) -> u32 {
-        self.oracle.pop_front().unwrap_or_default()
-    }
-
-    fn write_with_memory_access(&mut self, _memory: &M, value: u32) {
-        self.write_state.process_write(value);
     }
 }
 

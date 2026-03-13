@@ -1,12 +1,10 @@
 use std::hash::Hash;
 
-mod decoder_utils;
-pub mod opcode_formats;
-pub mod state;
-pub mod state_new;
-pub mod status_registers;
-mod utils;
-
+// These machine profiles remain here because the rest of the workspace still
+// keys decoder selection, setup generation, and recursion layout on them.
+//
+// The old simulator state machines are gone, but the marker types still define
+// the supported ISA surface for the active proving path.
 pub trait MachineConfig:
     'static
     + Clone
@@ -36,6 +34,15 @@ pub trait MachineConfig:
     const ALLOWED_DELEGATION_CSRS: &'static [u32];
 }
 
+// The active witnesses still use the architectural register count through the
+// historical `cycle::state::NUM_REGISTERS` path, so we preserve that path as a
+// tiny compatibility shim instead of touching unrelated consumers.
+pub mod state {
+    pub const NUM_REGISTERS: usize = 32;
+}
+
+pub use state::NUM_REGISTERS;
+
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -57,12 +64,11 @@ impl MachineConfig for IMStandardIsaConfig {
     #[cfg(not(feature = "delegation"))]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
-        &[
-            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        ];
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
+    ];
 }
 
 #[derive(
@@ -86,12 +92,11 @@ impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
     #[cfg(not(feature = "delegation"))]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
-        &[
-            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        ];
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
+    ];
 }
 
 #[derive(

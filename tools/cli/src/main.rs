@@ -449,22 +449,18 @@ fn run_binary(
     let (_, text_section) = read_binary(Path::new(&source.text_path));
 
     let (registers, finished) = match machine {
-        RunMachine::FullUnsigned => {
-            run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
-                &binary_image,
-                &text_section,
-                cycles,
-                input_data,
-            )
-        }
-        RunMachine::Reduced => {
-            run_binary_with_decoder::<ReducedMachineDecoderConfig>(
-                &binary_image,
-                &text_section,
-                cycles,
-                input_data,
-            )
-        }
+        RunMachine::FullUnsigned => run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
+        RunMachine::Reduced => run_binary_with_decoder::<ReducedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
     };
 
     if !finished {
