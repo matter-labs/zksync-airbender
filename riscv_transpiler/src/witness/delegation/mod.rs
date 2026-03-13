@@ -1,8 +1,6 @@
+use crate::abstractions::tracer::{RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData};
 use common_constants::TimestampScalar;
 use core::fmt::Debug;
-use crate::abstractions::tracer::{
-    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
-};
 use std::ops::Range;
 
 pub mod bigint;

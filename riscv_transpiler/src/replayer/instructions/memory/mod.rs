@@ -1,6 +1,4 @@
-use crate::machine_mode_only_unrolled::{
-    MEM_LOAD_TRACE_DATA_MARKER, MEM_STORE_TRACE_DATA_MARKER,
-};
+use crate::machine_mode_only_unrolled::{MEM_LOAD_TRACE_DATA_MARKER, MEM_STORE_TRACE_DATA_MARKER};
 
 use super::*;
 

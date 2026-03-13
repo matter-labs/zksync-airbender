@@ -613,8 +613,8 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_reference_block_exec() {
-        use crate::ir::*;
         use crate::abstractions::non_determinism::QuasiUARTSource;
+        use crate::ir::*;
 
         let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
