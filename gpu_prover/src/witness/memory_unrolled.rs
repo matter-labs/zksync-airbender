@@ -17,8 +17,6 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use std::ops::Deref;
-
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MachineState {
@@ -114,10 +112,11 @@ pub struct UnrolledMemoryLayout {
     pub shuffle_ram_access_sets: [RamQuery; MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT],
     pub machine_state: MachineStatePermutationDescription,
     pub decoder_input: DecoderPlacementDescription,
+    pub decoder_lookup_offset: u32,
 }
 
-impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
-    fn from(value: &GKRMemoryLayout) -> Self {
+impl UnrolledMemoryLayout {
+    pub fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
         assert!(value.register_and_indirect_accesses.is_empty());
         let (shuffle_ram_access_sets_count, shuffle_ram_access_sets) = {
             let ram_access_sets = &value.shuffle_ram_access_sets;
@@ -137,7 +136,14 @@ impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
             shuffle_ram_access_sets,
             machine_state,
             decoder_input,
+            decoder_lookup_offset,
         }
+    }
+}
+
+impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
+    fn from(value: &GKRMemoryLayout) -> Self {
+        Self::from_parts(value, 0)
     }
 }
 
@@ -407,6 +413,7 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_memory(
     layout: &GKRMemoryLayout,
     aux_layout_data: &GKRAuxLayoutData,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    decoder_lookup_offset: u32,
     trace: &UnrolledMemoryTraceDevice,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,
@@ -418,7 +425,7 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_memory(
     assert_eq!(memory.cols(), layout.total_width);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
-    let layout = layout.into();
+    let layout = UnrolledMemoryLayout::from_parts(layout, decoder_lookup_offset);
     let aux_layout_data = aux_layout_data.into();
     let oracle = UnrolledMemoryOracle {
         trace: trace.into(),
@@ -446,6 +453,7 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_non_memory(
     layout: &GKRMemoryLayout,
     aux_layout_data: &GKRAuxLayoutData,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    decoder_lookup_offset: u32,
     trace: &UnrolledNonMemoryTraceDevice,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,
@@ -457,7 +465,7 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_non_memory(
     assert_eq!(memory.cols(), layout.total_width);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
-    let layout = layout.into();
+    let layout = UnrolledMemoryLayout::from_parts(layout, decoder_lookup_offset);
     let aux_layout_data = aux_layout_data.into();
     let oracle = UnrolledNonMemoryOracle {
         trace: trace.into(),
