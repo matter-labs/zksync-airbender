@@ -34,9 +34,12 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixMut, DeviceVectorChunk, DeviceVectorChunkMut,
 };
+use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)] // Keeps async reduction index uploads alive until queued work completes.
     forward_scratch: GpuGKRForwardScratch,
     pub(crate) storage: GpuGKRStorage<B, E>,
@@ -132,9 +135,17 @@ where
 {
     setup.ensure_transferred(context)?;
     let trace_len = compiled_circuit.trace_len;
+    let stream = context.get_exec_stream();
+    let mut tracing_ranges = Vec::new();
+    let forward_range = Range::new("gkr.forward.schedule")?;
+    forward_range.start(stream)?;
     let usage = analyze_forward_lookup_usage(compiled_circuit);
     let mut storage = setup.bootstrap_storage_from_stage1::<E>(stage1);
+    let scratch_range = Range::new("gkr.forward.allocate_reduction_scratch")?;
+    scratch_range.start(stream)?;
     let forward_scratch = GpuGKRForwardScratch::new(trace_len / 2, context)?;
+    scratch_range.end(stream)?;
+    tracing_ranges.push(scratch_range);
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -150,9 +161,12 @@ where
     }
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
+        layer_range.start(stream)?;
         schedule_layer(
             layer_idx,
             layer,
+            &mut tracing_ranges,
             &mut storage,
             stage1,
             forward_setup,
@@ -160,6 +174,8 @@ where
             trace_len,
             context,
         )?;
+        layer_range.end(stream)?;
+        tracing_ranges.push(layer_range);
         release_forward_lookup_resources_after_layer(layer_idx, &usage, stage1, forward_setup);
     }
 
@@ -174,6 +190,8 @@ where
         }
     }
 
+    let dimension_reduction_range = Range::new("gkr.forward.dimension_reduction")?;
+    dimension_reduction_range.start(stream)?;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         schedule_dimension_reduction_forward(
             &mut storage,
@@ -181,10 +199,16 @@ where
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2,
             &forward_scratch,
+            &mut tracing_ranges,
             context,
         )?;
+    dimension_reduction_range.end(stream)?;
+    tracing_ranges.push(dimension_reduction_range);
+    forward_range.end(stream)?;
+    tracing_ranges.push(forward_range);
 
     Ok(GpuGKRForwardOutput {
+        tracing_ranges,
         forward_scratch,
         storage,
         initial_layer_for_sumcheck,
@@ -195,6 +219,7 @@ where
 fn schedule_layer<E>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
+    tracing_ranges: &mut Vec<Range>,
     storage: &mut GpuGKRStorage<BF, E>,
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
@@ -214,6 +239,9 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
+    let stream = context.get_exec_stream();
+    let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
+    cache_range.start(stream)?;
     for (address, cache_relation) in layer.cached_relations.iter() {
         schedule_cache_relation(
             layer_idx,
@@ -227,6 +255,11 @@ where
             context,
         )?;
     }
+    cache_range.end(stream)?;
+    tracing_ranges.push(cache_range);
+
+    let gates_range = Range::new(format!("gkr.forward.layer.{layer_idx}.gates"))?;
+    gates_range.start(stream)?;
 
     let expected_output_layer = layer_idx + 1;
     let gates = layer
@@ -519,6 +552,8 @@ where
             }
         }
     }
+    gates_range.end(stream)?;
+    tracing_ranges.push(gates_range);
 
     Ok(())
 }
@@ -808,6 +843,7 @@ pub(crate) fn schedule_dimension_reduction_forward<E>(
     initial_trace_log_2: usize,
     final_trace_log_2: usize,
     forward_scratch: &GpuGKRForwardScratch,
+    tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
 ) -> CudaResult<(
     usize,
@@ -828,8 +864,15 @@ where
     let mut dimension_reduction_description = BTreeMap::new();
     let layer_idx = compiled_circuit.layers.len();
     let mut current_layer_idx = layer_idx;
+    let stream = context.get_exec_stream();
 
     for input_size_log_2 in ((final_trace_log_2 + 1)..=initial_trace_log_2).rev() {
+        let round_range = Range::new(format!(
+            "gkr.forward.dimension_reduction.round.2pow{}_to_2pow{}",
+            input_size_log_2,
+            input_size_log_2 - 1
+        ))?;
+        round_range.start(stream)?;
         let layer_inputs = if current_layer_idx != layer_idx {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
                 dimension_reduction_description
@@ -916,6 +959,8 @@ where
 
         dimension_reduction_description.insert(current_layer_idx, layer_description);
         current_layer_idx += 1;
+        round_range.end(stream)?;
+        tracing_ranges.push(round_range);
     }
 
     Ok((current_layer_idx - 1, dimension_reduction_description))

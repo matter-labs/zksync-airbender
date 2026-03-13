@@ -18,6 +18,7 @@ use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, Add, BinaryOp, Mul,
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
+use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::primitives::transfer::Transfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
@@ -243,6 +244,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         );
 
         let generic_lookup_len = compiled_circuit.total_tables_size;
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let schedule_range = Range::new("gkr.forward_setup.schedule")?;
+        schedule_range.start(stream)?;
         let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
         let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut host_lookup_alpha_powers = if self.host.columns_count > 3 && generic_lookup_len > 0
@@ -302,8 +307,9 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             };
 
         if let Some(generic_lookup) = generic_lookup.as_mut() {
+            let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
+            generic_lookup_range.start(stream)?;
             let raw = self.trace_holder.get_hypercube_evals();
-            let stream = context.get_exec_stream();
             let lookup_additive_part = DeviceVectorChunk::new(&device_lookup_additive_part, 0, 1);
 
             let mut weighted_column = if self.host.columns_count > 3 {
@@ -335,11 +341,16 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 }
             }
             batch_inv_in_place(generic_lookup, stream)?;
+            generic_lookup_range.end(stream)?;
+            tracing_ranges.push(generic_lookup_range);
         }
 
         drop(device_lookup_alpha_powers);
+        schedule_range.end(stream)?;
+        tracing_ranges.push(schedule_range);
 
         Ok(GpuGKRForwardSetup {
+            tracing_ranges,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
             device_lookup_additive_part,
@@ -349,6 +360,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 }
 
 pub(crate) struct GpuGKRForwardSetup<E> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
     host_lookup_additive_part: HostAllocation<[E]>,
     #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
