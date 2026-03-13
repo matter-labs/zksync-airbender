@@ -6,7 +6,6 @@ pub use ::prover;
 pub use ::setups;
 use prover::field::*;
 use prover::*;
-use risc_v_simulator::abstractions::non_determinism::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
