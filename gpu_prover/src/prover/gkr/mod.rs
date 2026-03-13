@@ -9,6 +9,7 @@
 //   enclosing prover job until the stream has consumed them. Any proof data needed after execution
 //   must be copied back to host as part of the scheduled workflow.
 
+pub(crate) mod backward;
 pub(crate) mod forward;
 pub(crate) mod setup;
 pub(crate) mod stage1;
@@ -24,7 +25,7 @@ use crate::primitives::device_structures::DeviceVectorChunk;
 use cs::definitions::GKRAddress;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::CudaSlice;
+use era_cudart::slice::{CudaSlice, DeviceSlice};
 use field::Field;
 use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 
@@ -190,6 +191,10 @@ impl<E> GpuExtensionFieldPoly<E> {
 
     pub(crate) fn as_device_chunk(&self) -> DeviceVectorChunk<'_, E> {
         DeviceVectorChunk::new(self.backing.as_ref(), self.offset, self.len)
+    }
+
+    pub(crate) fn as_device_slice(&self) -> &DeviceSlice<E> {
+        &self.backing[self.offset..self.offset + self.len]
     }
 
     pub(crate) fn accessor(&self) -> GpuExtensionFieldPolyInitialSource<E> {
@@ -1525,12 +1530,14 @@ mod tests {
 
         storage.purge_up_to_layer(0);
         assert_eq!(storage.layers.len(), 1);
-        assert!(storage
-            .try_get_ext_poly(GKRAddress::InnerLayer {
-                layer: 1,
-                offset: 0
-            })
-            .is_none());
+        assert!(
+            storage
+                .try_get_ext_poly(GKRAddress::InnerLayer {
+                    layer: 1,
+                    offset: 0
+                })
+                .is_none()
+        );
         assert_eq!(storage.get_base_layer_mem(0).as_ptr(), base_memory_ptr);
     }
 

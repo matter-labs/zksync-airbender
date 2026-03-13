@@ -3,11 +3,11 @@ use std::mem::{align_of, size_of};
 use std::ops::DerefMut;
 
 use cs::definitions::{
-    gkr::DECODER_LOOKUP_FORMAL_SET_INDEX, GKRAddress,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, gkr::DECODER_LOOKUP_FORMAL_SET_INDEX,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
@@ -17,9 +17,10 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
+use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
+use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
@@ -27,8 +28,8 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::gather_rows;
 use crate::ops::complex::BatchInv;
 use crate::ops::simple::{
-    add_into_y, mul, mul_into_x, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp,
-    Mul, SetByRef, SetByVal, Sub,
+    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul, mul_into_x, mul_into_y,
+    set_by_ref, set_by_val, sub_into_x,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::{
@@ -48,7 +49,95 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
         BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
 }
 
-struct GpuGKRForwardScratch {
+pub(crate) struct GpuGKRTranscriptHandoff<E> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
+    explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
+}
+
+impl<E: Copy> GpuGKRTranscriptHandoff<E> {
+    pub(crate) fn final_explicit_evaluations(&self) -> BTreeMap<OutputType, [Vec<E>; 2]> {
+        self.explicit_evaluations
+            .iter()
+            .map(|(output_type, evals)| {
+                let copied =
+                    std::array::from_fn(|idx| unsafe { evals[idx].get_accessor().get() }.to_vec());
+                (*output_type, copied)
+            })
+            .collect()
+    }
+
+    pub(crate) fn flattened_transcript_evaluations(&self) -> Vec<E> {
+        let capacity = self
+            .explicit_evaluations
+            .values()
+            .map(|evals| {
+                evals
+                    .iter()
+                    .map(|poly| unsafe { poly.get_accessor().get() }.len())
+                    .sum::<usize>()
+            })
+            .sum();
+        let mut flattened = Vec::with_capacity(capacity);
+        for evals in self.explicit_evaluations.values() {
+            for poly in evals.iter() {
+                flattened.extend_from_slice(unsafe { poly.get_accessor().get() });
+            }
+        }
+
+        flattened
+    }
+}
+
+impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
+    pub(crate) fn schedule_transcript_handoff(
+        &self,
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let handoff_range = Range::new("gkr.forward.transcript_handoff.schedule")?;
+        handoff_range.start(stream)?;
+        let reduced_outputs = self
+            .dimension_reducing_inputs
+            .get(&self.initial_layer_for_sumcheck)
+            .expect("reduced outputs for initial sumcheck layer must exist");
+        let mut explicit_evaluations = BTreeMap::new();
+        for (output_type, reduced_io) in reduced_outputs.iter() {
+            let [first_addr, second_addr]: [GKRAddress; 2] = reduced_io
+                .output
+                .clone()
+                .try_into()
+                .expect("transcript handoff expects exactly two reduced outputs per type");
+            let first = schedule_ext_poly_readback(&self.storage, first_addr, context)?;
+            let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
+            explicit_evaluations.insert(*output_type, [first, second]);
+        }
+        handoff_range.end(stream)?;
+        tracing_ranges.push(handoff_range);
+
+        Ok(GpuGKRTranscriptHandoff {
+            tracing_ranges,
+            explicit_evaluations,
+        })
+    }
+}
+
+impl<B, E> GpuGKRForwardOutput<B, E> {
+    pub(crate) fn into_dimension_reducing_backward_state(
+        self,
+    ) -> GpuGKRDimensionReducingBackwardState<B, E> {
+        GpuGKRDimensionReducingBackwardState::new(
+            self.tracing_ranges,
+            self.forward_scratch,
+            self.storage,
+            self.initial_layer_for_sumcheck,
+            self.dimension_reducing_inputs,
+        )
+    }
+}
+
+pub(super) struct GpuGKRForwardScratch {
     #[allow(dead_code)] // Async H2D sources must stay alive until the stream consumes them.
     even_indexes_host: HostAllocation<[u32]>,
     #[allow(dead_code)] // Async H2D sources must stay alive until the stream consumes them.
@@ -214,6 +303,19 @@ where
         initial_layer_for_sumcheck,
         dimension_reducing_inputs,
     })
+}
+
+fn schedule_ext_poly_readback<B, E: Copy>(
+    storage: &GpuGKRStorage<B, E>,
+    address: GKRAddress,
+    context: &ProverContext,
+) -> CudaResult<HostAllocation<[E]>> {
+    let poly = storage
+        .try_get_ext_poly(address)
+        .unwrap_or_else(|| panic!("missing reduced extension poly for {:?}", address));
+    let mut host = unsafe { context.alloc_host_uninit_slice(poly.len()) };
+    memory_copy_async(&mut host, poly.as_device_slice(), context.get_exec_stream())?;
+    Ok(host)
 }
 
 fn schedule_layer<E>(
@@ -837,7 +939,7 @@ where
     Ok(())
 }
 
-pub(crate) fn schedule_dimension_reduction_forward<E>(
+fn schedule_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     initial_trace_log_2: usize,

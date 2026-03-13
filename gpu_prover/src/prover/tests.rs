@@ -1,16 +1,17 @@
 use super::gkr::{
+    GpuGKRStorage,
+    backward::GpuGKRDimensionReducingSumcheckLayerPlan,
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
-    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{set_by_ref, SetByRef};
+use crate::ops::simple::{SetByRef, set_by_ref};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::{
     CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::primitives::context::ProverContext;
+use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
@@ -29,7 +30,7 @@ use cs::machine::ops::unrolled::{
 use cs::tables::TableDriver;
 use era_cudart::memory::memory_copy;
 use era_cudart::slice::DeviceSlice;
-use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
+use fft::{Twiddles, materialize_powers_serial_starting_with_elem};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
@@ -45,10 +46,11 @@ use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::gkr::sumcheck::access_and_fold::GKRStorage;
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
+use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use prover::gkr::whir::whir_fold;
 use prover::gkr::witness_gen::family_circuits::{
-    evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
+    evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
 };
 use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -58,7 +60,7 @@ use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::unrolled::NonMemoryCircuitOracle;
-use riscv_transpiler::ir::{preprocess_bytecode, FullUnsignedMachineDecoderConfig, Instruction};
+use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, Instruction, preprocess_bytecode};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -154,6 +156,161 @@ fn compute_initial_sumcheck_claims_for_test<F: PrimeField, E: FieldExtension<F> 
     }
 
     evals.try_into().unwrap()
+}
+
+fn collect_final_explicit_evaluations_for_test<F: PrimeField, E: FieldExtension<F> + Field>(
+    gkr_storage: &GKRStorage<F, E>,
+    output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+    expected_poly_len: usize,
+) -> (BTreeMap<OutputType, [Vec<E>; 2]>, Vec<E>) {
+    let mut final_explicit_evaluations = BTreeMap::new();
+    let mut flattened = Vec::new();
+    for (output_type, reduced_io) in output_layer.iter() {
+        let [first_addr, second_addr]: [GKRAddress; 2] = reduced_io
+            .output
+            .clone()
+            .try_into()
+            .expect("final explicit evaluation extraction expects exactly two outputs");
+        let first_poly = gkr_storage.get_ext_poly(first_addr);
+        let second_poly = gkr_storage.get_ext_poly(second_addr);
+        assert_eq!(first_poly.len(), expected_poly_len);
+        assert_eq!(second_poly.len(), expected_poly_len);
+        flattened.extend_from_slice(first_poly);
+        flattened.extend_from_slice(second_poly);
+        final_explicit_evaluations
+            .insert(*output_type, [first_poly.to_vec(), second_poly.to_vec()]);
+    }
+
+    (final_explicit_evaluations, flattened)
+}
+
+fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
+    final_explicit_evaluations: &BTreeMap<OutputType, [Vec<E>; 2]>,
+    eval_point: &[E],
+    worker: &Worker,
+) -> [E; 8] {
+    let eq_precomputed = make_eq_poly_in_full::<E>(eval_point, worker);
+    let eq = eq_precomputed.last().unwrap();
+
+    let mut evals = vec![];
+    for key in [
+        OutputType::PermutationProduct,
+        OutputType::Lookup16Bits,
+        OutputType::LookupTimestamps,
+        OutputType::GenericLookup,
+    ] {
+        let explicit_evals = &final_explicit_evaluations[&key];
+        for poly in explicit_evals.iter() {
+            evals.push(evaluate_ext_poly_with_eq(poly, &eq[..]));
+        }
+    }
+
+    evals.try_into().unwrap()
+}
+
+fn alloc_host_values<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
+    let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    unsafe {
+        allocation
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(values);
+    }
+    allocation
+}
+
+fn expected_dimension_reducing_kernel_specs_for_test<E: Field>(
+    layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+    batch_challenge_base: E,
+) -> Vec<(GKRInputs, Vec<E>)> {
+    let mut current_batch_challenge = E::ONE;
+    let mut get_challenge = || {
+        let challenge = current_batch_challenge;
+        current_batch_challenge.mul_assign(&batch_challenge_base);
+        challenge
+    };
+
+    let mut specs = Vec::new();
+    for (output_type, reduced_io) in layer.iter() {
+        match *output_type {
+            OutputType::PermutationProduct => {
+                for (input, output) in reduced_io.inputs.iter().zip(reduced_io.output.iter()) {
+                    specs.push((
+                        GKRInputs {
+                            inputs_in_base: Vec::new(),
+                            inputs_in_extension: vec![*input],
+                            outputs_in_base: Vec::new(),
+                            outputs_in_extension: vec![*output],
+                        },
+                        vec![get_challenge()],
+                    ));
+                }
+            }
+            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
+                specs.push((
+                    GKRInputs {
+                        inputs_in_base: Vec::new(),
+                        inputs_in_extension: reduced_io.inputs.clone(),
+                        outputs_in_base: Vec::new(),
+                        outputs_in_extension: reduced_io.output.clone(),
+                    },
+                    vec![get_challenge(), get_challenge()],
+                ));
+            }
+        }
+    }
+
+    specs
+}
+
+fn assert_dimension_reducing_layer_plan_for_test<E: Field + std::fmt::Debug>(
+    layer_plan: &GpuGKRDimensionReducingSumcheckLayerPlan<BF, E>,
+    storage: &GpuGKRStorage<BF, E>,
+    expected_specs: &[(GKRInputs, Vec<E>)],
+) {
+    assert_eq!(layer_plan.kernel_plans().len(), expected_specs.len());
+    assert_eq!(layer_plan.round0_descriptors().len(), expected_specs.len());
+
+    for (idx, (expected_inputs, expected_batch_challenges)) in expected_specs.iter().enumerate() {
+        let kernel_plan = &layer_plan.kernel_plans()[idx];
+        assert_eq!(&kernel_plan.inputs, expected_inputs);
+        assert_eq!(&kernel_plan.batch_challenges, expected_batch_challenges);
+
+        let round0 = &layer_plan.round0_descriptors()[idx];
+        let ext_inputs_accessor = round0.host.extension_field_inputs.get_accessor();
+        let ext_inputs = unsafe { ext_inputs_accessor.get() };
+        let ext_outputs_accessor = round0.host.extension_field_outputs.get_accessor();
+        let ext_outputs = unsafe { ext_outputs_accessor.get() };
+        let base_inputs_accessor = round0.host.base_field_inputs.get_accessor();
+        let base_inputs = unsafe { base_inputs_accessor.get() };
+        let base_outputs_accessor = round0.host.base_field_outputs.get_accessor();
+        let base_outputs = unsafe { base_outputs_accessor.get() };
+
+        assert!(base_inputs.is_empty());
+        assert!(base_outputs.is_empty());
+        assert_eq!(ext_inputs.len(), expected_inputs.inputs_in_extension.len());
+        assert_eq!(
+            ext_outputs.len(),
+            expected_inputs.outputs_in_extension.len()
+        );
+
+        for (descriptor, address) in ext_inputs
+            .iter()
+            .zip(expected_inputs.inputs_in_extension.iter())
+        {
+            let poly = storage.get_ext_poly(*address);
+            assert_eq!(descriptor.start, poly.as_ptr());
+            assert_eq!(descriptor.next_layer_size, poly.len() / 2);
+        }
+        for (descriptor, address) in ext_outputs
+            .iter()
+            .zip(expected_inputs.outputs_in_extension.iter())
+        {
+            let poly = storage.get_ext_poly(*address);
+            assert_eq!(descriptor.start, poly.as_ptr());
+            assert_eq!(descriptor.next_layer_size, poly.len() / 2);
+        }
+    }
 }
 
 fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
@@ -778,8 +935,11 @@ fn run_basic_unrolled_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ] = challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -857,8 +1017,14 @@ fn run_basic_unrolled_test() {
             final_trace_size_log_2,
             &worker,
         );
+    let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
+    let (final_explicit_evaluations, evals_flattened) = collect_final_explicit_evaluations_for_test(
+        &gkr_storage,
+        output_layer_for_sumcheck,
+        1 << final_trace_size_log_2,
+    );
 
-    let gpu_forward_output = {
+    let (gpu_forward_output, gpu_transcript_handoff) = {
         let _range = range!("test.gpu.forward.schedule");
         let gpu_forward_output = schedule_forward_pass(
             &gpu_setup_transfer,
@@ -870,9 +1036,14 @@ fn run_basic_unrolled_test() {
             &context,
         )
         .unwrap();
+        let gpu_transcript_handoff = gpu_forward_output
+            .schedule_transcript_handoff(&context)
+            .unwrap();
         context.get_exec_stream().synchronize().unwrap();
-        gpu_forward_output
+        (gpu_forward_output, gpu_transcript_handoff)
     };
+    let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
+    let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
     {
         let _range = range!("test.gpu.forward.readback_asserts");
         assert!(!stage1_output.lookup_mappings.has_generic_family());
@@ -888,6 +1059,8 @@ fn run_basic_unrolled_test() {
             dimension_reducing_inputs
         );
         assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+        assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
+        assert_eq!(gpu_evals_flattened, evals_flattened);
     }
 
     let (copy_input, copy_output) = add_sub_circuit
@@ -922,46 +1095,52 @@ fn run_basic_unrolled_test() {
         assert!(input_poly.shares_backing_with(output_poly));
     }
 
-    let mut final_explicit_evaluations = BTreeMap::new();
-    let mut evals_flattened = vec![];
-    for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
-        match *k {
-            OutputType::PermutationProduct => {
-                let mut final_evals: [Vec<E4>; 2] = std::array::from_fn(|_| Vec::new());
-                for (i, addr) in v.output.iter().enumerate() {
-                    let poly = gkr_storage.get_ext_poly(*addr);
-                    assert_eq!(poly.len(), 1 << final_trace_size_log_2);
-                    evals_flattened.extend_from_slice(poly);
-                    final_evals[i] = poly.to_vec();
-                }
-                final_explicit_evaluations.insert(*k, final_evals);
-            }
-            OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                let [num, den] = v.output.clone().try_into().unwrap();
-                let num = gkr_storage.get_ext_poly(num);
-                evals_flattened.extend_from_slice(num);
-                let den = gkr_storage.get_ext_poly(den);
-                evals_flattened.extend_from_slice(den);
-                final_explicit_evaluations.insert(*k, [num.to_vec(), den.to_vec()]);
-            }
-        }
-    }
+    let seed_before_explicit_commit = seed;
     commit_field_els::<BF, E4>(&mut seed, &evals_flattened);
+    let seed_after_cpu_explicit_commit = seed;
+
+    let mut gpu_seed = seed_before_explicit_commit;
+    commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
+    assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
     let num_challenges = final_trace_size_log_2 + 1;
     let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
+    let expected_challenges = challenges.clone();
+    let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);
+    assert_eq!(gpu_challenges, expected_challenges);
     let batching_challenge = challenges.pop().unwrap();
+    let gpu_batching_challenge = gpu_challenges.pop().unwrap();
+    assert_eq!(gpu_batching_challenge, batching_challenge);
 
     let evaluation_point = challenges;
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        compute_initial_sumcheck_claims_for_test(
-            &gkr_storage,
-            &evaluation_point,
-            &dimension_reducing_inputs[&initial_layer_for_sumcheck],
-            &worker,
-        );
+    let gpu_evaluation_point = gpu_challenges;
+    assert_eq!(gpu_evaluation_point, evaluation_point);
+    assert_eq!(gpu_seed, seed);
+    let cpu_initial_claims = compute_initial_sumcheck_claims_for_test(
+        &gkr_storage,
+        &evaluation_point,
+        output_layer_for_sumcheck,
+        &worker,
+    );
+    let gpu_initial_claims = compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
+        &gpu_final_explicit_evaluations,
+        &evaluation_point,
+        &worker,
+    );
+    assert_eq!(gpu_initial_claims, cpu_initial_claims);
+    let [
+        claim_readset,
+        claim_writeset,
+        claim_rangechecknum,
+        claim_rangecheckden,
+        claim_timechecknum,
+        claim_timecheckden,
+        claim_lookupnum,
+        claim_lookupden,
+    ] = cpu_initial_claims;
+    let mut gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
-    let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
+    let output_map = output_layer_for_sumcheck;
     let mut top_layer_claims: BTreeMap<GKRAddress, E4> = BTreeMap::new();
     top_layer_claims.insert(
         output_map[&OutputType::PermutationProduct].output[0],
@@ -1004,10 +1183,31 @@ fn run_basic_unrolled_test() {
     let mut sumcheck_intermediate_values = BTreeMap::new();
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
+    let mut backward_callbacks = Callbacks::new();
     {
         let _range = range!("test.cpu.sumcheck.dimension_reduction");
         for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
             let _layer_range = range!("test.cpu.sumcheck.dimension_reduction.layer.{}", layer_idx);
+            let expected_specs = expected_dimension_reducing_kernel_specs_for_test(
+                &layer,
+                sumcheck_batching_challenge,
+            );
+            let prepared_layer = gpu_backward_state
+                .prepare_next_layer(sumcheck_batching_challenge, &context)
+                .unwrap()
+                .expect("GPU backward state should have a matching dimension-reducing layer");
+            assert_eq!(prepared_layer.layer_idx, layer_idx);
+            assert_eq!(
+                prepared_layer.trace_len_after_reduction,
+                1 << reduced_trace_size_log_2
+            );
+            assert_eq!(prepared_layer.folding_steps, reduced_trace_size_log_2);
+            assert_dimension_reducing_layer_plan_for_test(
+                &prepared_layer,
+                gpu_backward_state.storage(),
+                &expected_specs,
+            );
+
             let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
                 layer_idx,
                 &layer,
@@ -1019,10 +1219,155 @@ fn run_basic_unrolled_test() {
                 1 << reduced_trace_size_log_2,
                 &worker,
             );
+
+            let folding_challenges = points_for_claims_at_layer
+                .get(&layer_idx)
+                .expect("dimension-reducing sumcheck must record folding challenges");
+            assert_eq!(folding_challenges.len(), prepared_layer.folding_steps + 1);
+            let round_folding_challenges = &folding_challenges[..prepared_layer.folding_steps - 1];
+
+            let round1_host_values = alloc_host_values(&context, &round_folding_challenges[..1]);
+            let round1_scheduled = prepared_layer
+                .schedule_round_1(
+                    round1_host_values.get_accessor(),
+                    &mut backward_callbacks,
+                    &context,
+                )
+                .unwrap();
+
+            let round2_scheduled = if prepared_layer.folding_steps >= 3 {
+                let round2_host_values =
+                    alloc_host_values(&context, &round_folding_challenges[..2]);
+                let round2_accessor = round2_host_values.get_accessor();
+                Some((
+                    round2_host_values,
+                    prepared_layer
+                        .schedule_round_2(round2_accessor, &mut backward_callbacks, &context)
+                        .unwrap(),
+                ))
+            } else {
+                None
+            };
+
+            let mut round3_scheduled = Vec::new();
+            for step in 3..prepared_layer.folding_steps {
+                let round_host_values =
+                    alloc_host_values(&context, &round_folding_challenges[..step]);
+                let scheduled = prepared_layer
+                    .schedule_round_3_and_beyond(
+                        step,
+                        round_host_values.get_accessor(),
+                        &mut backward_callbacks,
+                        &context,
+                    )
+                    .unwrap();
+                round3_scheduled.push((step, round_host_values, scheduled));
+            }
+
+            context.get_exec_stream().synchronize().unwrap();
+
+            let round1_ext_inputs: Vec<Vec<_>> = round1_scheduled
+                .iter()
+                .map(|scheduled| unsafe {
+                    scheduled
+                        .host
+                        .extension_field_inputs
+                        .get_accessor()
+                        .get()
+                        .to_vec()
+                })
+                .collect();
+            for (idx, descriptors) in round1_ext_inputs.iter().enumerate() {
+                let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
+                assert_eq!(descriptors.len(), expected_inputs.len());
+                for (descriptor, address) in descriptors.iter().zip(expected_inputs.iter()) {
+                    let poly = gpu_backward_state.storage().get_ext_poly(*address);
+                    assert_eq!(descriptor.previous_layer_start, poly.as_ptr());
+                    assert_eq!(descriptor.this_layer_size, poly.len() / 2);
+                    assert_eq!(descriptor.next_layer_size, poly.len() / 4);
+                    assert_eq!(descriptor.folding_challenge, round_folding_challenges[0]);
+                    assert!(descriptor.first_access);
+                }
+            }
+
+            if let Some((_, round2_scheduled)) = round2_scheduled {
+                let round2_ext_inputs: Vec<Vec<_>> = round2_scheduled
+                    .iter()
+                    .map(|scheduled| unsafe {
+                        scheduled
+                            .host
+                            .extension_field_inputs
+                            .get_accessor()
+                            .get()
+                            .to_vec()
+                    })
+                    .collect();
+                for (idx, descriptors) in round2_ext_inputs.iter().enumerate() {
+                    let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
+                    assert_eq!(descriptors.len(), expected_inputs.len());
+                    for ((descriptor, previous), address) in descriptors
+                        .iter()
+                        .zip(round1_ext_inputs[idx].iter())
+                        .zip(expected_inputs.iter())
+                    {
+                        let poly = gpu_backward_state.storage().get_ext_poly(*address);
+                        assert_eq!(descriptor.previous_layer_start, previous.this_layer_start);
+                        assert_eq!(descriptor.this_layer_size, poly.len() / 4);
+                        assert_eq!(descriptor.next_layer_size, poly.len() / 8);
+                        assert_eq!(descriptor.folding_challenge, round_folding_challenges[1]);
+                        assert!(descriptor.first_access);
+                    }
+                }
+
+                let mut previous_ext_inputs = round2_ext_inputs;
+                for (step, _, scheduled) in round3_scheduled.into_iter() {
+                    let round_ext_inputs: Vec<Vec<_>> = scheduled
+                        .iter()
+                        .map(|scheduled| unsafe {
+                            scheduled
+                                .host
+                                .extension_field_inputs
+                                .get_accessor()
+                                .get()
+                                .to_vec()
+                        })
+                        .collect();
+                    for (idx, descriptors) in round_ext_inputs.iter().enumerate() {
+                        let expected_inputs = &expected_specs[idx].0.inputs_in_extension;
+                        assert_eq!(descriptors.len(), expected_inputs.len());
+                        for ((descriptor, previous), address) in descriptors
+                            .iter()
+                            .zip(previous_ext_inputs[idx].iter())
+                            .zip(expected_inputs.iter())
+                        {
+                            let poly = gpu_backward_state.storage().get_ext_poly(*address);
+                            assert_eq!(descriptor.previous_layer_start, previous.this_layer_start);
+                            assert_eq!(descriptor.this_layer_size, poly.len() >> step);
+                            assert_eq!(descriptor.next_layer_size, poly.len() >> (step + 1));
+                            assert_eq!(
+                                descriptor.folding_challenge,
+                                round_folding_challenges[step - 1]
+                            );
+                            assert!(descriptor.first_access);
+                        }
+                    }
+                    previous_ext_inputs = round_ext_inputs;
+                }
+            } else {
+                assert!(round3_scheduled.is_empty());
+            }
+
             sumcheck_intermediate_values.insert(layer_idx, proof);
             reduced_trace_size_log_2 += 1;
         }
     }
+
+    assert!(
+        gpu_backward_state
+            .prepare_next_layer(sumcheck_batching_challenge, &context)
+            .unwrap()
+            .is_none()
+    );
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
@@ -1177,12 +1522,12 @@ fn run_basic_unrolled_test() {
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::cs::placeholder::Placeholder;
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
     use cs::cs::witness_placer::WitnessTypeSet;
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
     use cs::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
+        WitnessComputationalU32, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
