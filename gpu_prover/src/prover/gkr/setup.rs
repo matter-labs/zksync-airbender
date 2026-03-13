@@ -1,7 +1,7 @@
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS};
+use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -9,6 +9,7 @@ use era_cudart::slice::CudaSlice;
 use fft::materialize_powers_serial_starting_with_one;
 use field::Field;
 
+use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
@@ -16,7 +17,7 @@ use crate::ops::complex::{batch_inv_in_place, BatchInv};
 use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, Add, BinaryOp, Mul, SetByRef};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
+use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::field::BF;
 use crate::primitives::transfer::Transfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
@@ -214,64 +215,20 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         storage
     }
 
-    pub(crate) fn prepare_lookup_runtime_data<E>(
+    pub(crate) fn bootstrap_storage_from_stage1<E>(
         &self,
-        compiled_circuit: &GKRCircuitArtifact<BF>,
-        context: &ProverContext,
-    ) -> CudaResult<GpuGKRLookupRuntimeData<E>>
-    where
-        E: Field,
-    {
-        assert_eq!(compiled_circuit.trace_len, self.host.trace_len);
-        assert_eq!(
-            compiled_circuit.generic_lookup_tables_width + 2,
-            self.host.columns_count
-        );
-        let generic_lookup_len = compiled_circuit.total_tables_size;
-        let host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
-        let device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
-        let host_lookup_alpha_powers = if self.host.columns_count > 3 {
-            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
-        } else {
-            None
-        };
-        let device_lookup_alpha_powers =
-            if let Some(host_powers) = host_lookup_alpha_powers.as_ref() {
-                Some(context.alloc(host_powers.len(), AllocationPlacement::BestFit)?)
-            } else {
-                None
-            };
-        let weighted_column = if self.host.columns_count > 3 && generic_lookup_len > 0 {
-            Some(context.alloc(generic_lookup_len, AllocationPlacement::BestFit)?)
-        } else {
-            None
-        };
-
-        Ok(GpuGKRLookupRuntimeData {
-            host_lookup_additive_part,
-            device_lookup_additive_part,
-            host_lookup_alpha_powers,
-            device_lookup_alpha_powers,
-            range_check_16: context.alloc(1usize << 16, AllocationPlacement::BestFit)?,
-            timestamp_range_check: context.alloc(
-                1usize << TIMESTAMP_COLUMNS_NUM_BITS,
-                AllocationPlacement::BestFit,
-            )?,
-            generic_lookup: context.alloc(generic_lookup_len, AllocationPlacement::BestFit)?,
-            weighted_column,
-            vectorized_lookup_setup_poly: context
-                .alloc(compiled_circuit.trace_len, AllocationPlacement::BestFit)?,
-            total_setup_columns: self.host.columns_count,
-        })
+        stage1: &GpuGKRStage1Output,
+    ) -> GpuGKRStorage<BF, E> {
+        self.bootstrap_storage(&stage1.memory_trace_holder, &stage1.witness_trace_holder)
     }
 
-    pub(crate) fn schedule_lookup_runtime_data<'b, E>(
+    pub(crate) fn schedule_forward_setup<'b, E>(
         &self,
-        lookup_runtime_data: &mut GpuGKRLookupRuntimeData<E>,
+        compiled_circuit: &GKRCircuitArtifact<BF>,
         lookup_challenges: UnsafeAccessor<[E]>,
         callbacks: &mut Callbacks<'b>,
         context: &ProverContext,
-    ) -> CudaResult<()>
+    ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
         E: Field + SetByRef + BatchInv + 'b,
         Add: BinaryOp<E, E, E>,
@@ -279,18 +236,34 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         Mul: BinaryOp<BF, E, E>,
     {
         self.ensure_transferred(context)?;
+        assert_eq!(compiled_circuit.trace_len, self.host.trace_len);
+        assert_eq!(
+            compiled_circuit.generic_lookup_tables_width + 2,
+            self.host.columns_count
+        );
 
-        let lookup_additive_part_accessor = lookup_runtime_data
-            .host_lookup_additive_part
-            .get_mut_accessor();
-        let alpha_powers_accessor = lookup_runtime_data
-            .host_lookup_alpha_powers
+        let generic_lookup_len = compiled_circuit.total_tables_size;
+        let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
+        let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
+        let mut host_lookup_alpha_powers = if self.host.columns_count > 3 && generic_lookup_len > 0
+        {
+            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
+        } else {
+            None
+        };
+        let mut generic_lookup = if generic_lookup_len > 0 {
+            Some(context.alloc(generic_lookup_len, AllocationPlacement::BestFit)?)
+        } else {
+            None
+        };
+
+        let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
+        let alpha_powers_accessor = host_lookup_alpha_powers
             .as_mut()
-            .map(|allocation| allocation.get_mut_accessor());
-        let alpha_powers_len = lookup_runtime_data
-            .host_lookup_alpha_powers
+            .map(HostAllocation::get_mut_accessor);
+        let alpha_powers_len = host_lookup_alpha_powers
             .as_ref()
-            .map(|allocation| allocation.len())
+            .map(HostAllocation::len)
             .unwrap_or(0);
         callbacks.schedule(
             move || unsafe {
@@ -314,137 +287,100 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         )?;
 
         memory_copy_async(
-            &mut lookup_runtime_data.device_lookup_additive_part,
-            &lookup_runtime_data.host_lookup_additive_part,
+            &mut device_lookup_additive_part,
+            &host_lookup_additive_part,
             context.get_exec_stream(),
         )?;
-        if let (Some(device_alpha_powers), Some(host_alpha_powers)) = (
-            lookup_runtime_data.device_lookup_alpha_powers.as_mut(),
-            lookup_runtime_data.host_lookup_alpha_powers.as_ref(),
-        ) {
-            memory_copy_async(
-                device_alpha_powers,
-                host_alpha_powers,
-                context.get_exec_stream(),
-            )?;
-        }
+        let mut device_lookup_alpha_powers =
+            if let Some(host_alpha_powers) = host_lookup_alpha_powers.as_ref() {
+                let mut device =
+                    context.alloc(host_alpha_powers.len(), AllocationPlacement::BestFit)?;
+                memory_copy_async(&mut device, host_alpha_powers, context.get_exec_stream())?;
+                Some(device)
+            } else {
+                None
+            };
 
-        let raw = self.trace_holder.get_hypercube_evals();
-        let stream = context.get_exec_stream();
-        let lookup_additive_part =
-            DeviceVectorChunk::new(&lookup_runtime_data.device_lookup_additive_part, 0, 1);
+        if let Some(generic_lookup) = generic_lookup.as_mut() {
+            let raw = self.trace_holder.get_hypercube_evals();
+            let stream = context.get_exec_stream();
+            let lookup_additive_part = DeviceVectorChunk::new(&device_lookup_additive_part, 0, 1);
 
-        set_by_ref(
-            &lookup_additive_part,
-            lookup_runtime_data.range_check_16.deref_mut(),
-            stream,
-        )?;
-        let range_source = DeviceVectorChunk::new(raw, self.host.column_offset(0), 1usize << 16);
-        add_into_y(
-            &range_source,
-            lookup_runtime_data.range_check_16.deref_mut(),
-            stream,
-        )?;
-        batch_inv_in_place(&mut lookup_runtime_data.range_check_16, stream)?;
-
-        set_by_ref(
-            &lookup_additive_part,
-            lookup_runtime_data.timestamp_range_check.deref_mut(),
-            stream,
-        )?;
-        let timestamp_source = DeviceVectorChunk::new(
-            raw,
-            self.host.column_offset(1),
-            1usize << TIMESTAMP_COLUMNS_NUM_BITS,
-        );
-        add_into_y(
-            &timestamp_source,
-            lookup_runtime_data.timestamp_range_check.deref_mut(),
-            stream,
-        )?;
-        batch_inv_in_place(&mut lookup_runtime_data.timestamp_range_check, stream)?;
-
-        if lookup_runtime_data.generic_lookup.len() > 0 {
-            set_by_ref(
-                &lookup_additive_part,
-                lookup_runtime_data.generic_lookup.deref_mut(),
-                stream,
-            )?;
-            let base_column = DeviceVectorChunk::new(
-                raw,
-                self.host.column_offset(2),
-                lookup_runtime_data.generic_lookup.len(),
-            );
-            add_into_y(
-                &base_column,
-                lookup_runtime_data.generic_lookup.deref_mut(),
-                stream,
-            )?;
+            let mut weighted_column = if self.host.columns_count > 3 {
+                Some(context.alloc(generic_lookup.len(), AllocationPlacement::BestFit)?)
+            } else {
+                None
+            };
+            set_by_ref(&lookup_additive_part, generic_lookup.deref_mut(), stream)?;
+            let base_column =
+                DeviceVectorChunk::new(raw, self.host.column_offset(2), generic_lookup.len());
+            add_into_y(&base_column, generic_lookup.deref_mut(), stream)?;
 
             if let (Some(weighted_column), Some(alpha_powers)) = (
-                lookup_runtime_data.weighted_column.as_mut(),
-                lookup_runtime_data.device_lookup_alpha_powers.as_ref(),
+                weighted_column.as_mut(),
+                device_lookup_alpha_powers.as_ref(),
             ) {
-                for setup_column in 3..lookup_runtime_data.total_setup_columns {
+                for setup_column in 3..self.host.columns_count {
                     let source = DeviceVectorChunk::new(
                         raw,
                         self.host.column_offset(setup_column),
-                        lookup_runtime_data.generic_lookup.len(),
+                        generic_lookup.len(),
                     );
                     let challenge_power = DeviceVectorChunk::new(alpha_powers, setup_column - 2, 1);
                     set_by_ref(&challenge_power, weighted_column.deref_mut(), stream)?;
                     mul_into_y(&source, weighted_column.deref_mut(), stream)?;
                     let weighted_column_chunk =
                         DeviceVectorChunk::new(&*weighted_column, 0, weighted_column.len());
-                    add_into_y(
-                        &weighted_column_chunk,
-                        lookup_runtime_data.generic_lookup.deref_mut(),
-                        stream,
-                    )?;
+                    add_into_y(&weighted_column_chunk, generic_lookup.deref_mut(), stream)?;
                 }
             }
-            batch_inv_in_place(&mut lookup_runtime_data.generic_lookup, stream)?;
+            batch_inv_in_place(generic_lookup, stream)?;
         }
 
-        set_by_ref(
-            &lookup_additive_part,
-            lookup_runtime_data.vectorized_lookup_setup_poly.deref_mut(),
-            stream,
-        )?;
-        if lookup_runtime_data.generic_lookup.len() > 0 {
-            let src = DeviceVectorChunk::new(
-                &lookup_runtime_data.generic_lookup,
-                0,
-                lookup_runtime_data.generic_lookup.len(),
-            );
-            let mut dst = DeviceVectorChunkMut::new(
-                &mut lookup_runtime_data.vectorized_lookup_setup_poly,
-                0,
-                lookup_runtime_data.generic_lookup.len(),
-            );
-            set_by_ref(&src, &mut dst, stream)?;
-        }
+        drop(device_lookup_alpha_powers);
 
-        Ok(())
+        Ok(GpuGKRForwardSetup {
+            host_lookup_additive_part,
+            host_lookup_alpha_powers,
+            device_lookup_additive_part,
+            generic_lookup,
+        })
     }
 }
 
-pub(crate) struct GpuGKRLookupRuntimeData<E> {
+pub(crate) struct GpuGKRForwardSetup<E> {
+    #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
     host_lookup_additive_part: HostAllocation<[E]>,
-    device_lookup_additive_part: DeviceAllocation<E>,
+    #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
     host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
-    device_lookup_alpha_powers: Option<DeviceAllocation<E>>,
-    pub(crate) range_check_16: DeviceAllocation<E>,
-    pub(crate) timestamp_range_check: DeviceAllocation<E>,
-    pub(crate) generic_lookup: DeviceAllocation<E>,
-    weighted_column: Option<DeviceAllocation<E>>,
-    vectorized_lookup_setup_poly: DeviceAllocation<E>,
-    total_setup_columns: usize,
+    device_lookup_additive_part: DeviceAllocation<E>,
+    generic_lookup: Option<DeviceAllocation<E>>,
 }
 
-impl<E> GpuGKRLookupRuntimeData<E> {
-    pub(crate) fn vectorized_lookup_setup_poly(&self) -> &DeviceAllocation<E> {
-        &self.vectorized_lookup_setup_poly
+impl<E> GpuGKRForwardSetup<E> {
+    pub(crate) fn has_generic_lookup(&self) -> bool {
+        self.generic_lookup.is_some()
+    }
+
+    pub(crate) fn lookup_additive_part_device(&self) -> &DeviceAllocation<E> {
+        &self.device_lookup_additive_part
+    }
+
+    pub(crate) fn generic_lookup(&self) -> &DeviceAllocation<E> {
+        self.generic_lookup
+            .as_ref()
+            .expect("generic lookup runtime was released")
+    }
+
+    pub(crate) fn generic_lookup_len(&self) -> usize {
+        self.generic_lookup
+            .as_ref()
+            .map(DeviceAllocation::len)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn release_generic_lookup(&mut self) {
+        self.generic_lookup = None;
     }
 }
 
