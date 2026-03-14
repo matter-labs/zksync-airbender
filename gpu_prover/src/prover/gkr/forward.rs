@@ -296,7 +296,7 @@ fn schedule_ext_poly_readback<B, E: Copy>(
     let poly = storage
         .try_get_ext_poly(address)
         .unwrap_or_else(|| panic!("missing reduced extension poly for {:?}", address));
-    let mut host = unsafe { context.alloc_host_uninit_slice(poly.len()) };
+    let mut host = unsafe { context.alloc_transient_host_uninit_slice(poly.len()) };
     memory_copy_async(&mut host, poly.as_device_slice(), context.get_exec_stream())?;
     Ok(host)
 }

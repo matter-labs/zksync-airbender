@@ -42,6 +42,8 @@ pub struct ProverContextConfig {
     pub device_slack_per_thread_bytes: usize,
     pub max_device_allocation_blocks_count: Option<usize>,
     pub host_allocator_blocks_count: usize,
+    pub transient_host_allocator_block_log_size: u32,
+    pub transient_host_allocator_blocks_count: usize,
 }
 
 impl Default for ProverContextConfig {
@@ -53,6 +55,10 @@ impl Default for ProverContextConfig {
             device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
             max_device_allocation_blocks_count: None, // use all available memory
             host_allocator_blocks_count: 1024,        // 1 GB host allocator pool
+            // Async GKR scheduling stages thousands of tiny upload/readback buffers.
+            // Keep the transient pool small-chunk to avoid burning 64 KB per buffer.
+            transient_host_allocator_block_log_size: 13, // 8 KB blocks
+            transient_host_allocator_blocks_count: 32768, // 256 MB transient pool
         }
     }
 }
@@ -66,6 +72,7 @@ pub struct ProverContext {
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
     host_allocator: HostAllocator,
+    transient_host_allocator: HostAllocator,
     exec_stream: CudaStream,
     aux_stream: CudaStream,
     h2d_stream: CudaStream,
@@ -164,11 +171,22 @@ impl ProverContext {
         )?;
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], allocator_block_log_size);
+        let transient_host_allocation_size = config.transient_host_allocator_blocks_count
+            << config.transient_host_allocator_block_log_size;
+        let transient_host_allocation = era_cudart::memory::HostAllocation::alloc(
+            transient_host_allocation_size,
+            CudaHostAllocFlags::DEFAULT,
+        )?;
+        let transient_host_allocator = NonConcurrentStaticHostAllocator::new(
+            [transient_host_allocation],
+            config.transient_host_allocator_block_log_size,
+        );
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
             device_allocator,
             host_allocator,
+            transient_host_allocator,
             exec_stream,
             aux_stream,
             h2d_stream,
@@ -182,6 +200,10 @@ impl ProverContext {
 
     pub fn get_host_allocator(&self) -> HostAllocator {
         self.host_allocator.clone()
+    }
+
+    pub fn get_transient_host_allocator(&self) -> HostAllocator {
+        self.transient_host_allocator.clone()
     }
 
     pub fn get_device_id(&self) -> i32 {
@@ -231,14 +253,25 @@ impl ProverContext {
     }
 
     pub(crate) unsafe fn alloc_host_uninit<T: Sized>(&self) -> HostAllocation<T> {
-        HostAllocation::new_uninit(self)
+        HostAllocation::new_uninit_in(self.get_host_allocator())
     }
 
     pub(crate) unsafe fn alloc_host_uninit_slice<T: Sized>(
         &self,
         len: usize,
     ) -> HostAllocation<[T]> {
-        HostAllocation::new_uninit_slice(len, self)
+        HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
+    }
+
+    pub(crate) unsafe fn alloc_transient_host_uninit<T: Sized>(&self) -> HostAllocation<T> {
+        HostAllocation::new_uninit_in(self.get_transient_host_allocator())
+    }
+
+    pub(crate) unsafe fn alloc_transient_host_uninit_slice<T: Sized>(
+        &self,
+        len: usize,
+    ) -> HostAllocation<[T]> {
+        HostAllocation::new_uninit_slice_in(len, self.get_transient_host_allocator())
     }
 
     pub fn get_mem_size(&self) -> usize {
@@ -251,6 +284,30 @@ impl ProverContext {
 
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
+    }
+
+    pub fn get_host_used_mem_current(&self) -> usize {
+        self.host_allocator.get_used_mem_current()
+    }
+
+    pub fn get_host_used_mem_peak(&self) -> usize {
+        self.host_allocator.get_used_mem_peak()
+    }
+
+    pub fn reset_host_used_mem_peak(&self) {
+        self.host_allocator.reset_used_mem_peak();
+    }
+
+    pub fn get_transient_host_used_mem_current(&self) -> usize {
+        self.transient_host_allocator.get_used_mem_current()
+    }
+
+    pub fn get_transient_host_used_mem_peak(&self) -> usize {
+        self.transient_host_allocator.get_used_mem_peak()
+    }
+
+    pub fn reset_transient_host_used_mem_peak(&self) {
+        self.transient_host_allocator.reset_used_mem_peak();
     }
 
     pub fn reset_used_mem_peak(&self) {
@@ -343,11 +400,11 @@ unsafe impl<T: ?Sized> Sync for UnsafeMutAccessor<T> {}
 pub(crate) struct HostAllocation<T: ?Sized>(Box<T, HostAllocator>);
 
 impl<T: ?Sized> HostAllocation<T> {
-    unsafe fn new_uninit(context: &ProverContext) -> Self
+    unsafe fn new_uninit_in(allocator: HostAllocator) -> Self
     where
         T: Sized,
     {
-        Self(Box::new_uninit_in(context.get_host_allocator()).assume_init())
+        Self(Box::new_uninit_in(allocator).assume_init())
     }
 
     pub fn get_accessor(&self) -> UnsafeAccessor<T> {
@@ -360,8 +417,8 @@ impl<T: ?Sized> HostAllocation<T> {
 }
 
 impl<T> HostAllocation<[T]> {
-    unsafe fn new_uninit_slice(len: usize, context: &ProverContext) -> Self {
-        Self(Box::new_uninit_slice_in(len, context.get_host_allocator()).assume_init())
+    unsafe fn new_uninit_slice_in(len: usize, allocator: HostAllocator) -> Self {
+        Self(Box::new_uninit_slice_in(len, allocator).assume_init())
     }
 }
 

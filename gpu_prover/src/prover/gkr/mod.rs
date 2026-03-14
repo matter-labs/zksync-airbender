@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use cs::definitions::GKRAddress;
 use era_cudart::memory::memory_copy_async;
@@ -319,15 +319,14 @@ impl<B> GpuBaseFieldPolySource<B> {
 }
 
 // These descriptors live in preallocated host/device buffers that are owned by the scheduler.
-// Callbacks only fill the host buffers once transcript challenges are available, and the already
-// queued H2D copies upload them to device memory before the future kernel launches consume them.
+// Dynamic transcript data is staged separately in tiny per-round challenge buffers.
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const B,
-    pub(crate) first_folding_challenge_and_squared: (E, E),
+    pub(crate) _marker: core::marker::PhantomData<E>,
 }
 
 impl<B, E: Copy> Clone for GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {
@@ -346,9 +345,6 @@ pub(crate) struct GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) base_quarter_size: usize,
     pub(crate) next_layer_size: usize,
-    pub(crate) first_folding_challenge: E,
-    pub(crate) second_folding_challenge: E,
-    pub(crate) combined_challenges: E,
     pub(crate) first_access: bool,
 }
 
@@ -391,7 +387,6 @@ pub(crate) struct GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {
     pub(crate) this_layer_start: *mut E,
     pub(crate) this_layer_size: usize,
     pub(crate) next_layer_size: usize,
-    pub(crate) folding_challenge: E,
     pub(crate) first_access: bool,
 }
 
@@ -615,7 +610,7 @@ pub(crate) struct GpuSumcheckRound3AndBeyondPreparedStorage<E> {
 }
 
 fn alloc_host_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
     unsafe {
         allocation
             .get_mut_accessor()
@@ -640,7 +635,7 @@ fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     callbacks: &mut Callbacks<'a>,
     fill: impl Fn(&mut [T]) + Send + Sync + 'a,
 ) -> CudaResult<(HostAllocation<[T]>, DeviceAllocation<T>)> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
+    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe { fill(host_accessor.get_mut()) },
@@ -1186,66 +1181,36 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
 }
 
 impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
-    pub(crate) fn schedule_upload_launch_descriptors<'a>(
+    pub(crate) fn schedule_upload_launch_descriptors(
         &self,
-        folding_challenges: UnsafeAccessor<[E]>,
-        callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
-    ) -> CudaResult<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>>
-    where
-        B: 'a,
-        E: 'a,
-    {
-        let base_field_inputs_plan = self.base_field_inputs.clone();
-        let extension_field_inputs_plan = self.extension_field_inputs.clone();
-        let sumcheck_step = self.sumcheck_step;
-
-        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
-            context,
-            self.base_field_inputs.len(),
-            callbacks,
-            move |dst: &mut [GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E>]| unsafe {
-                let folding_challenges = folding_challenges.get();
-                assert_eq!(folding_challenges.len(), sumcheck_step);
-                let folding_challenge = folding_challenges[0];
-                let mut challenge_squared = folding_challenge;
-                challenge_squared.square();
-
-                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
-                    *dst = GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
-                        base_layer_half_size: plan.base_layer_half_size,
-                        next_layer_size: plan.next_layer_size,
-                        base_input_start: plan.base_input_start,
-                        first_folding_challenge_and_squared: (folding_challenge, challenge_squared),
-                    };
-                }
-            },
-        )?;
-        let (extension_field_inputs, extension_field_inputs_device) =
-            schedule_callback_populated_upload(
-                context,
-                self.extension_field_inputs.len(),
-                callbacks,
-                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
-                    let folding_challenges = folding_challenges.get();
-                    assert_eq!(folding_challenges.len(), sumcheck_step);
-                    let folding_challenge = folding_challenges[0];
-
-                    for (dst, plan) in dst
-                        .iter_mut()
-                        .zip(extension_field_inputs_plan.iter().copied())
-                    {
-                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                            previous_layer_start: plan.previous_layer_start,
-                            this_layer_start: plan.this_layer_start,
-                            this_layer_size: plan.this_layer_size,
-                            next_layer_size: plan.next_layer_size,
-                            folding_challenge,
-                            first_access: plan.first_access,
-                        };
-                    }
-                },
-            )?;
+    ) -> CudaResult<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>> {
+        let base_field_inputs_values = self
+            .base_field_inputs
+            .iter()
+            .map(|plan| GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
+                base_layer_half_size: plan.base_layer_half_size,
+                next_layer_size: plan.next_layer_size,
+                base_input_start: plan.base_input_start,
+                _marker: core::marker::PhantomData,
+            })
+            .collect::<Vec<_>>();
+        let extension_field_inputs_values = self
+            .extension_field_inputs
+            .iter()
+            .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                previous_layer_start: plan.previous_layer_start,
+                this_layer_start: plan.this_layer_start,
+                this_layer_size: plan.this_layer_size,
+                next_layer_size: plan.next_layer_size,
+                first_access: plan.first_access,
+            })
+            .collect::<Vec<_>>();
+        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
+        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let extension_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound1DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
@@ -1260,72 +1225,38 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
 }
 
 impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
-    pub(crate) fn schedule_upload_launch_descriptors<'a>(
+    pub(crate) fn schedule_upload_launch_descriptors(
         &self,
-        folding_challenges: UnsafeAccessor<[E]>,
-        callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
-    ) -> CudaResult<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>>
-    where
-        B: 'a,
-        E: 'a,
-    {
-        let base_field_inputs_plan = self.base_field_inputs.clone();
-        let extension_field_inputs_plan = self.extension_field_inputs.clone();
-        let sumcheck_step = self.sumcheck_step;
-
-        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
-            context,
-            self.base_field_inputs.len(),
-            callbacks,
-            move |dst: &mut [GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E>]| unsafe {
-                let folding_challenges = folding_challenges.get();
-                assert_eq!(folding_challenges.len(), sumcheck_step);
-                let first_folding_challenge = folding_challenges[0];
-                let second_folding_challenge = folding_challenges[1];
-                let mut combined_challenges = first_folding_challenge;
-                combined_challenges.mul_assign(&second_folding_challenge);
-
-                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
-                    *dst = GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor {
-                        base_input_start: plan.base_input_start,
-                        this_layer_cache_start: plan.this_layer_cache_start,
-                        base_layer_half_size: plan.base_layer_half_size,
-                        base_quarter_size: plan.base_quarter_size,
-                        next_layer_size: plan.next_layer_size,
-                        first_folding_challenge,
-                        second_folding_challenge,
-                        combined_challenges,
-                        first_access: plan.first_access,
-                    };
-                }
-            },
-        )?;
-        let (extension_field_inputs, extension_field_inputs_device) =
-            schedule_callback_populated_upload(
-                context,
-                self.extension_field_inputs.len(),
-                callbacks,
-                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
-                    let folding_challenges = folding_challenges.get();
-                    assert_eq!(folding_challenges.len(), sumcheck_step);
-                    let second_folding_challenge = folding_challenges[1];
-
-                    for (dst, plan) in dst
-                        .iter_mut()
-                        .zip(extension_field_inputs_plan.iter().copied())
-                    {
-                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                            previous_layer_start: plan.previous_layer_start,
-                            this_layer_start: plan.this_layer_start,
-                            this_layer_size: plan.this_layer_size,
-                            next_layer_size: plan.next_layer_size,
-                            folding_challenge: second_folding_challenge,
-                            first_access: plan.first_access,
-                        };
-                    }
-                },
-            )?;
+    ) -> CudaResult<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>> {
+        let base_field_inputs_values = self
+            .base_field_inputs
+            .iter()
+            .map(|plan| GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor {
+                base_input_start: plan.base_input_start,
+                this_layer_cache_start: plan.this_layer_cache_start,
+                base_layer_half_size: plan.base_layer_half_size,
+                base_quarter_size: plan.base_quarter_size,
+                next_layer_size: plan.next_layer_size,
+                first_access: plan.first_access,
+            })
+            .collect::<Vec<_>>();
+        let extension_field_inputs_values = self
+            .extension_field_inputs
+            .iter()
+            .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                previous_layer_start: plan.previous_layer_start,
+                this_layer_start: plan.this_layer_start,
+                this_layer_size: plan.this_layer_size,
+                next_layer_size: plan.next_layer_size,
+                first_access: plan.first_access,
+            })
+            .collect::<Vec<_>>();
+        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
+        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let extension_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound2DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
@@ -1340,65 +1271,37 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
 }
 
 impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
-    pub(crate) fn schedule_upload_launch_descriptors<'a>(
+    pub(crate) fn schedule_upload_launch_descriptors(
         &self,
-        folding_challenges: UnsafeAccessor<[E]>,
-        callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
-    ) -> CudaResult<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>>
-    where
-        E: 'a,
-    {
-        let base_field_inputs_plan = self.base_field_inputs.clone();
-        let extension_field_inputs_plan = self.extension_field_inputs.clone();
-        let sumcheck_step = self.sumcheck_step;
-
-        let (base_field_inputs, base_field_inputs_device) = schedule_callback_populated_upload(
-            context,
-            self.base_field_inputs.len(),
-            callbacks,
-            move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
-                let folding_challenges = folding_challenges.get();
-                assert_eq!(folding_challenges.len(), sumcheck_step);
-                let folding_challenge = *folding_challenges.last().expect("must be present");
-
-                for (dst, plan) in dst.iter_mut().zip(base_field_inputs_plan.iter().copied()) {
-                    *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                        previous_layer_start: plan.previous_layer_start,
-                        this_layer_start: plan.this_layer_start,
-                        this_layer_size: plan.this_layer_size,
-                        next_layer_size: plan.next_layer_size,
-                        folding_challenge,
-                        first_access: plan.first_access,
-                    };
-                }
-            },
-        )?;
-        let (extension_field_inputs, extension_field_inputs_device) =
-            schedule_callback_populated_upload(
-                context,
-                self.extension_field_inputs.len(),
-                callbacks,
-                move |dst: &mut [GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]| unsafe {
-                    let folding_challenges = folding_challenges.get();
-                    assert_eq!(folding_challenges.len(), sumcheck_step);
-                    let folding_challenge = *folding_challenges.last().expect("must be present");
-
-                    for (dst, plan) in dst
-                        .iter_mut()
-                        .zip(extension_field_inputs_plan.iter().copied())
-                    {
-                        *dst = GpuExtensionFieldPolyContinuingLaunchDescriptor {
-                            previous_layer_start: plan.previous_layer_start,
-                            this_layer_start: plan.this_layer_start,
-                            this_layer_size: plan.this_layer_size,
-                            next_layer_size: plan.next_layer_size,
-                            folding_challenge,
-                            first_access: plan.first_access,
-                        };
-                    }
-                },
-            )?;
+    ) -> CudaResult<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>> {
+        let base_field_inputs_values = self
+            .base_field_inputs
+            .iter()
+            .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                previous_layer_start: plan.previous_layer_start,
+                this_layer_start: plan.this_layer_start,
+                this_layer_size: plan.this_layer_size,
+                next_layer_size: plan.next_layer_size,
+                first_access: plan.first_access,
+            })
+            .collect::<Vec<_>>();
+        let extension_field_inputs_values = self
+            .extension_field_inputs
+            .iter()
+            .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
+                previous_layer_start: plan.previous_layer_start,
+                this_layer_start: plan.this_layer_start,
+                this_layer_size: plan.this_layer_size,
+                next_layer_size: plan.next_layer_size,
+                first_access: plan.first_access,
+            })
+            .collect::<Vec<_>>();
+        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
+        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let extension_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
@@ -1581,7 +1484,6 @@ mod tests {
     fn round_builders_allocate_and_reuse_scratch() {
         let context = make_test_context(64, 8);
         let baseline = context.get_used_mem_current();
-        let mut callbacks = Callbacks::new();
 
         let mut storage = GpuGKRStorage::<BF, E4>::default();
         let base_backing = Arc::new(alloc_and_copy(
@@ -1682,15 +1584,10 @@ mod tests {
 
         let r1 = sample_ext(100);
         {
-            let round1_challenges = alloc_host_values(&context, &[r1]);
             let round1 = storage
                 .prepare_for_sumcheck_round_1(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(
-                    round1_challenges.get_accessor(),
-                    &mut callbacks,
-                    &context,
-                )
+                .schedule_upload_launch_descriptors(&context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let round1_base_inputs_accessor = round1.host.base_field_inputs.get_accessor();
@@ -1706,28 +1603,18 @@ mod tests {
                 copy_device_values(&context, &round1.device.base_field_inputs);
             let round1_ext_inputs_device =
                 copy_device_values(&context, &round1.device.extension_field_inputs);
-            assert_eq!(
-                round1_base_inputs_device[0]
-                    .first_folding_challenge_and_squared
-                    .0,
-                r1
-            );
-            assert_eq!(round1_ext_inputs_device[0].folding_challenge, r1);
+            assert_eq!(round1_base_inputs_device[0].base_input_start, base_input_ptr);
+            assert_eq!(round1_ext_inputs_device[0].previous_layer_start, ext_input_ptr);
         }
         let used_after_round1 = context.get_used_mem_current();
         assert!(used_after_round1 > baseline);
 
         let r2 = sample_ext(200);
         let (base_round2_cache_ptr, ext_round2_cache_ptr) = {
-            let round2_challenges = alloc_host_values(&context, &[r1, r2]);
             let round2_first = storage
                 .prepare_for_sumcheck_round_2(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(
-                    round2_challenges.get_accessor(),
-                    &mut callbacks,
-                    &context,
-                )
+                .schedule_upload_launch_descriptors(&context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let round2_first_base_inputs_accessor =
@@ -1743,10 +1630,13 @@ mod tests {
             let round2_first_ext_inputs_device =
                 copy_device_values(&context, &round2_first.device.extension_field_inputs);
             assert_eq!(
-                round2_first_base_inputs_device[0].second_folding_challenge,
-                r2
+                round2_first_base_inputs_device[0].this_layer_cache_start,
+                round2_first_base_inputs[0].this_layer_cache_start
             );
-            assert_eq!(round2_first_ext_inputs_device[0].folding_challenge, r2);
+            assert_eq!(
+                round2_first_ext_inputs_device[0].this_layer_start,
+                round2_first_ext_inputs[0].this_layer_start
+            );
             (
                 round2_first_base_inputs[0].this_layer_cache_start,
                 round2_first_ext_inputs[0].this_layer_start,
@@ -1754,15 +1644,10 @@ mod tests {
         };
 
         {
-            let round2_challenges = alloc_host_values(&context, &[r1, r2]);
             let round2_second = storage
                 .prepare_for_sumcheck_round_2(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(
-                    round2_challenges.get_accessor(),
-                    &mut callbacks,
-                    &context,
-                )
+                .schedule_upload_launch_descriptors(&context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let round2_second_base_inputs_accessor =
@@ -1785,15 +1670,10 @@ mod tests {
 
         let r3 = sample_ext(300);
         let (round3_base_cache_ptr, round3_ext_cache_ptr) = {
-            let round3_challenges = alloc_host_values(&context, &[r1, r2, r3]);
             let round3_first = storage
                 .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(
-                    round3_challenges.get_accessor(),
-                    &mut callbacks,
-                    &context,
-                )
+                .schedule_upload_launch_descriptors(&context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let round3_first_base_inputs_accessor =
@@ -1808,8 +1688,14 @@ mod tests {
                 copy_device_values(&context, &round3_first.device.base_field_inputs);
             let round3_first_ext_inputs_device =
                 copy_device_values(&context, &round3_first.device.extension_field_inputs);
-            assert_eq!(round3_first_base_inputs_device[0].folding_challenge, r3);
-            assert_eq!(round3_first_ext_inputs_device[0].folding_challenge, r3);
+            assert_eq!(
+                round3_first_base_inputs_device[0].this_layer_start,
+                round3_first_base_inputs[0].this_layer_start
+            );
+            assert_eq!(
+                round3_first_ext_inputs_device[0].this_layer_start,
+                round3_first_ext_inputs[0].this_layer_start
+            );
             assert_eq!(
                 unsafe {
                     round3_first_base_inputs[0]
@@ -1835,15 +1721,10 @@ mod tests {
         };
 
         {
-            let round3_challenges = alloc_host_values(&context, &[r1, r2, r3]);
             let round3_second = storage
                 .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(
-                    round3_challenges.get_accessor(),
-                    &mut callbacks,
-                    &context,
-                )
+                .schedule_upload_launch_descriptors(&context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let round3_second_base_inputs_accessor =
