@@ -251,9 +251,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut host_lookup_alpha_powers = if self.host.columns_count > 3 && generic_lookup_len > 0
         {
-            Some(unsafe {
-                context.alloc_transient_host_uninit_slice(self.host.columns_count - 2)
-            })
+            Some(unsafe { context.alloc_transient_host_uninit_slice(self.host.columns_count - 2) })
         } else {
             None
         };
