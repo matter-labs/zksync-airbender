@@ -274,7 +274,8 @@ pub fn gather_merkle_paths_device(
     let log_values_count = values_count.trailing_zeros();
     assert_ne!(log_values_count, 0);
     let log_leaves_count = log_values_count - 1;
-    assert!(layers_count < log_leaves_count);
+    // A per-coset cap of size 1 means the query path spans the full coset subtree depth.
+    assert!(layers_count <= log_leaves_count);
     assert_eq!(indexes.len() * layers_count as usize, results.len());
     assert_eq!(WARP_SIZE % STATE_SIZE as u32, 0);
     let (grid_dim, block_dim) =
