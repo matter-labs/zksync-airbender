@@ -1,5 +1,4 @@
 use super::gkr::{
-    GpuGKRStorage,
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
         GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
@@ -8,9 +7,10 @@ use super::gkr::{
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
+    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{SetByRef, set_by_ref};
+use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::circuit_type::{
     CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
 };
@@ -34,7 +34,7 @@ use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy;
 use era_cudart::slice::DeviceSlice;
-use fft::{Twiddles, materialize_powers_serial_starting_with_elem};
+use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
@@ -59,8 +59,8 @@ use prover::gkr::sumcheck::evaluation_kernels::{
 };
 use prover::gkr::whir::whir_fold;
 use prover::gkr::witness_gen::family_circuits::{
-    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
+    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
 use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -71,7 +71,7 @@ use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracing
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::transcript::Seed;
 use prover::unrolled::NonMemoryCircuitOracle;
-use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, Instruction, preprocess_bytecode};
+use riscv_transpiler::ir::{preprocess_bytecode, FullUnsignedMachineDecoderConfig, Instruction};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -434,11 +434,8 @@ fn prepare_basic_unrolled_async_backward_fixture(
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -476,20 +473,12 @@ fn prepare_basic_unrolled_async_backward_fixture(
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
-        &gpu_final_explicit_evaluations,
-        &evaluation_point,
-        &worker,
-    );
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
+            &gpu_final_explicit_evaluations,
+            &evaluation_point,
+            &worker,
+        );
 
     let output_layer_for_sumcheck = gpu_forward_output
         .dimension_reducing_inputs
@@ -1748,11 +1737,8 @@ fn run_basic_unrolled_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_transient_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -1932,16 +1918,8 @@ fn run_basic_unrolled_test() {
         &worker,
     );
     assert_eq!(gpu_initial_claims, cpu_initial_claims);
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = cpu_initial_claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        cpu_initial_claims;
     let gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
     let output_map = output_layer_for_sumcheck;
@@ -2247,12 +2225,12 @@ fn run_basic_unrolled_test() {
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::cs::placeholder::Placeholder;
-    use cs::cs::witness_placer::WitnessTypeSet;
     use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::cs::witness_placer::WitnessTypeSet;
     use cs::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
