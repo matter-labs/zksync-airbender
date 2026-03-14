@@ -1,12 +1,12 @@
 use crate::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 use super::*;
+use crate::machine_mode_only_unrolled::*;
 use crate::vm::delegations::keccak_special5::{
     keccak_special5_impl_bump_control, keccak_special5_impl_compute_outputs,
     keccak_special5_impl_decode_control, keccak_special5_impl_extract_indices,
 };
 use common_constants::*;
-use risc_v_simulator::machine_mode_only_unrolled::*;
 use std::mem::MaybeUninit;
 
 #[inline(never)]

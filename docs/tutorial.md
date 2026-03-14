@@ -1,155 +1,128 @@
 # Airbender Prover - Tutorial
 
-
 ## TL;DR
 
-To run the Airbender, you need three things:
-* a cli tool (tools/cli)
-* your compiled program (app.bin)
-* optionally - file with inputs to your program.
+To create a proof you need:
 
-The TL;DR of creating a proof is (run this from tools/cli directory):
+- the CLI tool in `tools/cli`
+- your compiled program as `app.bin`
+- optionally, the paired `app.text` file and an input file
+
+The default proving target is `recursion-unified`, so a minimal CPU proof command is:
 
 ```shell
-cargo run --release -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output --until final-proof
+cargo run --release -p cli -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output
 ```
 
-This will run your program with a given inputs, do necessary recursion proofs etc, and put the final proof in /tmp/output directory.
+To use the GPU backend, build with the `gpu` feature and select `--backend gpu`:
 
-The command above would use only cpu - you can switch to use gpu, by compiling with `--features gpu` and passing `--gpu` flag.
+```shell
+cargo run --release -p cli --features gpu -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output --backend gpu
+```
 
-## Creating & verifying proofs
+## Program format
 
-### Generating a binary
+Your program can be written in any language that can target RISC-V. The examples in this repo use Rust.
 
-Your program can be implemented in any programming language as long as you can compile it to riscV. All of our examples are using rust.
+In practice, the programs we prove follow these rules:
 
-You can see the basic example in `examples/basic_fibonacci`.
+- no `std`
+- no file, network, or host syscalls
+- external input is read through the nondeterminism CSR path
+- final public outputs are reported through the standard success/finish convention used by the examples
 
-Our examples are compiled using regular 'cargo', but your program must adapt to couple rules:
+If you have only `app.bin`, the CLI will derive `app.text` automatically by replacing the `.bin` suffix with `.text`.
 
-* no std - it must not use any std functionality 
-* data fed via special read_csr_word instructions - it must not read/write to any files, network etc
-* final results (8 x u32) should be reported via `zksync_os_finish_success`, and they become the public input.
+## Running a program
 
-After you compile your program to .bin format (for example using `cargo objcopy  -- -O binary app.bin`
-), you can pass it to prover CLI above.
+`cli run` executes the binary through the transpiler VM and prints the final register outputs:
 
-### Creating proofs
+```shell
+cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expected-results 144
+```
 
-As explained in TL;DR section - you can generate proofs by running `prove` command from the CLI tool.
+Useful flags:
 
-The `--until` command controls the recursion - if your program runs longer, it might result in multiple proofs. The subsequent recursion
-runs are responsible "verifying & re-proving" - resulting in a single proof in the end.
+- `--text <path>` if the text section is not the default sibling file
+- `--input-file <path>` for program input
+- `--cycles <n>` to stop after a fixed number of cycles
+- `--machine full-unsigned|reduced` to choose the decoder used for `run`
 
-### Verification
+## Creating proofs
 
-The output of the cli is a single FRI proof.
+The CLI exposes three proof targets:
 
-You can verify the proof in multiple ways:
-* via cli (see "verify-all" command)
-* in your server - include the same library as verify-all command
-* in web browser - see TODO (this is verifier library compiled to wasm)
+- `base`
+- `recursion-unrolled`
+- `recursion-unified` (default)
 
-If you'd like to verify your proof on ethereum, it might be worth wrapping it into SNARK, which would make ethereum verification a lot cheaper.
-Please see zkos-wrapper repository for details on how this can be done.
+For most users, the default target is the right one because it runs the whole active recursion pipeline and emits a single proof artifact.
 
-### Verification keys
+CPU example:
 
-To verify proofs coming from the unknown source, you should create a verification key (which is a "hash" of the expected program, and recursion verifiers). This can be done using the cli tool, and then passed to verify command.
+```shell
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --output-dir output \
+  --output-file proof.json
+```
 
+GPU example:
 
-## Higher level explanations
+```shell
+cargo run --release -p cli --features gpu -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --output-dir output \
+  --output-file proof.json \
+  --backend gpu
+```
 
-### What Are We Proving?
+If you want to stop after the base layer and continue later, use staged proving:
 
-We are proving the execution of binaries containing RISC-V instructions with two key features:
+```shell
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --target base \
+  --output-dir output \
+  --output-file base.json
 
-* **CSR (Control and Status Registers):** Used for handling input/output operations.
-* **Custom Circuits (Delegations):** Special CRSs are used for custom computations, such as hashing.
+cargo run --release -p cli -- continue-proof \
+  --proof output/base.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target recursion-unified \
+  --output-dir output \
+  --output-file recursion_unified.json
+```
 
-### Computation Results
+`continue-proof` currently supports only CPU-produced artifacts.
 
-By convention, the final results of the computation should be stored in registers 10..18.
-For a simple example, see `examples/basic_fibonacci`.
+## Verifying proofs
 
-### Inputs and Outputs
+The CLI verifies a single proof artifact at a time:
 
-Most programs require reading external data. This is done via a special CSR register (0x7c0):
+```shell
+cargo run --release -p cli -- verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
+```
 
-* **Reading Data:** The register can fetch the next word of input into the program. See the `read_csr_word` function in `examples/dynamic_fibonacci` for details.
-* **Writing Data:** While this register can also write output, this feature is not used during proving (it's used during the "forward running" of ZKsync OS, a separate topic).
+Verification checks:
 
-Example: `examples/dynamic_fibonacci` demonstrates reading input (n) and computing the n-th Fibonacci number.
+- proof validity for the selected target
+- security-level compatibility
+- binding to the provided program binary and text section
+- recursion-chain consistency for recursive targets
 
-### Delegations (Custom Circuits)
-Custom circuits are triggered using dedicated CSR IDs. Currently, we have 2 delegation circtuits - one for blake and one for big integer.
+## Inputs and delegations
 
+Most programs read external data through the nondeterminism CSR path. `examples/dynamic_fibonacci` shows a minimal input-driven program.
 
-**How It Works:**
+Delegation circuits are triggered through dedicated CSR ids and operate on RAM-backed ABI data. `examples/hashed_fibonacci` shows the current Blake-based delegation flow.
 
-Each circuit has a CSR ID (e.g., Blake uses `0x7c2`).
+## Current proving shape
 
-A memory pointer is passed to the circuit for input/output, formatted in the expected ABI.
+The active proving path is split into:
 
-**Example:** See `examples/hashed_fibonacci`, specifically the `crs_trigger_delegation` method, which computes the n-th Fibonacci number and returns part of its hash.
+- base execution proving for the user program
+- unrolled recursion over execution-family proofs
+- unified reduced recursion to compress the recursive proof set further
 
-## How Proving Works
-
-### First Run: Generating Proofs
-To start proving:
-
-* Prepare the binary and input file (read via the CSR register).
-* Run the first phase of proving using tools/cli prove. This will produce:
-  * RISC-V proofs (one for every ~1M steps).
-  * Delegate proofs (e.g., Blake, for every batch of calls).
-
-Each proof is a FRI proof that can be verified:
-
-* `Individually:` Use the `verify` command.
-* `In Bulk:` Use the `verify-all` command.
-
-### Second Run: Recursion
-In this phase:
-
-* The verification code (from above) is compiled into RISC-V and itself proven recursively.
-* This process reduces the number of proofs.
-    * Current reduction ratio: ~2.5:4 (~half as many proofs).
-* After several iterations, only a few proofs remain. These can be verified by other systems (e.g., Boojum) and sent to Layer 1 (L1).
-
-
-## Technical Details
-
-### Machine Types
-There are two machine types:
-
-* Standard: Full set of instructions.
-* Reduced: Subset of operations, optimized for faster verification.
-* Final: this is the "larger" machine (2^23), that tries to limit number of FRI proofs in the final step.
-
-Currently, we use Reduced machines only for verification since they require fewer iterations.
-
-### Checking recursion correctness
-
-At the base level, the user program being proven outputs its result into **8 registers**.
-
-In the verification layers, **16 registers** are returned, where:
-
-* The first 8 registers mirror the user program's return values.
-* The last 8 registers contain a hash representing a chain of verification keys. This chain is computed as:
-
- `blake(blake(blake(0 || user_program_verification_key)|| verifier_0_verification_key) || verifier_1_verification_key)...`
-
-**Optimization**
-
-If the verifier's verification keys remain the same across layers, no new elements are added to the chain in subsequent layers.
-
-
-**Verification Key Computation**
-The verification key for the program is calculated as:
-
-`blake(PC || setup_caps)`
-
-where:
-* **PC:** The program counter value at the end of execution.
-* **setup_caps:** A Merkle tree derived from the program.
+That means reduced-machine proving is part of the live recursion path, not just a historical verifier-only detail.

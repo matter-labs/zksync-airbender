@@ -14,7 +14,6 @@ use prover::tracers::delegation::bigint_with_control_factory_fn;
 use prover::tracers::delegation::blake2_with_control_factory_fn;
 use prover::tracers::delegation::keccak_special5_factory_fn;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
-use prover::tracers::oracles::main_risc_v_circuit::MainRiscVOracle;
 use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
 use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
 use prover::unrolled::MemoryCircuitOracle;
@@ -155,16 +154,6 @@ pub fn delegation_factories_for_machine<C: MachineConfig, A: GoodAllocator>() ->
     } else {
         panic!("unknown machine configuration {:?}", C::default())
     }
-}
-
-pub struct MainCircuitPrecomputations<C: MachineConfig, A: GoodAllocator, B: GoodAllocator = Global>
-{
-    pub compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
-    pub table_driver: TableDriver<Mersenne31Field>,
-    pub twiddles: Arc<Twiddles<Mersenne31Complex, A>>,
-    pub lde_precomputations: LdePrecomputations<A>,
-    pub setup: SetupPrecomputations<DEFAULT_TRACE_PADDING_MULTIPLE, A, DefaultTreeConstructor>,
-    pub witness_eval_fn_for_gpu_tracer: fn(&mut SimpleWitnessProxy<'_, MainRiscVOracle<'_, C, B>>),
 }
 
 pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {

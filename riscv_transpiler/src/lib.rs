@@ -15,8 +15,11 @@
 // preprocess the bytecode into fixed-width format, and then will do very simple and execution loop
 // that just dispatches a function pointer
 
+pub mod abstractions;
+pub mod cycle;
 pub mod ir;
 pub mod jit;
+pub mod machine_mode_only_unrolled;
 pub mod replayer;
 pub mod vm;
 pub mod witness;

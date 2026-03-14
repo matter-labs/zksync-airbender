@@ -1,6 +1,6 @@
 use super::*;
 
-use risc_v_simulator::machine_mode_only_unrolled::{
+use crate::machine_mode_only_unrolled::{
     LoadOpcodeTracingData, MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingData,
     NonMemoryOpcodeTracingDataWithTimestamp, StoreOpcodeTracingData,
 };

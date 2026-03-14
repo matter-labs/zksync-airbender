@@ -6,20 +6,20 @@ This example shows how you can use delegation circuits (here - blake for hashing
 
 `input.txt` contains example inputs (`n = 0000000f` = 15 fibonacci iterations, `h = 00000001` = 1 blake iteration).
 
-You can try it with the [tools/cli](../../tools/cli) runner as shown below.
+You can try it with the [tools/cli](../../tools/cli) command-line tool as shown below.
 
 ## Example commands (from tools/cli directory)
 
-Trace execution to get cycle count and output:
+Run the binary through the transpiler VM to get output:
 ```
-cargo run --release run --bin ../../examples/hashed_fibonacci/app.bin --input-file ../../examples/hashed_fibonacci/input.txt
+cargo run --release -- run --bin ../../examples/hashed_fibonacci/app.bin --input-file ../../examples/hashed_fibonacci/input.txt
 ```
 
-Prove on GPU (with recursion):
+Prove on GPU (`prove` defaults to the `recursion-unified` target):
 ```
-cargo run --release --features gpu prove --bin ../../examples/hashed_fibonacci/app.bin --input-file ../../examples/hashed_fibonacci/input.txt --output-dir /tmp --gpu --until final-recursion
+cargo run --release --features gpu -- prove --bin ../../examples/hashed_fibonacci/app.bin --input-file ../../examples/hashed_fibonacci/input.txt --output-dir /tmp --backend gpu
 ```
-To prove on CPU, omit `--gpu`.
+To prove on CPU, omit `--features gpu --backend gpu`.
 
 ## Rebuilding
 

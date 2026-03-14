@@ -16,8 +16,8 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - poseidon2/ - native poseidon2 implementation
 - prover/ - main cpu prover implementation with its 5 stages
-- risc_v_simulator/ - simple riscV simulator used for some forms of witness tracing
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
+- riscv_transpiler/ - bytecode preprocessing, transpiler VM execution, replay, and witness layouts used by the active proving path
 - tools/ - high-level shell programs used to conduct proving, gpu proving, and verification
 - trace_holder/ - basic trait impl for cpu prover trace layout options
 - transcript/ - non-interactive cpu prover's Fiat-Shamir transform implementation

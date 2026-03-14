@@ -2,7 +2,7 @@
 
 [![Logo](zksync-airbender-logo.png)](https://zksync.io/)
 
-This repository contains the RISC-V compilation and proving tools for the ZKsync project, including implementations of RISC-V circuits, a RISC-V simulator, and utilities for witness generation, proof creation, and verification.
+This repository contains the RISC-V compilation and proving tools for the ZKsync project, including the transpiler, proving circuits, and utilities for witness generation, proof creation, and verification.
 
 ## Documentation
 

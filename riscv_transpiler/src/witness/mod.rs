@@ -4,7 +4,7 @@ use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_s
 use std::mem::MaybeUninit;
 
 pub use self::delegation::{DelegationAbiDescription, DelegationWitness};
-use risc_v_simulator::machine_mode_only_unrolled::{
+use crate::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
