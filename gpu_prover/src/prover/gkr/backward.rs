@@ -37,8 +37,8 @@ use super::{
     GpuSumcheckRound1PreparedStorage, GpuSumcheckRound1ScheduledLaunchDescriptors,
     GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
-    GpuSumcheckRound3AndBeyondPreparedStorage, GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
-    alloc_host_and_copy,
+    GpuSumcheckRound3AndBeyondPreparedStorage,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_copy,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
@@ -637,7 +637,7 @@ cuda_kernel_signature_arguments_and_function!(
     acc_size: u32,
 );
 
-trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
+pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const PAIRWISE_ROUND0: GpuDimensionReducingPairwiseRound0Signature<Self>;
     const LOOKUP_ROUND0: GpuDimensionReducingLookupRound0Signature<Self>;
     const PAIRWISE_CONTINUATION: GpuDimensionReducingPairwiseContinuationSignature<Self>;
@@ -1014,7 +1014,7 @@ fn launch_weight_contributions<E: GpuDimensionReducingKernelSet>(
     GpuDimensionReducingWeightContributionsFunction(E::WEIGHT_CONTRIBUTIONS).launch(&config, &args)
 }
 
-fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
+pub(crate) fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
     claim_point: *const E,
     challenge_offset: usize,
     challenge_count: usize,
@@ -1926,17 +1926,20 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(1, &mut next_batch_challenge_offset);
-                blueprints.push(GpuGKRMainLayerKernelBlueprint {
-                    kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-                    inputs: <BatchConstraintEvalGKRRelation<BF, E> as BatchedGKRKernel<BF, E>>::get_inputs(
-                        &relation,
-                    ),
-                    batch_challenge_offset,
-                    batch_challenge_count,
-                    batch_challenges: Vec::new(),
-                    auxiliary_challenge: E::ZERO,
-                    constraint_metadata: Some(constraint_metadata),
-                });
+                blueprints.push(
+                    GpuGKRMainLayerKernelBlueprint {
+                        kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
+                        inputs: <BatchConstraintEvalGKRRelation<BF, E> as BatchedGKRKernel<
+                            BF,
+                            E,
+                        >>::get_inputs(&relation),
+                        batch_challenge_offset,
+                        batch_challenge_count,
+                        batch_challenges: Vec::new(),
+                        auxiliary_challenge: E::ZERO,
+                        constraint_metadata: Some(constraint_metadata),
+                    },
+                );
             }
             NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
             | NoFieldGKRRelation::MaterializeSingleLookupInput { .. }
@@ -2473,7 +2476,11 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
     {
         self.kernel_plans
             .iter()
-            .map(|kernel| kernel.round1_prepared.schedule_upload_launch_descriptors(context))
+            .map(|kernel| {
+                kernel
+                    .round1_prepared
+                    .schedule_upload_launch_descriptors(context)
+            })
             .collect()
     }
 
@@ -2486,7 +2493,11 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
     {
         self.kernel_plans
             .iter()
-            .map(|kernel| kernel.round2_prepared.schedule_upload_launch_descriptors(context))
+            .map(|kernel| {
+                kernel
+                    .round2_prepared
+                    .schedule_upload_launch_descriptors(context)
+            })
             .collect()
     }
 
@@ -2524,7 +2535,11 @@ impl<B, E: Field> GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     {
         self.kernel_plans
             .iter()
-            .map(|kernel| kernel.round1_prepared.schedule_upload_launch_descriptors(context))
+            .map(|kernel| {
+                kernel
+                    .round1_prepared
+                    .schedule_upload_launch_descriptors(context)
+            })
             .collect()
     }
 
@@ -3450,10 +3465,9 @@ where
                     let reduction = reduction_accessor.get();
                     let c0 = reduction[0];
                     let c2 = reduction[1];
-                    let previous_claim_coord = claim_point_for_callback
-                        .lock()
-                        .unwrap()
-                        .current_claim_point[previous_claim_coord_idx];
+                    let previous_claim_coord =
+                        claim_point_for_callback.lock().unwrap().current_claim_point
+                            [previous_claim_coord_idx];
                     let mut state = shared_state_for_callback.lock().unwrap();
                     let mut normalized_claim = state.claim;
                     normalized_claim.mul_assign(
@@ -3503,11 +3517,7 @@ where
                 let mut scheduled = self.schedule_round_1(context)?;
                 let mut callbacks = callbacks;
                 for descriptors in scheduled.iter_mut() {
-                    schedule_release_round1_host_descriptors(
-                        descriptors,
-                        &mut callbacks,
-                        context,
-                    )?;
+                    schedule_release_round1_host_descriptors(descriptors, &mut callbacks, context)?;
                 }
                 self.launch_round1_kernels(
                     &scheduled,
@@ -3527,11 +3537,7 @@ where
                 let mut scheduled = self.schedule_round_2(context)?;
                 let mut callbacks = callbacks;
                 for descriptors in scheduled.iter_mut() {
-                    schedule_release_round2_host_descriptors(
-                        descriptors,
-                        &mut callbacks,
-                        context,
-                    )?;
+                    schedule_release_round2_host_descriptors(descriptors, &mut callbacks, context)?;
                 }
                 self.launch_round2_kernels(
                     &scheduled,
@@ -3551,11 +3557,7 @@ where
                 let mut scheduled = self.schedule_round_3_and_beyond(step, context)?;
                 let mut callbacks = callbacks;
                 for descriptors in scheduled.iter_mut() {
-                    schedule_release_round3_host_descriptors(
-                        descriptors,
-                        &mut callbacks,
-                        context,
-                    )?;
+                    schedule_release_round3_host_descriptors(descriptors, &mut callbacks, context)?;
                 }
                 self.launch_round3_kernels(
                     &scheduled,
@@ -4200,7 +4202,10 @@ where
                 true,
                 context,
             )?;
-            ScheduledMainLayerRoundState::Round3AndBeyond { callbacks, scheduled }
+            ScheduledMainLayerRoundState::Round3AndBeyond {
+                callbacks,
+                scheduled,
+            }
         };
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
@@ -4297,7 +4302,9 @@ where
         let layer_claim_callback = self
             .kernel_plans
             .iter()
-            .filter(|kernel| kernel.kind != GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic)
+            .filter(|kernel| {
+                kernel.kind != GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic
+            })
             .map(|kernel| {
                 (
                     kernel.batch_challenge_offset,
@@ -4477,10 +4484,9 @@ where
                     let reduction = reduction_accessor.get();
                     let c0 = reduction[0];
                     let c2 = reduction[1];
-                    let previous_claim_coord = claim_point_for_callback
-                        .lock()
-                        .unwrap()
-                        .current_claim_point[previous_claim_coord_idx];
+                    let previous_claim_coord =
+                        claim_point_for_callback.lock().unwrap().current_claim_point
+                            [previous_claim_coord_idx];
                     let mut state = shared_state_for_callback.lock().unwrap();
                     let mut normalized_claim = state.claim;
                     normalized_claim.mul_assign(
@@ -4537,11 +4543,7 @@ where
             let mut scheduled = self.schedule_round_3_and_beyond(last_step, context)?;
             let mut callbacks = callbacks;
             for descriptors in scheduled.iter_mut() {
-                schedule_release_round3_host_descriptors(
-                    descriptors,
-                    &mut callbacks,
-                    context,
-                )?;
+                schedule_release_round3_host_descriptors(descriptors, &mut callbacks, context)?;
             }
             self.launch_round3_kernels(
                 &scheduled,
@@ -4551,7 +4553,10 @@ where
                 true,
                 context,
             )?;
-            ScheduledMainLayerRoundState::Round3AndBeyond { callbacks, scheduled }
+            ScheduledMainLayerRoundState::Round3AndBeyond {
+                callbacks,
+                scheduled,
+            }
         };
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
@@ -4688,7 +4693,10 @@ where
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let shared_state = Arc::new(Mutex::new(ScheduledBackwardWorkflowState {
-            claims_for_layers: BTreeMap::from([(initial_output_layer_idx, top_layer_claims.clone())]),
+            claims_for_layers: BTreeMap::from([(
+                initial_output_layer_idx,
+                top_layer_claims.clone(),
+            )]),
             points_for_claims_at_layer: BTreeMap::from([(
                 initial_output_layer_idx,
                 evaluation_point.clone(),
@@ -4716,12 +4724,16 @@ where
             constraint_batch_challenge,
         );
         let mut main_layers = Vec::new();
-        while let Some(mut prepared_layer) = main_backward_state.prepare_next_layer_static(context)? {
+        while let Some(mut prepared_layer) =
+            main_backward_state.prepare_next_layer_static(context)?
+        {
             let layer_idx = prepared_layer.layer_idx;
-            main_layers.push(prepared_layer.schedule_execute_main_layer_from_workflow_state(
-                Arc::clone(&shared_state),
-                context,
-            )?);
+            main_layers.push(
+                prepared_layer.schedule_execute_main_layer_from_workflow_state(
+                    Arc::clone(&shared_state),
+                    context,
+                )?,
+            );
             main_backward_state.purge_up_to_layer(layer_idx);
         }
 

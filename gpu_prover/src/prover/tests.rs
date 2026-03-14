@@ -2,9 +2,9 @@ use super::gkr::{
     GpuGKRStorage,
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
-        GpuGKRMainLayerKernelKind,
-        GpuGKRMainLayerSumcheckLayerPlan,
+        GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
     },
+    base_layer_claims::prepare_base_layer_claims,
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
@@ -69,6 +69,7 @@ use prover::prover_stages::flatten_merkle_caps_iter_into;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
+use prover::transcript::Seed;
 use prover::unrolled::NonMemoryCircuitOracle;
 use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, Instruction, preprocess_bytecode};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
@@ -85,7 +86,6 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::Arc;
 use worker::Worker;
-use prover::transcript::Seed;
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -419,17 +419,26 @@ fn prepare_basic_unrolled_async_backward_fixture(
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        stage1_output.memory_trace_holder.get_tree_caps().into_iter(),
+        stage1_output
+            .memory_trace_holder
+            .get_tree_caps()
+            .into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        stage1_output.witness_trace_holder.get_tree_caps().into_iter(),
+        stage1_output
+            .witness_trace_holder
+            .get_tree_caps()
+            .into_iter(),
         &mut transcript_input,
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ] = challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -2023,7 +2032,7 @@ fn run_basic_unrolled_test() {
         }
     }
 
-    let gpu_backward_execution = {
+    let mut gpu_backward_execution = {
         let _range = range!("test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
             .schedule_execute_backward_workflow(
@@ -2064,77 +2073,122 @@ fn run_basic_unrolled_test() {
         assert_sumcheck_intermediate_values_eq_for_test(actual, expected);
     }
 
-    let base_layer_z = points_for_claims_at_layer
+    let base_layer_z = gpu_backward_execution
+        .points_for_claims_at_layer
         .get(&0)
         .expect("must have base layer point");
     let eq_precomputed = make_eq_poly_in_full(base_layer_z, &worker);
     let eq_at_z = eq_precomputed.last().unwrap();
-
     let layer_desc = &add_sub_circuit.layers[0];
-    let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
-    for (cached_addr, relation) in layer_desc.cached_relations.iter() {
-        debug_assert!(
-            base_layer_claims.contains_key(cached_addr),
-            "Missing claim for cached address {:?}",
-            cached_addr
-        );
 
-        for dep in relation.dependencies() {
-            if base_layer_claims.contains_key(&dep) {
-                continue;
-            }
-            match dep {
-                GKRAddress::BaseLayerWitness(_)
-                | GKRAddress::BaseLayerMemory(_)
-                | GKRAddress::Setup(_) => {
-                    let values = gkr_storage.get_base_layer(dep);
-                    let evaluation = evaluate_base_poly_with_eq::<BF, E4>(values, &eq_at_z[..]);
-                    base_layer_claims.insert(dep, evaluation);
+    let (cpu_base_layer_claims, cpu_mem_polys_claims, cpu_wit_polys_claims, cpu_setup_polys_claims) = {
+        let mut cpu_base_layer_claims = claims_for_layers.get(&0).cloned().unwrap_or_default();
+        for (cached_addr, relation) in layer_desc.cached_relations.iter() {
+            debug_assert!(
+                cpu_base_layer_claims.contains_key(cached_addr),
+                "Missing claim for cached address {:?}",
+                cached_addr
+            );
+
+            for dep in relation.dependencies() {
+                if cpu_base_layer_claims.contains_key(&dep) {
+                    continue;
                 }
-                _ => {
-                    panic!(
-                        "Unexpected dependency address {:?} for cached relation {:?}",
-                        dep, cached_addr
-                    );
+                match dep {
+                    GKRAddress::BaseLayerWitness(_)
+                    | GKRAddress::BaseLayerMemory(_)
+                    | GKRAddress::Setup(_) => {
+                        let values = gkr_storage.get_base_layer(dep);
+                        let evaluation = evaluate_base_poly_with_eq::<BF, E4>(values, &eq_at_z[..]);
+                        cpu_base_layer_claims.insert(dep, evaluation);
+                    }
+                    _ => {
+                        panic!(
+                            "Unexpected dependency address {:?} for cached relation {:?}",
+                            dep, cached_addr
+                        );
+                    }
                 }
             }
         }
+
+        let mut mem_polys_claims = Vec::with_capacity(add_sub_circuit.memory_layout.total_width);
+        for i in 0..add_sub_circuit.memory_layout.total_width {
+            let key = GKRAddress::BaseLayerMemory(i);
+            let evaluation =
+                evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
+            mem_polys_claims.push(evaluation);
+        }
+
+        let mut wit_polys_claims = Vec::with_capacity(add_sub_circuit.witness_layout.total_width);
+        for i in 0..add_sub_circuit.witness_layout.total_width {
+            let key = GKRAddress::BaseLayerWitness(i);
+            let evaluation =
+                evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
+            wit_polys_claims.push(evaluation);
+        }
+
+        let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
+        for i in 0..setup.hypercube_evals.len() {
+            let key = GKRAddress::Setup(i);
+            let evaluation =
+                evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
+            setup_polys_claims.push(evaluation);
+        }
+
+        (
+            cpu_base_layer_claims,
+            mem_polys_claims,
+            wit_polys_claims,
+            setup_polys_claims,
+        )
+    };
+
+    let gpu_base_claims = {
+        let _range = range!("test.gpu.base_layer_claims.prepare");
+        prepare_base_layer_claims(
+            layer_desc,
+            base_layer_z,
+            gpu_backward_execution
+                .claims_for_layers
+                .get(&0)
+                .expect("must have layer-0 claims after backward"),
+            &gpu_setup_transfer.trace_holder,
+            &stage1_output.memory_trace_holder,
+            &stage1_output.witness_trace_holder,
+            &context,
+        )
+        .unwrap()
+    };
+
+    assert_eq!(gpu_base_claims.completed_claims, cpu_base_layer_claims);
+    assert_eq!(gpu_base_claims.mem_polys_claims, cpu_mem_polys_claims);
+    assert_eq!(gpu_base_claims.wit_polys_claims, cpu_wit_polys_claims);
+    assert_eq!(gpu_base_claims.setup_polys_claims, cpu_setup_polys_claims);
+
+    for i in 0..add_sub_circuit.memory_layout.total_width {
+        assert_eq!(
+            gpu_base_claims.claim_for_address(GKRAddress::BaseLayerMemory(i)),
+            Some(cpu_mem_polys_claims[i]),
+        );
+    }
+    for i in 0..add_sub_circuit.witness_layout.total_width {
+        assert_eq!(
+            gpu_base_claims.claim_for_address(GKRAddress::BaseLayerWitness(i)),
+            Some(cpu_wit_polys_claims[i]),
+        );
+    }
+    for i in 0..setup.hypercube_evals.len() {
+        assert_eq!(
+            gpu_base_claims.claim_for_address(GKRAddress::Setup(i)),
+            Some(cpu_setup_polys_claims[i]),
+        );
     }
 
     drop(preprocessed_generic_lookup);
-
-    let mut mem_polys_claims = Vec::with_capacity(add_sub_circuit.memory_layout.total_width);
-    for i in 0..add_sub_circuit.memory_layout.total_width {
-        let key = GKRAddress::BaseLayerMemory(i);
-        let value = claims_for_layers[&0]
-            .get(&key)
-            .copied()
-            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
-        mem_polys_claims.push(value);
-    }
-
-    let mut wit_polys_claims = Vec::with_capacity(add_sub_circuit.witness_layout.total_width);
-    for i in 0..add_sub_circuit.witness_layout.total_width {
-        let key = GKRAddress::BaseLayerWitness(i);
-        let value = claims_for_layers[&0]
-            .get(&key)
-            .copied()
-            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
-        wit_polys_claims.push(value);
-    }
-
-    let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
-    for i in 0..setup.hypercube_evals.len() {
-        let key = GKRAddress::Setup(i);
-        let value = claims_for_layers[&0]
-            .get(&key)
-            .copied()
-            .unwrap_or_else(|| panic!("Missing claim for {:?}", key));
-        let evaluation =
-            evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
-        assert_eq!(evaluation, value, "diverged for {:?}", key);
-        setup_polys_claims.push(value);
-    }
+    gpu_backward_execution
+        .claims_for_layers
+        .insert(0, gpu_base_claims.completed_claims.clone());
 
     drop(gkr_storage);
 
@@ -2144,11 +2198,11 @@ fn run_basic_unrolled_test() {
         let _range = range!("test.cpu.whir_fold");
         whir_fold(
             mem_oracle,
-            mem_polys_claims,
+            gpu_base_claims.mem_polys_claims,
             wit_oracle,
-            wit_polys_claims,
+            gpu_base_claims.wit_polys_claims,
             &setup_commitment,
-            setup_polys_claims,
+            gpu_base_claims.setup_polys_claims,
             base_layer_z.clone(),
             whir_schedule.base_lde_factor,
             whir_batching_challenge,

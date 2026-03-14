@@ -10,6 +10,7 @@
 //   must be copied back to host as part of the scheduled workflow.
 
 pub(crate) mod backward;
+pub(crate) mod base_layer_claims;
 pub(crate) mod forward;
 pub(crate) mod setup;
 pub(crate) mod stage1;
@@ -1188,12 +1189,14 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
         let base_field_inputs_values = self
             .base_field_inputs
             .iter()
-            .map(|plan| GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
-                base_layer_half_size: plan.base_layer_half_size,
-                next_layer_size: plan.next_layer_size,
-                base_input_start: plan.base_input_start,
-                _marker: core::marker::PhantomData,
-            })
+            .map(
+                |plan| GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
+                    base_layer_half_size: plan.base_layer_half_size,
+                    next_layer_size: plan.next_layer_size,
+                    base_input_start: plan.base_input_start,
+                    _marker: core::marker::PhantomData,
+                },
+            )
             .collect::<Vec<_>>();
         let extension_field_inputs_values = self
             .extension_field_inputs
@@ -1208,7 +1211,8 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
             .collect::<Vec<_>>();
         let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
         let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let base_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
         let extension_field_inputs_device =
             alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound1DeviceLaunchDescriptors {
@@ -1232,14 +1236,16 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
         let base_field_inputs_values = self
             .base_field_inputs
             .iter()
-            .map(|plan| GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor {
-                base_input_start: plan.base_input_start,
-                this_layer_cache_start: plan.this_layer_cache_start,
-                base_layer_half_size: plan.base_layer_half_size,
-                base_quarter_size: plan.base_quarter_size,
-                next_layer_size: plan.next_layer_size,
-                first_access: plan.first_access,
-            })
+            .map(
+                |plan| GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor {
+                    base_input_start: plan.base_input_start,
+                    this_layer_cache_start: plan.this_layer_cache_start,
+                    base_layer_half_size: plan.base_layer_half_size,
+                    base_quarter_size: plan.base_quarter_size,
+                    next_layer_size: plan.next_layer_size,
+                    first_access: plan.first_access,
+                },
+            )
             .collect::<Vec<_>>();
         let extension_field_inputs_values = self
             .extension_field_inputs
@@ -1254,7 +1260,8 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
             .collect::<Vec<_>>();
         let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
         let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let base_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
         let extension_field_inputs_device =
             alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound2DeviceLaunchDescriptors {
@@ -1299,7 +1306,8 @@ impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
             .collect::<Vec<_>>();
         let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
         let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let base_field_inputs_device =
+            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
         let extension_field_inputs_device =
             alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
         let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
@@ -1433,12 +1441,14 @@ mod tests {
 
         storage.purge_up_to_layer(0);
         assert_eq!(storage.layers.len(), 1);
-        assert!(storage
-            .try_get_ext_poly(GKRAddress::InnerLayer {
-                layer: 1,
-                offset: 0
-            })
-            .is_none());
+        assert!(
+            storage
+                .try_get_ext_poly(GKRAddress::InnerLayer {
+                    layer: 1,
+                    offset: 0
+                })
+                .is_none()
+        );
         assert_eq!(storage.get_base_layer_mem(0).as_ptr(), base_memory_ptr);
     }
 
@@ -1603,8 +1613,14 @@ mod tests {
                 copy_device_values(&context, &round1.device.base_field_inputs);
             let round1_ext_inputs_device =
                 copy_device_values(&context, &round1.device.extension_field_inputs);
-            assert_eq!(round1_base_inputs_device[0].base_input_start, base_input_ptr);
-            assert_eq!(round1_ext_inputs_device[0].previous_layer_start, ext_input_ptr);
+            assert_eq!(
+                round1_base_inputs_device[0].base_input_start,
+                base_input_ptr
+            );
+            assert_eq!(
+                round1_ext_inputs_device[0].previous_layer_start,
+                ext_input_ptr
+            );
         }
         let used_after_round1 = context.get_used_mem_current();
         assert!(used_after_round1 > baseline);
