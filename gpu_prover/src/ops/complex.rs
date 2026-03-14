@@ -304,6 +304,66 @@ transpose_impl!(E4, 3);
 transpose_impl!(E6, 3);
 
 cuda_kernel_signature_arguments_and_function!(
+    PackRowsForWhirLeaves,
+    src: PtrAndStride<BF>,
+    dst: MutPtrAndStride<BF>,
+    log_values_per_leaf: u32,
+    dst_rows_per_slot: u32,
+    row_stride: u32,
+    row_offset: u32,
+    src_cols: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_pack_rows_for_whir_leaves_bf_kernel(
+        src: PtrAndStride<BF>,
+        dst: MutPtrAndStride<BF>,
+        log_values_per_leaf: u32,
+        dst_rows_per_slot: u32,
+        row_stride: u32,
+        row_offset: u32,
+        src_cols: u32,
+    )
+);
+
+pub fn pack_rows_for_whir_leaves(
+    src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_values_per_leaf: u32,
+    row_stride: u32,
+    row_offset: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let src_rows = src.rows();
+    let src_cols = src.cols();
+    let dst_rows = dst.rows();
+    let dst_cols = dst.cols();
+    let dst_rows_per_slot = src_rows >> log_values_per_leaf;
+    assert_eq!(dst_rows_per_slot * row_stride as usize, dst_rows);
+    assert!(row_offset < row_stride);
+    assert_eq!(src_cols << log_values_per_leaf, dst_cols);
+    assert!(dst_rows_per_slot <= u32::MAX as usize);
+    assert!(src_cols <= u32::MAX as usize);
+    assert!(dst_cols <= u32::MAX as usize);
+    let block_dim = (WARP_SIZE, 4);
+    let grid_dim = (
+        dst_rows_per_slot.get_chunks_count(WARP_SIZE as usize) as u32,
+        dst_cols.get_chunks_count(4) as u32,
+    );
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = PackRowsForWhirLeavesArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
+        log_values_per_leaf,
+        dst_rows_per_slot as u32,
+        row_stride,
+        row_offset,
+        src_cols as u32,
+    );
+    PackRowsForWhirLeavesFunction(ab_pack_rows_for_whir_leaves_bf_kernel).launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
     BitReverse<T>,
     src: PtrAndStride<T>,
     dst: MutPtrAndStride<T>,
