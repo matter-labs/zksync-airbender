@@ -168,6 +168,10 @@ impl<T> TraceHolder<T> {
         self.cosets_materialized
     }
 
+    pub(crate) fn mark_cosets_materialized(&mut self) {
+        self.cosets_materialized = true;
+    }
+
     pub(crate) fn get_coset_evaluations(&self, coset_index: usize) -> &DeviceSlice<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
         assert!(

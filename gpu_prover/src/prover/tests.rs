@@ -18,6 +18,7 @@ use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
+use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
 use cs::definitions::*;
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
@@ -34,7 +35,11 @@ use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy;
 use era_cudart::slice::DeviceSlice;
-use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
+use fft::{
+    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
+    materialize_powers_serial_starting_with_elem, materialize_powers_serial_starting_with_one,
+    Twiddles,
+};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
@@ -45,11 +50,15 @@ use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingI
 use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::stages::stage1;
+use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
 use prover::gkr::prover::sumcheck_loop;
-use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::transcript_utils::{
+    add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
+};
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::gkr::sumcheck::access_and_fold::GKRStorage;
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
+use prover::gkr::sumcheck::evaluate_small_univariate_poly;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -57,7 +66,10 @@ use prover::gkr::sumcheck::evaluation_kernels::{
     LookupRationalPairWithUnbalancedBaseGKRRelation, MaskIntoIdentityProductGKRRelation,
     SameSizeProductGKRRelation,
 };
-use prover::gkr::whir::whir_fold;
+use prover::gkr::whir::{
+    whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
+    ColumnMajorExtensionOracleForLDE, WhirCommitment,
+};
 use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
@@ -66,6 +78,7 @@ use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
 };
 use prover::prover_stages::flatten_merkle_caps_iter_into;
+use prover::prover_stages::query_producer::assemble_query_index;
 use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
@@ -217,6 +230,713 @@ fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
     }
 
     evals.try_into().unwrap()
+}
+
+fn compute_column_major_lde_from_monomial_form_for_test(
+    monomial_coeffs: &[E4],
+    twiddles: &Twiddles<BF, Global>,
+    lde_factor: usize,
+) -> Vec<(Box<[E4]>, BF)> {
+    let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
+    let next_root = domain_generator_for_size::<BF>(((1 << trace_len_log2) * lde_factor) as u64);
+    let root_powers =
+        materialize_powers_serial_starting_with_one::<BF, Global>(next_root, lde_factor);
+    let selected_twiddles = &twiddles.forward_twiddles[..(1 << (trace_len_log2 - 1))];
+
+    (0..lde_factor)
+        .map(|i| {
+            let mut evals = monomial_coeffs.to_vec();
+            let offset = root_powers[i];
+            if i != 0 {
+                fft::distribute_powers_serial(&mut evals[..], BF::ONE, offset);
+            }
+            bitreverse_enumeration_inplace(&mut evals[..]);
+            fft::naive::serial_ct_ntt_bitreversed_to_natural(
+                &mut evals[..],
+                trace_len_log2 as u32,
+                selected_twiddles,
+            );
+            (evals.into_boxed_slice(), offset)
+        })
+        .collect()
+}
+
+fn compute_column_major_monomial_form_from_main_domain_owned_for_test(
+    source_domain: Vec<E4>,
+    twiddles: &Twiddles<BF, Global>,
+) -> Vec<E4> {
+    let trace_len_log2 = source_domain.len().trailing_zeros();
+    let mut ifft = source_domain;
+    let size_inv = BF::from_u32_unchecked(1 << trace_len_log2)
+        .inverse()
+        .unwrap();
+    fft::naive::cache_friendly_ntt_natural_to_bitreversed(
+        &mut ifft[..],
+        trace_len_log2,
+        &twiddles.inverse_twiddles[..],
+    );
+    for el in ifft.iter_mut() {
+        el.mul_assign_by_base(&size_inv);
+    }
+    bitreverse_enumeration_inplace(&mut ifft[..]);
+
+    ifft
+}
+
+fn build_cpu_recursive_whir_oracle_for_test(
+    monomial_coeffs: &[E4],
+    twiddles: &Twiddles<BF, Global>,
+    lde_factor: usize,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<BF, E4, DefaultTreeConstructor> {
+    let cosets =
+        compute_column_major_lde_from_monomial_form_for_test(monomial_coeffs, twiddles, lde_factor);
+    let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
+    let mut wrapped_cosets = Vec::with_capacity(cosets.len());
+    for (column, offset) in cosets.iter() {
+        wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: column.clone().into(),
+                offset: *offset,
+            },
+        });
+    }
+    let source: Vec<_> = wrapped_cosets
+        .iter()
+        .map(|coset| vec![&coset.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
+    let tree =
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
+            E4,
+            Global,
+        >(
+            &source_ref,
+            values_per_leaf,
+            tree_cap_size,
+            true,
+            true,
+            false,
+            worker,
+        );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: wrapped_cosets,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
+fn fold_monomial_form_for_test(input: &mut Vec<E4>, challenge: E4) {
+    assert!(input.len().is_power_of_two());
+    let mut buffer = Vec::with_capacity(input.len() / 2);
+    for [c0, c1] in input.as_chunks::<2>().0.iter() {
+        let mut result = *c1;
+        result.mul_assign(&challenge);
+        result.add_assign(c0);
+        buffer.push(result);
+    }
+    *input = buffer;
+}
+
+fn fold_evaluation_form_for_test(input: &mut Vec<E4>, challenge: E4) {
+    assert!(input.len().is_power_of_two());
+    let half_len = input.len() / 2;
+    let (first_half, second_half) = input.split_at_mut(half_len);
+    for (a, b) in first_half.iter_mut().zip(second_half.iter()) {
+        let mut t = *b;
+        t.sub_assign(a);
+        t.mul_assign(&challenge);
+        a.add_assign(&t);
+    }
+    input.truncate(half_len);
+}
+
+fn fold_eq_poly_for_test(eq_poly: &mut Vec<E4>, challenge: E4) {
+    fold_evaluation_form_for_test(eq_poly, challenge);
+}
+
+fn special_three_point_eval_for_test(a: &[E4], b: &[E4]) -> (E4, E4, E4) {
+    assert_eq!(a.len(), b.len());
+    let half = a.len() / 2;
+    let quart = BF::from_u32_unchecked(4).inverse().unwrap();
+    let (a_low, a_high) = a.split_at(half);
+    let (b_low, b_high) = b.split_at(half);
+    let mut f0 = E4::ZERO;
+    let mut f1 = E4::ZERO;
+    let mut f_half = E4::ZERO;
+    for ((a0, a1), (b0, b1)) in a_low
+        .iter()
+        .zip(a_high.iter())
+        .zip(b_low.iter().zip(b_high.iter()))
+    {
+        let mut t0 = *a0;
+        t0.mul_assign(b0);
+        f0.add_assign(&t0);
+
+        let mut t1 = *a1;
+        t1.mul_assign(b1);
+        f1.add_assign(&t1);
+
+        let mut t_half = *a0;
+        t_half.add_assign(a1);
+        let mut eq_half = *b0;
+        eq_half.add_assign(b1);
+        t_half.mul_assign(&eq_half);
+        f_half.add_assign(&t_half);
+    }
+    f_half.mul_assign_by_base(&quart);
+    (f0, f1, f_half)
+}
+
+fn special_lagrange_interpolate_for_test(
+    eval_at_0: E4,
+    eval_at_1: E4,
+    eval_at_random: E4,
+    random_point: E4,
+) -> [E4; 3] {
+    let mut coeffs_for_0 = [E4::ZERO, E4::ZERO, E4::ONE];
+    coeffs_for_0[1] = E4::ONE;
+    coeffs_for_0[1].add_assign(&random_point);
+    coeffs_for_0[1].negate();
+    coeffs_for_0[0] = random_point;
+
+    let mut coeffs_for_1 = [E4::ZERO, E4::ZERO, E4::ONE];
+    coeffs_for_1[1] = random_point;
+    coeffs_for_1[1].negate();
+
+    let mut coeffs_for_random = [E4::ZERO, E4::ZERO, E4::ONE];
+    coeffs_for_random[1] = E4::ONE;
+    coeffs_for_random[1].negate();
+
+    let mut dens = [E4::ONE, E4::ONE, E4::ONE];
+    let mut t = E4::ZERO;
+    t.sub_assign(&E4::ONE);
+    dens[0].mul_assign(&t);
+    let mut t = E4::ZERO;
+    t.sub_assign(&random_point);
+    dens[0].mul_assign(&t);
+
+    let mut t = E4::ONE;
+    t.sub_assign(&random_point);
+    dens[1].mul_assign(&t);
+
+    let mut t = random_point;
+    dens[2].mul_assign(&t);
+    let mut t = random_point;
+    t.sub_assign(&E4::ONE);
+    dens[2].mul_assign(&t);
+
+    let mut buffer = [E4::ZERO; 3];
+    batch_inverse_inplace(&mut dens, &mut buffer);
+
+    let mut result = [E4::ZERO; 3];
+    for (eval, den, coeffs) in [
+        (eval_at_0, dens[0], coeffs_for_0),
+        (eval_at_1, dens[1], coeffs_for_1),
+        (eval_at_random, dens[2], coeffs_for_random),
+    ] {
+        for (dst, coeff) in result.iter_mut().zip(coeffs.into_iter()) {
+            let mut term = coeff;
+            term.mul_assign(&den);
+            term.mul_assign(&eval);
+            dst.add_assign(&term);
+        }
+    }
+
+    result
+}
+
+fn make_pows_for_test(mut el: E4, num_powers: usize) -> Vec<E4> {
+    let mut result = Vec::with_capacity(num_powers);
+    for _ in 0..num_powers {
+        result.push(el);
+        el.square();
+    }
+    result
+}
+
+fn update_eq_poly_for_test(
+    eq_poly: &mut [E4],
+    ood_samples: &[(E4, E4)],
+    in_domain_samples: &[(BF, E4)],
+) {
+    for (point, challenge) in ood_samples.iter() {
+        let pows = make_pows_for_test(*point, eq_poly.len().trailing_zeros() as usize);
+        let eqs = make_eq_poly_in_full::<E4>(&pows, &Worker::new());
+        for (dst, src) in eq_poly.iter_mut().zip(eqs.last().unwrap().iter()) {
+            let mut t = *challenge;
+            t.mul_assign(src);
+            dst.add_assign(&t);
+        }
+    }
+    for (point, challenge) in in_domain_samples.iter() {
+        let pows = make_pows_for_test(
+            E4::from_base(*point),
+            eq_poly.len().trailing_zeros() as usize,
+        );
+        let eqs = make_eq_poly_in_full::<E4>(&pows, &Worker::new());
+        for (dst, src) in eq_poly.iter_mut().zip(eqs.last().unwrap().iter()) {
+            let mut t = *challenge;
+            t.mul_assign(src);
+            dst.add_assign(&t);
+        }
+    }
+}
+
+fn evaluate_monomial_form_for_test(coeffs: &[E4], point: E4) -> E4 {
+    let mut result = E4::ZERO;
+    let mut current = E4::ONE;
+    for coeff in coeffs.iter() {
+        let mut term = *coeff;
+        term.mul_assign(&current);
+        result.add_assign(&term);
+        current.mul_assign(&point);
+    }
+    result
+}
+
+fn fold_coset_for_test(
+    mut flattened_evals: Vec<E4>,
+    num_folding_rounds: usize,
+    folding_challenges: &[E4],
+    base_root_inv: &BF,
+    high_powers_offsets: &[BF],
+    two_inv: &BF,
+) -> E4 {
+    let mut root_inv = *base_root_inv;
+    let mut buffer = Vec::with_capacity(flattened_evals.len());
+    for folding_step in 0..num_folding_rounds {
+        let (src, dst) = if folding_step % 2 == 0 {
+            (&flattened_evals[..], &mut buffer)
+        } else {
+            (&buffer[..], &mut flattened_evals)
+        };
+        dst.clear();
+        for (set_idx, [a, b]) in src.as_chunks::<2>().0.iter().enumerate() {
+            let mut t = *a;
+            t.sub_assign(b);
+            t.mul_assign(&folding_challenges[folding_step]);
+            let mut root = root_inv;
+            root.mul_assign(&high_powers_offsets[set_idx]);
+            t.mul_assign_by_base(&root);
+            t.add_assign(a);
+            t.add_assign(b);
+            t.mul_assign_by_base(two_inv);
+            dst.push(t);
+        }
+        root_inv.square();
+    }
+    if num_folding_rounds % 2 == 1 {
+        buffer[0]
+    } else {
+        flattened_evals[0]
+    }
+}
+
+fn assert_recursive_whir_oracle_parity_for_supported_path(
+    mem_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
+    mem_polys_claims: &[E4],
+    wit_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
+    wit_polys_claims: &[E4],
+    setup_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
+    setup_polys_claims: &[E4],
+    original_evaluation_point: &[E4],
+    original_lde_factor: usize,
+    batching_challenge: E4,
+    whir_schedule: &WhirSchedule,
+    twiddles: &Twiddles<BF, Global>,
+    mut transcript_seed: Seed,
+    trace_len_log2: usize,
+    worker: &Worker,
+    context: &ProverContext,
+) {
+    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
+    let oracle_refs = [mem_oracle, wit_oracle, setup_oracle];
+    let evals_refs = [mem_polys_claims, wit_polys_claims, setup_polys_claims];
+    let total_base_oracles = oracle_refs.iter().map(|oracle| oracle.num_columns()).sum();
+    let mut challenge_powers = materialize_powers_serial_starting_with_one::<E4, Global>(
+        batching_challenge,
+        total_base_oracles,
+    );
+    challenge_powers[1..].fill(E4::ZERO);
+    let (base_mem_powers, rest) = challenge_powers.split_at(evals_refs[0].len());
+    let (base_wit_powers, base_setup_powers) = rest.split_at(evals_refs[1].len());
+
+    let mut batched_poly_on_main_domain = vec![E4::ZERO; 1 << trace_len_log2];
+    for (challenges_set, values_set) in [
+        (
+            base_mem_powers,
+            &oracle_refs[0].cosets[0].original_values_normal_order,
+        ),
+        (
+            base_wit_powers,
+            &oracle_refs[1].cosets[0].original_values_normal_order,
+        ),
+        (
+            base_setup_powers,
+            &oracle_refs[2].cosets[0].original_values_normal_order,
+        ),
+    ] {
+        for (batch_challenge, base_value) in challenges_set.iter().zip(values_set.iter()) {
+            for (dst, src) in batched_poly_on_main_domain
+                .iter_mut()
+                .zip(base_value.column.iter())
+            {
+                let mut term = *batch_challenge;
+                term.mul_assign_by_base(src);
+                dst.add_assign(&term);
+            }
+        }
+    }
+
+    let mut sumchecked_poly_monomial_form =
+        compute_column_major_monomial_form_from_main_domain_owned_for_test(
+            batched_poly_on_main_domain,
+            twiddles,
+        );
+    let mut sumchecked_poly_evaluation_form = sumchecked_poly_monomial_form.clone();
+    let eval_log2 = sumchecked_poly_evaluation_form.len().trailing_zeros();
+    prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals(
+        &mut sumchecked_poly_evaluation_form,
+        eval_log2,
+    );
+    bitreverse_enumeration_inplace(&mut sumchecked_poly_evaluation_form);
+
+    let mut claim = E4::ZERO;
+    for (challenges_set, values_set) in [base_mem_powers, base_wit_powers, base_setup_powers]
+        .into_iter()
+        .zip(evals_refs.into_iter())
+    {
+        for (challenge, value) in challenges_set.iter().zip(values_set.iter()) {
+            let mut term = *value;
+            term.mul_assign(challenge);
+            claim.add_assign(&term);
+        }
+    }
+
+    let mut eq_poly = make_eq_poly_in_full::<E4>(original_evaluation_point, worker)
+        .pop()
+        .unwrap()
+        .into_vec();
+    let mut poly_size_log2 = trace_len_log2;
+
+    let mut whir_steps_schedule = whir_schedule.whir_steps_schedule.iter().copied().peekable();
+    let mut whir_queries_schedule = whir_schedule.whir_queries_schedule.iter().copied();
+    let mut whir_steps_lde_factors = whir_schedule.whir_steps_lde_factors.iter().copied();
+    let mut whir_pow_schedule = whir_schedule.whir_pow_schedule.iter().copied();
+
+    let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
+    let initial_queries = whir_queries_schedule.next().unwrap();
+    let initial_pow_bits = whir_pow_schedule.next().unwrap();
+    let mut folding_challenges_in_round = Vec::with_capacity(num_initial_folding_rounds);
+    for _ in 0..num_initial_folding_rounds {
+        let (f0, f1, f_half) =
+            special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
+        let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
+        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        folding_challenges_in_round.push(folding_challenge);
+        claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
+        fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
+        fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
+        fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+    }
+    poly_size_log2 -= num_initial_folding_rounds;
+
+    let first_lde_factor = whir_steps_lde_factors.next().unwrap();
+    let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+    let mut cpu_rs_oracle = build_cpu_recursive_whir_oracle_for_test(
+        &sumchecked_poly_monomial_form,
+        twiddles,
+        first_lde_factor,
+        1 << next_folding_steps,
+        whir_schedule.cap_size,
+        worker,
+    );
+    let mut gpu_rs_oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
+        &sumchecked_poly_monomial_form,
+        first_lde_factor,
+        1 << next_folding_steps,
+        whir_schedule.cap_size,
+        context,
+    )
+    .unwrap();
+    assert_eq!(
+        gpu_rs_oracle.get_tree_cap(),
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+            &cpu_rs_oracle.tree,
+        )
+    );
+    add_whir_commitment_to_transcript(
+        &mut transcript_seed,
+        &WhirCommitment::<BF, DefaultTreeConstructor> {
+            cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &cpu_rs_oracle.tree,
+            ),
+            _marker: core::marker::PhantomData,
+        },
+    );
+
+    let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
+    commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+    let rs_domain_log2 = trace_len_log2 + original_lde_factor.trailing_zeros() as usize;
+    let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
+    let query_domain_size = 1u64 << query_domain_log2;
+    let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
+    let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
+    let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<BF, Global>(
+        domain_generator_for_size::<BF>(1u64 << num_initial_folding_rounds)
+            .inverse()
+            .unwrap(),
+        1 << (num_initial_folding_rounds - 1),
+    );
+    bitreverse_enumeration_inplace(&mut high_powers_offsets);
+    let query_index_bits = query_domain_size.trailing_zeros() as usize;
+    let (.., mut bit_source) = draw_query_bits(
+        &mut transcript_seed,
+        initial_queries * query_index_bits,
+        initial_pow_bits,
+        worker,
+    );
+    let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let mut claim_correction = {
+        let mut t = ood_value;
+        t.mul_assign(&delinearization_challenge);
+        t
+    };
+    let mut in_domain_samples = Vec::with_capacity(initial_queries);
+    for _ in 0..initial_queries {
+        let query_index = assemble_query_index(query_index_bits, &mut bit_source);
+        let query_point = query_domain_generator.pow(query_index as u32);
+        let base_root = extended_generator.pow(query_index as u32);
+        let base_root_inv = base_root.inverse().unwrap();
+        let mut batched_evals = vec![E4::ZERO; mem_oracle.values_per_leaf];
+        for (oracle, batching_challenges) in oracle_refs
+            .iter()
+            .zip([base_mem_powers, base_wit_powers, base_setup_powers].iter())
+        {
+            let (_, leaf, _) = oracle.query_for_folded_index(query_index);
+            for (dst, src) in batched_evals.iter_mut().zip(leaf.iter()) {
+                for (a, b) in src.iter().zip(batching_challenges.iter()) {
+                    let mut t = *b;
+                    t.mul_assign_by_base(a);
+                    dst.add_assign(&t);
+                }
+            }
+        }
+        let folded = fold_coset_for_test(
+            batched_evals,
+            num_initial_folding_rounds,
+            &folding_challenges_in_round,
+            &base_root_inv,
+            &high_powers_offsets,
+            &two_inv,
+        );
+        let mut t = folded;
+        t.mul_assign(&delinearization_challenge);
+        claim_correction.add_assign(&t);
+        in_domain_samples.push((query_point, delinearization_challenge));
+    }
+    update_eq_poly_for_test(
+        &mut eq_poly,
+        &[(ood_point, delinearization_challenge)],
+        &in_domain_samples,
+    );
+    claim.add_assign(&claim_correction);
+
+    let num_internal_rounds = whir_schedule.whir_steps_lde_factors.len() - 1;
+    for _internal_round in 0..num_internal_rounds {
+        let num_folding_steps = whir_steps_schedule.next().unwrap();
+        let num_queries = whir_queries_schedule.next().unwrap();
+        let pow_bits = whir_pow_schedule.next().unwrap();
+        let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros() as usize;
+        let query_domain_log2 = rs_domain_log2 - num_folding_steps;
+        let mut folding_challenges_in_round = Vec::with_capacity(num_folding_steps);
+        for _ in 0..num_folding_steps {
+            let (f0, f1, f_half) =
+                special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
+            let coeffs =
+                special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
+            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+            folding_challenges_in_round.push(folding_challenge);
+            claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
+            fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
+            fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
+            fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+        }
+        poly_size_log2 -= num_folding_steps;
+
+        let lde_factor = whir_steps_lde_factors.next().unwrap();
+        let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+        let next_cpu_oracle = build_cpu_recursive_whir_oracle_for_test(
+            &sumchecked_poly_monomial_form,
+            twiddles,
+            lde_factor,
+            1 << next_folding_steps,
+            whir_schedule.cap_size,
+            worker,
+        );
+        let next_gpu_oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &sumchecked_poly_monomial_form,
+            lde_factor,
+            1 << next_folding_steps,
+            whir_schedule.cap_size,
+            context,
+        )
+        .unwrap();
+        assert_eq!(
+            next_gpu_oracle.get_tree_cap(),
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &next_cpu_oracle.tree,
+            )
+        );
+
+        let ood_point = E4::from_base(BF::from_u32_unchecked(42));
+        let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
+        let query_domain_size = 1u64 << query_domain_log2;
+        let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
+        let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
+        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<BF, Global>(
+            domain_generator_for_size::<BF>(1u64 << num_folding_steps)
+                .inverse()
+                .unwrap(),
+            1 << (num_folding_steps - 1),
+        );
+        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+        let query_index_bits = query_domain_size.trailing_zeros() as usize;
+        let (.., mut bit_source) = draw_query_bits(
+            &mut transcript_seed,
+            num_queries * query_index_bits,
+            pow_bits,
+            worker,
+        );
+        let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        let mut claim_correction = {
+            let mut t = ood_value;
+            t.mul_assign(&delinearization_challenge);
+            t
+        };
+        let mut in_domain_samples = Vec::with_capacity(num_queries);
+        for _ in 0..num_queries {
+            let query_index = assemble_query_index(query_index_bits, &mut bit_source);
+            let (_, cpu_values, cpu_query) = cpu_rs_oracle.query_for_folded_index(query_index);
+            let (_, gpu_values, gpu_query) = gpu_rs_oracle
+                .query_for_folded_index(query_index, context)
+                .unwrap();
+            assert_eq!(gpu_values, cpu_values, "recursive query values diverged");
+            assert_eq!(gpu_query.index, cpu_query.index);
+            assert_eq!(
+                gpu_query.leaf_values_concatenated,
+                cpu_query.leaf_values_concatenated
+            );
+            assert_eq!(gpu_query.path, cpu_query.path);
+
+            let query_point = query_domain_generator.pow(query_index as u32);
+            let base_root = extended_generator.pow(query_index as u32);
+            let base_root_inv = base_root.inverse().unwrap();
+            let folded = fold_coset_for_test(
+                cpu_values,
+                num_folding_steps,
+                &folding_challenges_in_round,
+                &base_root_inv,
+                &high_powers_offsets,
+                &two_inv,
+            );
+            let mut t = folded;
+            t.mul_assign(&delinearization_challenge);
+            claim_correction.add_assign(&t);
+            in_domain_samples.push((query_point, delinearization_challenge));
+        }
+        update_eq_poly_for_test(
+            &mut eq_poly,
+            &[(ood_point, delinearization_challenge)],
+            &in_domain_samples,
+        );
+        claim.add_assign(&claim_correction);
+
+        cpu_rs_oracle = next_cpu_oracle;
+        gpu_rs_oracle = next_gpu_oracle;
+    }
+
+    let final_folding_steps = whir_steps_schedule.next().unwrap();
+    let final_queries = whir_queries_schedule.next().unwrap();
+    let final_pow_bits = whir_pow_schedule.next().unwrap();
+    let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros() as usize;
+    let query_domain_log2 = rs_domain_log2 - final_folding_steps;
+    let mut folding_challenges_in_round = Vec::with_capacity(final_folding_steps);
+    for _ in 0..final_folding_steps {
+        let (f0, f1, f_half) =
+            special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
+        let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
+        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        folding_challenges_in_round.push(folding_challenge);
+        claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
+        fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
+        fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
+        fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+    }
+    poly_size_log2 -= final_folding_steps;
+    let query_domain_size = 1u64 << query_domain_log2;
+    let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
+    let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
+    let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<BF, Global>(
+        domain_generator_for_size::<BF>(1u64 << final_folding_steps)
+            .inverse()
+            .unwrap(),
+        1 << (final_folding_steps - 1),
+    );
+    bitreverse_enumeration_inplace(&mut high_powers_offsets);
+    let query_index_bits = query_domain_size.trailing_zeros() as usize;
+    let (.., mut bit_source) = draw_query_bits(
+        &mut transcript_seed,
+        final_queries * query_index_bits,
+        final_pow_bits,
+        worker,
+    );
+    for _ in 0..final_queries {
+        let query_index = assemble_query_index(query_index_bits, &mut bit_source);
+        let (_, cpu_values, cpu_query) = cpu_rs_oracle.query_for_folded_index(query_index);
+        let (_, gpu_values, gpu_query) = gpu_rs_oracle
+            .query_for_folded_index(query_index, context)
+            .unwrap();
+        assert_eq!(
+            gpu_values, cpu_values,
+            "final recursive query values diverged"
+        );
+        assert_eq!(gpu_query.index, cpu_query.index);
+        assert_eq!(
+            gpu_query.leaf_values_concatenated,
+            cpu_query.leaf_values_concatenated
+        );
+        assert_eq!(gpu_query.path, cpu_query.path);
+
+        let query_point = query_domain_generator.pow(query_index as u32);
+        let base_root = extended_generator.pow(query_index as u32);
+        let base_root_inv = base_root.inverse().unwrap();
+        let folded = fold_coset_for_test(
+            cpu_values,
+            final_folding_steps,
+            &folding_challenges_in_round,
+            &base_root_inv,
+            &high_powers_offsets,
+            &two_inv,
+        );
+        assert_eq!(
+            folded,
+            evaluate_monomial_form_for_test(
+                &sumchecked_poly_monomial_form,
+                E4::from_base(query_point)
+            )
+        );
+    }
+    let _ = claim;
 }
 
 struct BasicUnrolledAsyncBackwardFixture {
@@ -2172,6 +2892,26 @@ fn run_basic_unrolled_test() {
 
     let whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
     let whir_schedule = whir_schedule.clone();
+    {
+        let _range = range!("test.gpu.whir.recursive_oracle_parity");
+        assert_recursive_whir_oracle_parity_for_supported_path(
+            &mem_oracle,
+            &gpu_base_claims.mem_polys_claims,
+            &wit_oracle,
+            &gpu_base_claims.wit_polys_claims,
+            &setup_commitment,
+            &gpu_base_claims.setup_polys_claims,
+            base_layer_z,
+            whir_schedule.base_lde_factor,
+            whir_batching_challenge,
+            &whir_schedule,
+            &twiddles,
+            seed.clone(),
+            trace_len.trailing_zeros() as usize,
+            &worker,
+            &context,
+        );
+    }
     let whir_proof = {
         let _range = range!("test.cpu.whir_fold");
         whir_fold(
