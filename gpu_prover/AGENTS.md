@@ -11,6 +11,13 @@
 - `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
 - `src/`: crate modules.
 
+## Legacy Reference
+- `../gpu_prover_old/` is the old prover crate. It is kept only as a reference and must not be modified.
+- `gpu_prover_old` is not an implementation target for new work; all active prover development belongs in `gpu_prover`.
+- `gpu_prover` already overlaps heavily with `gpu_prover_old` across allocator, NTT, ops, witness generation, trace-holder logic, and many CUDA kernels, and more legacy behavior may continue to be reimplemented here.
+- Before adding prover logic in `gpu_prover`, first check whether the needed behavior already exists here, then consult the corresponding code in `gpu_prover_old` for reference behavior and invariants.
+- Use `gpu_prover_old` to understand behavior, not as a place to land fixes or feature work. Port behavior deliberately into `gpu_prover` rather than copying legacy structure mechanically.
+
 ## Build and Test
 - Minimum validation for any code change: `cargo check -p gpu_prover`
 - Build: `cargo build -p gpu_prover`
