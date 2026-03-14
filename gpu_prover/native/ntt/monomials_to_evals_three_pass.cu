@@ -132,8 +132,8 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   // A separate coset adjustment loop performs better than interleaving adjustments with loads.
   if (coset_factor_power > 0) {
 #pragma unroll
-    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE) {
-      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(row) : row;
+    for (int i{0}, global_row{lane_id + gmem_block_offset + warp_id * VALS_PER_WARP}; i < VALS_PER_THREAD; i++, global_row += WARP_SIZE) {
+      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(global_row) : global_row;
       const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(effective_row, log_n) * coset_factor_power);
       vals[i] = bf::mul(vals[i], coset_offset);
     }
