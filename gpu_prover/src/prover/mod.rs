@@ -4,6 +4,7 @@ mod pow;
 pub(crate) mod trace_holder;
 pub(crate) mod tracing_data;
 pub(crate) mod whir;
+pub(crate) mod whir_fold;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

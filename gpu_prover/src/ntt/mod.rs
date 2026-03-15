@@ -24,6 +24,15 @@ cuda_kernel!(
 );
 
 cuda_kernel!(
+    HypercubeForwardStage,
+    ab_hypercube_coeffs_natural_to_natural_evals_stage_kernel(
+        values: *mut BF,
+        log_n: u32,
+        stage: u32,
+    )
+);
+
+cuda_kernel!(
     CopyScaleBitreversedCoeffs,
     ab_copy_scale_bitreversed_coeffs_kernel(
         src: *const BF,
@@ -37,6 +46,15 @@ cuda_kernel!(
 cuda_kernel!(
     BitreversedCoeffsToNaturalNttStage,
     ab_bitreversed_coeffs_to_natural_ntt_stage_kernel(
+        values: *mut BF,
+        log_n: u32,
+        stage: u32,
+    )
+);
+
+cuda_kernel!(
+    NaturalEvalsToBitreversedCoeffsNttStage,
+    ab_natural_evals_to_bitreversed_coeffs_ntt_stage_kernel(
         values: *mut BF,
         log_n: u32,
         stage: u32,
@@ -59,6 +77,19 @@ fn launch_hypercube_stage(
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = HypercubeStageArguments::new(values.as_mut_ptr(), log_n as u32, stage as u32);
     HypercubeStageFunction::default().launch(&config, &args)
+}
+
+fn launch_hypercube_forward_stage(
+    values: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stage: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let pair_count = 1usize << (log_n - 1);
+    let (grid_dim, block_dim) = launch_dims(pair_count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = HypercubeForwardStageArguments::new(values.as_mut_ptr(), log_n as u32, stage as u32);
+    HypercubeForwardStageFunction::default().launch(&config, &args)
 }
 
 fn launch_copy_scale_bitreversed_coeffs(
@@ -99,6 +130,23 @@ fn launch_bitreversed_coeffs_to_natural_ntt_stage(
     BitreversedCoeffsToNaturalNttStageFunction::default().launch(&config, &args)
 }
 
+fn launch_natural_evals_to_bitreversed_coeffs_ntt_stage(
+    values: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stage: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let pair_count = 1usize << (log_n - 1);
+    let (grid_dim, block_dim) = launch_dims(pair_count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = NaturalEvalsToBitreversedCoeffsNttStageArguments::new(
+        values.as_mut_ptr(),
+        log_n as u32,
+        stage as u32,
+    );
+    NaturalEvalsToBitreversedCoeffsNttStageFunction::default().launch(&config, &args)
+}
+
 pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -117,6 +165,45 @@ pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     // bitreversed monomial order without any extra permutation pass.
     for stage in (0..log_n).rev() {
         launch_hypercube_stage(dst, log_n, stage, stream)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
+    src: &DeviceSlice<BF>,
+    dst: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(src.len(), 1usize << log_n);
+    assert_eq!(dst.len(), src.len());
+    memory_copy_async(dst, src, stream)?;
+    if log_n == 0 {
+        return Ok(());
+    }
+
+    for stage in 0..log_n {
+        launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn natural_evals_to_bitreversed_coeffs(
+    src: &DeviceSlice<BF>,
+    dst: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_n <= OMEGA_LOG_ORDER as usize);
+    assert_eq!(src.len(), 1usize << log_n);
+    assert_eq!(dst.len(), src.len());
+    memory_copy_async(dst, src, stream)?;
+    if log_n == 0 {
+        return Ok(());
+    }
+
+    for stage in 0..log_n {
+        launch_natural_evals_to_bitreversed_coeffs_ntt_stage(dst, log_n, stage, stream)?;
     }
     Ok(())
 }
