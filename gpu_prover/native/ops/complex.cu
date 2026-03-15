@@ -144,6 +144,70 @@ TRANSPOSE_KERNEL(e2, 4);
 TRANSPOSE_KERNEL(e4, 3);
 TRANSPOSE_KERNEL(e6, 3);
 
+EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+
+  const e4 value = load<e4, ld_modifier::cs>(src, gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(0), gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(1), count + gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(2), 2 * count + gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(3), 3 * count + gid);
+}
+
+EXTERN __global__ void ab_deserialize_whir_e4_columns_kernel(const bf *src, e4 *dst, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+
+  const bf coeffs[4] = {
+      load<bf, ld_modifier::cs>(src, gid),
+      load<bf, ld_modifier::cs>(src, count + gid),
+      load<bf, ld_modifier::cs>(src, 2 * count + gid),
+      load<bf, ld_modifier::cs>(src, 3 * count + gid),
+  };
+  store<e4, st_modifier::cs>(dst, e4(coeffs), gid);
+}
+
+EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(
+    const bf *values, const unsigned stride, const e4 *weights, const unsigned cols, e4 *result, const unsigned rows) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= rows)
+    return;
+
+  e4 acc = load<e4, ld_modifier::cs>(result, gid);
+  for (unsigned col = 0; col < cols; ++col) {
+    const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
+    const e4 weight = load<e4, ld_modifier::cs>(weights, col);
+    acc = e4::add(acc, e4::mul(weight, value));
+  }
+  store<e4, st_modifier::cs>(result, acc, gid);
+}
+
+EXTERN __global__ void ab_whir_fold_monomial_e4_kernel(const e4 *src, const e4 *challenge, e4 *dst, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const e4 c0 = load<e4, ld_modifier::cs>(src, 2 * gid);
+  const e4 c1 = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
+  const e4 folded = e4::add(c0, e4::mul(c1, *challenge));
+  store<e4, st_modifier::cs>(dst, folded, gid);
+}
+
+EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *challenge, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const e4 a = load<e4, ld_modifier::cs>(values, gid);
+  const e4 b = load<e4, ld_modifier::cs>(values, half_len + gid);
+  const e4 diff = e4::sub(b, a);
+  const e4 folded = e4::add(a, e4::mul(*challenge, diff));
+  store<e4, st_modifier::cs>(values, folded, gid);
+}
+
 DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
   return __brev(value) >> (32 - num_bits);
 }
