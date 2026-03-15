@@ -2,11 +2,14 @@ use std::alloc::Global;
 
 use era_cudart::memory::memory_copy;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-use field::Field;
+use field::{Field, PrimeField};
 use serial_test::serial;
 use worker::Worker;
 
-use super::{bitreversed_coeffs_to_natural_coset, hypercube_evals_natural_to_bitreversed_coeffs};
+use super::{
+    bitreversed_coeffs_to_natural_coset, hypercube_coeffs_natural_to_natural_evals,
+    hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs,
+};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
@@ -77,6 +80,68 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         memory_copy(&mut src, &evals).unwrap();
         hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy(&mut actual, &dst).unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+
+        let n = 1usize << log_n;
+        let coeffs = (0..n)
+            .map(|idx| BF::new((29 + idx * 7) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = coeffs.clone();
+        multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy(&mut src, &coeffs).unwrap();
+        hypercube_coeffs_natural_to_natural_evals(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy(&mut actual, &dst).unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let evals = (0..n)
+            .map(|idx| BF::new((11 + idx * 23) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = evals.clone();
+        fft::naive::cache_friendly_ntt_natural_to_bitreversed(
+            &mut expected,
+            log_n as u32,
+            &fft::Twiddles::<BF, Global>::new(n, &Worker::new()).inverse_twiddles[..],
+        );
+        let scale = BF::from_u32_unchecked(n as u32).inverse().unwrap();
+        for value in expected.iter_mut() {
+            value.mul_assign(&scale);
+        }
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy(&mut src, &evals).unwrap();
+        natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
         memory_copy(&mut actual, &dst).unwrap();
